@@ -285,14 +285,15 @@ screen with no visible message — there is no third error state shown in the UI
 This is the only one of the nine that's a conversation instead of a single call:
 
 1. refbox generates a random number between 1 and 999999 once, the first time it's needed, and
-   reuses it for the rest of that run (`mod.rs:199`). This is the `refBoxId`. **It may be shorter
-   than six digits** — a real refbox can show the admin `42` — and it is never zero-padded, so do
-   not validate it as a six-digit string. **It is also regenerated every time refbox restarts — and,
-   on the in-app route, every time the operator presses APPLY on the SITE row**, because the number
-   lives on the portal client and applying an address builds a fresh one
-   (`refbox/src/app/mod.rs:1120`). If an admin has already registered a pending link and the operator
-   then re-applies the address, the number the admin was given is stale and call 1 answers
-   `NoPendingLink`. So treat it as a one-time pairing number, not a device identity: you cannot
+   reuses it for the life of that portal client (`mod.rs:199`). This is the `refBoxId`. **It may be
+   shorter than six digits** — a real refbox can show the admin `42` — and it is never zero-padded,
+   so do not validate it as a six-digit string. **It is also regenerated every time refbox restarts
+   — and, on the in-app route, whenever an APPLY actually moves the refbox to a different site**,
+   because the number lives on the portal client and pointing it somewhere new builds a fresh one
+   (`refbox/src/app/mod.rs:1120`). Applying an address that has not changed does nothing at all
+   (`:1045`). So if an admin has already registered a pending link and the operator then *edits* the
+   address and applies it, the number the admin was given is stale and call 1 answers
+   `NoPendingLink`. Treat it as a one-time pairing number, not a device identity: you cannot
    pre-register boxes the night before, and you cannot use it to trace which box pushed which
    result.
 2. An admin on the tournament site enters that number into the site, which issues a short code.
@@ -1793,18 +1794,22 @@ because it's serving on-screen graphics rather than scoresheets:
   then reads `dark.assignment.teamId` / `light.assignment.teamId` — note the extra `.assignment`
   nesting, compared to the `dark.teamId` / `light.teamId` shape used everywhere else in this
   document. **These two shapes are mutually exclusive — `games` cannot be both an object keyed by
-  game number and a plain array — so one schedule response cannot satisfy both the overlay and
-  schedule-processor/refbox.** This is a divergence inside refbox's own code, not a shape a site is
-  expected to reconcile: treat the overlay's schedule reading as a separate, incompatible consumer,
-  and serve it from its own response if you need it at all. A site that only stands in for the
-  refbox during a game never has to resolve this.
+  game number and a plain array — so one response on this path cannot satisfy both the overlay and
+  schedule-processor.** refbox is not involved either way: it only ever reads the privileged
+  schedule (call 5 of the refbox nine), never this public path. What a site can do is serve the
+  array shape here, for the overlay, and the object shape on `/schedule/privileged`.
+  schedule-processor reaches this path only when it holds no token, and treats a parse failure here
+  as "log in and use the privileged schedule instead", exactly as call 2's own entry above describes
+  (`schedule-processor/src/scoresheets.rs:92-101`) — so the array shape costs it a login, not a
+  scoresheet. A site that only stands in for the refbox during a game never has to resolve this.
 
 The overlay's failure handling for these three calls also differs, call by call, from every other
 call in this document — none of them check the response status code before deciding what to do
 with the body:
 
-- **Team roster** (`:96`): same as call 9 above (overlay attachments) — a connection failure, or a
-  body that isn't valid JSON, panics the background task fetching that team's information
+- **Team roster** (`overlay/src/network.rs:96`): same as call 9 above (overlay attachments) — a
+  connection failure, or a body that isn't valid JSON, panics the background task fetching that
+  team's information
   (`overlay/src/network.rs:94-105`). The panic doesn't crash the overlay, but that game's team
   shows no roster, photos, or flag until a later game or event change triggers a fresh fetch.
 - **Game referees** (`:240`): the only one of the three handled gracefully — a connection failure

@@ -553,3 +553,46 @@ falsify the record to fix a link, so only the live navigational pointer (that pl
 line) was repointed, with a dated note explaining that the paths below it are historical. The
 review's actual goal — that a reader browsing the deliverable does not land in an internal ledger —
 is met either way.
+
+Consequence for Task 7 Step 4: its first check (`grep -rn "third-party-stub/ROUND-4-FINDINGS"` →
+"Expected: no output") is **permanently red by design** — it returns the 13 historical hits above.
+The second check (`git ls-files docs/third-party-stub` → three files) is the one that actually
+gates the task, and it passes.
+
+**Post-review fixes, from the code review of `b3588756..1161660a`.** Three findings were confirmed
+at the source and fixed in a follow-up commit:
+
+- *Critical.* The APPLY claim added by Task 2 was **false as written**, and its worked scenario
+  described the one case that does not happen. `target_after_apply` filters on
+  `*target != self.current_site` (`refbox/src/app/mod.rs:1045`) and `repoint_client` assigns
+  `self.current_site = target` (`:1134`), so an APPLY with an *unchanged* address never repoints and
+  the `OnceCell` id survives — while the document said "re-applies the address" regenerates it. The
+  trigger is a site *change*, not a button press. This is the same "resolves but does not support"
+  class this pass set out to remove, reintroduced by the pass itself: the citation was real, the
+  sentence was not. The per-occurrence citation trace cannot catch this; only reading the cited
+  function and the frames above it can.
+- *Important.* Task 6's replacement traded one unactionable instruction for another. "Serve it from
+  its own response" is impossible when both callers use the same method and path — which the same
+  section says two paragraphs earlier. It also named refbox, which never calls the public schedule
+  (`get_event_schedule_public` has exactly one caller, `schedule-processor/src/scoresheets.rs:98`).
+  Replaced with the remedy the code actually permits.
+- *Important.* Task 8 Step 3's literal replacement sentence for the README dropped the "on the four
+  authenticated calls" scope qualifier, making the stub sound as though every call needs a token and
+  contradicting the README's own new section. **A plan defect, faithfully executed** — the sentence
+  was wrong in this file, not mis-copied.
+
+**The re-anchoring hazard bit a third time — while fixing the report of the second.** The citation
+added to repair the overlay paragraph (`schedule-processor/src/scoresheets.rs:92-101`) re-anchored
+the very next bare citation: `` `:96` `` in the Team roster failure bullet silently moved from
+`overlay/src/network.rs:96` to `scoresheets.rs:96`. Caught only by a per-occurrence trace, and only
+because the reviewer pointed out that the baseline-diff method used earlier in this pass **dedups on
+`(path, start, end)` before printing** and can therefore miss a re-anchor whose key already appears
+elsewhere. Repaired the same way, by writing that citation in full.
+
+Three occurrences in one branch is no longer bad luck. **The document's shorthand-citation
+convention is itself the defect**: `` `mod.rs:NNN` `` and bare `` `:NNN` `` are position-dependent in
+a file that cites four different `mod.rs` files, so any inserted citation can silently retarget the
+next one, and the checker reports success either way. Converting every shorthand citation to a full
+path would remove the whole class. That is a mechanical change across ~60 citations and was out of
+scope for this pass — recommend it as the next one, and until then treat "did I add a citation?" as
+"run the per-occurrence trace", never the `0 unresolvable` count.

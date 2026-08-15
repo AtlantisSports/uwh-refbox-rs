@@ -91,8 +91,10 @@ does serve a call it answers `200` and never `204`, deliberately, since `200` is
 refbox treats as success. It refuses with `401` on a bad or absent token and `404` for a team or
 route it does not know.
 
-**It accepts exactly one bearer token — the access key it issued itself — and refuses everything
-else, including a request carrying no `Authorization` header at all.** That refusal is the point.
+**On the four authenticated calls it accepts exactly one bearer token — the access key it issued
+itself — and refuses everything else, including a request carrying no `Authorization` header at
+all.** The other five calls, call 9 among them, need no token and are served unauthenticated, the
+same way the document says a real site should treat them. That refusal is the point.
 An earlier version accepted anything, and the result was that refbox decided it was already
 paired, showed the token row as `OK` in green, and never offered to link. Your site is the only
 thing enforcing that a refbox is authorised for an event, so a permissive stand-in silently

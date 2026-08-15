@@ -1278,9 +1278,14 @@ impl TournamentManager {
             self.clock_state = ClockState::Stopped {
                 clock_time: Duration::ZERO,
             };
-            if was_running {
-                self.send_clock_running(false);
-            }
+            // Unconditionally, unlike the ordinary paths in this function: on the
+            // confirm-pause route the clock is already Stopped (pause_for_confirm parked
+            // it without notifying), so `was_running` is false while the updater still
+            // has it cached as running. Skipping the notification there would leave the
+            // updater waking on a stopped clock whose next-update instant is `now` —
+            // a hot loop. Mirrors the between-games expiry guard, which also sends
+            // unconditionally.
+            self.send_clock_running(false);
             self.reset_game_time = Duration::ZERO;
             return;
         }
@@ -2327,6 +2332,14 @@ impl TournamentManager {
                     .unwrap_or(Duration::ZERO)
             };
 
+            // Read before `end_game`, so this cannot drift if `end_game` ever clears the
+            // flag. When the selected court has no further games, `end_game` parks the
+            // clock dead at 0:00 — and the assignment below would immediately undo that,
+            // restarting a countdown toward a game that is never coming. This is the path
+            // a normal game end actually takes in the app, so the guard has to be here as
+            // well as in `end_game`.
+            let court_finished = self.no_next_game;
+
             if self.current_period == GamePeriod::BetweenGames {
                 self.end_game(now)
             } else {
@@ -2338,19 +2351,21 @@ impl TournamentManager {
                 next_period_remaining_duration
             );
 
-            self.clock_state = match self.current_period {
-                GamePeriod::PreOvertime | GamePeriod::PreSuddenDeath | GamePeriod::BetweenGames => {
-                    ClockState::CountingDown {
+            if !(court_finished && self.current_period == GamePeriod::BetweenGames) {
+                self.clock_state = match self.current_period {
+                    GamePeriod::PreOvertime
+                    | GamePeriod::PreSuddenDeath
+                    | GamePeriod::BetweenGames => ClockState::CountingDown {
                         start_time: now,
                         time_remaining_at_start: next_period_remaining_duration,
-                    }
-                }
-                GamePeriod::SuddenDeath => ClockState::CountingUp {
-                    start_time: (now),
-                    time_at_start: (time_into_sd),
-                },
-                _ => unreachable!(),
-            };
+                    },
+                    GamePeriod::SuddenDeath => ClockState::CountingUp {
+                        start_time: (now),
+                        time_at_start: (time_into_sd),
+                    },
+                    _ => unreachable!(),
+                };
+            }
 
             self.time_pause_confirmation = None;
 
@@ -9619,5 +9634,61 @@ mod test {
             0,
             "cleared when the next game starts"
         );
+    }
+
+    #[test]
+    fn the_confirm_pause_path_leaves_the_clock_stopped_when_a_court_is_finished() {
+        // The app never reaches `end_game` directly for a normal game end. Its clock
+        // updater is `could_end_game -> pause_for_confirm`, then `pause_has_ended ->
+        // end_confirm_pause` (see the loop in `refbox/src/app/mod.rs`, hand-mirrored by
+        // the golden harness's `tick`). The other tests here call `end_game` directly,
+        // which is a door the operator cannot open — this one drives the real sequence.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(600),
+            minimum_break: Duration::from_secs(180),
+            game_block: Duration::from_secs(1800),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let game_end = start + Duration::from_secs(600);
+        tm.set_game_number("9");
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(600));
+        tm.set_game_start(start);
+        tm.start_game_clock(start);
+        // One goal, so the scores are unequal and the game ends rather than going to
+        // overtime. The second argument is the scorer's cap number, not an amount.
+        tm.add_score(Color::Black, 5, start);
+        // Game 9 is the last on this court — the app records this when it STARTS.
+        tm.set_no_next_game();
+
+        assert_eq!(Ok(true), tm.could_end_game(game_end));
+        tm.pause_for_confirm(game_end).unwrap();
+        let pause_dur = tm
+            .time_pause_confirmation
+            .as_ref()
+            .unwrap()
+            .duration_of_pause;
+        let after = game_end + pause_dur;
+        tm.end_confirm_pause(after).unwrap();
+
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert!(
+            !tm.clock_is_running(),
+            "the clock must not count down toward a game that is not coming"
+        );
+        assert_eq!(tm.game_clock_time(after), Some(Duration::ZERO));
+
+        // Nothing can expire into a phantom game, and the final score stays readable
+        // however long the refbox is left running.
+        let later = after + Duration::from_secs(3600);
+        tm.update(later).unwrap();
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert_eq!(tm.game_number(), "9");
+        assert_eq!(tm.get_scores().black, 1, "the final score stays on screen");
     }
 }

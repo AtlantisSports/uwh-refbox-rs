@@ -97,9 +97,8 @@ pub(in super::super) fn game_info_rows(
     // A blank next-game number means the selected court has no further games
     // (uwh-common's GameSnapshot::next_game_number reports None for it). Between
     // games that empties the middle block; during a game it empties the Next block.
-    // Trust the blank number alone: the game source can go non-remote without the
-    // engine's portal next-game state being cleared (apply_app_options), so gating
-    // on it here would stop the table dashing exactly when it should.
+    // Trust the blank number alone. The blank IS the signal, whatever the source says:
+    // reading both risks the two disagreeing, and the table should follow the engine.
     let no_game = snapshot.next_game_number.is_empty();
     let no_current_game = between && no_game;
     let no_next_game = !between && no_game;

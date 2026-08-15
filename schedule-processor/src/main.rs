@@ -21,6 +21,9 @@ mod cmas_official;
 mod csv_parser;
 use csv_parser::parse_csv;
 
+mod json_loader;
+use json_loader::parse_json;
+
 mod schedule_checks;
 use schedule_checks::run_schedule_checks;
 
@@ -227,17 +230,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load the schedule CSV lazily — only when an action needs it (Upload / Save /
     // Print Schedule). Portal-based actions (score sheets, coin tosses) never require it.
     let load_schedule = || -> Result<Schedule, Box<dyn std::error::Error>> {
-        info!("Please select a CSV schedule to process in the file dialog.");
-        let Some(csv_path) = FileDialog::new()
-            .add_filter("CSV files", &["csv"])
-            .set_title("Select Schedule CSV File")
+        info!("Please select a schedule file (.csv or .json) to process in the file dialog.");
+        let Some(schedule_path) = FileDialog::new()
+            .add_filter("Schedule files", &["csv", "json"])
+            .set_title("Select Schedule File")
             .pick_file()
         else {
             return Err("No file selected".into());
         };
-        info!("Reading csv file: {}", csv_path.display());
-        let csv = std::fs::read_to_string(&csv_path)?;
-        let schedule = parse_csv(&csv, offset, event.id.clone())?;
+        info!("Reading schedule file: {}", schedule_path.display());
+        let contents = std::fs::read_to_string(&schedule_path)?;
+        // Branch on extension rather than sniffing content: telling the operator that their
+        // .json file looks like CSV is more useful than silently guessing wrong.
+        let extension = schedule_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase());
+        let schedule = match extension.as_deref() {
+            Some("csv") => parse_csv(&contents, offset, event.id.clone())?,
+            Some("json") => parse_json(&contents, offset, event.id.clone())?,
+            _ => return Err("Unsupported file type (must be .csv or .json)".into()),
+        };
 
         let mut success_string = "Successfully parsed schedule. Details:".to_string();
         write!(

@@ -319,6 +319,7 @@ unknown = Inconnu
 select-infraction = Faire une sélection
 ## Game time button
 next-game = MATCH SUIVANT
+schedule-end = FIN
 first-half = 1ere PÉRIODE
 half-time = MI-TEMPS
 second-half = 2eme PÉRIODE

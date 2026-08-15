@@ -314,6 +314,7 @@ unknown = ไม่ทราบ
 select-infraction = กรุณาเลือก
 ## ปุ่มเวลาเกม
 next-game = เกมถัดไป
+schedule-end = จบ
 first-half = ครึ่งแรก
 half-time = พักครึ่ง
 second-half = ครึ่งที่สอง

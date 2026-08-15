@@ -316,6 +316,7 @@ unknown = Desconhecido
 select-infraction = Selecione uma opção
 ## Botão de tempo de jogo
 next-game = PRÓXIMO JOGO
+schedule-end = FIM
 first-half = PRIMEIRO TEMPO
 half-time = INTERVALO
 second-half = SEGUNDO TEMPO

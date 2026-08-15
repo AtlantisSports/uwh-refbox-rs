@@ -346,6 +346,7 @@ unknown = Unknown
 select-infraction = Make selection
 ## Game time button
 next-game = NEXT GAME
+schedule-end = END
 first-half = FIRST HALF
 half-time = HALF TIME
 second-half = SECOND HALF

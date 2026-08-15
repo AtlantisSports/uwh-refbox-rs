@@ -316,6 +316,7 @@ unknown = Hindi Alam
 select-infraction = Pumili
 ## Pindutan ng oras ng laro
 next-game = SUSUNOD NA LARO
+schedule-end = TAPOS
 first-half = UNANG KALAHATI
 half-time = PAHINGA
 second-half = IKALAWANG KALAHATI

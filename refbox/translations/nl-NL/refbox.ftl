@@ -315,6 +315,7 @@ unknown = Onbekend
 select-infraction = Maak een keuze
 ## Wedstrijdtijdknop
 next-game = VOLGENDE WEDSTRIJD
+schedule-end = EINDE
 first-half = EERSTE HELFT
 half-time = RUST
 second-half = TWEEDE HELFT

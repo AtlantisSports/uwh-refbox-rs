@@ -316,6 +316,7 @@ unknown = Bilinmiyor
 select-infraction = Seçim yapın
 ## Oyun zamanı düğmesi
 next-game = SONRAKİ OYUN
+schedule-end = SON
 first-half = İLK DEVRE
 half-time = DEVRE ARASI
 second-half = İKİNCİ DEVRE

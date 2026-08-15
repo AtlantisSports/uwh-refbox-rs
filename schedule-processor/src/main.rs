@@ -1126,7 +1126,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Err(e) => {
                         let msg = e.to_string();
                         if msg.contains("authentication required for schedule") {
-                            info!("Public schedule not available; prompting for login...");
+                            info!(
+                                "A login is required to read the schedule; prompting for login..."
+                            );
                             #[allow(non_snake_case)]
                             let emailOrusername =
                                 match Text::new("Enter your uwhportal emailOrusername:").prompt() {

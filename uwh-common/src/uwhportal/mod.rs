@@ -653,34 +653,6 @@ impl UwhPortalClient {
 
     // --- Scoresheet generation portal calls (schedule / roster / referees / coin-flip) ---
 
-    /// Public (unauthenticated) event schedule. NOTE: for some events the public
-    /// endpoint returns games as a JSON array rather than the object `GameList`
-    /// expects; if this fails to parse for real data, use
-    /// `get_event_schedule_privileged` instead.
-    pub fn get_event_schedule_public(
-        &self,
-        event_id: &EventId,
-    ) -> impl std::future::Future<Output = Result<schedule::Schedule, Box<dyn Error>>> + use<> {
-        let url = format!(
-            "{}/api/events/{}/schedule",
-            self.base_url,
-            event_id.partial()
-        );
-        let request = self.client.get(&url).send();
-        async move {
-            let response = request.await?;
-            if response.status() == StatusCode::OK {
-                let body = response.text().await?;
-                let schedule: schedule::Schedule = serde_json::from_str(&body)?;
-                Ok(schedule)
-            } else {
-                warn!("uwhportal get public event schedule failed, response: {response:?}");
-                let body = response.text().await?;
-                Err(Box::new(ApiError::new(body)))?
-            }
-        }
-    }
-
     pub fn get_team_roster(
         &self,
         team_id: &TeamId,

@@ -89,16 +89,15 @@ pub async fn generate_scoresheets_for_event(
     csv_schedule: Option<&uwh_common::uwhportal::schedule::Schedule>,
     ref_csv_path: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // The schedule is only available to a logged-in caller. The portal does serve an
+    // unauthenticated schedule on the same path, but in a different shape that this
+    // crate has never been able to read, so there is nothing to fall back to.
     let schedule = if portal_client.has_token() {
-        // Prefer privileged schedule when we can; it includes referee assignments
         portal_client
             .get_event_schedule_privileged(&event.id)
             .await?
     } else {
-        match portal_client.get_event_schedule_public(&event.id).await {
-            Ok(s) => s,
-            Err(_) => return Err(Box::new(AuthRequiredError)),
-        }
+        return Err(Box::new(AuthRequiredError));
     };
     let teams = portal_client.get_event_teams(&event.id).await?;
 

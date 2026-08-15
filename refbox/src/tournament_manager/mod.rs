@@ -1265,6 +1265,26 @@ impl TournamentManager {
             self.calc_time_to_next_game(now, game_end)
         };
 
+        if self.no_next_game {
+            // No later game on this court, so there is nothing to count down TO. Stop the
+            // clock outright instead of running a break down to zero: nothing can expire
+            // and nothing can auto-start. The final score also stays on screen, because
+            // the mid-break `reset()` only runs while a countdown is active, so it never
+            // fires here — a later `start_game` still resets before the next game.
+            info!(
+                "{} Last game on this court is over; stopping the clock",
+                self.status_string(now),
+            );
+            self.clock_state = ClockState::Stopped {
+                clock_time: Duration::ZERO,
+            };
+            if was_running {
+                self.send_clock_running(false);
+            }
+            self.reset_game_time = Duration::ZERO;
+            return;
+        }
+
         info!(
             "{} Entering between games, time to next game is {time_remaining_at_start:?}",
             self.status_string(now),
@@ -9472,5 +9492,132 @@ mod test {
         assert!(tm.clock_is_running());
         assert!(rx.has_changed().unwrap());
         assert!(*rx.borrow_and_update());
+    }
+
+    #[test]
+    fn the_last_game_on_a_court_ends_with_the_clock_stopped() {
+        // There is no next game, so there is nothing to count down TO. The clock stops
+        // when the last game on the court ends, rather than running a break to zero.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            minimum_break: Duration::from_secs(10),
+            game_block: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+
+        tm.set_next_game(NextGameInfo {
+            number: "9".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.add_score(Color::Black, 5, start);
+        // Game 9 is the last on this court — in the app this is recorded when it STARTS.
+        tm.set_no_next_game();
+
+        tm.end_game(start);
+
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert!(
+            !tm.clock_is_running(),
+            "the clock must not run after the last game on a court"
+        );
+        assert_eq!(tm.game_clock_time(start), Some(Duration::ZERO));
+
+        // And it stays put: with no countdown there is nothing to expire, so no game can
+        // auto-start however long the refbox is left running.
+        tm.update(start + Duration::from_secs(3600)).unwrap();
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert!(!tm.clock_is_running());
+        assert_eq!(
+            tm.game_clock_time(start + Duration::from_secs(3600)),
+            Some(Duration::ZERO)
+        );
+    }
+
+    #[test]
+    fn an_ordinary_game_end_still_starts_the_break_countdown() {
+        // Guard against over-reach: mid-day, the break still counts down as always.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            minimum_break: Duration::from_secs(10),
+            game_block: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+
+        tm.set_next_game(NextGameInfo {
+            number: "9".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.add_score(Color::Black, 5, start);
+
+        tm.end_game(start);
+
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert!(tm.clock_is_running(), "the break counts down as usual");
+        assert!(tm.game_clock_time(start).unwrap() > Duration::ZERO);
+    }
+
+    #[test]
+    fn the_finished_games_score_survives_until_the_next_game_starts() {
+        // The operator must still be able to read the final score off the screen after the
+        // day ends. The mid-break reset lives inside the counting-down branch of `update`,
+        // so a stopped clock never reaches it. When a game IS applied later, the reset
+        // still happens at start_game, so the new game begins 0-0.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            minimum_break: Duration::from_secs(10),
+            game_block: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+
+        tm.set_next_game(NextGameInfo {
+            number: "9".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        // NOTE: the second argument is the scoring player's CAP NUMBER, not an amount.
+        // One call is one goal, so black's score below is 1.
+        tm.add_score(Color::Black, 5, start);
+        tm.set_no_next_game();
+        tm.end_game(start);
+
+        // An hour later the score is still on screen.
+        let later = start + Duration::from_secs(3600);
+        tm.update(later).unwrap();
+        assert_eq!(tm.get_scores().black, 1);
+
+        // A game added to the court afterwards clears it at kickoff, not before.
+        tm.set_next_game(NextGameInfo {
+            number: "11".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.apply_next_game_start(later).unwrap();
+        assert_eq!(tm.get_scores().black, 1, "still showing during the break");
+        tm.start_play_now(later).unwrap();
+        assert_eq!(
+            tm.get_scores().black,
+            0,
+            "cleared when the next game starts"
+        );
     }
 }

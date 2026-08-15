@@ -19,3 +19,6 @@ uwhportal-schedule-json.md
 
 # Superpowers session files (per-agent working state, not shared)
 .superpowers/
+
+# Python bytecode left behind by the third-party stub site and its citation checker
+__pycache__/

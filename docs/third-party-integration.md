@@ -415,8 +415,9 @@ the refbox. Your site records that number as a pending link, mints a code for it
 to the admin, who reads it out. The pending link carries an expiry — long enough for the admin to
 walk the pool deck — and a count of failed attempts. When a matching code arrives at call 1 you
 issue an access key and delete the pending link, so the same code cannot be redeemed twice. A code
-arriving after the expiry, or after too many wrong guesses, is answered `NoPendingLink`, and the
-admin registers the box again.
+arriving after the expiry, or after too many wrong guesses, finds no pending link — the lockout
+discards it — so it is answered `NoPendingLink` rather than `InvalidCode`, and the admin registers
+the box again.
 
 That is about the shortest flow that meets every obligation in the list above, throttling included.
 It is not the only one, and none of it is a requirement.
@@ -993,32 +994,37 @@ above, because each one only becomes apparent when you compare all of them.
 **The HTTP-level facts, in one place.** refbox gives every request **10 seconds** before treating it
 as a transport failure, so a site that takes longer to answer is indistinguishable from a site that
 is down. **Redirects are followed** — up to ten of them, because nothing in the workspace configures
-a redirect policy and that is the HTTP client's default, so an `nginx` canonicalisation or an
-http→https redirect works, and you do not have to serve everything from the exact URL refbox was
-given. **A redirect that downgrades to plain `http` is refused** whenever TLS is required, which is
-the default: the same setting that rejects a plain-http base URL rejects a downgrade mid-redirect.
-Both of those are observed behaviour of a dependency's default rather than a promise — this document
-carries no stability promise anyway, and a future dependency bump could change either. Keep-alive
-and connection reuse likewise remain whatever the client does by default. Requests are not
-serialised: selecting an event triggers a burst (teams and schedule together), so a single-threaded
-stand-in can stall its own startup. Answer promptly, and answer concurrently.
+a redirect policy and that is the HTTP client's default. **But a redirect that changes host or port
+silently drops the access key.** The client strips the `Authorization` header on any cross-host or
+cross-port hop, so the five calls that need no token keep working while the four that need one
+arrive unauthenticated. Your site then refuses them — correctly — and refbox reads that refusal as a
+bad token: red indicator, operator prompted to log in again, and the fresh token stripped exactly
+the same way, mid-tournament, with results queueing. **Only a redirect that stays on the same host
+and the same port is safe.** Do not canonicalise `example.local` to `www.example.local`, and do not
+redirect between ports. A redirect that downgrades to plain `http` is refused outright wherever TLS
+is in force. All of that is observed behaviour of a dependency's default rather than a promise —
+this document carries no stability promise anyway, and a future bump could change any of it.
+Keep-alive and connection reuse likewise remain whatever the client does by default. Requests are
+not serialised: selecting an event triggers a burst (teams and schedule together), so a
+single-threaded stand-in can stall its own startup. Answer promptly, and answer concurrently.
 
 **Certificates are validated the ordinary way, and there is no way to ask refbox not to.** Nothing
 in the client's setup mentions certificates at all (`uwh-common/src/uwhportal/mod.rs:172-175`), so
 the TLS defaults stand: a certificate has to chain to something already in the trust store of the
-machine running refbox. **A self-signed certificate
-is therefore rejected** — and, exactly like the plain-`http` refusal above, the failure is
-indistinguishable from your site being unreachable: nothing on screen and nothing in the log names
-the certificate as the cause.
+machine running refbox. **A self-signed certificate is therefore rejected** — and, exactly like the
+plain-`http` refusal above, the failure is indistinguishable from your site being unreachable:
+nothing on screen and nothing in the log names the certificate as the cause.
 
 The route that works for a site with no public DNS name — the ordinary pool-LAN case — is to
 generate your own certificate authority, install it in the trust store of the machine running
 refbox, and serve `https` normally. That keeps the access key encrypted, which is the reason TLS is
 demanded in the first place. **On a Raspberry Pi this is a real setup step, not a one-liner:** the
 deployment image runs a read-only overlay filesystem, so the certificate has to be baked into
-the image or the overlay remounted writable to install it. The alternative is plain `http` with
-`--allow-http` on a network you trust, described under
-[The environment override](#the-environment-override-built-in-portal-only).
+the image or the overlay remounted writable to install it. The alternative, on a network you trust,
+is plain `http` — and what that costs depends on the route: a site typed into the SITE row only
+needs an `http://` address, while the environment override additionally needs the `--allow-http`
+launch flag. Both are described under
+[Pointing refbox at your site](#pointing-refbox-at-your-site).
 
 **What refbox will accept in a reply is a separate question from what it sends, and just as
 undocumented until now.** The client is built with only a timeout and an HTTPS-only toggle
@@ -1571,8 +1577,9 @@ warns that for *some* events the public endpoint returns `games` as a plain JSON
 the object shape the parser expects. **Measured against the live Portal on 2026-08-15, it is not
 some events — it is every one:** all 67 events with a published schedule on the production API, and
 all 33 on the dev API, returned an array. So this call fails to parse every time and
-schedule-processor always falls through to logging in and using the privileged schedule. The
-unauthenticated route is documentation of an intent, not a path that currently works.
+schedule-processor always ends up prompting for a login and using the privileged schedule instead —
+and if the operator declines that prompt, they get no scoresheet. The unauthenticated route is
+documentation of an intent, not a path that currently works.
 
 **Authentication:** none
 
@@ -1583,17 +1590,19 @@ unauthenticated route is documentation of an intent, not a path that currently w
 **Successful response:** `200`, and **not** the shape documented under
 [the schedule payload](#the-schedule-payload) for the privileged call. Measured on 2026-08-15
 across 100 events on the production and dev APIs, this endpoint returned a different structure every
-single time:
+single time. All 100 showed the first and third of these; the second and fourth rest on the 65 that
+contained any games at all, the other 35 having returned an empty array:
 
 - `games` is a **JSON array**, never an object keyed by game number.
 - A game's teams sit one level deeper — `dark.assignment.teamId`, not `dark.teamId`.
-- There is no top-level `eventId` and no `groups`. The top level carries `event`, `divisions`,
-  `pods`, `courtNames`, `teams`, `nonGameEntries`, `refereesByGameNumber` and `timingRules`.
+- There is no top-level `eventId` and no `groups`. The top level carries, among others, `event`,
+  `divisions`, `pods`, `courtNames`, `teams`, `nonGameEntries`, `refereesByGameNumber` and
+  `timingRules`.
 - `startsOn` carries a numeric UTC offset (`2026-08-01T09:30:00+10:00`), not `Z`.
 
 The privileged endpoint could not be measured the same way — it needs a token — but refbox
 deserialises it into the object-keyed shape and runs tournaments on it, so the two endpoints do
-**not** return the same thing despite sharing a path. Treat the privileged shape in
+**not** return the same thing despite sharing a path prefix. Treat the privileged shape in
 [Data formats](#data-formats) as describing the privileged call only.
 
 **Fields schedule-processor actually reads:** in principle the whole `Schedule` shape, exactly as
@@ -1869,10 +1878,11 @@ because it's serving on-screen graphics rather than scoresheets:
   then reads `dark.assignment.teamId` / `light.assignment.teamId` — note the extra `.assignment`
   nesting, compared to the `dark.teamId` / `light.teamId` shape used everywhere else in this
   document. **Measured on 2026-08-15, the overlay's array reading is the correct one for this
-  endpoint** — see call 2 above, where all 100 events checked returned an array with exactly that
-  nesting. **Its top-level `court` and `startsOn` reads are not.** Neither key exists at the top
-  level of any response the real Portal returned; both fall back to an empty string, so the
-  overlay's COURT and START lines are blank whenever they come from this source. A stand-in site
+  endpoint** — see call 2 above, where all 100 events checked returned an array, and every one of
+  the 65 carrying any games used exactly that nesting. **Its top-level `court` and `startsOn` reads
+  are not.** Neither key exists at the top level of any response the real Portal returned; both fall
+  back to an empty string, so the overlay's COURT and START lines are blank whenever they come from
+  this source. A stand-in site
   *can* populate them by serving `court` and `startsOn` at the top level — that is simply a shape
   the Portal itself does not produce. refbox is not involved either way: it only ever reads the
   privileged schedule (call 5 of the refbox nine), never this public path. And schedule-processor

@@ -5,10 +5,11 @@ same reason. This is the tracked record of what was decided, by whom, and what w
 
 **Context:** an adversarial review of the whole branch (dumped to
 `docs/audit-archive/2026-08-14-third-party-integration-adversarial-dump.md` in the primary worktree)
-closed six presentation defects. What remained were the six sealed-room round-4 findings nobody
+closed six presentation defects. What remained were the seven sealed-room round-4 findings nobody
 could close without a decision or a live refbox: 3, 5, 6, 8, 10, 14 and 31.
 
-All are now closed. **Four needed a ruling. Three did not — the source answered them.**
+All are now closed. **Four needed a ruling. Three did not — the source answered them.** (Finding 31
+is the fourth of those, and needed nothing at all: its premise was wrong.)
 
 ---
 
@@ -82,7 +83,7 @@ on their own branch.
 
 ---
 
-## The three that needed no ruling
+## The four that needed no ruling
 
 Listed because the pattern matters more than the answers.
 
@@ -95,12 +96,18 @@ Listed because the pattern matters more than the answers.
 - **Finding 8 (tokenless verify in the released build)** — had sat in the "needs a live refbox" pile
   since 2026-08-13. Settled in two commands: `v0.4.9`'s health check has no `has_token()` guard,
   `HEAD`'s does. A live run would have confirmed what the tag already showed.
+- **Finding 31 (no way to check a site is reachable before a game)** — the premise was wrong, so
+  there was nothing to rule on. Reachability never depended on call 2: turning Portal mode on fires
+  call 3 (event list) and then call 4 (teams) for every event returned, both unauthenticated, so
+  requests reach a site's log before anyone has linked. What *does* depend on call 2 is the
+  operator-visible indicator, which is why a site can be up and answering and still show red. Call
+  2's entry now says both things.
 
-**The pattern: three findings escalated to the human on this branch turned out to be answerable from
-the code.** `filter=Past` was the first, re-triaged during round-4 phase 1. Before putting a
-question to a person, check whether the source, a git tag, or an unauthenticated request answers
-it — the
-cost of asking is not just the person's time, it is a finding sitting open for two days with a
+**The pattern: four findings escalated to the human on this branch turned out to be answerable
+without one** — `filter=Past` (re-triaged during round-4 phase 1), then 14, 8 and 31 here. A fifth,
+finding 10, was half answerable: only the product question ever needed a person. Before putting a
+question to someone, check whether the source, a git tag, or an unauthenticated request answers it.
+The cost of not checking is not just their time — it is a finding sitting open for two days under a
 "blocked" label it did not deserve.
 
 The counterweight, from the same branch: a claim that *looks* answerable from source can still be

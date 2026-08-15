@@ -370,3 +370,33 @@ git commit -m "docs(workspace): record the 2026-08-15 contract rulings"
 ## Deviations
 
 _(Record any divergence here rather than in a separate commit, per `.claude/rules/plan-execution.md`.)_
+
+**Task 1 overturned its own premise.** The plan listed three possible outcomes for the probe and
+prescribed different prose for each. The result was the third and least expected: 100/100 events
+returned an array, so the *document* was the wrong party, not either caller. Two code defects fell
+out of it that the plan had not anticipated — `get_event_schedule_public` cannot parse the real
+Portal's response at all, and the overlay reads `court`/`startsOn` from a level where they do not
+exist. Both recorded, neither acted on; they are code changes and out of scope.
+
+**Two of the three code-review findings were plan defects, not execution drift.** Worth stating
+plainly, because the plan is otherwise the record of what was intended:
+
+- *Critical.* Task 2 Step 1 prescribed the redirect content bullet by bullet, including the
+  encouraging example "an `nginx` canonicalisation or an http→https redirect works". That is
+  dangerous advice. reqwest strips the `Authorization` header on any redirect that changes host
+  **or port** (`redirect.rs:241-249`, called at `:338`), so a canonicalising redirect leaves the
+  five tokenless calls working while the four bearer calls arrive unauthenticated — which the site
+  correctly refuses and refbox reads as a bad token, prompting a re-login whose fresh token is
+  stripped identically. The plan never mentioned header stripping. The pre-change wording it
+  replaced ("do not build a site that depends on a particular behaviour there") was *safer* than
+  the replacement. Now rewritten to say only same-host, same-port redirects are safe.
+- *Important.* Task 2 Step 2 prescribed pointing the reader at `--allow-http` and the
+  environment-override section as the plain-http alternative. That section is scoped to the
+  built-in Portal, and the document already tells a third party the opposite at `:77-79`: a typed
+  `http://` address needs no flag at all (`refbox/src/app/mod.rs:453`). Now points at the route
+  that actually applies.
+
+**The lesson, which is the same one this branch keeps relearning:** writing literal replacement
+prose into a plan does not make it correct — it just moves the error earlier and lends it authority.
+Both defects would have been caught by deriving the claim from source at the moment of writing,
+which is exactly what the plan told the executor to do for *citations* and not for *claims*.

@@ -1049,7 +1049,7 @@ Python's `http.server` does by default — `BaseHTTPRequestHandler.protocol_vers
 `"HTTP/1.0"` — and against the bursts described above (up to ~40 concurrent roster GETs, plus up
 to 100 concurrent teams requests at startup — see calls 9 and 4) that turns into dozens of full TCP
 handshakes competing for the same 10-second-per-request budget, instead of a handful of
-connections reused. This is why the reference stand-in in this repository sets
+connections reused. This is why the stub site in this repository sets
 `protocol_version = "HTTP/1.1"` (`docs/third-party-stub/stub_site.py:365-366`) and serves on
 `ThreadingHTTPServer` (`stub_site.py:436`) rather than the library defaults.
 

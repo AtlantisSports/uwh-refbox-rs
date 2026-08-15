@@ -1149,9 +1149,12 @@ fn picker_roster_game(snapshot: &GameSnapshot) -> Option<&GameNumber> {
 /// between games and the next-game number is blank, which is how the refbox reports
 /// that the selected court has no further scheduled games.
 ///
-/// Both the start-of-play buzzer and the audible countdown are gated on this. In this
-/// state the clock simply stops at 0:00, so counting the poolside down and sounding a
-/// start-of-play buzzer would announce a game that never begins.
+/// All three break sounds are gated on this: the 30-second whistle, the start-of-play
+/// buzzer at 0:00, and the audible countdown on the way there. Nothing is coming, so
+/// counting the poolside down or sounding them would announce a game that never begins.
+///
+/// Only `BetweenGames` can be silenced. Every other break has a game in progress and
+/// will start play again, whatever the next-game number says — hence the period test.
 fn break_starts_nothing(period: GamePeriod, next_game_number: &str) -> bool {
     period == GamePeriod::BetweenGames && next_game_number.is_empty()
 }
@@ -1203,8 +1206,11 @@ impl RefBoxApp {
     }
 
     fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
-        // A break that will start nothing must not be announced: no buzzer at 0:00
-        // and no countdown beeps on the way there.
+        // A break that will start nothing must not be announced: no 30-second whistle,
+        // no start-of-play buzzer at 0:00 and no countdown beeps on the way there.
+        // Once the court's last game has ended the clock stops dead, so the common path
+        // never reaches 30 seconds; this matters for the other ordering, where a break
+        // is already counting down when a schedule refresh reports the court finished.
         let starts_nothing =
             break_starts_nothing(new_snapshot.current_period, &new_snapshot.next_game_number);
 
@@ -1254,7 +1260,10 @@ impl RefBoxApp {
                     || end_stops_play && self.config.sound.auto_sound_stop_play;
 
                 (
-                    prereqs && is_whistle_period && new_snapshot.secs_in_period == 30,
+                    prereqs
+                        && is_whistle_period
+                        && !starts_nothing
+                        && new_snapshot.secs_in_period == 30,
                     prereqs
                         && is_buzz_period
                         && !starts_nothing

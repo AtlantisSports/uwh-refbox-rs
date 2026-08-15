@@ -1,0 +1,1577 @@
+{
+  "games": [
+    {
+      "number": "1",
+      "dark": {
+        "pendingAssignmentName": "Team B"
+      },
+      "light": {
+        "pendingAssignmentName": "Team A"
+      },
+      "startsOn": "2026-06-26T23:30:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R1"
+    },
+    {
+      "number": "2",
+      "dark": {
+        "pendingAssignmentName": "Team D"
+      },
+      "light": {
+        "pendingAssignmentName": "Team C"
+      },
+      "startsOn": "2026-06-26T23:30:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R1"
+    },
+    {
+      "number": "3",
+      "dark": {
+        "pendingAssignmentName": "Team F"
+      },
+      "light": {
+        "pendingAssignmentName": "Team E"
+      },
+      "startsOn": "2026-06-26T23:55:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "B Grade open RR Pool A R1"
+    },
+    {
+      "number": "4",
+      "dark": {
+        "pendingAssignmentName": "Team H"
+      },
+      "light": {
+        "pendingAssignmentName": "Team G"
+      },
+      "startsOn": "2026-06-26T23:55:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "B Grade open RR Pool A R1"
+    },
+    {
+      "number": "5",
+      "dark": {
+        "pendingAssignmentName": "Team J"
+      },
+      "light": {
+        "pendingAssignmentName": "Team I"
+      },
+      "startsOn": "2026-06-27T00:20:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "C grade open RR Pool A R1"
+    },
+    {
+      "number": "6",
+      "dark": {
+        "pendingAssignmentName": "Team L"
+      },
+      "light": {
+        "pendingAssignmentName": "Team K"
+      },
+      "startsOn": "2026-06-27T00:20:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "C grade open RR Pool A R1"
+    },
+    {
+      "number": "7",
+      "dark": {
+        "pendingAssignmentName": "Team N"
+      },
+      "light": {
+        "pendingAssignmentName": "Team M"
+      },
+      "startsOn": "2026-06-27T00:45:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R1"
+    },
+    {
+      "number": "8",
+      "dark": {
+        "pendingAssignmentName": "Team P"
+      },
+      "light": {
+        "pendingAssignmentName": "Team O"
+      },
+      "startsOn": "2026-06-27T00:45:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "B Grade open RR Pool B R1"
+    },
+    {
+      "number": "9",
+      "dark": {
+        "pendingAssignmentName": "Team R"
+      },
+      "light": {
+        "pendingAssignmentName": "Team Q"
+      },
+      "startsOn": "2026-06-27T01:10:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "Women RR RR R1"
+    },
+    {
+      "number": "10",
+      "dark": {
+        "pendingAssignmentName": "Team T"
+      },
+      "light": {
+        "pendingAssignmentName": "Team S"
+      },
+      "startsOn": "2026-06-27T01:10:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "Women RR RR R1"
+    },
+    {
+      "number": "11",
+      "dark": {
+        "pendingAssignmentName": "Team V"
+      },
+      "light": {
+        "pendingAssignmentName": "Team U"
+      },
+      "startsOn": "2026-06-27T01:35:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "B Grade open RR Pool B R1"
+    },
+    {
+      "number": "12",
+      "dark": {
+        "pendingAssignmentName": "Team X"
+      },
+      "light": {
+        "pendingAssignmentName": "Team W"
+      },
+      "startsOn": "2026-06-27T01:35:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "C grade open RR Pool B R1"
+    },
+    {
+      "number": "13",
+      "dark": {
+        "pendingAssignmentName": "Team Z"
+      },
+      "light": {
+        "pendingAssignmentName": "Team Y"
+      },
+      "startsOn": "2026-06-27T02:00:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "C grade open RR Pool B R1"
+    },
+    {
+      "number": "14",
+      "dark": {
+        "pendingAssignmentName": "Team A"
+      },
+      "light": {
+        "pendingAssignmentName": "Team D"
+      },
+      "startsOn": "2026-06-27T02:00:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R2"
+    },
+    {
+      "number": "15",
+      "dark": {
+        "pendingAssignmentName": "Team M"
+      },
+      "light": {
+        "pendingAssignmentName": "Team C"
+      },
+      "startsOn": "2026-06-27T02:25:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R2"
+    },
+    {
+      "number": "16",
+      "dark": {
+        "pendingAssignmentName": "Team E"
+      },
+      "light": {
+        "pendingAssignmentName": "Team H"
+      },
+      "startsOn": "2026-06-27T02:25:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "B Grade open RR Pool A R2"
+    },
+    {
+      "number": "17",
+      "dark": {
+        "pendingAssignmentName": "Team G"
+      },
+      "light": {
+        "pendingAssignmentName": "Team F"
+      },
+      "startsOn": "2026-06-27T02:50:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "B Grade open RR Pool A R2"
+    },
+    {
+      "number": "18",
+      "dark": {
+        "pendingAssignmentName": "Team I"
+      },
+      "light": {
+        "pendingAssignmentName": "Team L"
+      },
+      "startsOn": "2026-06-27T02:50:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "C grade open RR Pool A R2"
+    },
+    {
+      "number": "19",
+      "dark": {
+        "pendingAssignmentName": "Team K"
+      },
+      "light": {
+        "pendingAssignmentName": "Team J"
+      },
+      "startsOn": "2026-06-27T03:15:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "C grade open RR Pool A R2"
+    },
+    {
+      "number": "20",
+      "dark": {
+        "pendingAssignmentName": "Team B"
+      },
+      "light": {
+        "pendingAssignmentName": "Team N"
+      },
+      "startsOn": "2026-06-27T03:15:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R2"
+    },
+    {
+      "number": "21",
+      "dark": {
+        "pendingAssignmentName": "Team S"
+      },
+      "light": {
+        "pendingAssignmentName": "Team Q"
+      },
+      "startsOn": "2026-06-27T03:40:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "Women RR RR R2"
+    },
+    {
+      "number": "22",
+      "dark": {
+        "pendingAssignmentName": "Team R"
+      },
+      "light": {
+        "pendingAssignmentName": "Team A1"
+      },
+      "startsOn": "2026-06-27T03:40:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "Women RR RR R2"
+    },
+    {
+      "number": "23",
+      "dark": {
+        "pendingAssignmentName": "Team O"
+      },
+      "light": {
+        "pendingAssignmentName": "Team V"
+      },
+      "startsOn": "2026-06-27T04:05:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "B Grade open RR Pool B R2"
+    },
+    {
+      "number": "24",
+      "dark": {
+        "pendingAssignmentName": "Team U"
+      },
+      "light": {
+        "pendingAssignmentName": "Team P"
+      },
+      "startsOn": "2026-06-27T04:05:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "B Grade open RR Pool B R2"
+    },
+    {
+      "number": "25",
+      "dark": {
+        "pendingAssignmentName": "Team W"
+      },
+      "light": {
+        "pendingAssignmentName": "Team Z"
+      },
+      "startsOn": "2026-06-27T04:30:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "C grade open RR Pool B R2"
+    },
+    {
+      "number": "26",
+      "dark": {
+        "pendingAssignmentName": "Team Y"
+      },
+      "light": {
+        "pendingAssignmentName": "Team X"
+      },
+      "startsOn": "2026-06-27T04:30:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "C grade open RR Pool B R2"
+    },
+    {
+      "number": "27",
+      "dark": {
+        "pendingAssignmentName": "Team N"
+      },
+      "light": {
+        "pendingAssignmentName": "Team A"
+      },
+      "startsOn": "2026-06-27T04:55:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R3"
+    },
+    {
+      "number": "28",
+      "dark": {
+        "pendingAssignmentName": "Team C"
+      },
+      "light": {
+        "pendingAssignmentName": "Team B"
+      },
+      "startsOn": "2026-06-27T04:55:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R3"
+    },
+    {
+      "number": "29",
+      "dark": {
+        "pendingAssignmentName": "Team G"
+      },
+      "light": {
+        "pendingAssignmentName": "Team E"
+      },
+      "startsOn": "2026-06-27T05:20:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "B Grade open RR Pool A R3"
+    },
+    {
+      "number": "30",
+      "dark": {
+        "pendingAssignmentName": "Team F"
+      },
+      "light": {
+        "pendingAssignmentName": "Team H"
+      },
+      "startsOn": "2026-06-27T05:20:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "B Grade open RR Pool A R3"
+    },
+    {
+      "number": "31",
+      "dark": {
+        "pendingAssignmentName": "Team D"
+      },
+      "light": {
+        "pendingAssignmentName": "Team M"
+      },
+      "startsOn": "2026-06-27T05:45:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R3"
+    },
+    {
+      "number": "32",
+      "dark": {
+        "pendingAssignmentName": "Team J"
+      },
+      "light": {
+        "pendingAssignmentName": "Team L"
+      },
+      "startsOn": "2026-06-27T05:45:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "C grade open RR Pool A R3"
+    },
+    {
+      "number": "33",
+      "dark": {
+        "pendingAssignmentName": "Team K"
+      },
+      "light": {
+        "pendingAssignmentName": "Team I"
+      },
+      "startsOn": "2026-06-27T06:10:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "C grade open RR Pool A R3"
+    },
+    {
+      "number": "34",
+      "dark": {
+        "pendingAssignmentName": "Team R"
+      },
+      "light": {
+        "pendingAssignmentName": "Team S"
+      },
+      "startsOn": "2026-06-27T06:10:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "Women RR RR R3"
+    },
+    {
+      "number": "35",
+      "dark": {
+        "pendingAssignmentName": "Team A1"
+      },
+      "light": {
+        "pendingAssignmentName": "Team T"
+      },
+      "startsOn": "2026-06-27T06:35:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "Women RR RR R3"
+    },
+    {
+      "number": "36",
+      "dark": {
+        "pendingAssignmentName": "Team U"
+      },
+      "light": {
+        "pendingAssignmentName": "Team O"
+      },
+      "startsOn": "2026-06-27T06:35:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "B Grade open RR Pool B R3"
+    },
+    {
+      "number": "37",
+      "dark": {
+        "pendingAssignmentName": "Team P"
+      },
+      "light": {
+        "pendingAssignmentName": "Team V"
+      },
+      "startsOn": "2026-06-27T07:00:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "B Grade open RR Pool B R3"
+    },
+    {
+      "number": "38",
+      "dark": {
+        "pendingAssignmentName": "Team Y"
+      },
+      "light": {
+        "pendingAssignmentName": "Team W"
+      },
+      "startsOn": "2026-06-27T07:00:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "C grade open RR Pool B R3"
+    },
+    {
+      "number": "39",
+      "dark": {
+        "pendingAssignmentName": "Team X"
+      },
+      "light": {
+        "pendingAssignmentName": "Team Z"
+      },
+      "startsOn": "2026-06-27T07:25:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "C grade open RR Pool B R3"
+    },
+    {
+      "number": "40",
+      "dark": {
+        "pendingAssignmentName": "Team M"
+      },
+      "light": {
+        "pendingAssignmentName": "Team A"
+      },
+      "startsOn": "2026-06-27T07:25:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R4"
+    },
+    {
+      "number": "41",
+      "dark": {
+        "pendingAssignmentName": "Team C"
+      },
+      "light": {
+        "pendingAssignmentName": "Team N"
+      },
+      "startsOn": "2026-06-27T07:50:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R4"
+    },
+    {
+      "number": "42",
+      "dark": {
+        "pendingAssignmentName": "Team B"
+      },
+      "light": {
+        "pendingAssignmentName": "Team D"
+      },
+      "startsOn": "2026-06-27T07:50:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R4"
+    },
+    {
+      "number": "43",
+      "dark": {
+        "pendingAssignmentName": "Team T"
+      },
+      "light": {
+        "pendingAssignmentName": "Team Q"
+      },
+      "startsOn": "2026-06-27T08:15:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "Women RR RR R4"
+    },
+    {
+      "number": "44",
+      "dark": {
+        "pendingAssignmentName": "Team S"
+      },
+      "light": {
+        "pendingAssignmentName": "Team A1"
+      },
+      "startsOn": "2026-06-27T08:15:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "Women RR RR R4"
+    },
+    {
+      "number": "45",
+      "dark": {
+        "pendingAssignmentName": "Team A"
+      },
+      "light": {
+        "pendingAssignmentName": "Team C"
+      },
+      "startsOn": "2026-06-27T22:15:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R5"
+    },
+    {
+      "number": "47",
+      "dark": {
+        "pendingAssignmentName": "Team Q"
+      },
+      "light": {
+        "pendingAssignmentName": "Team A1"
+      },
+      "startsOn": "2026-06-27T22:40:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "Women RR RR R5"
+    },
+    {
+      "number": "48",
+      "dark": {
+        "pendingAssignmentName": "Team R"
+      },
+      "light": {
+        "pendingAssignmentName": "Team T"
+      },
+      "startsOn": "2026-06-27T22:40:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "Women RR RR R5"
+    },
+    {
+      "number": "49",
+      "dark": {
+        "pendingAssignmentName": "Team D"
+      },
+      "light": {
+        "pendingAssignmentName": "Team N"
+      },
+      "startsOn": "2026-06-27T23:05:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R5"
+    },
+    {
+      "number": "50",
+      "dark": {
+        "pendingAssignmentName": "Team M"
+      },
+      "light": {
+        "pendingAssignmentName": "Team B"
+      },
+      "startsOn": "2026-06-27T23:05:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "RR"
+      },
+      "description": "A Grade open RR RR R5"
+    },
+    {
+      "number": "51",
+      "dark": {
+        "seededBy": {
+          "number": 4,
+          "group": {
+            "name": "B Grade open Pod 2"
+          }
+        },
+        "pendingAssignmentName": "Pool B 4th"
+      },
+      "light": {
+        "seededBy": {
+          "number": 3,
+          "group": {
+            "name": "B Grade open Pod 1"
+          }
+        },
+        "pendingAssignmentName": "Pool A 3rd"
+      },
+      "startsOn": "2026-06-27T23:30:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "B Grade open Finals P5A"
+    },
+    {
+      "number": "52",
+      "dark": {
+        "seededBy": {
+          "number": 4,
+          "group": {
+            "name": "B Grade open Pod 1"
+          }
+        },
+        "pendingAssignmentName": "Pool A 4th"
+      },
+      "light": {
+        "seededBy": {
+          "number": 3,
+          "group": {
+            "name": "B Grade open Pod 2"
+          }
+        },
+        "pendingAssignmentName": "Pool B 3rd"
+      },
+      "startsOn": "2026-06-27T23:30:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "B Grade open Finals P5B"
+    },
+    {
+      "number": "53",
+      "dark": {
+        "seededBy": {
+          "number": 2,
+          "group": {
+            "name": "B Grade open Pod 2"
+          }
+        },
+        "pendingAssignmentName": "Pool B 2nd"
+      },
+      "light": {
+        "seededBy": {
+          "number": 1,
+          "group": {
+            "name": "B Grade open Pod 1"
+          }
+        },
+        "pendingAssignmentName": "Pool A 1st"
+      },
+      "startsOn": "2026-06-28T00:01:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "B Grade open Finals SF1"
+    },
+    {
+      "number": "54",
+      "dark": {
+        "seededBy": {
+          "number": 2,
+          "group": {
+            "name": "B Grade open Pod 1"
+          }
+        },
+        "pendingAssignmentName": "Pool A 2nd"
+      },
+      "light": {
+        "seededBy": {
+          "number": 1,
+          "group": {
+            "name": "B Grade open Pod 2"
+          }
+        },
+        "pendingAssignmentName": "Pool B 1st"
+      },
+      "startsOn": "2026-06-28T00:01:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "B Grade open Finals SF2"
+    },
+    {
+      "number": "55",
+      "dark": {
+        "seededBy": {
+          "number": 4,
+          "group": {
+            "name": "C grade open Pod 2"
+          }
+        },
+        "pendingAssignmentName": "Pool B 4th"
+      },
+      "light": {
+        "seededBy": {
+          "number": 3,
+          "group": {
+            "name": "C grade open Pod 1"
+          }
+        },
+        "pendingAssignmentName": "Pool A 3rd"
+      },
+      "startsOn": "2026-06-28T00:32:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "C grade open Finals P5A"
+    },
+    {
+      "number": "56",
+      "dark": {
+        "seededBy": {
+          "number": 4,
+          "group": {
+            "name": "C grade open Pod 1"
+          }
+        },
+        "pendingAssignmentName": "Pool A 4th"
+      },
+      "light": {
+        "seededBy": {
+          "number": 3,
+          "group": {
+            "name": "C grade open Pod 2"
+          }
+        },
+        "pendingAssignmentName": "Pool B 3rd"
+      },
+      "startsOn": "2026-06-28T00:32:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "C grade open Finals P5B"
+    },
+    {
+      "number": "57",
+      "dark": {
+        "seededBy": {
+          "number": 4,
+          "group": {
+            "name": "A Grade open Round Robin"
+          }
+        }
+      },
+      "light": {
+        "seededBy": {
+          "number": 1,
+          "group": {
+            "name": "A Grade open Round Robin"
+          }
+        }
+      },
+      "startsOn": "2026-06-28T01:03:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "A Grade open Finals SF1"
+    },
+    {
+      "number": "58",
+      "dark": {
+        "seededBy": {
+          "number": 3,
+          "group": {
+            "name": "A Grade open Round Robin"
+          }
+        }
+      },
+      "light": {
+        "seededBy": {
+          "number": 2,
+          "group": {
+            "name": "A Grade open Round Robin"
+          }
+        }
+      },
+      "startsOn": "2026-06-28T01:03:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "A Grade open Finals SF2"
+    },
+    {
+      "number": "59",
+      "dark": {
+        "seededBy": {
+          "number": 2,
+          "group": {
+            "name": "C grade open Pod 2"
+          }
+        },
+        "pendingAssignmentName": "Pool B 2nd"
+      },
+      "light": {
+        "seededBy": {
+          "number": 1,
+          "group": {
+            "name": "C grade open Pod 1"
+          }
+        },
+        "pendingAssignmentName": "Pool A 1st"
+      },
+      "startsOn": "2026-06-28T01:34:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "C grade open Finals SF1"
+    },
+    {
+      "number": "60",
+      "dark": {
+        "seededBy": {
+          "number": 2,
+          "group": {
+            "name": "C grade open Pod 1"
+          }
+        },
+        "pendingAssignmentName": "Pool A 2nd"
+      },
+      "light": {
+        "seededBy": {
+          "number": 1,
+          "group": {
+            "name": "C grade open Pod 2"
+          }
+        },
+        "pendingAssignmentName": "Pool B 1st"
+      },
+      "startsOn": "2026-06-28T01:34:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "C grade open Finals SF2"
+    },
+    {
+      "number": "61",
+      "dark": {
+        "resultOf": {
+          "type": "Winner",
+          "gameNumber": "52"
+        }
+      },
+      "light": {
+        "resultOf": {
+          "type": "Winner",
+          "gameNumber": "51"
+        }
+      },
+      "startsOn": "2026-06-28T02:05:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "B Grade open Finals 5v6"
+    },
+    {
+      "number": "62",
+      "dark": {
+        "resultOf": {
+          "type": "Loser",
+          "gameNumber": "52"
+        }
+      },
+      "light": {
+        "resultOf": {
+          "type": "Loser",
+          "gameNumber": "51"
+        }
+      },
+      "startsOn": "2026-06-28T02:05:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "B Grade open Finals 7v8"
+    },
+    {
+      "number": "63",
+      "dark": {
+        "resultOf": {
+          "type": "Winner",
+          "gameNumber": "56"
+        }
+      },
+      "light": {
+        "resultOf": {
+          "type": "Winner",
+          "gameNumber": "55"
+        }
+      },
+      "startsOn": "2026-06-28T02:36:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "C grade open Finals 5v6"
+    },
+    {
+      "number": "64",
+      "dark": {
+        "resultOf": {
+          "type": "Loser",
+          "gameNumber": "56"
+        }
+      },
+      "light": {
+        "resultOf": {
+          "type": "Loser",
+          "gameNumber": "55"
+        }
+      },
+      "startsOn": "2026-06-28T02:36:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "C grade open Finals 7v8"
+    },
+    {
+      "number": "65",
+      "dark": {
+        "resultOf": {
+          "type": "Winner",
+          "gameNumber": "58"
+        }
+      },
+      "light": {
+        "resultOf": {
+          "type": "Winner",
+          "gameNumber": "57"
+        }
+      },
+      "startsOn": "2026-06-28T03:07:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "A Grade open Finals Final"
+    },
+    {
+      "number": "66",
+      "dark": {
+        "resultOf": {
+          "type": "Loser",
+          "gameNumber": "58"
+        }
+      },
+      "light": {
+        "resultOf": {
+          "type": "Loser",
+          "gameNumber": "57"
+        }
+      },
+      "startsOn": "2026-06-28T03:07:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "A Grade open Finals 3v4"
+    },
+    {
+      "number": "67",
+      "dark": {
+        "resultOf": {
+          "type": "Winner",
+          "gameNumber": "54"
+        }
+      },
+      "light": {
+        "resultOf": {
+          "type": "Winner",
+          "gameNumber": "53"
+        }
+      },
+      "startsOn": "2026-06-28T03:38:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "B Grade open Finals Final"
+    },
+    {
+      "number": "68",
+      "dark": {
+        "resultOf": {
+          "type": "Loser",
+          "gameNumber": "54"
+        }
+      },
+      "light": {
+        "resultOf": {
+          "type": "Loser",
+          "gameNumber": "53"
+        }
+      },
+      "startsOn": "2026-06-28T03:38:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "B Grade open Finals 3v4"
+    },
+    {
+      "number": "69",
+      "dark": {
+        "resultOf": {
+          "type": "Winner",
+          "gameNumber": "60"
+        }
+      },
+      "light": {
+        "resultOf": {
+          "type": "Winner",
+          "gameNumber": "59"
+        }
+      },
+      "startsOn": "2026-06-28T04:09:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "C grade open Finals Final"
+    },
+    {
+      "number": "70",
+      "dark": {
+        "resultOf": {
+          "type": "Loser",
+          "gameNumber": "60"
+        }
+      },
+      "light": {
+        "resultOf": {
+          "type": "Loser",
+          "gameNumber": "59"
+        }
+      },
+      "startsOn": "2026-06-28T04:09:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "C grade open Finals 3v4"
+    },
+    {
+      "number": "71",
+      "dark": {
+        "seededBy": {
+          "number": 2,
+          "group": {
+            "name": "Women Round Robin"
+          }
+        }
+      },
+      "light": {
+        "seededBy": {
+          "number": 1,
+          "group": {
+            "name": "Women Round Robin"
+          }
+        }
+      },
+      "startsOn": "2026-06-28T04:40:00Z",
+      "court": "1",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "Women Finals Final"
+    },
+    {
+      "number": "72",
+      "dark": {
+        "seededBy": {
+          "number": 4,
+          "group": {
+            "name": "Women Round Robin"
+          }
+        }
+      },
+      "light": {
+        "seededBy": {
+          "number": 3,
+          "group": {
+            "name": "Women Round Robin"
+          }
+        }
+      },
+      "startsOn": "2026-06-28T04:40:00Z",
+      "court": "2",
+      "timingRule": {
+        "name": "FINALS"
+      },
+      "description": "Women Finals 3v4"
+    }
+  ],
+  "nonGameEntries": [],
+  "groups": [
+    {
+      "name": "A Grade open Round Robin",
+      "shortName": "A_GRADE_OPEN_RR",
+      "type": "Division",
+      "gameNumbers": [
+        "1",
+        "2",
+        "7",
+        "14",
+        "15",
+        "20",
+        "27",
+        "28",
+        "31",
+        "40",
+        "41",
+        "42",
+        "45",
+        "49",
+        "50"
+      ],
+      "standingsCalculation": {
+        "type": "Standard"
+      },
+      "finalResultsCalculation": null
+    },
+    {
+      "name": "A Grade open Finals",
+      "shortName": "A_GRADE_OPEN_FINALS",
+      "type": "Division",
+      "gameNumbers": [
+        "57",
+        "58",
+        "65",
+        "66"
+      ],
+      "standingsCalculation": {
+        "type": "None"
+      },
+      "finalResultsCalculation": {
+        "type": "Standings"
+      }
+    },
+    {
+      "name": "B Grade open Round Robin",
+      "shortName": "B_GRADE_OPEN_RR",
+      "type": "Division",
+      "gameNumbers": [
+        "3",
+        "4",
+        "8",
+        "11",
+        "16",
+        "17",
+        "23",
+        "24",
+        "29",
+        "30",
+        "36",
+        "37"
+      ],
+      "standingsCalculation": {
+        "type": "Standard"
+      },
+      "finalResultsCalculation": null
+    },
+    {
+      "name": "B Grade open Pod 1",
+      "shortName": "B_GRADE_OPEN_1",
+      "type": "Pod",
+      "gameNumbers": [
+        "3",
+        "4",
+        "16",
+        "17",
+        "29",
+        "30"
+      ],
+      "standingsCalculation": {
+        "type": "Standard"
+      },
+      "finalResultsCalculation": null
+    },
+    {
+      "name": "B Grade open Pod 2",
+      "shortName": "B_GRADE_OPEN_2",
+      "type": "Pod",
+      "gameNumbers": [
+        "8",
+        "11",
+        "23",
+        "24",
+        "36",
+        "37"
+      ],
+      "standingsCalculation": {
+        "type": "Standard"
+      },
+      "finalResultsCalculation": null
+    },
+    {
+      "name": "B Grade open Finals",
+      "shortName": "B_GRADE_OPEN_FINALS",
+      "type": "Division",
+      "gameNumbers": [
+        "51",
+        "52",
+        "53",
+        "54",
+        "61",
+        "62",
+        "67",
+        "68"
+      ],
+      "standingsCalculation": {
+        "type": "None"
+      },
+      "finalResultsCalculation": {
+        "type": "Standings"
+      }
+    },
+    {
+      "name": "C grade open Round Robin",
+      "shortName": "C_GRADE_OPEN_RR",
+      "type": "Division",
+      "gameNumbers": [
+        "5",
+        "6",
+        "12",
+        "13",
+        "18",
+        "19",
+        "25",
+        "26",
+        "32",
+        "33",
+        "38",
+        "39"
+      ],
+      "standingsCalculation": {
+        "type": "Standard"
+      },
+      "finalResultsCalculation": null
+    },
+    {
+      "name": "C grade open Pod 1",
+      "shortName": "C_GRADE_OPEN_1",
+      "type": "Pod",
+      "gameNumbers": [
+        "5",
+        "6",
+        "18",
+        "19",
+        "32",
+        "33"
+      ],
+      "standingsCalculation": {
+        "type": "Standard"
+      },
+      "finalResultsCalculation": null
+    },
+    {
+      "name": "C grade open Pod 2",
+      "shortName": "C_GRADE_OPEN_2",
+      "type": "Pod",
+      "gameNumbers": [
+        "12",
+        "13",
+        "25",
+        "26",
+        "38",
+        "39"
+      ],
+      "standingsCalculation": {
+        "type": "Standard"
+      },
+      "finalResultsCalculation": null
+    },
+    {
+      "name": "C grade open Finals",
+      "shortName": "C_GRADE_OPEN_FINALS",
+      "type": "Division",
+      "gameNumbers": [
+        "55",
+        "56",
+        "59",
+        "60",
+        "63",
+        "64",
+        "69",
+        "70"
+      ],
+      "standingsCalculation": {
+        "type": "None"
+      },
+      "finalResultsCalculation": {
+        "type": "Standings"
+      }
+    },
+    {
+      "name": "Women Round Robin",
+      "shortName": "WOMEN_RR",
+      "type": "Division",
+      "gameNumbers": [
+        "9",
+        "10",
+        "21",
+        "22",
+        "34",
+        "35",
+        "43",
+        "44",
+        "47",
+        "48"
+      ],
+      "standingsCalculation": {
+        "type": "Standard"
+      },
+      "finalResultsCalculation": null
+    },
+    {
+      "name": "Women Finals",
+      "shortName": "WOMEN_FINALS",
+      "type": "Division",
+      "gameNumbers": [
+        "71",
+        "72"
+      ],
+      "standingsCalculation": {
+        "type": "None"
+      },
+      "finalResultsCalculation": {
+        "type": "Standings"
+      }
+    }
+  ],
+  "timingRules": [
+    {
+      "name": "RR",
+      "teamTimeoutCount": 1,
+      "teamTimeoutsCountedPerHalf": true,
+      "overtimeAllowed": false,
+      "suddenDeathAllowed": false,
+      "last2minStopTime": false,
+      "halfPlayDuration": 600,
+      "halfTimeDuration": 120,
+      "teamTimeoutDuration": 60,
+      "overtimeHalfPlayDuration": 0,
+      "overtimeHalfTimeDuration": 0,
+      "preOvertimeBreak": 0,
+      "preSuddenDeathDuration": 0,
+      "minimumBreak": 180
+    },
+    {
+      "name": "FINALS",
+      "teamTimeoutCount": 1,
+      "teamTimeoutsCountedPerHalf": true,
+      "overtimeAllowed": true,
+      "suddenDeathAllowed": true,
+      "last2minStopTime": false,
+      "halfPlayDuration": 600,
+      "halfTimeDuration": 120,
+      "teamTimeoutDuration": 60,
+      "overtimeHalfPlayDuration": 0,
+      "overtimeHalfTimeDuration": 0,
+      "preOvertimeBreak": 0,
+      "preSuddenDeathDuration": 60,
+      "minimumBreak": 180
+    }
+  ],
+  "standingsOrder": [
+    {
+      "name": "A Grade open Round Robin"
+    },
+    {
+      "name": "B Grade open Round Robin"
+    },
+    {
+      "name": "B Grade open Pod 1"
+    },
+    {
+      "name": "B Grade open Pod 2"
+    },
+    {
+      "name": "C grade open Round Robin"
+    },
+    {
+      "name": "C grade open Pod 1"
+    },
+    {
+      "name": "C grade open Pod 2"
+    },
+    {
+      "name": "Women Round Robin"
+    }
+  ],
+  "finalResultsOrder": [
+    {
+      "name": "A Grade open Finals"
+    },
+    {
+      "name": "B Grade open Finals"
+    },
+    {
+      "name": "C grade open Finals"
+    },
+    {
+      "name": "Women Finals"
+    }
+  ]
+}

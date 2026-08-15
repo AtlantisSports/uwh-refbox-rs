@@ -306,6 +306,48 @@ async fn fetch_game_referees(
     .collect())
 }
 
+/// The parts of a public schedule response the overlay puts on screen for one game.
+struct GameDisplayInfo {
+    team_id_black: Option<TeamId>,
+    team_id_white: Option<TeamId>,
+    pool: String,
+    start_time: String,
+}
+
+/// Pick `game_number` out of a public schedule response and build its display values.
+///
+/// Returns `None` if the schedule holds no game with that number.
+fn parse_game_display_info(data: &Value, game_number: &GameNumber) -> Option<GameDisplayInfo> {
+    let data_game = data["games"]
+        .as_array()?
+        .iter()
+        .find(|game| game["number"].as_str() == Some(game_number.as_str()))?;
+
+    let team_id_black = data_game["dark"]["assignment"]["teamId"]
+        .as_str()
+        .and_then(|s| TeamId::from_full(s).ok());
+    let team_id_white = data_game["light"]["assignment"]["teamId"]
+        .as_str()
+        .and_then(|s| TeamId::from_full(s).ok());
+
+    let pool = data_game["court"]
+        .as_str()
+        .map(|s| format!("COURT: {s}"))
+        .unwrap_or_default();
+    let start_time = data_game["startsOn"]
+        .as_str()
+        .and_then(|s| OffsetDateTime::parse(s, &uwh_common::uwhportal::schedule::FORMAT).ok())
+        .and_then(|dt| Some(String::from("START: ") + &dt.format(START_TIME_FORMAT).ok()?))
+        .unwrap_or_default();
+
+    Some(GameDisplayInfo {
+        team_id_black,
+        team_id_white,
+        pool,
+        start_time,
+    })
+}
+
 async fn fetch_game_data(
     game_data_tx: tokio::sync::mpsc::UnboundedSender<GameData>,
     uwhportal_url: &str,
@@ -336,41 +378,19 @@ async fn fetch_game_data(
                     return;
                 }
             };
-            let data_game = if let Some(game) = data["games"].as_array().and_then(|games| {
-                games.iter().find_map(|game| {
-                    if game["number"].as_str() == Some(game_number.as_str()) {
-                        Some(game.clone())
-                    } else {
-                        None
-                    }
-                })
-            }) {
-                game
-            } else {
+            let Some(GameDisplayInfo {
+                team_id_black,
+                team_id_white,
+                pool,
+                start_time,
+            }) = parse_game_display_info(&data, game_number)
+            else {
                 error!(
                     "Game number {game_number} was not found in the schedule for event {event_id}"
                 );
                 return;
             };
             info!("Got game data for event: {event_id}, game number: {game_number} from uwhportal");
-            let team_id_black = data_game["dark"]["assignment"]["teamId"]
-                .as_str()
-                .and_then(|s| TeamId::from_full(s).ok());
-            let team_id_white = data_game["light"]["assignment"]["teamId"]
-                .as_str()
-                .and_then(|s| TeamId::from_full(s).ok());
-
-            let pool = data["court"]
-                .as_str()
-                .map(|s| format!("COURT: {s}"))
-                .unwrap_or_default();
-            let start_time = data["startsOn"]
-                .as_str()
-                .and_then(|s| {
-                    OffsetDateTime::parse(s, &uwh_common::uwhportal::schedule::FORMAT).ok()
-                })
-                .and_then(|dt| Some(String::from("START: ") + &dt.format(START_TIME_FORMAT).ok()?))
-                .unwrap_or_default();
             let (referees, black, white) = tokio::join!(
                 fetch_game_referees(uwhportal_url, &event_id, game_number),
                 TeamInfoRaw::new(
@@ -661,5 +681,50 @@ pub async fn networking_thread(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Trimmed from a real `GET /api/events/{eventId}/schedule` response
+    /// (dev portal, event `1889-B`, fetched 2026-08-15). The top level carries
+    /// no `court` and no `startsOn` — both only exist per game.
+    const PUBLIC_SCHEDULE: &str = r#"{
+      "courtNames": ["1", "2"],
+      "games": [
+        {
+          "number": "1",
+          "court": "1",
+          "startsOn": "2026-08-01T09:30:00+10:00",
+          "dark": { "assignment": { "teamId": "teams/2529-B" } },
+          "light": { "assignment": { "teamId": "teams/2530-B" } }
+        },
+        {
+          "number": "4",
+          "court": "2",
+          "startsOn": "2026-08-01T09:55:00+10:00",
+          "dark": { "assignment": { "teamId": "teams/2531-B" } },
+          "light": { "assignment": { "teamId": "teams/2532-B" } }
+        }
+      ]
+    }"#;
+
+    #[test]
+    fn court_and_start_come_from_the_matched_game() {
+        let data: Value = serde_json::from_str(PUBLIC_SCHEDULE).unwrap();
+
+        let info = parse_game_display_info(&data, &"4".to_string()).unwrap();
+
+        assert_eq!(info.pool, "COURT: 2");
+        assert_eq!(info.start_time, "START: 09:55");
+    }
+
+    #[test]
+    fn an_unknown_game_number_yields_nothing() {
+        let data: Value = serde_json::from_str(PUBLIC_SCHEDULE).unwrap();
+
+        assert!(parse_game_display_info(&data, &"99".to_string()).is_none());
     }
 }

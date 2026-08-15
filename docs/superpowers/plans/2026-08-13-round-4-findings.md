@@ -60,6 +60,15 @@ object keyed by number, `dark.teamId`). The overlay section says the overlay, on
 says which caller to sacrifice. **This may be a genuine defect in the overlay rather than in the
 prose** — resolving it needs a decision, and possibly a code change on its own branch.
 
+**Updated 2026-08-14 — documentation side closed, code question still open.** The "satisfy both
+shapes at once" instruction is gone. The document now states the incompatibility plainly and gives
+a site something it can actually do: serve the array shape on the public path for the overlay, and
+the object shape on `/schedule/privileged`. That works because schedule-processor reaches the public
+path only when it holds no token and treats a parse failure there as "log in and use the privileged
+schedule" (`schedule-processor/src/scoresheets.rs:92-101`), and because refbox never reads the
+public path at all. **Whether the overlay is the defect is unchanged and still open** — no code was
+touched, and the status above stays `CODE?`.
+
 ### 4. Three cross-references inside "the other nine" pointed at themselves — FIXED (`6507438a`)
 
 Introduced by this branch's renumbering: entry 6 cited "call 6" and entry 8 cited "call 8" twice.

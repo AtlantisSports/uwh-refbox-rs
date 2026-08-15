@@ -2096,6 +2096,12 @@ impl RefBoxApp {
     }
 
     fn handle_game_start(&mut self, new_game_num: &GameNumber) -> Task<Message> {
+        // A remembered game exists only to put the operator back where they were at
+        // startup. Once a game has actually started, it is stale: leaving it in place
+        // lets it fire on the end-of-game schedule refresh hours later and re-adopt an
+        // old game, which would silently undo the finished-court state.
+        self.pending_restore_game = None;
+
         // Fix this game's rosters now. From here until the next kickoff they do
         // not change: a REFRESH mid-game re-pulls the event, but must not move
         // the grid under the operator's hand.
@@ -2340,6 +2346,12 @@ impl RefBoxApp {
     }
 
     fn apply_app_options(&mut self) -> Option<ConfirmationKind> {
+        // The operator has made their own choice; the remembered game is spent.
+        // First statement deliberately: reaching this function at all means APPLY
+        // was pressed, so the note is spent whichever branch runs below —
+        // including the ones that return early to raise a confirmation page.
+        self.pending_restore_game = None;
+
         let edited = self.edited_settings.as_ref()?;
         // Snapshot the fields we need so the immutable borrow on
         // `edited_settings` ends before we call `set_current_event_id`
@@ -2540,6 +2552,12 @@ impl RefBoxApp {
     /// NOT touch other slices — the user is still inside settings and may have unrelated
     /// edits to commit on other pages.
     fn apply_game_options(&mut self) -> Option<ConfirmationKind> {
+        // The operator has made their own choice; the remembered game is spent.
+        // First statement deliberately: reaching this function at all means APPLY
+        // was pressed, so the note is spent whichever branch runs below —
+        // including the ones that return early to raise a confirmation page.
+        self.pending_restore_game = None;
+
         let edited = self.edited_settings.as_ref()?;
 
         // A store hit alone does not prove the selection came from the site the

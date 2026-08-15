@@ -82,7 +82,7 @@ then misnumbers its own references teaches a reader to distrust every "call N" i
 
 ## B. Silences and ambiguities that change what a site does
 
-### 5. No contract at all for the admin half of the link handshake — SEVERE — OPEN
+### 5. No contract at all for the admin half of the link handshake — SEVERE — FIXED
 
 The document explicitly declines to specify it. But without a pending-link registry, call 1 can
 never succeed, so the tester had to invent the registration endpoint, a six-digit code, a 10-minute
@@ -94,13 +94,25 @@ passes every test the document describes.
 
 **No sealed-room round can ever test this**, because the tester must invent the missing half.
 
-### 6. Nothing throttles guesses at the link code — SEVERE (security) — OPEN
+**Resolved 2026-08-15 — ruled: non-normative worked example.** "The admin half of this handshake
+is yours entirely" stays the rule; the document now adds one worked shape after the obligations
+list, labelled as an example and not a specification, with no endpoint paths and no JSON. The
+reviewer's point that no sealed-room round can test this still stands and is not claimed to be
+fixed. See `2026-08-15-contract-rulings.md`.
+
+### 6. Nothing throttles guesses at the link code — SEVERE (security) — FIXED
 
 The document enumerates what implementing call 1 means — record, bind, reject with the two `reason`
 strings, expire, single-use, revocable — and says nothing about failed attempts. The code space is
 at most 900,000, the `refBoxId` is on the refbox screen, and each wrong guess just returns
 `InvalidCode`. A diligent implementer following the list ships an unthrottled oracle believing the
 security section satisfied.
+
+**Resolved 2026-08-15 — ruled: require it normatively.** Throttling failed code attempts is now an
+obligation in call 1's "Concretely, what implementing it means" list, naming the exposure (900,000
+codes, the `refBoxId` visible on screen, free guesses) and leaving the mechanism to the implementer.
+The recommendation had been a softer labelled recommendation; the human chose the stronger form. See
+`2026-08-15-contract-rulings.md`.
 
 ### 7. `filter=Past` is undefined — exclusive or additive? — SEVERE — FIXED
 
@@ -119,7 +131,7 @@ the flag's own help text says "including", not "instead of". The consequence of 
 reading is named — an operator who launches with `--all-events` mid-tournament watches the event
 they are running vanish from the picker, with no error anywhere.
 
-### 8. Whether a tokenless call 2 must be refused, in the build you can download — SEVERE — OPEN
+### 8. Whether a tokenless call 2 must be refused, in the build you can download — SEVERE — FIXED
 
 The rules section says refbox makes three of the four bearer calls tokenless and that call 2 is the
 exception — but that narrowing lives in the **unreleased** custom-source work. The only route
@@ -130,6 +142,14 @@ The reviewer's summary: **"The document's single most important warning is prote
 that does not exist in the build a stranger can download."** An implementer who reads the rules as
 current fact, and who has absorbed the permissive tone of the score-push advice, answers `200` —
 reproducing the documented disaster of a green token row over an unlinked refbox.
+
+**Resolved 2026-08-15 — no live refbox needed after all.** Settled by comparing the released tag
+against the branch: `v0.4.9`'s health check has no `has_token()` guard and `HEAD`'s does, so the
+released build genuinely does send verify with no token. Call 2's entry now says so outright — a
+site answering `200` reproduces the bypass in full against the build a stranger can download — with
+no source citation on that paragraph, deliberately, since the guard is present in the working tree
+and a line reference would resolve to code contradicting the sentence. See
+`2026-08-15-contract-rulings.md`.
 
 ### 9. `roles` and `capNumber` are never declared required or optional — SEVERE — FIXED
 
@@ -142,12 +162,19 @@ Fixed: call 9's entry now states that `roles` is required unconditionally (a mis
 entry outright) while `capNumber` is not, and that a string `capNumber` is read as absent rather
 than causing a parse error, silently costing that one player their button on the grid.
 
-### 10. TLS certificate requirements are never stated — SEVERE for a real deployment — OPEN
+### 10. TLS certificate requirements are never stated — SEVERE for a real deployment — FIXED
 
 Plain `http` and the typed scheme are covered; self-signed certificates, private CAs, hostname
 verification and pinning are not. A security-minded implementer puts the stand-in on `https://`
 with a self-signed cert — the obvious pool-LAN choice — and if refbox rejects it, the document says
 the failure is indistinguishable from unreachable. No documented diagnosis, no documented fix.
+
+**Resolved 2026-08-15 — ruled: document the OS trust-store route, no code change.** The factual
+half needed no ruling: certificate validation is the client's untouched default, so self-signed is
+rejected and fails indistinguishably from unreachable. The document now states that and documents
+the working route for a site with no public DNS name — your own CA installed in the trust store of
+the machine running refbox — with the Raspberry Pi read-only overlay named as a real cost. See
+`2026-08-15-contract-rulings.md`.
 
 ### 11. Query-parameter encoding is never specified — MODERATE — FIXED
 
@@ -179,7 +206,7 @@ describes.
 Fixed: call 4's example now includes the third team (`teams/9012-C`, "Reef Sharks"), with a line
 stating why — every ID in the schedule example now appears in the call 4 example, and vice versa.
 
-### 14. Redirects are undefined behaviour, colliding with "exactly 200 counts as success" — MODERATE — OPEN
+### 14. Redirects are undefined behaviour, colliding with "exactly 200 counts as success" — MODERATE — FIXED
 
 Redirects are "whatever the underlying HTTP client does by default … do not build a site that
 depends on a particular behaviour", yet only `200` is success. An nginx http→https redirect or
@@ -187,6 +214,13 @@ trailing-slash canonicalisation is the default posture of every hosting stack; i
 not follow, every call fails, including score pushes that then queue for 120 hours. "Do not depend
 on a particular behaviour" is not actionable when the two behaviours are "works" and "loses every
 result".
+
+**Resolved 2026-08-15 — needed no ruling; the source answered it.** Redirects were never undefined:
+nothing configures a policy, so the client's default applies — up to ten redirects followed, and a
+downgrade to plain `http` refused whenever TLS is required. The finding read as unactionable because
+the document's "do not depend on a particular behaviour" was *weaker than the truth*. Now stated as
+observed behaviour of a dependency default rather than a promise. See
+`2026-08-15-contract-rulings.md`.
 
 ### 15. HTTP version and connection handling have no stated requirement — MINOR — FIXED
 
@@ -385,11 +419,17 @@ Corrected afterwards: the comparison to the environment-variable route was cited
 *every* trailing slash rather than one, which the text now says. The environment-override section's
 "with no trailing slash" was softened from a requirement to advice for the same reason.
 
-### 31. No documented way to check the site is reachable before a game — MINOR — OPEN
+### 31. No documented way to check the site is reachable before a game — MINOR — FIXED
 
 No ping or health path, and the operator-visible indicator reflects only call 2, which needs a
 token. A site operator setting up at 8 a.m. cannot prove the site answers until someone has already
 linked.
+
+**Resolved 2026-08-15 — the premise was wrong.** Reachability never depended on call 2: turning
+Portal mode on fires call 3 (event list) and then call 4 (teams) for every event returned, both
+unauthenticated, so requests reach a site's log before anyone has linked. Call 2's entry now says
+so, and notes that what does depend on it is the operator-visible indicator — which is why a site
+can be up and answering and still show red. See `2026-08-15-contract-rulings.md`.
 
 ---
 

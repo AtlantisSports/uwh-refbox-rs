@@ -389,6 +389,13 @@ Concretely, what implementing it means:
   different event. Only two `reason` strings exist, so an expired or lapsed code has to be one of
   them: use `NoPendingLink`, which matches its own definition and tells the operator to ask for a
   fresh registration.
+- **Throttle failed code attempts, and stop accepting them after a small number.** At most 900,000
+  codes exist, the `refBoxId` is on the refbox screen for anyone in the room to read, and a wrong
+  guess costs an attacker nothing but one request. Without a limit, a pairing your admin has just
+  issued can be brute-forced while the operator is still typing it. How you throttle is yours — a
+  per-`refBoxId` attempt count, a delay that grows, or a lockout that forces a fresh registration —
+  but a site with no limit at all is not safe to run. refbox cannot tell whether you did this;
+  nothing in these nine calls looks any different either way.
 - **The admin half of this handshake is yours entirely** — how an admin enters a `refBoxId`,
   what that screen looks like, who may reach it, how it authenticates. refbox never touches it, so
   nothing here constrains it and nothing can verify it. This document deliberately says nothing
@@ -398,6 +405,21 @@ Concretely, what implementing it means:
   whole workspace is schedule-processor, not refbox — so a key you issue stays in that refbox until
   a fresh login overwrites it or somebody edits the configuration file. If a refbox is lost or
   retired, revoking your side is the only way to end its access.
+
+**One shape that satisfies all of that, offered as an example and not as a specification.** Nothing
+below is checked by refbox, none of it travels between refbox and your site, and you are free to
+build something entirely different:
+
+An admin opens a screen only your admins can reach and types in the number the operator reads off
+the refbox. Your site records that number as a pending link, mints a code for it, and shows the code
+to the admin, who reads it out. The pending link carries an expiry — long enough for the admin to
+walk the pool deck — and a count of failed attempts. When a matching code arrives at call 1 you
+issue an access key and delete the pending link, so the same code cannot be redeemed twice. A code
+arriving after the expiry, or after too many wrong guesses, is answered `NoPendingLink`, and the
+admin registers the box again.
+
+That is about the shortest flow that meets every obligation in the list above, throttling included.
+It is not the only one, and none of it is a requirement.
 
 What you cannot do is bypass call 1 altogether by having the operator type a token in. **refbox has
 no way to enter a token.** The custom-site row (unreleased) takes a site *address*, not a
@@ -493,6 +515,22 @@ asks you to vouch for a credential it does not have, so the specific case above 
 with no token at all — is no longer reachable through this call: refbox reports the credential as
 failed itself rather than believing your `200`. Verified against a permissive stand-in site on
 2026-08-11, which received no verify request whatsoever.
+
+**In the build you can download today, none of that is true.** The narrowing above lives only in the
+unreleased custom-source work. refbox v0.4.9 — the current release — sends this call as soon as an
+event is selected, with or without a token. So against a released refbox, a site that answers `200`
+to an unauthenticated verify reproduces the bypass in full: the token row goes green, the privileged
+schedule loads, the court fills itself in, the link flow is never offered, and nothing anywhere
+reports a problem. **Of everything in this document, this is the rule whose consequence is worst if
+you get it wrong — and the protection described just above is not yet in the hands of anyone
+reading this.**
+
+**You do not need a token, or anyone to have linked, to prove your site is reachable.** Turning
+Portal mode on fires call 3 (event list) and then call 4 (teams) for every event it returns, both
+unauthenticated, so requests land in your log before any pairing has happened — that, not this call,
+is the check to run while you are setting up in the morning. What *does* depend on this call is the
+operator-visible indicator, which is why a site can be up and answering correctly and still show red
+until a token exists.
 
 What that does **not** cover is a token you never issued: a stale one from another site, an expired
 one you have since revoked, or a fabricated one. refbox holds such a token and will send it, and if
@@ -954,11 +992,33 @@ above, because each one only becomes apparent when you compare all of them.
 
 **The HTTP-level facts, in one place.** refbox gives every request **10 seconds** before treating it
 as a transport failure, so a site that takes longer to answer is indistinguishable from a site that
-is down. Redirects, keep-alive and connection reuse are whatever the underlying HTTP client does by
-default — nothing is configured, so do not build a site that depends on a particular behaviour
-there. Requests are not serialised: selecting an event triggers a burst (teams and schedule
-together), so a single-threaded stand-in can stall its own startup. Answer promptly, and answer
-concurrently.
+is down. **Redirects are followed** — up to ten of them, because nothing in the workspace configures
+a redirect policy and that is the HTTP client's default, so an `nginx` canonicalisation or an
+http→https redirect works, and you do not have to serve everything from the exact URL refbox was
+given. **A redirect that downgrades to plain `http` is refused** whenever TLS is required, which is
+the default: the same setting that rejects a plain-http base URL rejects a downgrade mid-redirect.
+Both of those are observed behaviour of a dependency's default rather than a promise — this document
+carries no stability promise anyway, and a future dependency bump could change either. Keep-alive
+and connection reuse likewise remain whatever the client does by default. Requests are not
+serialised: selecting an event triggers a burst (teams and schedule together), so a single-threaded
+stand-in can stall its own startup. Answer promptly, and answer concurrently.
+
+**Certificates are validated the ordinary way, and there is no way to ask refbox not to.** Nothing
+in the client's setup mentions certificates at all (`uwh-common/src/uwhportal/mod.rs:172-175`), so
+the TLS defaults stand: a certificate has to chain to something already in the trust store of the
+machine running refbox. **A self-signed certificate
+is therefore rejected** — and, exactly like the plain-`http` refusal above, the failure is
+indistinguishable from your site being unreachable: nothing on screen and nothing in the log names
+the certificate as the cause.
+
+The route that works for a site with no public DNS name — the ordinary pool-LAN case — is to
+generate your own certificate authority, install it in the trust store of the machine running
+refbox, and serve `https` normally. That keeps the access key encrypted, which is the reason TLS is
+demanded in the first place. **On a Raspberry Pi this is a real setup step, not a one-liner:** the
+deployment image runs a read-only overlay filesystem, so the certificate has to be baked into
+the image or the overlay remounted writable to install it. The alternative is plain `http` with
+`--allow-http` on a network you trust, described under
+[The environment override](#the-environment-override-built-in-portal-only).
 
 **What refbox will accept in a reply is a separate question from what it sends, and just as
 undocumented until now.** The client is built with only a timeout and an HTTPS-only toggle

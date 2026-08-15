@@ -244,7 +244,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let offset = event.date_range.start.offset();
     info!("Using timezone offset: {offset}");
 
-    // Load the schedule CSV lazily — only when an action needs it (Upload / Save /
+    // Load the schedule file lazily — only when an action needs it (Upload / Save /
     // Print Schedule). Portal-based actions (score sheets, coin tosses) never require it.
     let load_schedule = || -> Result<Schedule, Box<dyn std::error::Error>> {
         info!("Please select a schedule file (.csv or .json) to process in the file dialog.");
@@ -411,7 +411,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match load_schedule() {
                         Ok(s) => schedule = Some(s),
                         Err(e) => {
-                            error!("Could not load the schedule CSV: {e}");
+                            error!("Could not load the schedule file: {e}");
                             continue 'outer;
                         }
                     }
@@ -569,7 +569,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match load_schedule() {
                         Ok(s) => schedule = Some(s),
                         Err(e) => {
-                            error!("Could not load the schedule CSV: {e}");
+                            error!("Could not load the schedule file: {e}");
                             continue 'outer;
                         }
                     }
@@ -708,7 +708,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match load_schedule() {
                         Ok(s) => schedule = Some(s),
                         Err(e) => {
-                            error!("Could not load the schedule CSV: {e}");
+                            error!("Could not load the schedule file: {e}");
                             continue 'outer;
                         }
                     }
@@ -739,7 +739,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match load_schedule() {
                         Ok(s) => schedule = Some(s),
                         Err(e) => {
-                            error!("Could not load the schedule CSV: {e}");
+                            error!("Could not load the schedule file: {e}");
                             continue 'outer;
                         }
                     }

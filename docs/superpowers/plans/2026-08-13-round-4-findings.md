@@ -49,7 +49,7 @@ reject every ordinary schedule upload".
 Fixed: the push-scores entry now points at the schedule upload (inventory #10), not the coin-flips
 upload (#17).
 
-### 3. The public schedule must return two mutually exclusive shapes — SEVERE — CODE?
+### 3. The public schedule must return two mutually exclusive shapes — SEVERE — FIXED
 
 The public-schedule entry says it returns "the same shape" as the privileged one (`games` as an
 object keyed by number, `dark.teamId`). The overlay section says the overlay, on that same path,
@@ -68,6 +68,21 @@ path only when it holds no token and treats a parse failure there as "log in and
 schedule" (`schedule-processor/src/scoresheets.rs:92-101`), and because refbox never reads the
 public path at all. **Whether the overlay is the defect is unchanged and still open** — no code was
 touched, and the status above stays `CODE?`.
+
+**Closed 2026-08-16 — the code question is settled, in both directions.** Measuring the live Portal
+showed the overlay's array reading was right and its top-level `court` / `startsOn` reading was
+wrong, and that schedule-processor's public call could never have parsed a real response. Two PRs,
+both merged:
+
+- **#2474** (`fix/overlay/blank-court-and-start`) — the overlay now reads `court` and `startsOn`
+  from the matched game. Its COURT and START lines were blank at every tournament before this.
+- **#2475** (`refactor/uwh-common/drop-public-schedule-call`) — `get_event_schedule_public` is
+  deleted. Without a login, scoresheet generation asks the operator to log in, exactly as it did
+  before; nothing an operator sees has changed.
+
+There is no longer a conflict to resolve: only the overlay reads the public path, so one shape
+serves it. The document's "2. Public event schedule" entry and its overlay section were rewritten
+to match, and the two mutually exclusive shapes are now one endpoint each.
 
 ### 4. Three cross-references inside "the other nine" pointed at themselves — FIXED (`6507438a`)
 

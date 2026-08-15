@@ -72,6 +72,23 @@ fn apply_portal_override(
     }
 }
 
+/// The name an operator must match to a real event team, if any.
+///
+/// A slot is only awaiting manual assignment when its occupant is not yet known by *any* means.
+/// Portal JSON labels finals slots with a human-readable name ("Pool A 3rd") *in addition to*
+/// the seeding or game result that actually determines them; those labels are not team names
+/// and must not be offered for matching. CSV input never attaches such a label, so this is a
+/// no-op for CSV-loaded schedules.
+///
+/// `ScheduledTeam::pending()` is deliberately left alone: it is shared with refbox and the
+/// score sheets, where showing the label is the right behaviour.
+fn unassigned_name(team: &ScheduledTeam) -> Option<&str> {
+    if team.seeded_by().is_some() || team.result_of().is_some() {
+        return None;
+    }
+    team.pending()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
@@ -286,7 +303,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .games
             .iter()
             .flat_map(|(_, g)| vec![&g.light, &g.dark])
-            .filter_map(|t| t.pending().map(|name| name.to_string()))
+            .filter_map(|t| unassigned_name(t).map(|name| name.to_string()))
             .unique()
             .collect();
         write!(
@@ -406,7 +423,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .games
                     .iter()
                     .flat_map(|(_, g)| vec![&g.light, &g.dark])
-                    .filter_map(|t| t.pending().map(|name| name.to_string()))
+                    .filter_map(|t| unassigned_name(t).map(|name| name.to_string()))
                     .unique()
                     .collect();
 
@@ -1285,7 +1302,8 @@ fn sendable_team_map(team_map: &[MappedTeam]) -> BTreeMap<&str, &str> {
 
 #[cfg(test)]
 mod tests {
-    use super::apply_portal_override;
+    use super::{apply_portal_override, unassigned_name};
+    use uwh_common::uwhportal::schedule::{ScheduledTeam, TeamId};
 
     #[test]
     fn no_override_keeps_menu_selection() {
@@ -1325,5 +1343,40 @@ mod tests {
         );
         assert_eq!(url, "http://localhost:9000");
         assert!(!https);
+    }
+
+    /// The shape real portal JSON uses for a finals slot: a seeding position that *also*
+    /// carries a human label. The label is not a team name. `ScheduledTeam`'s fields are
+    /// private and it has no setter for `pendingAssignmentName`, so this is built by
+    /// deserializing the exact shape a real export contains.
+    fn seeded_slot_with_label() -> ScheduledTeam {
+        serde_json::from_str(
+            r#"{"seededBy": {"number": 3, "group": {"name": "B Grade open Pod 1"}},
+                "pendingAssignmentName": "Pool A 3rd"}"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn plain_pending_name_needs_assignment() {
+        let team = ScheduledTeam::new_pending_assignment_name("Brisbane Barracudas");
+        assert_eq!(unassigned_name(&team), Some("Brisbane Barracudas"));
+    }
+
+    #[test]
+    fn seeded_slot_with_a_label_does_not_need_assignment() {
+        assert_eq!(unassigned_name(&seeded_slot_with_label()), None);
+    }
+
+    #[test]
+    fn winner_of_slot_does_not_need_assignment() {
+        let team = ScheduledTeam::new_winner_of("51");
+        assert_eq!(unassigned_name(&team), None);
+    }
+
+    #[test]
+    fn assigned_team_does_not_need_assignment() {
+        let team = ScheduledTeam::new_team_id(TeamId::from_partial("1-A"));
+        assert_eq!(unassigned_name(&team), None);
     }
 }

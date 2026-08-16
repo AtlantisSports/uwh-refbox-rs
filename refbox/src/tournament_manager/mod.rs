@@ -1825,6 +1825,20 @@ impl TournamentManager {
 
     // Returns true if the clock was started, false if it was already running
     fn start_game_clock(&mut self, now: Instant) -> bool {
+        if self.current_period == GamePeriod::BetweenGames && self.no_next_game {
+            // The selected court's schedule is finished, so the clock is parked dead at
+            // 0:00 and there is nothing to count down to. Refuse here rather than at each
+            // caller: both score-confirmation handlers call `start_clock` immediately
+            // after `end_confirm_pause`, and restarting a zero-length countdown makes it
+            // expire at once, which fires the mid-break reset and wipes the finished
+            // game's score off the screen.
+            info!(
+                "{} Not starting the game clock: no further games on this court",
+                self.status_string(now)
+            );
+            return false;
+        }
+
         if let ClockState::Stopped { clock_time } = self.clock_state {
             info!("{} Starting the game clock", self.status_string(now));
             match self.current_period {
@@ -9458,11 +9472,17 @@ mod test {
         };
         let mut tm = TournamentManager::new(config);
         tm.set_game_number("9");
-        tm.set_no_next_game();
 
+        // The ordering that makes this path reachable: an ordinary break is ALREADY
+        // counting down, and only then does a schedule refresh report the court
+        // finished. (The other ordering — finished before the game ends — never starts
+        // a countdown at all, because `end_game` parks the clock.) Setting the flag
+        // first and then calling `start_clock` is not reachable: the engine refuses to
+        // start a countdown toward a game that is not coming.
         let start = Instant::now();
         tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(1));
         tm.start_clock(start);
+        tm.set_no_next_game();
         tm.update(start + Duration::from_secs(2)).unwrap();
 
         // Still between games, holding at 0:00, still game 9 — no phantom game 10.

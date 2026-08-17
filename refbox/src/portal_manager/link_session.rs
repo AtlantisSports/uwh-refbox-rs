@@ -29,19 +29,38 @@ const FILE_NAME: &str = "portal_link.json";
 const TMP_FILE_NAME: &str = "portal_link.json.tmp";
 
 /// The remembered live portal link, persisted next to `portal_queue.json`.
+///
+/// v2 records a **fact** (which game was last played) rather than a conclusion
+/// ("this court is finished"). A fact stays true across restarts and refreshes;
+/// a conclusion goes stale, which is what replayed a finished court.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LinkSessionFile {
     pub version: u32,
     pub event_id: EventId,
     pub court: Option<String>,
-    pub game_number: Option<GameNumber>,
+    /// The game the operator is on right now — in progress, or the confirmed
+    /// upcoming game. **Absent whenever nothing is next**, which is what makes an
+    /// offline restart show the finished state instead of a phantom game.
+    /// Read from v1 notes under its old name.
+    #[serde(alias = "game_number")]
+    pub current_game: Option<GameNumber>,
+    /// The game most recently played to a recorded result on this court: the
+    /// anchor the schedule search starts from. Absent when the refbox holds no
+    /// history for this court, which always requires an operator pick.
+    #[serde(default)]
+    pub last_played: Option<GameNumber>,
+    /// The anchor's scheduled start. Persisted rather than looked up so the
+    /// search still works when the anchor game itself has been removed from the
+    /// schedule.
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub last_played_start: Option<OffsetDateTime>,
     pub mode: Mode,
     #[serde(with = "time::serde::rfc3339")]
     pub last_active: OffsetDateTime,
 }
 
 impl LinkSessionFile {
-    pub const CURRENT_VERSION: u32 = 1;
+    pub const CURRENT_VERSION: u32 = 2;
 }
 
 fn file_path(dir: &Path) -> PathBuf {
@@ -62,7 +81,11 @@ pub fn load_or_none(dir: &Path) -> std::io::Result<Option<LinkSessionFile>> {
     }
     let bytes = fs::read(&path)?;
     match serde_json::from_slice::<LinkSessionFile>(&bytes) {
-        Ok(note) if note.version == LinkSessionFile::CURRENT_VERSION => Ok(Some(note)),
+        // v1 notes migrate in place: `game_number` reads as `current_game` via
+        // the serde alias, and the anchor fields default to absent. Forcing a
+        // re-pick on upgrade day, mid-tournament, would be worse than the
+        // one-day gap in history that this leaves.
+        Ok(note) if note.version <= LinkSessionFile::CURRENT_VERSION => Ok(Some(note)),
         Ok(note) => {
             log::error!(
                 "portal_link.json has unknown version {}; renaming and ignoring",
@@ -129,7 +152,9 @@ mod tests {
             version: LinkSessionFile::CURRENT_VERSION,
             event_id: EventId::from_full("events/2113-A").unwrap(),
             court: Some("1".to_string()),
-            game_number: Some("G27".to_string()),
+            current_game: Some("G27".to_string()),
+            last_played: None,
+            last_played_start: None,
             mode: Mode::Hockey6V6,
             last_active: now,
         }
@@ -184,7 +209,58 @@ mod tests {
     }
 
     #[test]
-    fn unknown_version_is_renamed_and_none_returned() {
+    fn v1_note_migrates_game_number_to_current_game() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("portal_link.json");
+        // Exactly the v1 shape: `game_number`, no `last_played`.
+        let v1 = r#"{"version":1,"event_id":"events/2113-A","court":"1",
+                     "game_number":"G27","mode":"Hockey6V6",
+                     "last_active":"2026-08-17T09:00:00Z"}"#;
+        std::fs::write(&path, v1).unwrap();
+        let note = load_or_none(tmp.path())
+            .unwrap()
+            .expect("v1 note must still load");
+        assert_eq!(note.current_game, Some("G27".to_string()));
+        assert_eq!(note.last_played, None);
+        assert_eq!(note.last_played_start, None);
+        assert!(path.exists(), "a v1 note must not be quarantined");
+    }
+
+    #[test]
+    fn v1_finished_encoding_migrates_to_no_history() {
+        // v1 recorded a finished court as "court, but no game number". Under v2 that
+        // is not a conclusion any more: no current game and no anchor, which the
+        // decision function answers with NeedsPick — never a replay.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("portal_link.json");
+        let v1 = r#"{"version":1,"event_id":"events/2113-A","court":"1",
+                     "game_number":null,"mode":"Hockey6V6",
+                     "last_active":"2026-08-17T09:00:00Z"}"#;
+        std::fs::write(&path, v1).unwrap();
+        let note = load_or_none(tmp.path()).unwrap().unwrap();
+        assert_eq!(note.current_game, None);
+        assert_eq!(note.last_played, None);
+    }
+
+    #[test]
+    fn v2_round_trips_the_anchor() {
+        let tmp = TempDir::new().unwrap();
+        let note = LinkSessionFile {
+            version: LinkSessionFile::CURRENT_VERSION,
+            event_id: EventId::from_full("events/2113-A").unwrap(),
+            court: Some("1".to_string()),
+            current_game: None,
+            last_played: Some("G27".to_string()),
+            last_played_start: Some(datetime!(2026-08-17 14:00:00 UTC)),
+            mode: Mode::Hockey6V6,
+            last_active: datetime!(2026-08-17 14:22:03 UTC),
+        };
+        save(tmp.path(), &note).unwrap();
+        assert_eq!(load_or_none(tmp.path()).unwrap(), Some(note));
+    }
+
+    #[test]
+    fn a_future_version_is_still_quarantined() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("portal_link.json");
         let mut note = sample(OffsetDateTime::now_utc());

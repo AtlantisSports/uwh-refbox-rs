@@ -2377,7 +2377,10 @@ impl RefBoxApp {
                     version: LinkSessionFile::CURRENT_VERSION,
                     event_id,
                     court: self.current_court.clone(),
-                    game_number,
+                    current_game: game_number,
+                    // Task 4 fills these in from the engine's recorded results.
+                    last_played: None,
+                    last_played_start: None,
                     mode: self.config.mode,
                     last_active: time::OffsetDateTime::now_utc(),
                 };
@@ -3671,18 +3674,18 @@ impl RefBoxApp {
                         "Restoring portal link to {} (court {:?}, game {:?})",
                         note.event_id.full(),
                         note.court,
-                        note.game_number
+                        note.current_game
                     );
                     new.source = GameSource::Portal;
                     new.current_court = note.court.clone();
-                    new.pending_restore_game = note.game_number.clone();
+                    new.pending_restore_game = note.current_game.clone();
                     // A note that remembers a court but no game was written in the
                     // "this court's schedule is finished" state. Carry that fact
                     // through to the schedule refresh, or the fresh engine would
                     // resolve its own game number ("0") to a guessed game "1" and
                     // auto-start it when the break ran out.
                     new.pending_restore_court_finished =
-                        note.court.is_some() && note.game_number.is_none();
+                        note.court.is_some() && note.current_game.is_none();
                     new.set_current_event_id(Some(note.event_id.clone()));
                     // Defer the schedule fetch to RecvEventList (after the event
                     // list populates self.events) so it can't race ahead of the
@@ -8690,7 +8693,9 @@ mod restore_tests {
             version: LinkSessionFile::CURRENT_VERSION,
             event_id: EventId::from_full("events/2113-A").unwrap(),
             court: Some("1".into()),
-            game_number: Some("G1".into()),
+            current_game: Some("G1".into()),
+            last_played: None,
+            last_played_start: None,
             mode,
             last_active,
         }

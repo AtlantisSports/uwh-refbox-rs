@@ -150,6 +150,11 @@ pub struct TournamentManager {
     /// yet" — this one is a definite answer, and it stops the engine both from
     /// guessing a number and from starting a game it cannot identify.
     no_next_game: bool,
+    /// True while the refbox is linked to a schedule source (portal or custom
+    /// site). Sequential numbering is the specification in manual mode, where
+    /// there is no schedule to contradict it; while linked, a number no schedule
+    /// supplied is a guess, and a guessed number is another court's game.
+    schedule_linked: bool,
     next_scheduled_start: Option<Instant>,
     /// Scheduled start of the game currently in progress (portal printed time when
     /// present, else the Game Block grid slot). Set at `start_game`. `None` before
@@ -183,6 +188,7 @@ impl TournamentManager {
             start_stop_rx,
             next_game: None,
             no_next_game: false,
+            schedule_linked: false,
             next_scheduled_start: None,
             current_scheduled_start: None,
             reset_game_time: config.nominal_break,
@@ -306,7 +312,7 @@ impl TournamentManager {
             return info.number.clone();
         }
 
-        if self.no_next_game {
+        if self.no_next_game || self.schedule_linked {
             // Blank means "no next game on this court" — `GameSnapshot::next_game_number`
             // reports `None` for it. Guessing here would name another court's game.
             return GameNumber::new();
@@ -315,13 +321,31 @@ impl TournamentManager {
         match self.game_number.parse::<u32>() {
             Ok(num) => (num + 1).to_string(),
             Err(_) => {
+                // Manual game numbers come from a numeric keypad, so reaching this
+                // is a bug, not a runtime condition. Report it and start nothing;
+                // the old "default to 1" silently restarted the day.
                 error!(
-                    "Failed to parse game_number '{}'. Defaulting to '1' for next game number",
+                    "Manual game number '{}' is not an integer; refusing to name a next game",
                     self.game_number
                 );
-                "1".to_string()
+                GameNumber::new()
             }
         }
+    }
+
+    pub fn set_schedule_linked(&mut self, linked: bool) {
+        if self.schedule_linked != linked {
+            info!("Schedule-linked set to {linked}");
+        }
+        self.schedule_linked = linked;
+    }
+
+    /// No game can legitimately be started next: either the court is known to be
+    /// finished, or we are linked to a schedule that has not named one. Both mean
+    /// the clock must hold rather than count down toward a game that is not
+    /// coming — and neither may be answered with arithmetic.
+    fn no_startable_next_game(&self) -> bool {
+        self.next_game.is_none() && (self.no_next_game || self.schedule_linked)
     }
 
     pub fn set_game_number<S: ToString>(&mut self, number: S) {
@@ -1265,12 +1289,13 @@ impl TournamentManager {
             self.calc_time_to_next_game(now, game_end)
         };
 
-        if self.no_next_game {
-            // No later game on this court, so there is nothing to count down TO. Stop the
-            // clock outright instead of running a break down to zero: nothing can expire
-            // and nothing can auto-start. The final score also stays on screen, because
-            // the mid-break `reset()` only runs while a countdown is active, so it never
-            // fires here — a later `start_game` still resets before the next game.
+        if self.no_startable_next_game() {
+            // No next game this engine can identify, so there is nothing to count down
+            // TO. Stop the clock outright instead of running a break down to zero:
+            // nothing can expire and nothing can auto-start. The final score also stays
+            // on screen, because the mid-break `reset()` only runs while a countdown is
+            // active, so it never fires here — a later `start_game` still resets before
+            // the next game.
             info!(
                 "{} Last game on this court is over; stopping the clock",
                 self.status_string(now),
@@ -1467,11 +1492,11 @@ impl TournamentManager {
                 let mut leave_game_clock_running = true;
                 match (self.current_period, unfinished_penalty_shot) {
                     (GamePeriod::BetweenGames, _) => {
-                        if self.no_next_game {
-                            // The selected court has no further games. Hold at 0:00
-                            // rather than start a game we cannot identify: a guessed
-                            // number is another court's game, and playing it out would
-                            // post a result against it.
+                        if self.no_startable_next_game() {
+                            // No next game this engine can identify. Hold at 0:00 rather
+                            // than start a game we cannot identify: a guessed number is
+                            // another court's game, and playing it out would post a
+                            // result against it.
                             info!(
                                 "{} Between games time expired with no next game on this court; holding at 0:00",
                                 self.status_string(now)
@@ -1825,8 +1850,8 @@ impl TournamentManager {
 
     // Returns true if the clock was started, false if it was already running
     fn start_game_clock(&mut self, now: Instant) -> bool {
-        if self.current_period == GamePeriod::BetweenGames && self.no_next_game {
-            // The selected court's schedule is finished, so the clock is parked dead at
+        if self.current_period == GamePeriod::BetweenGames && self.no_startable_next_game() {
+            // No next game this engine can identify, so the clock is parked dead at
             // 0:00 and there is nothing to count down to. Refuse here rather than at each
             // caller: both score-confirmation handlers call `start_clock` immediately
             // after `end_confirm_pause`, and restarting a zero-length countdown makes it
@@ -2074,9 +2099,10 @@ impl TournamentManager {
             | GamePeriod::OvertimeSecondHalf
             | GamePeriod::SuddenDeath => return Err(TournamentManagerError::AlreadyInPlayPeriod),
             GamePeriod::BetweenGames => {
-                if self.no_next_game {
-                    // Refuse rather than invent a game number. The main page greys
-                    // START NOW in this state, so this guard is the backstop.
+                if self.no_startable_next_game() {
+                    // No next game this engine can identify. Refuse rather than invent
+                    // a game number. The main page greys START NOW in this state, so
+                    // this guard is the backstop.
                     return Err(TournamentManagerError::NoNextGameOnCourt);
                 }
                 self.start_game(now);
@@ -2347,12 +2373,12 @@ impl TournamentManager {
             };
 
             // Read before `end_game`, so this cannot drift if `end_game` ever clears the
-            // flag. When the selected court has no further games, `end_game` parks the
-            // clock dead at 0:00 — and the assignment below would immediately undo that,
-            // restarting a countdown toward a game that is never coming. This is the path
-            // a normal game end actually takes in the app, so the guard has to be here as
-            // well as in `end_game`.
-            let court_finished = self.no_next_game;
+            // flag. When there is no next game this engine can identify, `end_game`
+            // parks the clock dead at 0:00 — and the assignment below would immediately
+            // undo that, restarting a countdown toward a game that is never coming. This
+            // is the path a normal game end actually takes in the app, so the guard has
+            // to be here as well as in `end_game`.
+            let court_finished = self.no_startable_next_game();
 
             if self.current_period == GamePeriod::BetweenGames {
                 self.end_game(now)
@@ -9710,5 +9736,76 @@ mod test {
         assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
         assert_eq!(tm.game_number(), "9");
         assert_eq!(tm.get_scores().black, 1, "the final score stays on screen");
+    }
+
+    #[test]
+    fn a_schedule_linked_engine_reports_no_next_number_rather_than_guessing() {
+        initialize();
+        let mut tm = TournamentManager::new(Default::default());
+        tm.set_game_number("6");
+        tm.set_schedule_linked(true);
+        // No schedule has named a next game. The old arithmetic answered "7" —
+        // on a two-court event that is the other court's game.
+        assert_eq!(tm.next_game_number(), "");
+    }
+
+    #[test]
+    fn manual_mode_still_numbers_sequentially() {
+        initialize();
+        let mut tm = TournamentManager::new(Default::default());
+        tm.set_game_number("6");
+        tm.set_schedule_linked(false);
+        assert_eq!(tm.next_game_number(), "7");
+    }
+
+    #[test]
+    fn a_schedule_supplied_game_still_wins_when_linked() {
+        initialize();
+        let mut tm = TournamentManager::new(Default::default());
+        tm.set_game_number("6");
+        tm.set_schedule_linked(true);
+        tm.set_next_game(NextGameInfo {
+            number: "11".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        assert_eq!(tm.next_game_number(), "11");
+    }
+
+    #[test]
+    fn an_unparseable_manual_number_is_an_error_not_a_default() {
+        // Manual game numbers come from a numeric keypad, so this cannot happen in
+        // normal operation. If it ever does it is a bug, and the safe failure is to
+        // start nothing — never to silently restart the day at game 1.
+        initialize();
+        let mut tm = TournamentManager::new(Default::default());
+        tm.set_game_number("not-a-number");
+        tm.set_schedule_linked(false);
+        assert_eq!(tm.next_game_number(), "");
+    }
+
+    #[test]
+    fn a_schedule_linked_engine_with_no_next_game_refuses_start_play_now() {
+        initialize();
+        let mut tm = TournamentManager::new(Default::default());
+        tm.set_schedule_linked(true);
+        assert_eq!(
+            tm.start_play_now(Instant::now()),
+            Err(TMErr::NoNextGameOnCourt)
+        );
+    }
+
+    #[test]
+    fn half_time_of_the_last_game_still_starts_the_second_half() {
+        // Criterion 8, and the easiest thing here to break. The court is flagged
+        // finished from the moment the last game STARTS, so every gate must test the
+        // period as well: "finished" describes the schedule AFTER this game, and the
+        // last game is often a final.
+        initialize();
+        let mut tm = TournamentManager::new(Default::default());
+        tm.set_schedule_linked(true);
+        tm.set_no_next_game();
+        tm.set_period_and_game_clock_time(GamePeriod::HalfTime, Duration::from_secs(15));
+        assert!(tm.start_play_now(Instant::now()).is_ok());
     }
 }

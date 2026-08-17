@@ -1159,6 +1159,49 @@ fn break_starts_nothing(period: GamePeriod, next_game_number: &str) -> bool {
     period == GamePeriod::BetweenGames && next_game_number.is_empty()
 }
 
+/// What the restart note should record about the game.
+///
+/// The distinction that matters is **knowledge versus ignorance**. Treating the
+/// two alike is what made this note dangerous twice over: writing a guess into
+/// it brought a finished court back as game 1, which replayed and re-posted the
+/// day; writing a blank instead erased a mid-event operator's resume point,
+/// sending the next launch back to the earliest game on the court.
+#[derive(Debug, PartialEq, Eq)]
+enum LinkNoteGame {
+    /// Knowledge. `Some(number)` is the game the operator is on; `None` means
+    /// this court's schedule is finished — remember the court, but no game, so
+    /// a restart comes back to the same state.
+    Write(Option<GameNumber>),
+    /// Ignorance: no schedule has been read yet, so there is nothing to record.
+    /// Leave any existing note exactly as it is.
+    Unknown,
+}
+
+/// Decide what the restart note should say, from the **live engine** — never
+/// from the cached `self.snapshot`. The finished state deliberately holds the
+/// break clock stopped, and a stopped clock is what stops snapshots being
+/// regenerated, so the cached copy goes stale exactly when this matters.
+fn link_note_game(tm: &TournamentManager) -> LinkNoteGame {
+    if tm.current_period() != GamePeriod::BetweenGames {
+        // A game is in progress: that game is the operator's place.
+        return LinkNoteGame::Write(Some(tm.game_number()));
+    }
+
+    if let Some(info) = tm.next_game_info() {
+        // A schedule supplied this game — the only source we trust.
+        return LinkNoteGame::Write(Some(info.number.clone()));
+    }
+
+    // With no next-game info, a blank number is the engine reporting that it was
+    // *told* this court is finished. Anything else is the arithmetic fallback
+    // `game_number + 1` — ignorance wearing the shape of an answer.
+    if tm.next_game_number().is_empty() {
+        LinkNoteGame::Write(None)
+    } else {
+        LinkNoteGame::Unknown
+    }
+}
+
 impl RefBoxApp {
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) -> Task<Message> {
         let mut task = Task::none();
@@ -2319,14 +2362,16 @@ impl RefBoxApp {
         use crate::portal_manager::link_session::{self, LinkSessionFile};
         if self.uses_remote() {
             if let Some(event_id) = self.current_event_id.clone() {
-                // The game the operator is on: the upcoming game between games,
-                // otherwise the current game number from the live snapshot.
-                let game_number = if self.snapshot.current_period == GamePeriod::BetweenGames {
-                    // Blank means this court's schedule is finished — remember the
-                    // court, but no game, so a restart comes back to the same state.
-                    Some(self.snapshot.next_game_number.clone()).filter(|n| !n.is_empty())
-                } else {
-                    Some(self.snapshot.game_number.clone())
+                // The game the operator is on, taken from the live engine — see
+                // `link_note_game` for why the cached snapshot cannot be trusted
+                // here, and why "I don't know yet" must not be written down.
+                let game_number = match link_note_game(&self.tm.lock().unwrap()) {
+                    LinkNoteGame::Write(game_number) => game_number,
+                    // Nothing is known yet, so there is nothing worth saying.
+                    // Returning leaves the existing note untouched — including a
+                    // mid-event resume point we would otherwise wipe seconds
+                    // before the schedule arrives to confirm it.
+                    LinkNoteGame::Unknown => return,
                 };
                 let note = LinkSessionFile {
                     version: LinkSessionFile::CURRENT_VERSION,
@@ -9050,6 +9095,67 @@ mod break_starts_nothing_tests {
         ] {
             assert!(!break_starts_nothing(period, ""), "{period:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod link_note_game_tests {
+    use super::{GameConfig, LinkNoteGame, link_note_game};
+    use crate::tournament_manager::{NextGameInfo, TournamentManager};
+    use std::time::Duration;
+    use uwh_common::game_snapshot::GamePeriod;
+
+    /// Startup, before the schedule has been read: the engine knows nothing, so
+    /// the note must be left exactly as it is. Writing anything here is what
+    /// cost us twice — first a guessed `"1"` that made a finished court replay
+    /// the day, then a blank that erased a mid-event operator's resume point.
+    #[test]
+    fn the_note_is_left_alone_until_the_schedule_is_known() {
+        let tm = TournamentManager::new(GameConfig::default());
+
+        // What the engine offers here is the arithmetic guess `game_number + 1`,
+        // not a scheduled game — ignorance wearing the shape of an answer.
+        assert_eq!(tm.next_game_number(), "1");
+
+        assert_eq!(link_note_game(&tm), LinkNoteGame::Unknown);
+    }
+
+    /// A finished court is *knowledge*, and must be recorded as "no game" —
+    /// which is what brings the refbox back into the finished state.
+    #[test]
+    fn a_finished_court_records_no_game() {
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("3");
+        tm.set_no_next_game();
+
+        assert_eq!(link_note_game(&tm), LinkNoteGame::Write(None));
+    }
+
+    #[test]
+    fn a_scheduled_next_game_is_recorded() {
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_next_game(NextGameInfo {
+            number: "11".to_string(),
+            timing: None,
+            start_time: None,
+        });
+
+        assert_eq!(
+            link_note_game(&tm),
+            LinkNoteGame::Write(Some("11".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_game_in_progress_records_that_game() {
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("7");
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(60));
+
+        assert_eq!(
+            link_note_game(&tm),
+            LinkNoteGame::Write(Some("7".to_string()))
+        );
     }
 }
 

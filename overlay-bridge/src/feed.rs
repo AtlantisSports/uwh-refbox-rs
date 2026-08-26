@@ -878,7 +878,16 @@ impl Supervisor {
                 }
             }
 
-            sleep(RECONNECT_DELAY).await;
+            // The wait after a connection is lost, and the last place this function could
+            // otherwise sit while the operator is waiting on it. Woken by a refbox change for the
+            // same reason as every other wait here (see the type doc's last paragraph): this delay
+            // exists only to stop the bridge hammering a refbox that has just gone away, and a
+            // deliberate choice on the status page is not that. Neither arm needs a body -- the
+            // next `'connect` iteration reads the address afresh either way.
+            tokio::select! {
+                () = sleep(RECONNECT_DELAY) => {}
+                _ = chosen.changed() => {}
+            }
         }
     }
 }
@@ -1784,6 +1793,55 @@ mod tests {
             .expect("the supervisor should have connected to the newly chosen refbox")
             .expect("accept should succeed");
         wait_for(&connection, Connection::Connected).await;
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn a_refbox_chosen_while_the_bridge_is_waiting_to_reconnect_is_picked_up_at_once() {
+        // The third and last place the supervisor waits, and the one that was not a `select!`:
+        // an established connection has just been lost, so it is sitting out `RECONNECT_DELAY`
+        // before trying the same refbox again. That delay exists to stop the bridge hammering a
+        // refbox that has gone away -- an operator choosing a different one must not have to sit
+        // through it. This is the likeliest of the three to be hit in a hall, because a refbox
+        // that has just dropped off is exactly when someone reaches for another court.
+        let first = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind the first listener");
+        let first_addr = first.local_addr().expect("local_addr");
+        let second = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind the second listener");
+        let second_addr = second.local_addr().expect("local_addr");
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let connection = ConnectionState::new();
+        let target = FeedTarget::new(first_addr.into());
+        let handle = tokio::spawn(Supervisor::run(target.clone(), tx, connection.clone()));
+
+        let (first_side, _) = first.accept().await.expect("accept the first connection");
+        wait_for(&connection, Connection::Connected).await;
+
+        // The refbox goes away. Waiting for `Disconnected` is what puts the switch below inside
+        // the reconnect delay rather than inside the read loop (which the test above already
+        // covers): the supervisor publishes that transition immediately before it starts waiting.
+        drop(first_side);
+        wait_for(&connection, Connection::Disconnected).await;
+
+        let switched_at = tokio::time::Instant::now();
+        target.set(second_addr.into());
+
+        tokio::time::timeout(Duration::from_secs(5), second.accept())
+            .await
+            .expect("the supervisor should have connected to the newly chosen refbox")
+            .expect("accept should succeed");
+        // Same discriminating figure as the sibling test above: under `RECONNECT_DELAY`, and by
+        // orders of magnitude more than a loopback accept needs.
+        let took = switched_at.elapsed();
+        assert!(
+            took < Duration::from_millis(900),
+            "choosing a refbox during the reconnect delay must not wait it out, took {took:?}"
+        );
 
         handle.abort();
     }

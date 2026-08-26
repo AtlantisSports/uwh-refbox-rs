@@ -448,6 +448,11 @@ would be exactly the "confidently wrong" behaviour §4.6 removed.
 - A submitted address that is malformed or unreachable is reported to the operator and leaves the
   existing connection alone, rather than tearing down a working one.
 - The chosen address persists, so a restart comes back to the same refbox.
+- **Carried from Task 7, and it becomes reachable here:** `feed.rs`'s `set_disconnected()` holds a
+  guard that must not reset `disconnected_at` when the connection is *already* disconnected. Task 7
+  left it untested because nothing called it twice. Changing address while already disconnected is
+  exactly that second call, so prove the guard: the "down for" time must keep counting from the
+  original drop, not restart.
 
 **Commit:** `feat(overlay-bridge): find refboxes on the local network`
 

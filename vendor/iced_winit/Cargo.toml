@@ -9,6 +9,11 @@
 # will likely look very different (and much more reasonable).
 # See Cargo.toml.orig for the original contents.
 
+# Vendoring divergence 2 (see VENDORED.md): an empty `[workspace]` table, so cargo
+# treats this crate as its own workspace root instead of walking up to an
+# ancestor workspace.
+[workspace]
+
 [package]
 edition = "2021"
 name = "iced_winit"

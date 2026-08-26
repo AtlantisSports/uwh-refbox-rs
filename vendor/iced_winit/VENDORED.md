@@ -42,6 +42,14 @@ them.
 This crate is deliberately EXCLUDED from the workspace so our `-D warnings` clippy
 settings are not applied to third-party code. Its tests run via `just test-vendor`.
 
+The cursor tracker's tests live inside `src/program`, which upstream gates behind the
+`program` Cargo feature (`Cargo.toml`'s `[features]` table) — a feature this crate does not
+enable by default. Without it, `src/program` is never compiled, so the tests silently do not
+exist to `cargo test` rather than failing: it reports "0 tests, ok" instead of running any of
+them. Because of this, `just test-vendor`'s recipe and the CI step that mirrors it both pass
+`--features program` explicitly, alongside `--locked`. If that flag is ever dropped, the gate
+does not fail — it just goes quiet again, so treat its presence in both places as load-bearing.
+
 ## Dependency resolution and the committed lock
 
 Because this crate is its own workspace root (see above), `cargo test --manifest-path

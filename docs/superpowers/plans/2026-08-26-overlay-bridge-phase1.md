@@ -596,6 +596,26 @@ Carried into phase 2 as consequences, not blockers:
 **Requires a CI change** (`.github/workflows/release.yml`), which is shared infrastructure — to be
 made deliberately in phase 2, not on this branch.
 
+**REFINED, Eric, 2026-08-27: the bridge gets its own release tag, in this repo.** He asked whether
+the bridge should move to its own repository so that its releases stay separate from refbox's.
+Decision: keep it in this workspace, and separate the *releases* instead — `overlay-bridge` carries
+its own version number and its own workflow, triggered by its own tag pattern (e.g.
+`bridge-v1.0.0`). Tagging the bridge builds only bridge assets; tagging `v0.5.0` builds only refbox,
+exactly as now. Neither ever forces a release of the other. This replaces the "add it to
+release.yml" shape of phase 2 rather than adding to it.
+
+Why not a separate repository: `uwh-common` is **not published to crates.io** (checked 2026-08-27 —
+the crate does not exist there) and the standalone `AtlantisSports/uwh-common` repo has been dead
+since June 2022. A split would force either publishing and maintaining `uwh-common`, or pinning a
+git commit. `overlay-bridge` depends on `uwh-common` for the **wire format** (`game_snapshot`,
+`bundles`) — the contract for what the refbox sends. A stale pin would not fail to compile; it would
+read the feed wrong at a tournament, which is precisely how the LED panel wire format already
+misbehaves. In one workspace that same change is a CI build failure instead.
+
+Restoring `AtlantisSports/uwh-overlay` was considered and rejected outright: it is an archived 2022
+**Python** project for the retired overlay, so the name and history would mislead. Were a split ever
+wanted, a fresh repository would be the way.
+
 **DECIDED, Eric, 2026-08-27 — how the operator starts it: open the browser automatically.** On
 launch the bridge opens the operator's default browser at its own address. A menu-bar or
 system-tray icon was considered and deliberately deferred: it is the more polished answer, and it

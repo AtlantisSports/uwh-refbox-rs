@@ -1,0 +1,151 @@
+{
+ "name": "Sydney Kings A",
+ "logoUrl": null,
+ "photos": [],
+ "roster": [
+  {
+   "rosterName": "A. Fisher",
+   "roles": [
+    "Player"
+   ],
+   "capNumber": 2,
+   "photos": {
+    "uniform": null,
+    "lightGear": null,
+    "darkGear": null
+   }
+  },
+  {
+   "rosterName": "B. Nakamura",
+   "roles": [
+    "Player"
+   ],
+   "capNumber": 4,
+   "photos": {
+    "uniform": null,
+    "lightGear": null,
+    "darkGear": null
+   }
+  },
+  {
+   "rosterName": "C. Oyelaran",
+   "roles": [
+    "Player"
+   ],
+   "capNumber": 5,
+   "photos": {
+    "uniform": null,
+    "lightGear": null,
+    "darkGear": null
+   }
+  },
+  {
+   "rosterName": "D. Petrov",
+   "roles": [
+    "Player"
+   ],
+   "capNumber": 7,
+   "photos": {
+    "uniform": null,
+    "lightGear": null,
+    "darkGear": null
+   }
+  },
+  {
+   "rosterName": "E. Marchetti",
+   "roles": [
+    "Player"
+   ],
+   "capNumber": 8,
+   "photos": {
+    "uniform": null,
+    "lightGear": null,
+    "darkGear": null
+   }
+  },
+  {
+   "rosterName": "F. Adeyemi",
+   "roles": [
+    "Player"
+   ],
+   "capNumber": 11,
+   "photos": {
+    "uniform": null,
+    "lightGear": null,
+    "darkGear": null
+   }
+  },
+  {
+   "rosterName": "G. Lindqvist",
+   "roles": [
+    "Player"
+   ],
+   "capNumber": 13,
+   "photos": {
+    "uniform": null,
+    "lightGear": null,
+    "darkGear": null
+   }
+  },
+  {
+   "rosterName": "H.\u0412\u0430\u0440\u0433\u0430",
+   "roles": [
+    "Player"
+   ],
+   "capNumber": 14,
+   "photos": {
+    "uniform": null,
+    "lightGear": null,
+    "darkGear": null
+   }
+  },
+  {
+   "rosterName": "I. Okonkwo",
+   "roles": [
+    "Player"
+   ],
+   "capNumber": 16,
+   "photos": {
+    "uniform": null,
+    "lightGear": null,
+    "darkGear": null
+   }
+  },
+  {
+   "rosterName": "J. Silva",
+   "roles": [
+    "Player"
+   ],
+   "capNumber": 19,
+   "photos": {
+    "uniform": null,
+    "lightGear": null,
+    "darkGear": null
+   }
+  },
+  {
+   "rosterName": "K. Dubois",
+   "roles": [
+    "Player"
+   ],
+   "capNumber": 22,
+   "photos": {
+    "uniform": null,
+    "lightGear": null,
+    "darkGear": null
+   }
+  },
+  {
+   "rosterName": "L. Haugen",
+   "roles": [
+    "Player"
+   ],
+   "capNumber": 27,
+   "photos": {
+    "uniform": null,
+    "lightGear": null,
+    "darkGear": null
+   }
+  }
+ ]
+}

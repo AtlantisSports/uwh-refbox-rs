@@ -168,54 +168,53 @@ pub struct AppState {
     /// The outcome of the operator's last action on the status page -- choosing a refbox, or
     /// scanning -- in plain English, shown until they do something else.
     notice: RwLock<Option<Notice>>,
+    /// What `consume_snapshots` has last seen on the feed, used to notice when the event or game
+    /// has changed. Held here rather than as locals inside that loop for one reason: it has to be
+    /// **cleared by [`AppState::forget_game`]** along with everything else belonging to a refbox
+    /// the operator has left. See that method's doc.
+    last_seen: RwLock<LastSeen>,
+    /// Serializes choosing a refbox. An async mutex, not a lock: it is deliberately held across
+    /// the probe's `.await` (see [`choose_refbox`]), which a `std` lock could not be.
+    switching: tokio::sync::Mutex<()>,
+    /// Held for the duration of a network search, and only ever `try_lock`ed -- a second search
+    /// starting while one is running is refused with a sentence rather than queued behind it (see
+    /// [`run_scan`]). A double-clicked "Search the network" button must not launch two sweeps of
+    /// 254 addresses.
+    scanning: tokio::sync::Mutex<()>,
+}
+
+/// The last event and game `consume_snapshots` saw, so it can tell a change from a repeat. See
+/// [`AppState::last_seen`].
+#[derive(Debug, Default)]
+struct LastSeen {
+    event_id: Option<EventId>,
+    game_number: Option<GameNumber>,
 }
 
 impl AppState {
-    /// Builds a fresh, unconnected bridge state: no event known yet, no connection made yet
-    /// ([`Connection::NeverConnected`]), and the live picture seeded from
-    /// [`GameSnapshot::default`] so every route is servable immediately.
+    /// Builds a fresh, unconnected bridge state from the bridge's resolved settings: no event
+    /// known yet, no connection made yet ([`Connection::NeverConnected`]), and the live picture
+    /// seeded from [`GameSnapshot::default`] so every route is servable immediately.
     ///
-    /// The status-page-only fields (the refbox address on display, and the court setting) start
-    /// empty here -- see [`AppState::with_operator_info`] for why they are attached separately
-    /// rather than through this constructor's own signature.
-    pub fn new(white_on_right: bool) -> Self {
+    /// **Takes every setting as one value, and there is no other way in.** The optional builder
+    /// methods this replaced (`with_operator_info`, `with_settings_path`) were a bug waiting to
+    /// happen: forgetting one in `main.rs` left the bridge silently reading a default address
+    /// instead of the configured one, with nothing failing to say so. See [`config::Resolved`].
+    pub fn new(settings: config::Resolved) -> Self {
         Self {
             live: RwLock::new(LiveState::new(GameSnapshot::default(), Instant::now())),
             directory: RwLock::new(None),
-            white_on_right,
+            white_on_right: settings.white_on_right,
             connection: ConnectionState::new(),
-            target: FeedTarget::new(RefboxAddress::new(
-                config::DEFAULT_REFBOX_HOST,
-                config::DEFAULT_REFBOX_PORT,
-            )),
-            court: String::new(),
-            settings_path: None,
+            target: FeedTarget::new(settings.refbox),
+            court: settings.court,
+            settings_path: settings.settings_path,
             last_scan: RwLock::new(None),
             notice: RwLock::new(None),
+            last_seen: RwLock::new(LastSeen::default()),
+            switching: tokio::sync::Mutex::new(()),
+            scanning: tokio::sync::Mutex::new(()),
         }
-    }
-
-    /// Attaches the operator-supplied context: which refbox to read, and the court label. Kept out
-    /// of [`AppState::new`]'s own signature, as a separate builder-style method, so this crate's
-    /// many existing tests (which only ever call `AppState::new` with a `white_on_right` value) do
-    /// not all need updating.
-    pub fn with_operator_info(
-        mut self,
-        refbox_host: String,
-        refbox_port: u16,
-        court: String,
-    ) -> Self {
-        self.target = FeedTarget::new(RefboxAddress::new(refbox_host, refbox_port));
-        self.court = court;
-        self
-    }
-
-    /// Where to remember a refbox the operator chooses at runtime -- see the `settings_path`
-    /// field's own doc. `main.rs` passes `config::settings_path().ok()`; a test that has no
-    /// business writing to the machine's real settings file passes a throwaway path, or `None`.
-    pub fn with_settings_path(mut self, settings_path: Option<PathBuf>) -> Self {
-        self.settings_path = settings_path;
-        self
     }
 
     /// A cloned handle to this state's connection tracker, for handing to
@@ -244,11 +243,86 @@ impl AppState {
     /// "Disconnected". That is the confidently-wrong display spec §4.6 exists to remove, and it is
     /// not a millisecond-scale window: it lasts as long as the new refbox is unreachable.
     ///
+    /// **Everything belonging to that refbox goes, not only the scores.** The live picture is the
+    /// obvious half; the Portal directory and the last-seen event and game are the other half, and
+    /// leaving them behind reproduces exactly the same fault one step further along. The directory
+    /// is built for whichever *event* the previous refbox reported, and team and player names are
+    /// looked up in it by game number alone -- so a refbox on a different event whose snapshots
+    /// carry no event id (or the same game numbers, as tournament game numbers routinely are)
+    /// would have its games resolved against the event just left, and the overlay would show the
+    /// wrong teams' names for the right game. And `last_seen` is what decides whether an arriving
+    /// event id counts as "new": left set, an event the bridge has genuinely left and returned to
+    /// would look unchanged, and the stale directory would never be rebuilt.
+    ///
     /// Not a timing rule and not a liveness rule: nothing here consults how long it has been since
     /// a message arrived (see `state`'s module doc). It fires exactly once, on an explicit
     /// operator action.
     fn forget_game(&self) {
         *write_lock(&self.live) = LiveState::new(GameSnapshot::default(), Instant::now());
+        *write_lock(&self.directory) = None;
+        *write_lock(&self.last_seen) = LastSeen::default();
+    }
+}
+
+/// The bridge, assembled and running: its shared state, plus the background tasks that keep it fed
+/// -- the feed supervisor, the snapshot consumer and the Portal refresh loop.
+///
+/// Dropping this stops those tasks. `main` holds it for the life of the program (so nothing stops
+/// until the program does); this crate's own tests hold it for the life of a test.
+pub struct Bridge {
+    pub state: Arc<AppState>,
+    tasks: Vec<tokio::task::JoinHandle<()>>,
+}
+
+impl Drop for Bridge {
+    fn drop(&mut self) {
+        for task in &self.tasks {
+            task.abort();
+        }
+    }
+}
+
+/// Assembles a running bridge from its resolved settings: builds the shared state, points the feed
+/// supervisor at the refbox those settings name, and starts the snapshot consumer and the Portal
+/// refresh loop. Everything except binding the HTTP listener, which `main` does with
+/// `settings.port` and [`router`].
+///
+/// **This lives here, not in `main.rs`, so that it can be tested** (Task 8 review, Important 3).
+/// The wiring it performs -- in particular "the supervisor reads the refbox the settings name" --
+/// was previously a hand-written sequence in `main` that no test could reach, where deleting one
+/// line silently substituted a built-in default for every configured address. With the assembly in
+/// one testable function and [`config::Resolved`] leaving no setting optional, that shape of bug
+/// has nowhere left to hide.
+pub fn start(settings: config::Resolved, portal_url: String) -> Bridge {
+    let state = Arc::new(AppState::new(settings));
+
+    let (tx, rx) = mpsc::unbounded_channel();
+    // The supervisor takes the shared handle rather than an address value: the operator can point
+    // the bridge at a different refbox from the status page at any time, and the supervisor
+    // follows that handle (see `feed::FeedTarget`).
+    let supervisor = tokio::spawn(crate::feed::Supervisor::run(
+        state.target_handle(),
+        tx,
+        state.connection_handle(),
+    ));
+
+    let refresh_notify = Arc::new(Notify::new());
+    let consumer = tokio::spawn(consume_snapshots(
+        Arc::clone(&state),
+        rx,
+        Client::new(),
+        portal_url,
+        Arc::clone(&refresh_notify),
+    ));
+    let refresher = tokio::spawn(refresh_portal_loop(
+        Arc::clone(&state),
+        refresh_notify,
+        PORTAL_REFRESH_INTERVAL,
+    ));
+
+    Bridge {
+        state,
+        tasks: vec![supervisor, consumer, refresher],
     }
 }
 
@@ -422,7 +496,25 @@ async fn post_scan(State(state): State<Arc<AppState>>, Form(form): Form<ScanForm
 /// succeeding and the supervisor connecting, the candidate could itself vanish. That resolves
 /// itself the ordinary way -- the supervisor retries, the connection stays down, and the tables
 /// stay blank -- which is the safe outcome, not a wrong one.
+///
+/// # One switch at a time
+///
+/// The whole of steps 1-4 runs under [`AppState::switching`], so two switches cannot interleave
+/// -- and the address in step 1 is read *inside* that lock, so the second one sees the result of
+/// the first. Without it, a double-clicked "Use this refbox" (or two open tabs) sends two requests
+/// that both read the old address, both pass the "already set to" check, both probe, and both then
+/// mark the bridge out of contact and blank its picture. The second one's `FeedTarget::set` then
+/// reports no change -- the address is already what it is setting -- so **no supervisor wake
+/// follows its mark**, and the bridge sits disconnected with a blank graphic until the socket
+/// happens to drop, which for a refbox with a stopped clock is minutes. A lost update, not a
+/// timing bug, but the same blank graphic at the same cost, reached by a double-click that a
+/// volunteer under pressure will make.
+///
+/// Holding an async mutex across the probe's `.await` is the point rather than an oversight: the
+/// probe is exactly the slow step another switch must not slip past. Nothing else in the crate
+/// takes this lock, so serving tables, rendering the page and running a scan are all unaffected.
 pub async fn choose_refbox(state: &AppState, submitted: &str) -> Notice {
+    let _switching = state.switching.lock().await;
     let current = state.target.current();
 
     let candidate = match RefboxAddress::parse(submitted, current.port) {
@@ -482,6 +574,14 @@ pub async fn choose_refbox(state: &AppState, submitted: &str) -> Notice {
 /// list. Reports back in plain English, exactly like [`choose_refbox`], and changes nothing about
 /// the running bridge whatever it finds -- a scan only ever looks.
 pub async fn run_scan(state: &AppState, network: &str, port: &str) -> Notice {
+    // `try_lock`, not `lock`: a second search is refused rather than queued. Queueing would mean a
+    // double-clicked button silently sweeping 254 addresses twice, and the operator waiting twice
+    // as long to be told the same thing.
+    let Ok(_scanning) = state.scanning.try_lock() else {
+        return Notice::problem(
+            "A search is already running. Wait a few seconds for it to finish.".to_string(),
+        );
+    };
     let current = state.target.current();
 
     let network = network.trim();
@@ -692,9 +792,6 @@ pub async fn consume_snapshots(
     portal_url: String,
     refresh_notify: Arc<Notify>,
 ) {
-    let mut last_event_id: Option<EventId> = None;
-    let mut last_game_number: Option<GameNumber> = None;
-
     while let Some(message) = snapshots.recv().await {
         let chosen = state.target.current();
         if message.from != chosen {
@@ -717,11 +814,16 @@ pub async fn consume_snapshots(
         write_lock(&state.live).apply(snapshot, now);
 
         // `Some` only when the feed just reported a *different* known event id -- `None` both
-        // when the event id is unknown (`None` on the wire) and when it is unchanged.
-        let new_event = event_id
-            .as_ref()
-            .filter(|&id| last_event_id.as_ref() != Some(id));
-        if let Some(id) = new_event {
+        // when the event id is unknown (`None` on the wire) and when it is unchanged. Read from
+        // `state`, not from a local, so that choosing a different refbox can clear it -- see
+        // `AppState::forget_game`.
+        let new_event = {
+            let last_seen = read_lock(&state.last_seen);
+            event_id
+                .clone()
+                .filter(|id| last_seen.event_id.as_ref() != Some(id))
+        };
+        if let Some(id) = &new_event {
             *write_lock(&state.directory) = Some(Arc::new(Directory::new(
                 client.clone(),
                 portal_url.clone(),
@@ -729,21 +831,25 @@ pub async fn consume_snapshots(
             )));
         }
 
-        let game_changed = last_game_number.as_ref() != Some(&game_number);
-        if new_event.is_some() || game_changed {
-            refresh_notify.notify_one();
-        }
+        {
+            let mut last_seen = write_lock(&state.last_seen);
+            let game_changed = last_seen.game_number.as_ref() != Some(&game_number);
+            if new_event.is_some() || game_changed {
+                refresh_notify.notify_one();
+            }
 
-        // Only remember a *real* event id. A momentary `None` on the wire (a snapshot arriving
-        // before the refbox has attached an event, or some other transient gap) must not be
-        // allowed to overwrite the last known real one -- if it did, the very next snapshot
-        // carrying that same real id back would look "new" again (since `last_event_id` would
-        // have been cleared to `None`), triggering a needless `Directory` rebuild that throws
-        // away every team name and roster already cached for an event nothing has actually left.
-        if event_id.is_some() {
-            last_event_id = event_id;
+            // Only remember a *real* event id. A momentary `None` on the wire (a snapshot arriving
+            // before the refbox has attached an event, or some other transient gap) must not be
+            // allowed to overwrite the last known real one -- if it did, the very next snapshot
+            // carrying that same real id back would look "new" again (since `event_id` would
+            // have been cleared to `None`), triggering a needless `Directory` rebuild that throws
+            // away every team name and roster already cached for an event nothing has actually
+            // left.
+            if event_id.is_some() {
+                last_seen.event_id = event_id;
+            }
+            last_seen.game_number = Some(game_number);
         }
-        last_game_number = Some(game_number);
     }
 }
 
@@ -937,7 +1043,7 @@ mod tests {
 
     #[tokio::test]
     async fn every_route_returns_200_json_content_type_and_a_json_array() {
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         let addr = spawn_test_server(state).await;
 
         for path in [
@@ -976,7 +1082,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_unknown_path_returns_404_rather_than_panicking() {
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         let addr = spawn_test_server(state).await;
 
         let response = get_response(addr, "/does-not-exist").await;
@@ -1034,7 +1140,7 @@ mod tests {
             "schedule fetch against the fixture body should succeed"
         );
 
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         mark_connected(&state);
         *write_lock(&state.directory) = Some(Arc::new(directory));
         *write_lock(&state.live) = LiveState::new(
@@ -1073,7 +1179,7 @@ mod tests {
             secs_in_period: 200,
             ..Default::default()
         };
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         mark_connected(&state);
         let t0 = Instant::now();
         *write_lock(&state.live) = LiveState::new(base.clone(), t0);
@@ -1133,7 +1239,7 @@ mod tests {
         let attempts = Arc::new(AtomicUsize::new(0));
         tokio::spawn(serve_failing_portal(listener, Arc::clone(&attempts)));
 
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         *write_lock(&state.directory) = Some(Arc::new(Directory::new(
             Client::new(),
             format!("http://{portal_addr}"),
@@ -1170,7 +1276,7 @@ mod tests {
         let attempts = Arc::new(AtomicUsize::new(0));
         tokio::spawn(serve_failing_portal(listener, Arc::clone(&attempts)));
 
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         *write_lock(&state.directory) = Some(Arc::new(Directory::new(
             Client::new(),
             format!("http://{portal_addr}"),
@@ -1215,7 +1321,7 @@ mod tests {
         let attempts = Arc::new(AtomicUsize::new(0));
         tokio::spawn(serve_failing_portal(listener, Arc::clone(&attempts)));
 
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         let (tx, rx) = mpsc::unbounded_channel();
         let refresh_notify = Arc::new(Notify::new());
 
@@ -1276,7 +1382,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_new_event_id_creates_a_fresh_directory_replacing_the_previous_one() {
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         let (tx, rx) = mpsc::unbounded_channel();
         let refresh_notify = Arc::new(Notify::new());
         let consumer = tokio::spawn(consume_snapshots(
@@ -1327,7 +1433,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_momentary_missing_event_id_does_not_rebuild_the_directory_for_the_same_event() {
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         let (tx, rx) = mpsc::unbounded_channel();
         let refresh_notify = Arc::new(Notify::new());
         let consumer = tokio::spawn(consume_snapshots(
@@ -1392,7 +1498,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_game_number_change_wakes_the_refresh_loop() {
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         let (tx, rx) = mpsc::unbounded_channel();
         let refresh_notify = Arc::new(Notify::new());
         let consumer = tokio::spawn(consume_snapshots(
@@ -1463,7 +1569,7 @@ mod tests {
         // is the case the old timing-based `Contact` handled badly (see the report for this
         // task): it would report `Live` for the first few seconds after startup, purely because
         // the seeded default snapshot's arrival time was recent, with nothing behind it.
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         let addr = spawn_test_server(state).await;
 
         let body = get_json(addr, "/scorebug").await;
@@ -1491,11 +1597,10 @@ mod tests {
 
         // The supervisor reads the address from the shared handle (Task 8), so pointing this
         // state at the test's own listener is what makes it connect there.
-        let state = Arc::new(AppState::new(false).with_operator_info(
-            refbox_addr.ip().to_string(),
-            refbox_addr.port(),
-            String::new(),
-        ));
+        let state = Arc::new(AppState::new(config::Resolved {
+            refbox: RefboxAddress::new(refbox_addr.ip().to_string(), refbox_addr.port()),
+            ..Default::default()
+        }));
         let (tx, rx) = mpsc::unbounded_channel();
         let refresh_notify = Arc::new(Notify::new());
 
@@ -1635,11 +1740,10 @@ mod tests {
 
         // The supervisor reads the address from the shared handle (Task 8), so pointing this
         // state at the test's own listener is what makes it connect there.
-        let state = Arc::new(AppState::new(false).with_operator_info(
-            refbox_addr.ip().to_string(),
-            refbox_addr.port(),
-            String::new(),
-        ));
+        let state = Arc::new(AppState::new(config::Resolved {
+            refbox: RefboxAddress::new(refbox_addr.ip().to_string(), refbox_addr.port()),
+            ..Default::default()
+        }));
         let (tx, rx) = mpsc::unbounded_channel();
         let refresh_notify = Arc::new(Notify::new());
 
@@ -1757,7 +1861,7 @@ mod tests {
         // No `feed::Supervisor` involved at all -- `AppState::new` alone, exactly as the bridge
         // looks the instant it starts (design spec §5.6: "available ... before any refbox is
         // configured, so there is no chicken-and-egg").
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         let addr = spawn_test_server(state).await;
 
         let response = get_response(addr, "/").await;
@@ -1794,11 +1898,10 @@ mod tests {
 
         // The supervisor reads the address from the shared handle (Task 8), so pointing this
         // state at the test's own listener is what makes it connect there.
-        let state = Arc::new(AppState::new(false).with_operator_info(
-            refbox_addr.ip().to_string(),
-            refbox_addr.port(),
-            String::new(),
-        ));
+        let state = Arc::new(AppState::new(config::Resolved {
+            refbox: RefboxAddress::new(refbox_addr.ip().to_string(), refbox_addr.port()),
+            ..Default::default()
+        }));
         let addr = spawn_test_server(Arc::clone(&state)).await;
 
         // 1. Never connected: no attempt has been made yet.
@@ -1858,7 +1961,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_status_page_and_json_report_keepalive_as_active_by_default() {
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         let addr = spawn_test_server(Arc::clone(&state)).await;
 
         let json = get_json(addr, "/status.json").await;
@@ -1880,7 +1983,7 @@ mod tests {
         // keepalive failure can't be produced portably in a unit test (see
         // `configure_keepalive`'s doc), so this proves the page/JSON correctly surface the flag
         // once `feed::Supervisor::run` (or, here, a test standing in for it) has set it.
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         state.connection_handle().set_keepalive_unavailable();
         let addr = spawn_test_server(Arc::clone(&state)).await;
 
@@ -1978,11 +2081,10 @@ mod tests {
     async fn bridge_reading(
         refbox_addr: SocketAddr,
     ) -> (Arc<AppState>, SocketAddr, Vec<tokio::task::JoinHandle<()>>) {
-        let state = Arc::new(AppState::new(false).with_operator_info(
-            refbox_addr.ip().to_string(),
-            refbox_addr.port(),
-            String::new(),
-        ));
+        let state = Arc::new(AppState::new(config::Resolved {
+            refbox: RefboxAddress::new(refbox_addr.ip().to_string(), refbox_addr.port()),
+            ..Default::default()
+        }));
         let (tx, rx) = mpsc::unbounded_channel();
         let supervisor = tokio::spawn(crate::feed::Supervisor::run(
             state.target_handle(),
@@ -2234,6 +2336,119 @@ mod tests {
         }
     }
 
+    /// A refbox that waits `before_replying` after accepting, then replays `snapshot`. Used to
+    /// hold two probes in flight at the same time on purpose: a probe of a loopback refbox is
+    /// otherwise over in well under a millisecond, and a race that only sometimes overlaps is a
+    /// test that only sometimes tests anything.
+    async fn slow_refbox(
+        snapshot: GameSnapshot,
+        before_replying: Duration,
+    ) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let addr = listener.local_addr().expect("local_addr");
+        let line = format!(
+            "{}\n",
+            serde_json::to_string(&snapshot).expect("GameSnapshot should serialize")
+        );
+
+        let handle = tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    return;
+                };
+                let line = line.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(before_replying).await;
+                    let _ = socket.write_all(line.as_bytes()).await;
+                    let mut sink = Vec::new();
+                    let _ = socket.read_to_end(&mut sink).await;
+                });
+            }
+        });
+
+        (addr, handle)
+    }
+
+    #[tokio::test]
+    async fn two_switches_to_the_same_refbox_at_once_produce_exactly_one_switch() {
+        // A double-clicked "Use this refbox", or the same page open in two tabs. Both requests
+        // arrive while the bridge is still reading the previous refbox, so without serialisation
+        // both read the old address, both pass the "already set to" check, both probe, and both
+        // then mark the bridge out of contact and blank its picture. The second one's
+        // `FeedTarget::set` reports no change -- the address is already what it is setting -- so
+        // NO supervisor wake follows its mark, and the bridge sits disconnected behind a blank
+        // graphic until the socket happens to drop. For a refbox with a stopped clock that is
+        // minutes of dead air, caused by a double-click.
+        //
+        // The candidate deliberately takes 150ms to answer its probe, so both requests are
+        // certainly in flight together: without the lock this fails every time, not sometimes.
+        let (first_addr, first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "14")).await;
+        let settings_file = std::env::temp_dir().join(format!(
+            "overlay-bridge-test-race-{}-{:?}.toml",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_file(&settings_file);
+        let state = Arc::new(AppState::new(config::Resolved {
+            refbox: RefboxAddress::from(first_addr),
+            settings_path: Some(settings_file.clone()),
+            ..Default::default()
+        }));
+        mark_connected(&state);
+
+        let (candidate, slow) = slow_refbox(
+            game(GamePeriod::SecondHalf, 44, 9, 3, "15"),
+            Duration::from_millis(150),
+        )
+        .await;
+        let submitted = candidate.to_string();
+
+        let (one, two) = tokio::join!(
+            choose_refbox(&state, &submitted),
+            choose_refbox(&state, &submitted)
+        );
+
+        let switched = [&one, &two]
+            .iter()
+            .filter(|notice| notice.text.contains("Switched to the refbox at"))
+            .count();
+        let already = [&one, &two]
+            .iter()
+            .filter(|notice| notice.text.contains("already set to"))
+            .count();
+        assert_eq!(
+            (switched, already),
+            (1, 1),
+            "two requests for the same refbox must result in exactly one switch and one \
+             \"already set to\" -- two switches means both ran the mark-and-blank sequence, and \
+             the second one's mark is never followed by a reconnect.\nfirst: {}\nsecond: {}",
+            one.text,
+            two.text
+        );
+
+        assert_eq!(state.target.current(), RefboxAddress::from(candidate));
+
+        // Minor 4 falls out with it: with the sequence serialised, what was written down cannot
+        // disagree with what is running.
+        let stored: config::Settings =
+            confy::load_path(&settings_file).expect("the settings file should be readable");
+        let _ = std::fs::remove_file(&settings_file);
+        assert_eq!(stored.refbox_port, Some(candidate.port()));
+        assert_eq!(
+            RefboxAddress::new(
+                stored.refbox_host.unwrap_or_default(),
+                stored.refbox_port.unwrap_or_default()
+            ),
+            state.target.current(),
+            "the remembered address must be the one actually in use"
+        );
+
+        slow.abort();
+        first.abort();
+    }
+
     #[tokio::test]
     async fn a_snapshot_from_the_refbox_just_left_is_never_applied_to_the_one_now_connected() {
         // The invariant, stated as a test: a value served while the bridge is connected to refbox
@@ -2251,11 +2466,10 @@ mod tests {
         // consumer is awaited to completion, so "the leftover has been handled" is a fact rather
         // than a wait.
         let (first_addr, first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "14")).await;
-        let state = Arc::new(AppState::new(false).with_operator_info(
-            first_addr.ip().to_string(),
-            first_addr.port(),
-            String::new(),
-        ));
+        let state = Arc::new(AppState::new(config::Resolved {
+            refbox: RefboxAddress::new(first_addr.ip().to_string(), first_addr.port()),
+            ..Default::default()
+        }));
         let addr = spawn_test_server(Arc::clone(&state)).await;
 
         // No supervisor: this test drives the channel itself, which is the only way to place a
@@ -2326,11 +2540,10 @@ mod tests {
         // calling the setter twice by hand. No supervisor runs in this test, deliberately -- it
         // would reconnect and legitimately clear the duration, and what is under test is the
         // moment before that.
-        let state = Arc::new(AppState::new(false).with_operator_info(
-            "127.0.0.1".to_string(),
-            9,
-            String::new(),
-        ));
+        let state = Arc::new(AppState::new(config::Resolved {
+            refbox: RefboxAddress::new("127.0.0.1".to_string(), 9),
+            ..Default::default()
+        }));
         let addr = spawn_test_server(Arc::clone(&state)).await;
 
         state.connection_handle().set_connected();
@@ -2370,11 +2583,11 @@ mod tests {
         ));
         let _ = std::fs::remove_file(&settings);
 
-        let state = Arc::new(
-            AppState::new(false)
-                .with_operator_info("127.0.0.1".to_string(), 9, String::new())
-                .with_settings_path(Some(settings.clone())),
-        );
+        let state = Arc::new(AppState::new(config::Resolved {
+            refbox: RefboxAddress::new("127.0.0.1", 9),
+            settings_path: Some(settings.clone()),
+            ..Default::default()
+        }));
         let (candidate, refbox) = fake_refbox(game(GamePeriod::SecondHalf, 44, 9, 3, "15")).await;
 
         let notice = choose_refbox(&state, &candidate.to_string()).await;
@@ -2419,17 +2632,265 @@ mod tests {
         }
     }
 
+    // ------------------------------------------------------------- from settings to the feed
+
+    #[tokio::test]
+    async fn the_bridge_reads_the_refbox_its_settings_name() {
+        // The whole chain, in one test: resolved settings -> `AppState`'s feed target -> the
+        // supervisor -> a served table. This is the wiring that used to live in `main.rs`, where
+        // nothing could reach it and deleting one line silently pointed the bridge at
+        // 127.0.0.1:8000 no matter what the operator configured (Task 8 review, Important 3).
+        //
+        // Deliberately end-to-end rather than a field-by-field check of `AppState`: the point is
+        // not that each setting is copied somewhere, it is that the refbox actually read is the
+        // one the settings name. `config::Resolved` having no optional fields is what makes the
+        // copying itself impossible to forget.
+        let (refbox_addr, refbox) = fake_refbox(game(GamePeriod::SecondHalf, 44, 9, 3, "15")).await;
+
+        let bridge = start(
+            config::Resolved {
+                refbox: RefboxAddress::from(refbox_addr),
+                ..Default::default()
+            },
+            "http://portal.invalid".to_string(),
+        );
+
+        wait_for_scores(&bridge.state, 9, 3).await;
+        let addr = spawn_test_server(Arc::clone(&bridge.state)).await;
+        let body = get_json(addr, "/scorebug").await;
+        assert_eq!(body[0]["connected"].as_str(), Some("true"));
+        assert_eq!(body[0]["blackScore"].as_str(), Some("9"));
+        assert_eq!(body[0]["clockSeconds"].as_str(), Some("44"));
+
+        refbox.abort();
+    }
+
+    // ------------------------------------------------- one refbox's names on another's game
+
+    /// A Portal that answers every request with the same body, for as long as the test needs it.
+    /// [`serve_once`] answers exactly one connection, which is not enough when a schedule is
+    /// fetched more than once.
+    async fn serve_always(listener: TcpListener, body: String) {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            drain_request(&mut socket).await;
+            write_response(&mut socket, "200 OK", &body).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn team_names_from_the_event_just_left_are_not_shown_on_the_new_refbox_s_game() {
+        // The other half of the attribution rule. Scores and the clock were closed by tagging
+        // each snapshot with its origin; names come from somewhere else entirely -- the Portal
+        // directory, built for whichever *event* the previous refbox reported, and consulted by
+        // game number alone. Tournament game numbers repeat across events, and a refbox that
+        // reports no event id resolves against whatever directory is lying around. So without
+        // clearing it, switching courts shows the right game number with the wrong event's teams.
+        let schedule = serde_json::json!({
+            "games": [{
+                "number": "10",
+                "startsOn": "2026-08-01T09:00:00+10:00",
+                "court": "1",
+                "dark": {"assignment": {"teamId": "teams/1-A"}},
+                "light": {"assignment": {"teamId": "teams/2-A"}},
+            }],
+            "teams": {
+                "teams/1-A": {"name": "event a dark"},
+                "teams/2-A": {"name": "event a light"},
+            },
+        })
+        .to_string();
+        let portal = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let portal_addr = portal.local_addr().expect("local_addr");
+        let portal_task = tokio::spawn(serve_always(portal, schedule));
+
+        let (first_addr, first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "10")).await;
+        let state = Arc::new(AppState::new(config::Resolved {
+            refbox: RefboxAddress::from(first_addr),
+            ..Default::default()
+        }));
+        mark_connected(&state);
+
+        let (tx, rx) = mpsc::unbounded_channel();
+        let consumer = tokio::spawn(consume_snapshots(
+            Arc::clone(&state),
+            rx,
+            Client::new(),
+            format!("http://{portal_addr}"),
+            Arc::new(Notify::new()),
+        ));
+
+        // The first refbox: event A, game 10. Its teams are resolved from the Portal.
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                secs_in_period: 613,
+                scores: BlackWhiteBundle { black: 2, white: 1 },
+                game_number: "10".to_string(),
+                event_id: Some(EventId::from_partial("event-a")),
+                ..Default::default()
+            },
+        ))
+        .expect("channel should accept the first refbox's snapshot");
+        wait_for_scores(&state, 2, 1).await;
+        refresh_once(&state).await;
+
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+        let before = get_json(addr, "/scorebug").await;
+        assert_eq!(
+            before[0]["blackTeam"].as_str(),
+            Some("EVENT A DARK"),
+            "test setup: the first refbox's game should resolve to its own event's teams"
+        );
+
+        // Now switch to a refbox on another court -- which happens to number its games the same
+        // way, and reports no event id of its own.
+        let (second_addr, second) = fake_refbox(game(GamePeriod::FirstHalf, 500, 0, 0, "10")).await;
+        let notice = choose_refbox(&state, &second_addr.to_string()).await;
+        assert!(notice.done, "{}", notice.text);
+
+        tx.send(FeedMessage {
+            from: RefboxAddress::from(second_addr),
+            snapshot: GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                secs_in_period: 500,
+                scores: BlackWhiteBundle { black: 4, white: 4 },
+                game_number: "10".to_string(),
+                event_id: None,
+                ..Default::default()
+            },
+        })
+        .expect("channel should accept the second refbox's snapshot");
+        wait_for_scores(&state, 4, 4).await;
+        mark_connected(&state);
+
+        let after = get_json(addr, "/scorebug").await;
+        assert_eq!(
+            after[0]["blackTeam"].as_str(),
+            Some(""),
+            "the event just left must not supply team names for a game on the refbox just \
+             chosen -- better no name at all than the wrong team's"
+        );
+        assert_eq!(after[0]["whiteTeam"].as_str(), Some(""));
+        assert_eq!(after[0]["blackScore"].as_str(), Some("4"));
+
+        consumer.abort();
+        portal_task.abort();
+        second.abort();
+        first.abort();
+    }
+
+    #[tokio::test]
+    async fn returning_to_an_event_after_a_switch_rebuilds_its_directory_rather_than_reusing_it() {
+        // The same clearing, from the other side: `last_seen` is what decides whether an arriving
+        // event id counts as new. Left set across a switch, an event the bridge has genuinely left
+        // and come back to would look unchanged, and the directory would never be rebuilt -- so
+        // the clearing above would be undone by the very next snapshot.
+        let (first_addr, first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "10")).await;
+        let state = Arc::new(AppState::new(config::Resolved {
+            refbox: RefboxAddress::from(first_addr),
+            ..Default::default()
+        }));
+        let (tx, rx) = mpsc::unbounded_channel();
+        let consumer = tokio::spawn(consume_snapshots(
+            Arc::clone(&state),
+            rx,
+            Client::new(),
+            "http://portal.invalid".to_string(),
+            Arc::new(Notify::new()),
+        ));
+
+        let on_event = |scores: (u8, u8)| GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            scores: BlackWhiteBundle {
+                black: scores.0,
+                white: scores.1,
+            },
+            game_number: "10".to_string(),
+            event_id: Some(EventId::from_partial("event-a")),
+            ..Default::default()
+        };
+
+        tx.send(from_chosen_refbox(&state, on_event((2, 1))))
+            .expect("channel should accept the first snapshot");
+        wait_for_scores(&state, 2, 1).await;
+        let first_directory = read_lock(&state.directory)
+            .clone()
+            .expect("a snapshot carrying an event id should have built a directory");
+
+        let (second_addr, second) = fake_refbox(game(GamePeriod::FirstHalf, 500, 0, 0, "10")).await;
+        let notice = choose_refbox(&state, &second_addr.to_string()).await;
+        assert!(notice.done, "{}", notice.text);
+        assert!(
+            read_lock(&state.directory).is_none(),
+            "the previous refbox's directory must be gone the moment the switch happens"
+        );
+
+        tx.send(FeedMessage {
+            from: RefboxAddress::from(second_addr),
+            snapshot: on_event((7, 7)),
+        })
+        .expect("channel should accept the second refbox's snapshot");
+        wait_for_scores(&state, 7, 7).await;
+
+        let second_directory = read_lock(&state.directory)
+            .clone()
+            .expect("the same event arriving again should have built a directory");
+        assert!(
+            !Arc::ptr_eq(&first_directory, &second_directory),
+            "the same event id arriving after a switch must rebuild the directory, not be \
+             treated as unchanged"
+        );
+
+        consumer.abort();
+        second.abort();
+        first.abort();
+    }
+
+    #[tokio::test]
+    async fn a_second_network_search_while_one_is_running_is_refused_rather_than_queued() {
+        // Same human behaviour as the double-clicked "Use this refbox": a volunteer who does not
+        // see anything happen presses the button again. Two sweeps of 254 addresses would then
+        // run, and the second answer would arrive twice as late for no benefit.
+        let reserved = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener to reserve a port");
+        let port = reserved.local_addr().expect("local_addr").port();
+        drop(reserved);
+
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let port = port.to_string();
+        let (one, two) = tokio::join!(
+            run_scan(&state, "127.0.0.1", &port),
+            run_scan(&state, "127.0.0.1", &port)
+        );
+
+        let refused = [&one, &two]
+            .iter()
+            .filter(|notice| notice.text.contains("A search is already running"))
+            .count();
+        assert_eq!(
+            refused, 1,
+            "exactly one of two overlapping searches should be refused.\nfirst: {}\nsecond: {}",
+            one.text, two.text
+        );
+    }
+
     // -------------------------------------------------------- searching the network (Task 8)
 
     #[tokio::test]
     async fn a_search_lists_what_it_found_with_a_button_that_reads_it() {
         let (refbox_addr, refbox) =
             fake_refbox(game(GamePeriod::SecondHalf, 227, 2, 1, "14")).await;
-        let state = Arc::new(AppState::new(false).with_operator_info(
-            "127.0.0.1".to_string(),
-            9,
-            String::new(),
-        ));
+        let state = Arc::new(AppState::new(config::Resolved {
+            refbox: RefboxAddress::new("127.0.0.1".to_string(), 9),
+            ..Default::default()
+        }));
         let addr = spawn_test_server(Arc::clone(&state)).await;
 
         let page = post_scan_form(addr, "127.0.0.1", &refbox_addr.port().to_string()).await;
@@ -2469,7 +2930,7 @@ mod tests {
         let empty_port = reserved.local_addr().expect("local_addr").port();
         drop(reserved);
 
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         let addr = spawn_test_server(Arc::clone(&state)).await;
 
         let page = post_scan_form(addr, "127.0.0.1", &empty_port.to_string()).await;
@@ -2486,7 +2947,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_search_of_something_that_is_not_a_network_is_reported() {
-        let state = Arc::new(AppState::new(false));
+        let state = Arc::new(AppState::new(config::Resolved::default()));
         let addr = spawn_test_server(Arc::clone(&state)).await;
 
         let page = post_scan_form(addr, "my network", "8000").await;

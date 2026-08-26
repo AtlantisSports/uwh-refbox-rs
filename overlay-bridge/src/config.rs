@@ -36,6 +36,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::feed::RefboxAddress;
+
 /// Identifies the bridge's own settings file to `confy`/`directories`, distinct from `refbox`'s
 /// own `"refbox"` (`refbox/src/main.rs:54`) -- the two are separate applications with separate
 /// config directories.
@@ -77,6 +79,112 @@ pub struct Settings {
 /// explicitly-passed CLI argument beats a stored setting, which beats the built-in default.
 pub fn resolve<T>(cli: Option<T>, stored: Option<T>, default: T) -> T {
     cli.or(stored).unwrap_or(default)
+}
+
+/// Whatever the operator actually typed on the command line this run. Every field is `Option`
+/// because "not passed" has to be distinguishable from "passed, with the same value as the
+/// default" -- see the module doc's precedence section. `main.rs`'s `clap`-derived `Cli` converts
+/// itself into this, and nothing else about `clap` reaches the rest of the crate.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Overrides {
+    pub refbox_host: Option<String>,
+    pub refbox_port: Option<u16>,
+    pub port: Option<u16>,
+    pub white_on_right: Option<bool>,
+    pub court: Option<String>,
+}
+
+/// Every setting the running bridge needs, already resolved -- **one value per setting, with no
+/// way to leave one out.**
+///
+/// This shape is deliberate, and it is the fix for a class of bug rather than an instance of one
+/// (Task 8 review, Important 3). The settings used to reach `server::AppState` through optional
+/// builder methods, so deleting one line in `main.rs` left the bridge running with a *default*
+/// where a configured value belonged -- silently connecting to `127.0.0.1:8000` no matter what
+/// `--refbox-host` or the saved settings said, with every test still green, because nothing about
+/// a missing builder call is visible to a compiler or to a test of anything else. A plain struct
+/// with no optional fields makes that impossible: a setting can be wrong, but it can no longer be
+/// *absent*, and [`resolve_all`] is the single place any of them is decided.
+///
+/// [`Default`] is the bridge's built-in configuration (`127.0.0.1:8000`, HTTP on 8099, white on
+/// the left, no court, nothing remembered anywhere) -- genuinely what a first-ever run with no
+/// flags and no settings file uses, which is also what makes it the honest starting point for a
+/// test that cares about only one field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Resolved {
+    /// Which refbox to read at startup. Only the *starting* point: the operator can choose a
+    /// different one from the status page at any time (see `feed::FeedTarget`).
+    pub refbox: RefboxAddress,
+    /// The bridge's own HTTP port, for vMix and the status page.
+    pub port: u16,
+    pub white_on_right: bool,
+    pub court: String,
+    /// Where to remember a refbox chosen at runtime, or `None` if the settings file's location
+    /// could not be worked out (a choice then still applies for this run -- the status page says
+    /// plainly that it will not be remembered).
+    pub settings_path: Option<PathBuf>,
+}
+
+impl Default for Resolved {
+    fn default() -> Self {
+        Self {
+            refbox: RefboxAddress::new(DEFAULT_REFBOX_HOST, DEFAULT_REFBOX_PORT),
+            port: DEFAULT_PORT,
+            white_on_right: false,
+            court: String::new(),
+            settings_path: None,
+        }
+    }
+}
+
+impl Resolved {
+    /// The persisted form of these settings, for writing back what was actually used this run so
+    /// it becomes "what was last used" next time (design spec §5.3).
+    pub fn to_settings(&self) -> Settings {
+        Settings {
+            refbox_host: Some(self.refbox.host.clone()),
+            refbox_port: Some(self.refbox.port),
+            port: Some(self.port),
+            white_on_right: Some(self.white_on_right),
+            court: Some(self.court.clone()),
+        }
+    }
+}
+
+/// Applies the precedence rule to every setting at once: an explicitly-passed command-line
+/// argument beats a stored one, which beats the built-in default.
+///
+/// The whole of it, in one place, so "where does the bridge get the refbox address from" has
+/// exactly one answer that a test can call directly -- see [`Resolved`] for the bug that made
+/// this worth extracting from `main.rs`.
+pub fn resolve_all(
+    overrides: Overrides,
+    stored: Settings,
+    settings_path: Option<PathBuf>,
+) -> Resolved {
+    let defaults = Resolved::default();
+    Resolved {
+        refbox: RefboxAddress::new(
+            resolve(
+                overrides.refbox_host,
+                stored.refbox_host,
+                defaults.refbox.host,
+            ),
+            resolve(
+                overrides.refbox_port,
+                stored.refbox_port,
+                defaults.refbox.port,
+            ),
+        ),
+        port: resolve(overrides.port, stored.port, defaults.port),
+        white_on_right: resolve(
+            overrides.white_on_right,
+            stored.white_on_right,
+            defaults.white_on_right,
+        ),
+        court: resolve(overrides.court, stored.court, defaults.court),
+        settings_path,
+    }
 }
 
 /// Where the bridge's settings file lives -- the OS-standard per-user config directory for
@@ -333,6 +441,76 @@ mod tests {
         assert!(
             !saved,
             "storing into a path that is a directory cannot succeed, and must be reported"
+        );
+    }
+
+    // ------------------------------------------------------------------------------ resolve_all
+
+    #[test]
+    fn every_setting_follows_the_same_precedence_rule_at_once() {
+        // One test for the whole resolution rather than one per field: `resolve_all` is now the
+        // single place any setting is decided (see `Resolved`), so what matters is that a typed
+        // flag, a stored value and a built-in default each win where they should -- across all of
+        // them together, in one call, the way `main` makes it.
+        let overrides = Overrides {
+            refbox_host: Some("192.168.1.50".to_string()),
+            court: Some("Pool B".to_string()),
+            ..Overrides::default()
+        };
+        let stored = Settings {
+            refbox_host: Some("10.0.0.9".to_string()),
+            refbox_port: Some(8123),
+            port: Some(9001),
+            white_on_right: Some(true),
+            court: Some("Pool A".to_string()),
+        };
+
+        let resolved = resolve_all(overrides, stored, Some(PathBuf::from("/tmp/settings.toml")));
+
+        // Typed this run: wins.
+        assert_eq!(resolved.refbox.host, "192.168.1.50");
+        assert_eq!(resolved.court, "Pool B");
+        // Not typed, but stored: the stored value wins over the built-in default.
+        assert_eq!(resolved.refbox.port, 8123);
+        assert_eq!(resolved.port, 9001);
+        assert!(resolved.white_on_right);
+        assert_eq!(
+            resolved.settings_path,
+            Some(PathBuf::from("/tmp/settings.toml"))
+        );
+    }
+
+    #[test]
+    fn with_nothing_typed_and_nothing_stored_every_setting_is_the_built_in_default() {
+        let resolved = resolve_all(Overrides::default(), Settings::default(), None);
+
+        assert_eq!(resolved, Resolved::default());
+        assert_eq!(resolved.refbox.host, DEFAULT_REFBOX_HOST);
+        assert_eq!(resolved.refbox.port, DEFAULT_REFBOX_PORT);
+        assert_eq!(resolved.port, DEFAULT_PORT);
+    }
+
+    #[test]
+    fn what_was_resolved_is_what_gets_written_back_for_next_time() {
+        // `main` saves the resolved settings on every run so they become "what was last used"
+        // (design spec §5.3). Every field must make that round trip, or a setting the operator
+        // passed once would be forgotten while looking as though it had been saved.
+        let resolved = Resolved {
+            refbox: RefboxAddress::new("192.168.1.50", 8123),
+            port: 9001,
+            white_on_right: true,
+            court: "Pool B".to_string(),
+            settings_path: None,
+        };
+
+        let round_tripped = resolve_all(Overrides::default(), resolved.to_settings(), None);
+
+        assert_eq!(
+            round_tripped,
+            Resolved {
+                settings_path: None,
+                ..resolved
+            }
         );
     }
 

@@ -293,7 +293,23 @@ fn is_usable_scan_source(ip: Ipv4Addr) -> bool {
 /// stored address from a previous session is good evidence of which network the refboxes are on),
 /// otherwise nothing.
 pub fn suggested_scan_network(current: &RefboxAddress) -> String {
-    if let Some(local) = local_ipv4() {
+    suggestion_from(local_ipv4(), current)
+}
+
+/// The choice [`suggested_scan_network`] makes, with the one part that depends on the machine
+/// passed in rather than looked up.
+///
+/// Split out because it could not otherwise be tested where it matters (Task 8 review, Important
+/// 2). `local_ipv4()` returns an address on any machine with a default route and `None` on one
+/// without -- so a test that called `suggested_scan_network` directly could only ever exercise
+/// whichever branch that particular machine happened to take, and the `None` branch is precisely
+/// the one that runs at a venue with no route to the outside world. Passing the local address in
+/// makes all three outcomes reachable from a test on any machine.
+///
+/// `local` is expected to be already filtered by [`is_usable_scan_source`] (which is what
+/// `local_ipv4` does); this function's own job is the fallback chain, not re-checking that.
+fn suggestion_from(local: Option<Ipv4Addr>, current: &RefboxAddress) -> String {
+    if let Some(local) = local {
         return local.to_string();
     }
     match current.host.parse::<IpAddr>() {
@@ -613,37 +629,70 @@ mod tests {
         );
     }
 
-    // ----------------------------------------------------------------------------- local_ipv4
+    // ------------------------------------------------ what to suggest scanning (local_ipv4)
+    //
+    // Every branch below runs on every machine, which is the point: whether this computer has a
+    // route to the outside world decides which branch `suggested_scan_network` itself takes, and
+    // the no-route branch -- a venue network with no way out, which is an ordinary thing at a pool
+    // -- would otherwise never be exercised anywhere it will ever run.
 
     #[test]
-    fn the_suggested_scan_network_is_never_a_useless_one() {
-        // What this can assert depends on the machine: a computer with a route to the outside
-        // world has a real local address, one without has none, and a test that demanded either
-        // would be wrong somewhere. What must hold everywhere is that the suggestion is never
-        // something that would send the operator on a scan that cannot find anything -- loopback,
-        // or the unspecified address.
-        if let Some(local) = local_ipv4() {
-            assert!(is_usable_scan_source(local), "got {local}");
-        }
-
-        // With no local address to be had, an IPv4 refbox address already in use is the fallback,
-        // and that part is testable everywhere.
-        let suggestion = suggested_scan_network(&RefboxAddress::new("192.168.7.20", 8000));
-        assert!(
-            !suggestion.is_empty(),
-            "with a real IPv4 refbox address in use, there should always be something to suggest"
+    fn this_computers_own_address_is_what_gets_suggested_when_there_is_one() {
+        assert_eq!(
+            suggestion_from(
+                Some(Ipv4Addr::new(192, 168, 4, 7)),
+                &RefboxAddress::new("10.0.0.9", 8000)
+            ),
+            "192.168.4.7",
+            "the computer's own network beats a remembered refbox address: it is where this \
+             machine can actually see refboxes"
         );
+    }
 
-        // A hostname is not a network, and neither is loopback: with nothing usable anywhere, the
-        // field is left empty rather than pre-filled with a scan that could not work.
-        if local_ipv4().is_none() {
+    #[test]
+    fn with_no_local_address_the_refbox_already_in_use_names_the_network() {
+        // The venue-with-no-route case. A refbox address remembered from a previous session is
+        // good evidence of which network the refboxes are on.
+        assert_eq!(
+            suggestion_from(None, &RefboxAddress::new("10.0.0.9", 8000)),
+            "10.0.0.9"
+        );
+    }
+
+    #[test]
+    fn with_nothing_usable_to_suggest_the_field_is_left_empty() {
+        // A hostname is not a network, and loopback would scan this computer alone. Either would
+        // send the operator on a search that could not possibly find their refbox, which is worse
+        // than an empty field they can type into.
+        for host in ["refbox.local", "127.0.0.1", "::1", ""] {
             assert_eq!(
-                suggested_scan_network(&RefboxAddress::new("refbox.local", 8000)),
-                ""
+                suggestion_from(None, &RefboxAddress::new(host, 8000)),
+                "",
+                "{host:?} is not a network to suggest scanning"
             );
-            assert_eq!(
-                suggested_scan_network(&RefboxAddress::new("127.0.0.1", 8000)),
-                ""
+        }
+    }
+
+    #[test]
+    fn a_scan_source_has_to_be_an_address_a_refbox_could_be_near() {
+        assert!(is_usable_scan_source(Ipv4Addr::new(192, 168, 1, 5)));
+        assert!(is_usable_scan_source(Ipv4Addr::new(10, 0, 0, 9)));
+        assert!(!is_usable_scan_source(Ipv4Addr::LOCALHOST));
+        assert!(!is_usable_scan_source(Ipv4Addr::UNSPECIFIED));
+        assert!(!is_usable_scan_source(Ipv4Addr::BROADCAST));
+        assert!(!is_usable_scan_source(Ipv4Addr::new(224, 0, 0, 1)));
+    }
+
+    #[test]
+    fn asking_this_computer_for_its_own_address_never_answers_with_a_useless_one() {
+        // Whether there is an answer at all depends on the machine, so this asserts only what
+        // holds either way: `local_ipv4` never hands back something `suggestion_from` would then
+        // pass on as a network to scan. The three branches of that decision are covered above,
+        // deterministically; this covers the filter actually being applied to the real lookup.
+        if let Some(local) = local_ipv4() {
+            assert!(
+                is_usable_scan_source(local),
+                "local_ipv4 must filter what it returns, got {local}"
             );
         }
     }

@@ -425,8 +425,29 @@ Scan concurrently with a short timeout, and close each probe as soon as one snap
 - A refused port is not reported and does not fail the scan.
 - The scan completes within a few seconds for a full 254-address range.
 
-Manual entry stays available: a first scan may raise a Windows firewall prompt, and some venue
-networks block it.
+**Amended after Task 7 — this task OWNS runtime address selection, both halves of it.** The earlier
+wording said "manual entry stays available", which assumed Task 7 had shipped an editable address
+field. It did not: Task 7's page displays the address read-only, and changing it means relaunching
+the program with a flag. That was the right call there — a field that saves an address without
+reconnecting is worse than no field — but it means the machinery has no owner until here.
+
+So this task builds both ways of choosing a refbox, because both need the same thing underneath:
+**setting the address at runtime and making the supervisor reconnect to it.** Picking one from the
+scan results and typing one by hand are two front ends onto that single mechanism. Manual entry is
+not optional garnish — a first scan may raise a Windows firewall prompt, and some venue networks
+block scanning entirely, so typing an address must always work.
+
+Reconnecting must not weaken the connection rule: the supervisor drops its current connection and
+connects to the new address, and liveness continues to come from the connection itself, never from
+message timing. Serving the last values from the old refbox while the new one is being reached
+would be exactly the "confidently wrong" behaviour §4.6 removed.
+
+**Additional tests must prove:**
+- Setting a new address makes the supervisor connect to it, and the tables then serve that
+  refbox's game rather than the previous one's.
+- A submitted address that is malformed or unreachable is reported to the operator and leaves the
+  existing connection alone, rather than tearing down a working one.
+- The chosen address persists, so a restart comes back to the same refbox.
 
 **Commit:** `feat(overlay-bridge): find refboxes on the local network`
 

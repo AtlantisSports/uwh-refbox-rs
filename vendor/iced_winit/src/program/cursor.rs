@@ -37,9 +37,9 @@ impl CursorTracker {
     /// This mapping lives here, rather than in `state.rs`'s event `match`, so
     /// that it is covered by the tests below. It is the fix's wiring, and it is
     /// easy to lose: upstream `iced_winit` handles `CursorMoved` and `Touch` in
-    /// ONE shared arm and has no `CursorEntered` arm at all, so a re-vendor that
-    /// reinstates upstream's arm shape would leave every method below intact and
-    /// the fix inert.
+    /// ONE shared arm and has no `CursorEntered` arm at all, so a re-vendor
+    /// that reinstates upstream's arm shape would leave every method below
+    /// intact and the fix inert.
     pub(crate) fn handle(&mut self, event: &WindowEvent) {
         match event {
             WindowEvent::CursorMoved { position, .. } => {
@@ -184,7 +184,7 @@ mod tests {
     fn a_restored_pointer_cannot_overwrite_a_touch() {
         let mut c = CursorTracker::default();
 
-        c.left();                    // wl_pointer.leave, cursor hidden for touch
+        c.left();                   // wl_pointer.leave, cursor hidden for touch
         c.touched(at(530.0, 190.125));   // wl_touch.down
         c.touched(at(529.0, 190.125));   // wl_touch.motion
         c.touched(at(529.0, 191.625));   // wl_touch.motion
@@ -338,9 +338,10 @@ mod tests {
     }
 
     /// The same captured tap as `a_restored_pointer_cannot_overwrite_a_touch`,
-    /// replayed as the `WindowEvent`s winit delivers instead of as direct method
-    /// calls, so the end-to-end path is pinned and not just the helpers. Both
-    /// pointer leaves and both pointer restores from the capture are included.
+    /// replayed as the `WindowEvent`s winit delivers instead of as direct
+    /// method calls, so the end-to-end path is pinned and not just the helpers.
+    /// Both pointer leaves and both pointer restores from the capture are
+    /// included.
     #[test]
     fn the_captured_tap_survives_when_replayed_as_window_events() {
         let mut c = CursorTracker::default();

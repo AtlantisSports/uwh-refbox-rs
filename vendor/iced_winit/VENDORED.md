@@ -23,8 +23,10 @@ Verbatim copy of `iced_winit` 0.13.0 from crates.io, with THREE deliberate diver
    compositors restore the mouse pointer immediately after a touch ends, and that synthetic
    pointer position overwrites the touch position before the widget tree sees the finger lift,
    so touchscreen taps are silently discarded. See
-   `docs/superpowers/plans/2026-08-26-touch-tap-discarded-cursor-warp.md`. This vendoring
-   exists so that fix can be applied here.
+   `docs/decisions/025-vendored-iced-winit-touch-fix.md` for the decision and
+   `docs/superpowers/plans/2026-08-26-touch-tap-discarded-cursor-warp.md` for the full
+   `WAYLAND_DEBUG` capture and the source-cited chain. This vendoring exists so that fix can be
+   applied here.
 
    This divergence now carries the actual behaviour fix. `state.rs`'s
    `cursor_position: Option<PhysicalPosition<f64>>` field became a `CursorTracker` value
@@ -60,6 +62,22 @@ Verbatim copy of `iced_winit` 0.13.0 from crates.io, with THREE deliberate diver
    "available at the last tap point" indefinitely. That is a deliberate choice, not an
    accident, and a future maintainer should know it.
 
+   That residual has two faces. The *visual* one is nil: every base button style in
+   `refbox/src/app/theme/button.rs` pairs `Status::Hovered` with `Status::Active` in the same
+   match arm, so a stuck cursor cannot make anything look hovered. The *input* one is real and
+   matters more. winit's `MouseInput` and
+   `MouseWheel` events carry no position of their own, so iced evaluates them against whatever
+   the tracked cursor says. With a mouse attached, after a tap and with the physical pointer
+   parked elsewhere, a click or a wheel scroll made **without moving the mouse first** acts on the
+   widget under the last tap — usually the button just tapped — rather than on the widget under
+   the pointer. Before this fix, the synthetic move made the parked pointer position current, so
+   those clicks landed where the pointer was. This is an inversion, not merely a lag.
+
+   There is no cheap remedy: the true pointer position is genuinely unknown until winit sends the
+   next `CursorMoved`, so nothing here can reconstruct it. It is accepted rather than fixed
+   because the tournament Pi runs with no mouse attached, and the first mouse movement clears it.
+   Do not attempt a code workaround without new evidence that this hurts somebody.
+
 3. `deprecated = "allow"` added to the existing `[lints.rust]` table in `Cargo.toml`.
 
    Why: cargo passes `--cap-lints allow` only to packages it fetches from a registry or a git
@@ -87,11 +105,34 @@ Verbatim copy of `iced_winit` 0.13.0 from crates.io, with THREE deliberate diver
    Setting `env: RUSTFLAGS: ""` on the CI step instead would have fixed only the first face and
    left the second armed.
 
-Every other file must stay byte-identical to upstream so re-vendoring is a clean diff.
-To re-vendor: copy the new upstream version in, then re-add the empty `[workspace]` table to
-the new `Cargo.toml`, and re-apply the cursor-tracking extraction and its fix to
-`src/program/state.rs` and `src/program/cursor.rs`, per whatever instructions land alongside
-them.
+Three files exist here that upstream does not ship at all, and they are as much part of the
+vendoring as the divergences above:
+
+- `VENDORED.md` — this file.
+- `.gitignore` — one line, `/target`. The repo-root `.gitignore` anchors `/target` to the repo
+  root, so it does not cover this crate's own target directory.
+- `Cargo.lock` — committed on purpose; see "Dependency resolution and the committed lock" below.
+
+Every other file must stay byte-identical to upstream so re-vendoring is a clean diff. To
+re-vendor:
+
+1. Keep the three files above. A plain `rm -rf vendor/iced_winit && cp -r <upstream> ...` loses
+   all three; move them aside first, or copy the new upstream files in over the top.
+2. Copy the new upstream version in and delete its `.cargo-ok`.
+3. Re-add the empty `[workspace]` table (divergence 1) and `deprecated = "allow"` in
+   `[lints.rust]` (divergence 3) to the new `Cargo.toml`.
+4. Re-apply divergence 2: the `mod cursor;` line in `src/program.rs`, the `CursorTracker` field
+   and `self.cursor.handle(event)` call in `src/program/state.rs`, and `src/program/cursor.rs`
+   itself. Upstream's cursor arms in `state.rs`'s `update()` must be deleted, not kept alongside.
+5. Regenerate the lock (`cargo generate-lockfile --manifest-path vendor/iced_winit/Cargo.toml`)
+   and commit it, then confirm `just test-vendor` still counts the cursor tests and
+   `just check-patch-applied` still finds the vendored path.
+
+**Do NOT run `cargo fmt` on this crate, and do not add it to `fmt-check`.** This repo has no
+`rustfmt.toml`, so rustfmt would use its 100-column default, while upstream iced is formatted at
+80. Formatting this directory would reflow every upstream file and destroy the byte-identical
+invariant the whole re-vendoring recipe depends on. The crate is excluded from the workspace, so
+`cargo fmt --all` does not reach it — keep it that way.
 
 This crate is deliberately EXCLUDED from the main workspace, which keeps it out of
 `cargo clippy --all`'s primary set, so our clippy lints are never reported against
@@ -106,8 +147,11 @@ The cursor tracker's tests live inside `src/program`, which upstream gates behin
 enable by default. Without it, `src/program` is never compiled, so the tests silently do not
 exist to `cargo test` rather than failing: it reports "0 tests, ok" instead of running any of
 them. Because of this, `just test-vendor`'s recipe and the CI step that mirrors it both pass
-`--features program` explicitly, alongside `--locked`. If that flag is ever dropped, the gate
-does not fail — it just goes quiet again, so treat its presence in both places as load-bearing.
+`--features program` explicitly, alongside `--locked`. Dropping that flag used to make the gate
+go quiet rather than fail, which is how it sat inert for two tasks. Both the recipe and the CI
+step now count the cursor tests after running them (`-- --list | grep -c 'cursor::tests::'`) and
+fail if the count is zero, so the flag going missing is a hard failure, not silence. Treat both
+the flag and the count assertion as load-bearing.
 
 Enabling `program` also compiles upstream code that was never built before this feature flag
 was added, which surfaces two pre-existing `deprecated` warnings about

@@ -9,7 +9,7 @@ default:
 # ── Validation ────────────────────────────────────────────────────────────────
 
 # Run the full validation suite (same checks as CI) — use before any PR
-check: fmt-check lint test audit
+check: fmt-check lint test test-vendor audit
 
 # ── Formatting ────────────────────────────────────────────────────────────────
 
@@ -33,6 +33,11 @@ lint:
 # Run all workspace tests
 test:
     cargo test --workspace
+
+# Run the vendored iced_winit tests (excluded from the workspace, so `cargo test
+# --workspace` does not reach them)
+test-vendor:
+    cargo test --manifest-path vendor/iced_winit/Cargo.toml
 
 # ── Security ──────────────────────────────────────────────────────────────────
 

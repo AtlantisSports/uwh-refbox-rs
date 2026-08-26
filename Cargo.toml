@@ -15,4 +15,11 @@ members = [
 
 exclude = [
   "wireless-remote",
+  "vendor/iced_winit",
 ]
+
+# `iced_winit` is vendored to carry a single fix: iced 0.13 shares one cursor
+# position between mouse and touch, and a compositor restoring the pointer after
+# a touch discarded the tap. See vendor/iced_winit/VENDORED.md.
+[patch.crates-io]
+iced_winit = { path = "vendor/iced_winit" }

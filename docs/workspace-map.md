@@ -131,6 +131,15 @@ test and validate. See `.claude/rules/embedded.md` for full rules.
 
 ---
 
+## `vendor/iced_winit` (Vendored third-party crate, excluded from main workspace)
+
+A verbatim copy of the third-party `iced_winit` 0.13.0 crate, redirected in via
+`[patch.crates-io]` so that a touchscreen-tap fix could be applied to it — read
+`vendor/iced_winit/VENDORED.md` before touching anything in there, and
+`docs/decisions/025-vendored-iced-winit-touch-fix.md` for why it exists.
+
+---
+
 ## Dependency Map
 
 Who depends on what:

@@ -17,7 +17,7 @@ where
     scale_factor: f64,
     viewport: Viewport,
     viewport_version: u64,
-    cursor_position: Option<winit::dpi::PhysicalPosition<f64>>,
+    cursor: super::cursor::CursorTracker,
     modifiers: winit::keyboard::ModifiersState,
     theme: P::Theme,
     appearance: program::Appearance,
@@ -33,7 +33,7 @@ where
             .field("scale_factor", &self.scale_factor)
             .field("viewport", &self.viewport)
             .field("viewport_version", &self.viewport_version)
-            .field("cursor_position", &self.cursor_position)
+            .field("cursor", &self.cursor)
             .field("appearance", &self.appearance)
             .finish()
     }
@@ -68,7 +68,7 @@ where
             scale_factor,
             viewport,
             viewport_version: 0,
-            cursor_position: None,
+            cursor: super::cursor::CursorTracker::default(),
             modifiers: winit::keyboard::ModifiersState::default(),
             theme,
             appearance,
@@ -104,7 +104,8 @@ where
 
     /// Returns the current cursor position of the [`State`].
     pub fn cursor(&self) -> mouse::Cursor {
-        self.cursor_position
+        self.cursor
+            .position()
             .map(|cursor_position| {
                 conversion::cursor_position(
                     cursor_position,
@@ -166,14 +167,17 @@ where
 
                 self.viewport_version = self.viewport_version.wrapping_add(1);
             }
-            WindowEvent::CursorMoved { position, .. }
-            | WindowEvent::Touch(Touch {
-                location: position, ..
-            }) => {
-                self.cursor_position = Some(*position);
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor.moved(*position);
+            }
+            WindowEvent::Touch(Touch { location, .. }) => {
+                self.cursor.touched(*location);
+            }
+            WindowEvent::CursorEntered { .. } => {
+                self.cursor.entered();
             }
             WindowEvent::CursorLeft { .. } => {
-                self.cursor_position = None;
+                self.cursor.left();
             }
             WindowEvent::ModifiersChanged(new_modifiers) => {
                 self.modifiers = new_modifiers.state();

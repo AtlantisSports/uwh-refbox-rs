@@ -16,7 +16,8 @@ Verbatim copy of `iced_winit` 0.13.0 from crates.io, with THREE deliberate diver
    normal checkout and a nested one.
 
 2. Cursor bookkeeping extracted out of `src/program/state.rs` into a new
-   `src/program/cursor.rs`.
+   `src/program/cursor.rs`, declared by a one-line `mod cursor;` added to
+   `src/program.rs`.
 
    Why: iced 0.13 exposes a single cursor position shared between mouse and touch. Wayland
    compositors restore the mouse pointer immediately after a touch ends, and that synthetic
@@ -27,9 +28,18 @@ Verbatim copy of `iced_winit` 0.13.0 from crates.io, with THREE deliberate diver
 
    This divergence now carries the actual behaviour fix. `state.rs`'s
    `cursor_position: Option<PhysicalPosition<f64>>` field became a `CursorTracker` value
-   (defined in the new `cursor.rs`), and `state.rs` delegates to it. `CursorTracker` tracks
-   two extra bits of state: whether touch or the mouse last owned the cursor
-   (`touch_is_current`), and whether the next mouse move is the synthetic one winit emits
+   (defined in the new `cursor.rs`), and `state.rs` delegates to it: `update()` calls
+   `self.cursor.handle(event)` once, before its own `match`, and upstream's cursor arms are
+   gone from that `match` entirely. The event mapping — which `WindowEvent` means what to the
+   cursor — therefore lives in `cursor.rs` alongside the logic, where the tests can reach it.
+   That placement is deliberate: upstream handles `CursorMoved` and `Touch` in ONE shared arm
+   and has no `CursorEntered` arm at all, so a re-vendor that reinstated upstream's arm shape
+   would leave `CursorTracker`'s methods intact and the fix inert. With the mapping tested,
+   that mutation fails three tests instead of passing silently. Nothing else in `update()`'s
+   `match` reads or writes the cursor, so calling `handle` before it cannot change behaviour.
+
+   `CursorTracker` tracks two extra bits of state: whether touch or the mouse last owned the
+   cursor (`touch_is_current`), and whether the next mouse move is the synthetic one winit emits
    right after a pointer enter (`suppress_next_moved`). On `entered()`, if touch currently
    owns the cursor, the tracker arms that suppression flag; the next `moved()` then consumes
    the flag and is dropped instead of overwriting the position, so the compositor's restored

@@ -25,11 +25,13 @@ use uwh_common::game_snapshot::GameSnapshot;
 pub struct LiveState {
     /// The most recent real snapshot received from the refbox.
     last: GameSnapshot,
-    /// When `last` arrived, on the caller's clock. Nothing in this module reads this -- it is
-    /// kept so a caller (the operator status page, Task 7's job) can report how long ago the
-    /// refbox last actually spoke, which is a fact worth showing on its own but is never used to
-    /// decide whether the connection is alive. That question belongs entirely to
-    /// [`crate::feed::Connection`]; see the module doc.
+    /// When `last` arrived, on the caller's clock. **Deliberately has no accessor.** It is kept
+    /// (not deleted) because a future operator status page (Task 7's job, spec §5.6: "how long
+    /// since the refbox last spoke") will want it -- but nothing anywhere in this crate reads it
+    /// today, and that is on purpose, not an oversight: with no way to get elapsed time out of
+    /// this struct, a timing-based liveness rule cannot be reintroduced here by accident. That
+    /// question belongs entirely to [`crate::feed::Connection`]; see the module doc. When Task 7
+    /// actually needs this value, add the accessor back then, deliberately, at the point of use.
     last_arrived_at: Instant,
 }
 
@@ -59,13 +61,6 @@ impl LiveState {
         Display {
             snapshot: self.last.clone(),
         }
-    }
-
-    /// When the last real snapshot arrived, on the caller's clock. See the `last_arrived_at`
-    /// field doc -- purely informational, never used by this module (or by anything decided
-    /// here) to judge whether the refbox is still reachable.
-    pub fn last_arrived_at(&self) -> Instant {
-        self.last_arrived_at
     }
 }
 
@@ -119,7 +114,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_overwrites_the_previous_snapshot_and_arrival_time_outright() {
+    fn apply_overwrites_the_previous_snapshot_outright() {
         let t0 = Instant::now();
         let base = first_half_snapshot();
         let mut state = LiveState::new(base, t0);
@@ -129,6 +124,10 @@ mod tests {
             secs_in_period: 42,
             ..first_half_snapshot()
         };
+        // `t1` is passed to `apply` purely because the method requires an arrival time to store
+        // (see the `last_arrived_at` field doc: kept for a future caller, deliberately with no
+        // accessor, so nothing here can read it back to assert on). This test's only observable
+        // claim is about `current()`'s snapshot.
         state.apply(next.clone(), t1);
 
         assert_eq!(
@@ -136,7 +135,6 @@ mod tests {
             next,
             "apply must replace the held snapshot outright, not blend with what came before"
         );
-        assert_eq!(state.last_arrived_at(), t1);
     }
 
     #[test]

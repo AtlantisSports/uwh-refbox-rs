@@ -368,6 +368,19 @@ impl Supervisor {
                     continue;
                 }
             };
+            // This fires the instant the TCP handshake completes -- before the refbox's replayed
+            // snapshot (its current game state, sent to every new client immediately on connect;
+            // see `refbox/src/app/update_sender.rs:606-630`) has actually been read and parsed.
+            // So there is a real, but narrow, window in which a request could see `connected:
+            // "true"` while `state::LiveState` still holds whatever it held before this
+            // reconnect (a stale value after a long outage, or the startup-seeded default on the
+            // very first connect). Because the refbox sends that replay unprompted and
+            // immediately -- no request from the bridge required -- this window is milliseconds,
+            // not the seconds-to-tens-of-seconds scale the rest of this design reasons about, and
+            // closing it would need no refbox change. Left open deliberately rather than adding
+            // complexity (e.g. delaying `set_connected` until the first snapshot arrives, which
+            // would just reintroduce a data-arrival dependency this design otherwise avoids) for a
+            // gap this small.
             connection.set_connected();
 
             if let Err(e) = configure_keepalive(&stream) {

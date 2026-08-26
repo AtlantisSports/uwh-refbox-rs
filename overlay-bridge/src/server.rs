@@ -1052,21 +1052,12 @@ mod tests {
         assert_eq!(row["clockSeconds"].as_str(), Some(""));
     }
 
-    #[tokio::test]
-    async fn a_long_silence_with_the_connection_still_alive_keeps_serving_real_values_and_connected_true()
-     {
-        // THE regression guard for the trap. If this were ever rewritten to derive `connected`
-        // (or anything else) from how long it has been since a message arrived -- instead of
-        // from `feed::Connection` -- this test would go red: the wait below deliberately outlasts
-        // the 3-second `CONTACT_THRESHOLD` the old, now-deleted, silence-based `state::Contact`
-        // used, while the TCP connection itself stays open and healthy throughout.
-        //
-        // This was verified directly while implementing this task: temporarily changing
-        // `is_connected` to `Instant::now().duration_since(read_lock(&state.live).last_arrived_at())
-        // < Duration::from_secs(3)` made this test fail (`connected` read `"false"` and every
-        // other field came back blank) after the sleep below; reverting to the real
-        // `state.connection.get().is_live()` makes it pass again. See the report for this task
-        // for the full red/green transcript.
+    /// Runs a real `feed::Supervisor` against a real loopback socket, sends exactly one real
+    /// snapshot, then leaves the connection open and silent for `silent_for` before asserting
+    /// `/scorebug` still reports `connected: "true"` and exactly the values that one snapshot
+    /// carried. Shared by the two regression guards for "the trap" (spec §4.6, §5.4) below, which
+    /// differ only in how long they wait -- see each test's own doc for why both exist.
+    async fn assert_scorebug_survives_silence(silent_for: Duration) {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind a local listener");
@@ -1109,10 +1100,9 @@ mod tests {
             .expect("write the one real snapshot");
 
         // Let the consumer apply it, then leave the connection open -- `refbox_side` stays in
-        // scope, so the socket stays alive -- and send nothing further for well over the deleted
-        // 3-second threshold. This is exactly what the refbox itself does for ~25s every time the
-        // clock is stopped.
-        tokio::time::sleep(Duration::from_secs(6)).await;
+        // scope, so the socket stays alive -- and send nothing further for `silent_for`. This is
+        // exactly what the refbox itself does for ~25s every time the clock is stopped.
+        tokio::time::sleep(silent_for).await;
 
         let addr = spawn_test_server(Arc::clone(&state)).await;
         let body = get_json(addr, "/scorebug").await;
@@ -1121,8 +1111,8 @@ mod tests {
         assert_eq!(
             row["connected"].as_str(),
             Some("true"),
-            "the TCP connection is still alive and nothing about it has gone wrong -- silence \
-             alone must never flip this to false"
+            "the TCP connection is still alive and nothing about it has gone wrong -- \
+             {silent_for:?} of silence alone must never flip this to false"
         );
         assert_eq!(
             row["clockSeconds"].as_str(),
@@ -1134,6 +1124,39 @@ mod tests {
 
         supervisor.abort();
         consumer.abort();
+    }
+
+    #[tokio::test]
+    async fn a_six_second_silence_with_the_connection_alive_keeps_serving_real_values_and_connected_true()
+     {
+        // A fast sanity check, not the authoritative guard for the trap -- see
+        // `a_very_long_silence_...` below for that one. On its own this only rules out a rule
+        // whose threshold sits under six seconds (the deleted `state::Contact`'s old 3-second
+        // `CONTACT_THRESHOLD` among them). A regression with any threshold >= 6s -- including the
+        // 10-15s keepalive detection window spec §4.6 itself cites, or anything approaching the
+        // 25s field-measured stopped-clock silence -- would still pass this test alone and go
+        // undetected; that gap is exactly what the longer guard below closes.
+        assert_scorebug_survives_silence(Duration::from_secs(6)).await;
+    }
+
+    #[tokio::test]
+    async fn a_very_long_silence_with_the_connection_alive_keeps_serving_real_values_and_connected_true()
+     {
+        // THE regression guard for the trap (spec §4.6, §5.4). 30 real seconds, deliberately
+        // comfortably above every timing threshold named anywhere in the design: the deleted
+        // 3-second `CONTACT_THRESHOLD`, the 10-15s keepalive detection window §4.6 itself cites,
+        // and the 25s field-measured stopped-clock silence -- "well over any plausible timeout"
+        // has to mean this, not the 6-second test above alone. This spends real wall-clock time
+        // on purpose rather than a paused/virtual one: the serving path this exercises is built
+        // on `std::time::Instant`, which ignores tokio's paused clock entirely, so faking the
+        // elapsed time here would mean not actually testing the real code path.
+        //
+        // Verified directly while fixing this test (see the report for this task for the full
+        // transcript): temporarily reintroducing a silence-based `is_connected` with a 15-second
+        // threshold -- comfortably inside the gap the 6-second test above cannot see -- left that
+        // shorter test green (false confidence) while this one correctly went red; reverting to
+        // the real `state.connection.get().is_live()` makes both pass again.
+        assert_scorebug_survives_silence(Duration::from_secs(30)).await;
     }
 
     #[tokio::test]

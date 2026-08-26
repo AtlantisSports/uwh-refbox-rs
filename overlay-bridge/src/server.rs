@@ -1501,17 +1501,23 @@ mod tests {
             refresh_notify,
         ));
 
+        // Each of the three snapshots carries a different score, and each is waited for by that
+        // score rather than by a fixed delay. That is what stops this test passing for the wrong
+        // reason: `Arc::ptr_eq` below holds trivially if the consumer never processed the blip and
+        // the recovery at all, so the test has to prove it did. Do not replace these waits with a
+        // sleep, and do not make the scores identical.
         let event = EventId::from_partial("evt");
         tx.send(from_chosen_refbox(
             &state,
             GameSnapshot {
                 event_id: Some(event.clone()),
                 game_number: "1".to_string(),
+                scores: BlackWhiteBundle { black: 1, white: 0 },
                 ..Default::default()
             },
         ))
         .expect("channel should accept the first snapshot");
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        wait_for_scores(&state, 1, 0).await;
         let directory_before = read_lock(&state.directory)
             .clone()
             .expect("a directory should exist after the event id is learned");
@@ -1523,22 +1529,24 @@ mod tests {
             GameSnapshot {
                 event_id: None,
                 game_number: "1".to_string(),
+                scores: BlackWhiteBundle { black: 2, white: 0 },
                 ..Default::default()
             },
         ))
         .expect("channel should accept the blip");
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        wait_for_scores(&state, 2, 0).await;
 
         tx.send(from_chosen_refbox(
             &state,
             GameSnapshot {
                 event_id: Some(event),
                 game_number: "1".to_string(),
+                scores: BlackWhiteBundle { black: 3, white: 0 },
                 ..Default::default()
             },
         ))
         .expect("channel should accept the recovered snapshot");
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        wait_for_scores(&state, 3, 0).await;
 
         let directory_after = read_lock(&state.directory)
             .clone()

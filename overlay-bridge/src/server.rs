@@ -92,7 +92,7 @@ use std::{
 use axum::{
     Form, Json, Router,
     extract::State,
-    http::{HeaderMap, header},
+    http::{HeaderMap, StatusCode, header},
     response::{Html, Redirect},
     routing::{get, post},
 };
@@ -434,6 +434,53 @@ async fn get_status_page(State(state): State<Arc<AppState>>, headers: HeaderMap)
     Html(status::render_page(&data))
 }
 
+/// What a state-changing route answers with, once it is allowed to run: a redirect back to
+/// `GET /`, or a refusal (see [`refuse_cross_site`]).
+type ActionResult = Result<Redirect, (StatusCode, &'static str)>;
+
+/// The sentence a refused request gets back. It is written for the rare case where a real
+/// operator sees it -- an unusual browser, or a bookmarklet -- rather than for the attacker it is
+/// actually aimed at, who will never read it.
+const CROSS_SITE_REFUSAL: &str = "This can only be done from the bridge's own status page. Open \
+                                  the bridge's address in a browser and use the buttons there.\n";
+
+/// Refuses a request that some *other* website's page made, on the routes that change what is on
+/// air. Every other request is allowed through untouched.
+///
+/// # Why the state-changing routes need this and the read-only ones do not
+///
+/// The bridge binds every network interface, has no password by design (design spec §6: anyone on
+/// the venue network can read it), and its two actions are plain HTML form posts. Reading a table
+/// is harmless -- that is the whole point of the bridge. But `POST /refbox` points the bridge at a
+/// different refbox, which takes the current game's graphic off air, and a form post is exactly
+/// what any web page open in a browser on the streaming PC can make to any address it likes,
+/// without ever being able to read the reply. So an ordinary advert or a mistyped URL, in a tab
+/// nobody is even looking at, could switch courts in the middle of a broadcast.
+///
+/// # Why this check and not a login
+///
+/// `Sec-Fetch-Site` is set by the **browser**, not by the page making the request, and cannot be
+/// forged from JavaScript -- a request originating from a page on another site arrives stamped
+/// `cross-site`. Refusing exactly that value costs a volunteer nothing: the status page's own
+/// forms are same-origin, so every real operator click is unaffected, and there is no password to
+/// distribute, forget or lock someone out with five minutes before a final. A request with no
+/// `Sec-Fetch-Site` header at all (a script, `curl`, an old browser) is deliberately still
+/// allowed -- this closes the browser-driven path, which is the one an operator cannot see
+/// happening, and does not pretend to be authentication for a network the design already treats
+/// as trusted to read.
+fn refuse_cross_site(headers: &HeaderMap) -> Result<(), (StatusCode, &'static str)> {
+    let cross_site = headers
+        .get("sec-fetch-site")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("cross-site"));
+
+    if cross_site {
+        Err((StatusCode::FORBIDDEN, CROSS_SITE_REFUSAL))
+    } else {
+        Ok(())
+    }
+}
+
 /// The manual-entry field, and the hidden field behind every "use this refbox" button in a scan
 /// result -- deliberately the same field name posted to the same route, because they are the same
 /// action (see the module doc). `serde(default)` rather than a required field so a form that
@@ -445,14 +492,17 @@ struct AddressForm {
     address: String,
 }
 
-/// `POST /refbox` -- point the bridge at a different refbox.
+/// `POST /refbox` -- point the bridge at a different refbox. Refused if some other website's page
+/// made the request; see [`refuse_cross_site`].
 async fn post_refbox(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Form(form): Form<AddressForm>,
-) -> Redirect {
+) -> ActionResult {
+    refuse_cross_site(&headers)?;
     let notice = choose_refbox(&state, &form.address).await;
     *write_lock(&state.notice) = Some(notice);
-    Redirect::to("/")
+    Ok(Redirect::to("/"))
 }
 
 /// The scan form. Both fields are text, and both are `serde(default)`, for the same reason as
@@ -464,11 +514,18 @@ struct ScanForm {
     port: String,
 }
 
-/// `POST /scan` -- check the local network for refboxes.
-async fn post_scan(State(state): State<Arc<AppState>>, Form(form): Form<ScanForm>) -> Redirect {
+/// `POST /scan` -- check the local network for refboxes. Refused on the same terms as
+/// [`post_refbox`]: a scan changes nothing about what is on air, but it does sweep 254 addresses,
+/// and there is no reason for another site to be able to start one.
+async fn post_scan(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Form(form): Form<ScanForm>,
+) -> ActionResult {
+    refuse_cross_site(&headers)?;
     let notice = run_scan(&state, &form.network, &form.port).await;
     *write_lock(&state.notice) = Some(notice);
-    Redirect::to("/")
+    Ok(Redirect::to("/"))
 }
 
 /// Points the bridge at the refbox the operator submitted, and reports back in plain English.
@@ -3006,5 +3063,144 @@ mod tests {
         // roster of ~10-15 players is bounded, so this also documents that `build_rosters` never
         // walks all 256 possible cap numbers).
         assert_eq!(roster.get(&9), None);
+    }
+
+    // ------------------------------------------------- who is allowed to change what is on air
+
+    /// Submits a form to `path` the way a page belonging to *some other website* would. A browser
+    /// stamps `Sec-Fetch-Site: cross-site` on that request itself; the value cannot be set by the
+    /// page making it.
+    async fn post_from_another_site(
+        addr: SocketAddr,
+        path: &str,
+        form: &[(&str, &str)],
+    ) -> reqwest::Response {
+        post_with_site(addr, path, form, "cross-site").await
+    }
+
+    /// The same, for the bridge's own status page submitting its own form -- what every real
+    /// operator action looks like.
+    async fn post_from_the_status_page(
+        addr: SocketAddr,
+        path: &str,
+        form: &[(&str, &str)],
+    ) -> reqwest::Response {
+        post_with_site(addr, path, form, "same-origin").await
+    }
+
+    async fn post_with_site(
+        addr: SocketAddr,
+        path: &str,
+        form: &[(&str, &str)],
+        site: &str,
+    ) -> reqwest::Response {
+        reqwest::Client::new()
+            .post(format!("http://{addr}{path}"))
+            .header("Sec-Fetch-Site", site)
+            .form(form)
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("POST {path} should get a reply: {e}"))
+    }
+
+    #[tokio::test]
+    async fn a_page_on_another_site_cannot_switch_which_refbox_is_on_air() {
+        // The bridge has no password and binds every interface, so this is the whole defence: any
+        // web page the operator happens to open on the streaming PC could otherwise post this
+        // form and take the graphic off air mid-game.
+        let (first_addr, _first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "14")).await;
+        let (second_addr, _second) =
+            fake_refbox(game(GamePeriod::SecondHalf, 44, 9, 3, "15")).await;
+        let (state, addr, tasks) = bridge_reading(first_addr).await;
+        wait_for_scores(&state, 2, 1).await;
+
+        let response =
+            post_from_another_site(addr, "/refbox", &[("address", &second_addr.to_string())]).await;
+
+        assert_eq!(
+            response.status().as_u16(),
+            403,
+            "a cross-site form post must be refused outright"
+        );
+        assert_eq!(
+            state.target.current().port,
+            first_addr.port(),
+            "the bridge must still be reading the refbox it was reading before"
+        );
+        let still = get_json(addr, "/scorebug").await;
+        assert_eq!(
+            still[0]["blackScore"].as_str(),
+            Some("2"),
+            "and still serving that refbox's game"
+        );
+
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn the_status_page_s_own_refbox_form_still_switches_refboxes() {
+        // The other half of the guard: the operator's own click must be completely unaffected.
+        let (first_addr, _first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "14")).await;
+        let (second_addr, _second) =
+            fake_refbox(game(GamePeriod::SecondHalf, 44, 9, 3, "15")).await;
+        let (state, addr, tasks) = bridge_reading(first_addr).await;
+        wait_for_scores(&state, 2, 1).await;
+
+        let response =
+            post_from_the_status_page(addr, "/refbox", &[("address", &second_addr.to_string())])
+                .await;
+
+        assert_eq!(response.status().as_u16(), 200);
+        assert_eq!(
+            state.target.current().port,
+            second_addr.port(),
+            "the operator's own submission must switch the refbox as it always did"
+        );
+
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_page_on_another_site_cannot_start_a_network_scan() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        let response = post_from_another_site(
+            addr,
+            "/scan",
+            &[("network", "not an address"), ("port", "")],
+        )
+        .await;
+
+        assert_eq!(response.status().as_u16(), 403);
+        assert!(
+            read_lock(&state.notice).is_none(),
+            "a refused request must not even reach the handler that writes the page's notice"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_status_page_s_own_scan_form_still_runs() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        let response = post_from_the_status_page(
+            addr,
+            "/scan",
+            &[("network", "not an address"), ("port", "")],
+        )
+        .await;
+
+        assert_eq!(response.status().as_u16(), 200);
+        let page = response.text().await.expect("the page should be readable");
+        assert!(
+            page.contains("that is not a network address"),
+            "the operator's own submission must reach the handler and be answered by it, got:\n\
+             {page}"
+        );
     }
 }

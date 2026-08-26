@@ -11,8 +11,11 @@ pub(crate) struct CursorTracker {
     position: Option<PhysicalPosition<f64>>,
     /// Whether touch, rather than the mouse, last owned the cursor.
     touch_is_current: bool,
-    /// Whether the next `moved` is the synthetic one that winit emits directly
-    /// after a pointer enter, and must therefore be ignored.
+    /// Whether the next `moved`, if any, is the synthetic one that winit emits
+    /// directly after a pointer enter, and must therefore be ignored. Nothing
+    /// else clears this once armed: an `entered()` with no following `moved()`
+    /// leaves it armed, and the first move of a later, unrelated mouse
+    /// interaction would then be dropped.
     suppress_next_moved: bool,
 }
 
@@ -103,11 +106,14 @@ mod tests {
     // blank the touch position it left behind.
 
     /// Replays the exact Wayland sequence captured on field Pi uwh-refbox-006
-    /// on 2026-08-26 for a single tap at (530, 190). Sway hides the cursor when
-    /// the finger lands and restores it 0.04 ms after the finger lifts, sending
-    /// a pointer enter at the physical pointer's parked position of (100, 100).
-    /// That must NOT become the cursor, or the widget tree evaluates the
-    /// finger-lift against (100, 100) and silently discards the tap.
+    /// on 2026-08-26 for a single tap at (530, 190). The capture carries two
+    /// `wl_pointer` objects (`#23` and `#53`); Sway hides the cursor when the
+    /// finger lands and restores it 0.04 ms after the finger lifts, sending a
+    /// pointer enter for EACH of the two objects at the physical pointer's
+    /// parked position of (100, 100) — two back-to-back `entered`/`moved`
+    /// pairs, both replayed below. Neither restore must become the cursor, or
+    /// the widget tree evaluates the finger-lift against (100, 100) and
+    /// silently discards the tap.
     #[test]
     fn a_restored_pointer_cannot_overwrite_a_touch() {
         let mut c = CursorTracker::default();
@@ -117,8 +123,10 @@ mod tests {
         c.touched(at(529.0, 190.125));   // wl_touch.motion
         c.touched(at(529.0, 191.625));   // wl_touch.motion
         c.touched(at(529.0, 191.625));   // wl_touch.up
-        c.entered();                 // wl_pointer.enter -> CursorEntered
+        c.entered();                 // wl_pointer#23.enter -> CursorEntered
         c.moved(at(100.0, 100.0));   // ...immediately followed by CursorMoved
+        c.entered();                 // wl_pointer#53.enter -> CursorEntered
+        c.moved(at(100.0, 100.0));   // ...and its CursorMoved
 
         assert_eq!(
             c.position(),

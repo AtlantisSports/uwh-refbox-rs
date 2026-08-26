@@ -18,9 +18,9 @@ exclude = [
   "vendor/iced_winit",
 ]
 
-# `iced_winit` is vendored so a forthcoming fix can be applied to it: iced 0.13 shares
-# one cursor position between mouse and touch, and a compositor restoring the pointer
-# after a touch discarded the tap. That fix is not part of this vendoring yet. See
+# `iced_winit` is vendored so a fix could be applied to it: iced 0.13 shares one
+# cursor position between mouse and touch, and a compositor restoring the pointer
+# after a touch discarded the tap. The vendored copy now carries that fix. See
 # vendor/iced_winit/VENDORED.md.
 [patch.crates-io]
 iced_winit = { path = "vendor/iced_winit" }

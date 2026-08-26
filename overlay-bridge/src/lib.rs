@@ -9,5 +9,6 @@
 
 pub mod feed;
 pub mod portal;
+pub mod server;
 pub mod state;
 pub mod tables;

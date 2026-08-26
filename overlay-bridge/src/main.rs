@@ -1,17 +1,7 @@
 use clap::Parser;
 use futures::StreamExt;
+use overlay_bridge::feed::SnapshotReader;
 use tokio::net::TcpStream;
-
-mod feed;
-// `state` is not wired into the running program yet -- that happens when the web server (a later
-// task) starts calling `state::LiveState::current`/`contact` per request. Until then nothing
-// outside its own tests calls it, so it is compiled only for `cfg(test)` to avoid dead-code
-// warnings on code that is complete and tested, just not yet connected. Remove this gate when the
-// server wiring lands.
-#[cfg(test)]
-mod state;
-
-use feed::SnapshotReader;
 
 /// Reads a refbox's live game feed.
 ///

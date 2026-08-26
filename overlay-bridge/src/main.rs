@@ -71,21 +71,11 @@ impl Cli {
 async fn main() {
     let cli = Cli::parse();
 
-    // Everything the bridge needs, decided in one place under one precedence rule -- see
-    // `config::Resolved`, and `server::start`, for why this is a value handed over whole rather
-    // than a series of optional attachments. `settings_path().ok()`: if the settings directory
-    // cannot be worked out, the bridge still runs and a refbox chosen on the status page still
-    // applies, and the page says plainly that it will not be remembered.
-    let settings = config::resolve_all(
-        cli.overrides(),
-        config::load(),
-        config::settings_path().ok(),
-    );
-
-    // Persist whatever was actually resolved this run -- including a value that came from the
-    // built-in default -- so it becomes "what was last used" for the next run with no flags at
-    // all (design spec §5.3: "the last address used is remembered").
-    config::store(&settings.to_settings());
+    // Everything the bridge needs, decided in one place under one precedence rule, and saved back
+    // as "what was last used" for the next run -- see `config::load_resolve_and_store`, and
+    // `server::start`, for why this file holds one call rather than a hand-written sequence
+    // nothing can test.
+    let settings = config::load_resolve_and_store(cli.overrides());
 
     println!("Connecting to refbox at {}...", settings.refbox);
 

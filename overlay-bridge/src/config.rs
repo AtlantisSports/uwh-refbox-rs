@@ -210,33 +210,53 @@ pub fn settings_location() -> String {
     }
 }
 
-/// Loads the bridge's persisted settings, falling back to [`Settings::default`] if there is
-/// nothing usable to load -- see the module doc's "Missing vs. corrupt" section. Never fails: a
-/// settings problem must never stop the bridge from starting.
-pub fn load() -> Settings {
-    match settings_path() {
-        Ok(path) => load_from(&path),
+/// Everything `main` does about settings, in one call: load whatever was saved last time, decide
+/// this run's value for every setting under the precedence rule (see the module doc), and write
+/// the result straight back so it becomes "what was last used" for the next run with no flags at
+/// all (design spec §5.3).
+///
+/// **One call rather than three, deliberately** (final review, Minor 9). These were previously
+/// three separate steps written out in `main.rs`, which is the one file in this crate no test can
+/// reach: leaving out the save, or resolving against something other than what was loaded, was a
+/// one-line mistake that nothing would have caught. Everything here except finding the settings
+/// file is [`resolve_and_store_at`], which a test drives against a throwaway path.
+///
+/// Never fails: a settings problem must never stop the bridge from starting. If the settings
+/// file's location cannot be worked out at all, this run uses typed flags over built-in defaults
+/// and nothing is remembered -- and the status page says so plainly rather than promising a save
+/// that will not happen.
+pub fn load_resolve_and_store(overrides: Overrides) -> Resolved {
+    let path = match settings_path() {
+        Ok(path) => Some(path),
         Err(e) => {
             eprintln!(
                 "could not determine where the bridge's settings file should live, starting \
-                 with defaults: {e}"
+                 with defaults and remembering nothing: {e}"
             );
-            Settings::default()
+            None
         }
-    }
+    };
+    resolve_and_store_at(overrides, path)
 }
 
-/// Saves `settings` so the next run of the bridge remembers them. Never fails loudly: a save
-/// failure (a read-only filesystem, a permissions problem) is logged and otherwise ignored --
-/// nothing about serving the bridge's live data depends on this succeeding.
-pub fn store(settings: &Settings) {
-    match settings_path() {
-        Ok(path) => {
-            if let Err(e) = confy::store_path(path, settings) {
-                eprintln!("could not save the bridge's settings: {e}");
-            }
-        }
-        Err(e) => eprintln!("could not determine where to save the bridge's settings: {e}"),
+/// The whole of [`load_resolve_and_store`] except working out where the settings file lives, so
+/// a test can point it at a throwaway file instead of a real user's config directory. `None`
+/// means there is nowhere to load from or save to: the run still gets a complete [`Resolved`].
+fn resolve_and_store_at(overrides: Overrides, path: Option<PathBuf>) -> Resolved {
+    let stored = path.as_deref().map(load_from).unwrap_or_default();
+    let resolved = resolve_all(overrides, stored, path);
+    if let Some(path) = &resolved.settings_path {
+        store_at(path, &resolved.to_settings());
+    }
+    resolved
+}
+
+/// Saves `settings` to `path`. Never fails loudly: a save failure (a read-only filesystem, a
+/// permissions problem) is logged and otherwise ignored -- nothing about serving the bridge's
+/// live data depends on this succeeding.
+fn store_at(path: &Path, settings: &Settings) {
+    if let Err(e) = confy::store_path(path, settings) {
+        eprintln!("could not save the bridge's settings: {e}");
     }
 }
 

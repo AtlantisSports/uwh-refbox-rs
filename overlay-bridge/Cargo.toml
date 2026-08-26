@@ -8,6 +8,10 @@ rust-version = "1.85"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 futures = "0.3"
+# Same version and feature set as `overlay`'s own use of reqwest (it talks to the same portal
+# endpoints), so this does not add a new library to the workspace's dependency graph -- it is
+# already resolved in Cargo.lock.
+reqwest = { version = "0.12", features = ["gzip"] }
 serde_json = "1"
 # Already in the workspace's dependency tree via tokio's own "net" feature; adding it directly
 # here (with the "all" feature) is a feature flag on an existing transitive dependency, not a new

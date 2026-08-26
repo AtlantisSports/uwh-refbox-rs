@@ -74,6 +74,7 @@ async fn main() {
     tokio::spawn(server::refresh_portal_loop(
         Arc::clone(&state),
         refresh_notify,
+        server::PORTAL_REFRESH_INTERVAL,
     ));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], cli.port));

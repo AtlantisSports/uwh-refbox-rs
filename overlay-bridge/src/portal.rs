@@ -33,18 +33,24 @@ use reqwest::{Client, RequestBuilder};
 use serde_json::Value;
 use uwh_common::uwhportal::schedule::{EventId, TeamId};
 
-/// Team names resolved for one game's two colour slots.
+/// Team names, court, and scheduled start resolved for one game, as read from the public
+/// schedule.
 ///
-/// Either side is `None` when the portal has no name to offer for that slot -- either because
+/// `dark`/`light` are `None` when the portal has no name to offer for that slot -- either because
 /// the schedule has no team assigned there yet (a bracket placeholder waiting on an earlier
 /// result), or because nothing has been fetched successfully yet. Callers should fall back to
 /// whatever the refbox itself already reports for that slot in this case, rather than treating
 /// it as an error: the refbox's own game data does not come from the portal at all, and a portal
-/// outage must never affect it.
+/// outage must never affect it. `court`/`start_time` are `None` under the same circumstances, and
+/// for the same reason -- the refbox's live feed carries neither, so this is the only place in
+/// the bridge that can ever supply them, and a caller with nothing cached should still get a
+/// coherent (all-`None`) value rather than an error.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TeamNames {
     pub dark: Option<String>,
     pub light: Option<String>,
+    pub court: Option<String>,
+    pub start_time: Option<String>,
 }
 
 /// One game's schedule-derived facts, as read from the public schedule endpoint's matched game
@@ -53,7 +59,7 @@ pub struct TeamNames {
 /// `court` and `startsOn` live on the matched game object itself, never at the schedule
 /// response's top level -- reading them from the top level was PR #2474's bug, and this struct
 /// exists partly so the parsing that avoids it is exercised directly by a test, independent of
-/// whether a later task ever surfaces `court` or `start_time` on the outside.
+/// [`Directory::names_for`] also surfacing both fields on [`TeamNames`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct GameEntry {
     dark_team: Option<TeamId>,
@@ -112,9 +118,14 @@ impl Directory {
     /// rosters (see [`refresh_roster`]).
     ///
     /// Returns `false` on any failure -- a network error, a non-2xx status, a body that isn't
-    /// valid JSON, or JSON missing the `games` array the response is expected to have -- and
-    /// leaves the existing cache completely untouched, so a caller retrying this on a timer
-    /// degrades to "stale but still serving" rather than ever going blank.
+    /// valid JSON, or JSON missing (or malformed) the `games` array or `teams` object the
+    /// response is expected to have -- and leaves the existing cache completely untouched, so a
+    /// caller retrying this on a timer degrades to "stale but still serving" rather than ever
+    /// going blank. `teams` is deliberately held to the same bar as `games`: a response that
+    /// cannot supply team names is not a partial success, because a wholesale replace with an
+    /// empty (or merged, guessed-at) name map would silently blank every team name already on
+    /// screen -- exactly the defect class this task exists to prevent. See [`parse_schedule`]'s
+    /// doc for the full reasoning.
     ///
     /// [`refresh_roster`]: Directory::refresh_roster
     pub async fn refresh_schedule(&self) -> bool {
@@ -137,10 +148,10 @@ impl Directory {
         true
     }
 
-    /// Looks up the team names cached for `game_number` by the most recent successful
-    /// [`refresh_schedule`]. `None` if `game_number` is not present in that cache -- either
-    /// because nothing has ever been fetched successfully, or because the schedule genuinely has
-    /// no such game.
+    /// Looks up the team names, court, and scheduled start cached for `game_number` by the most
+    /// recent successful [`refresh_schedule`]. `None` if `game_number` is not present in that
+    /// cache -- either because nothing has ever been fetched successfully, or because the
+    /// schedule genuinely has no such game.
     ///
     /// A game whose schedule entry has no team assigned to one or both colours (a bracket
     /// placeholder waiting on an earlier result -- see the module doc) is not an error: it comes
@@ -160,7 +171,12 @@ impl Directory {
             .as_ref()
             .and_then(|id| schedule.teams.get(id))
             .cloned();
-        Some(TeamNames { dark, light })
+        Some(TeamNames {
+            dark,
+            light,
+            court: entry.court.clone(),
+            start_time: entry.start_time.clone(),
+        })
     }
 
     /// Fetches `team`'s roster and, on success, replaces the cached roster for that team with
@@ -213,13 +229,31 @@ async fn fetch_text(request: RequestBuilder) -> Option<String> {
 }
 
 /// Parses a public schedule response's `games` array and top-level `teams` map into a
-/// [`ScheduleCache`]. Returns `None` if `data` doesn't even have a `games` array -- an
-/// unexpected enough shape that it should not overwrite a previously good cache -- but is
-/// otherwise as forgiving as possible: a game missing a field it's expected to have simply
-/// carries `None` for that field rather than aborting the whole parse, and an unrecognised or
-/// malformed team id in `teams` is skipped rather than failing the parse.
+/// [`ScheduleCache`]. Returns `None` if `data` doesn't have both a `games` array *and* a `teams`
+/// object -- either one missing, or present as the wrong JSON type, is treated as the same class
+/// of malformed response, not just an absent-key special case.
+///
+/// `teams` is held to this bar deliberately, even though the parse could technically limp along
+/// with an empty name map: on the real portal, `games` and `teams` are always sent together in
+/// one response, so a response that has one but not the other is not a legitimate partial
+/// schedule, it's a malformed one. Treating it as a *failed* refresh (leaving whatever was cached
+/// before untouched) rather than a *successful* refresh into an empty map is what stops a single
+/// bad response from blanking every team name already resolved and on screen -- silently
+/// replacing a good cache with an empty one is exactly the "never fatal" contract this module
+/// exists to uphold, just arriving from a different angle than an outright request failure. A
+/// simpler alternative -- merging the new `teams` map into the old one, or keeping the old map
+/// only when the new one is empty -- was considered and rejected: it would make `games` and
+/// `teams` individually "successful" on different schedules of staleness, which is harder to
+/// reason about and test than the single all-or-nothing success/failure boundary used everywhere
+/// else in this module.
+///
+/// Once both are confirmed present, parsing is otherwise as forgiving as possible: a game missing
+/// a field it's expected to have simply carries `None` for that field rather than aborting the
+/// whole parse, and an unrecognised or malformed team id in `teams` is skipped rather than
+/// failing the parse.
 fn parse_schedule(data: &Value) -> Option<ScheduleCache> {
     let games_json = data.get("games")?.as_array()?;
+    let teams_json = data.get("teams")?.as_object()?;
 
     let mut games = HashMap::new();
     for game in games_json {
@@ -256,16 +290,14 @@ fn parse_schedule(data: &Value) -> Option<ScheduleCache> {
     }
 
     let mut teams = HashMap::new();
-    if let Some(teams_json) = data.get("teams").and_then(Value::as_object) {
-        for (id, team) in teams_json {
-            let Ok(team_id) = TeamId::from_full(id) else {
-                continue;
-            };
-            // Trimmed and upper-cased, matching the overlay's own display convention for team
-            // names (`overlay/src/network.rs`, `TeamInfoRaw::new`).
-            if let Some(name) = team.get("name").and_then(Value::as_str) {
-                teams.insert(team_id, name.trim().to_uppercase());
-            }
+    for (id, team) in teams_json {
+        let Ok(team_id) = TeamId::from_full(id) else {
+            continue;
+        };
+        // Trimmed and upper-cased, matching the overlay's own display convention for team
+        // names (`overlay/src/network.rs`, `TeamInfoRaw::new`).
+        if let Some(name) = team.get("name").and_then(Value::as_str) {
+            teams.insert(team_id, name.trim().to_uppercase());
         }
     }
 
@@ -411,10 +443,15 @@ mod tests {
         let names = directory.names_for("1").expect("game 1 should be present");
         assert_eq!(names.dark.as_deref(), Some("SYDNEY KINGS A"));
         assert_eq!(names.light.as_deref(), Some("BRISBANE A"));
+        assert_eq!(names.court.as_deref(), Some("1"));
+        assert_eq!(
+            names.start_time.as_deref(),
+            Some("2026-08-01T09:30:00+10:00")
+        );
     }
 
     #[test]
-    fn names_for_an_unassigned_slot_is_some_with_no_names_not_an_error() {
+    fn names_for_an_unassigned_slot_has_no_names_but_still_has_court_and_start_time() {
         let directory = directory_at("http://portal.invalid".to_string());
         *write_lock(&directory.schedule) =
             parse_schedule(&schedule_fixture_json()).expect("fixture should parse");
@@ -422,7 +459,16 @@ mod tests {
         let names = directory
             .names_for("51")
             .expect("game 51 should be present");
-        assert_eq!(names, TeamNames::default());
+        assert_eq!(names.dark, None);
+        assert_eq!(names.light, None);
+        // Unlike the team names, court and start time don't depend on either slot being
+        // assigned -- they come straight off the matched game object, so a bracket placeholder
+        // still has them.
+        assert_eq!(names.court.as_deref(), Some("1"));
+        assert_eq!(
+            names.start_time.as_deref(),
+            Some("2026-08-02T09:30:00+10:00")
+        );
     }
 
     #[test]
@@ -460,13 +506,45 @@ mod tests {
         assert!(parse_roster(&empty_object()).is_none());
     }
 
+    /// The real schedule fixture with its top-level `teams` key removed entirely -- `games` is
+    /// still present and well-formed. Simulates a response that can supply game info but not
+    /// team names.
+    fn schedule_json_with_teams_missing() -> Value {
+        let mut data = schedule_fixture_json();
+        data.as_object_mut()
+            .expect("top level should be an object")
+            .remove("teams");
+        data
+    }
+
+    /// The real schedule fixture with `teams` replaced by a value of the wrong JSON type (a
+    /// string, not an object). `games` is still present and well-formed. Proves the "missing or
+    /// malformed" class is handled uniformly, not just the absent-key case.
+    fn schedule_json_with_teams_wrong_type() -> Value {
+        let mut data = schedule_fixture_json();
+        data.as_object_mut()
+            .expect("top level should be an object")
+            .insert("teams".to_string(), Value::String("oops".to_string()));
+        data
+    }
+
+    #[test]
+    fn schedule_with_games_but_no_teams_key_is_treated_as_malformed() {
+        assert!(parse_schedule(&schedule_json_with_teams_missing()).is_none());
+    }
+
+    #[test]
+    fn schedule_with_games_but_wrong_typed_teams_is_treated_as_malformed() {
+        assert!(parse_schedule(&schedule_json_with_teams_wrong_type()).is_none());
+    }
+
     // ---- network: proves the "never fatal" contract against a real (fake) HTTP server ----
 
     /// Accepts exactly one connection on `listener`, drains its request, and writes back
     /// `status_line` with `body` as the response, then closes the connection. Mirrors the
     /// "act as the other side of the socket" pattern `feed.rs`'s own tests use, just speaking
     /// enough raw HTTP/1.1 for `reqwest` to parse a response out of it.
-    async fn serve_one(listener: TcpListener, status_line: &str, body: &str) {
+    async fn serve_one(listener: TcpListener, status_line: &str, body: String) {
         let (mut socket, _) = listener.accept().await.expect("accept a connection");
 
         // Drain the request so the client isn't left waiting on a full-duplex write; the
@@ -503,7 +581,7 @@ mod tests {
         let addr = listener.local_addr().expect("local_addr");
         let directory = directory_at(format!("http://{addr}"));
 
-        let server = tokio::spawn(serve_one(listener, "200 OK", SCHEDULE_FIXTURE));
+        let server = tokio::spawn(serve_one(listener, "200 OK", SCHEDULE_FIXTURE.to_string()));
         let ok = directory.refresh_schedule().await;
         server.await.expect("mock server task");
 
@@ -511,6 +589,67 @@ mod tests {
         let names = directory.names_for("1").expect("game 1 should be present");
         assert_eq!(names.dark.as_deref(), Some("SYDNEY KINGS A"));
         assert_eq!(names.light.as_deref(), Some("BRISBANE A"));
+        assert_eq!(names.court.as_deref(), Some("1"));
+        assert_eq!(
+            names.start_time.as_deref(),
+            Some("2026-08-01T09:30:00+10:00")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_schedule_response_missing_teams_does_not_blank_previously_resolved_names() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let addr = listener.local_addr().expect("local_addr");
+        let directory = directory_at(format!("http://{addr}"));
+
+        // First: a good response, seeds the cache.
+        let server = tokio::spawn(serve_one(listener, "200 OK", SCHEDULE_FIXTURE.to_string()));
+        let first = directory.refresh_schedule().await;
+        server.await.expect("mock server task");
+        assert!(first, "seeding fetch should succeed");
+        let names_before = directory.names_for("1").expect("game 1 should be present");
+        assert_eq!(names_before.dark.as_deref(), Some("SYDNEY KINGS A"));
+        assert_eq!(names_before.light.as_deref(), Some("BRISBANE A"));
+
+        // Second: `games` present and well-formed, `teams` missing entirely. Rebinds on the
+        // exact same address `directory` is already pointed at -- the first listener has gone
+        // out of scope, freeing the port.
+        let missing_teams_body = schedule_json_with_teams_missing().to_string();
+        let listener = TcpListener::bind(addr)
+            .await
+            .expect("rebind the same address");
+        let server = tokio::spawn(serve_one(listener, "200 OK", missing_teams_body));
+        let second = directory.refresh_schedule().await;
+        server.await.expect("mock server task");
+        assert!(
+            !second,
+            "a response missing `teams` must not count as a successful refresh"
+        );
+        assert_eq!(
+            directory.names_for("1"),
+            Some(names_before.clone()),
+            "previously resolved names must survive a response with no team names to offer"
+        );
+
+        // Third: `games` present and well-formed, `teams` present but the wrong JSON type.
+        let wrong_typed_teams_body = schedule_json_with_teams_wrong_type().to_string();
+        let listener = TcpListener::bind(addr)
+            .await
+            .expect("rebind the same address");
+        let server = tokio::spawn(serve_one(listener, "200 OK", wrong_typed_teams_body));
+        let third = directory.refresh_schedule().await;
+        server.await.expect("mock server task");
+        assert!(
+            !third,
+            "a response with a wrong-typed `teams` must not count as a successful refresh"
+        );
+        assert_eq!(
+            directory.names_for("1"),
+            Some(names_before),
+            "previously resolved names must survive a response with a malformed `teams`"
+        );
     }
 
     #[tokio::test]
@@ -522,7 +661,7 @@ mod tests {
         let directory = directory_at(format!("http://{addr}"));
         let team = team_2529b();
 
-        let server = tokio::spawn(serve_one(listener, "200 OK", ROSTER_FIXTURE));
+        let server = tokio::spawn(serve_one(listener, "200 OK", ROSTER_FIXTURE.to_string()));
         let ok = directory.refresh_roster(&team).await;
         server.await.expect("mock server task");
 
@@ -543,7 +682,7 @@ mod tests {
         let team = team_2529b();
 
         // First: a good response, seeds the cache.
-        let server = tokio::spawn(serve_one(listener, "200 OK", ROSTER_FIXTURE));
+        let server = tokio::spawn(serve_one(listener, "200 OK", ROSTER_FIXTURE.to_string()));
         let first = directory.refresh_roster(&team).await;
         server.await.expect("mock server task");
         assert!(first, "seeding fetch should succeed");
@@ -594,7 +733,11 @@ mod tests {
         let addr = listener.local_addr().expect("local_addr");
         let directory = directory_at(format!("http://{addr}"));
 
-        let server = tokio::spawn(serve_one(listener, "200 OK", "this is not json at all"));
+        let server = tokio::spawn(serve_one(
+            listener,
+            "200 OK",
+            "this is not json at all".to_string(),
+        ));
         let ok = directory.refresh_schedule().await;
         server.await.expect("mock server task");
 
@@ -613,7 +756,7 @@ mod tests {
         let server = tokio::spawn(serve_one(
             listener,
             "500 Internal Server Error",
-            SCHEDULE_FIXTURE,
+            SCHEDULE_FIXTURE.to_string(),
         ));
         let ok = directory.refresh_schedule().await;
         server.await.expect("mock server task");

@@ -538,40 +538,42 @@ exactly right, not stale.
 
 ---
 
-## Task 11 — The Windows build accepts connections but never answers
+## Task 11 — RESOLVED, NOT A CODE DEFECT: security software was blocking the Windows build
 
-**Found by Task 9, which was required to prove the executable actually serves rather than merely
-build.** Without that requirement this would have shipped and failed at a venue.
+**Closed 2026-08-27 without any code change.** Recorded in full because the wrong conclusion was
+one step away, and because the operational half of it is still open.
 
-**Symptom:** the cross-compiled `overlay-bridge.exe` starts, runs as a genuine Windows process, and
-accepts a TCP connection on its HTTP port — then never returns a response. Confirmed from native
-Windows loopback with three independent clients (curl.exe, PowerShell, a raw TcpClient), waiting 45
-seconds.
+**What was seen.** Task 9 — required to prove the Windows executable actually *serves* rather than
+merely build — found that `overlay-bridge.exe` started, ran as a genuine Windows process, accepted
+a TCP connection on its HTTP port, and never answered. Confirmed from native Windows loopback with
+three independent clients over 45 seconds.
 
-**Already ruled out by Task 9, do not re-derive:**
-- Not the toolchain or WSL: a minimal axum app built the identical mingw way serves instantly.
-- Not a latent bug visible on both platforms: overlay-bridge's own Linux build serves instantly.
-- Not packaging: the .exe is self-contained, 10.8 MB, needing only stock Windows system DLLs.
+**What it actually was.** Eric's security software had blocked the executable, flagging it
+`IDP.Generic` — a behavioural heuristic, not a match for any known threat. After he restored the
+file and added an exception, the same binary served immediately: `GET /` returned HTTP 200 in
+0.51 s, `/scorebug` and `/status.json` both served correctly, with `connected: "false"`, every
+other column blank, and `contact: "NeverConnected"` carrying no duration — the relay-only and
+three-state connection behaviour working on Windows exactly as designed.
 
-So it is specific to overlay-bridge's own server or task wiring under Windows.
+**Why the evidence pointed the wrong way, and the lesson.** The control that seemed to exonerate
+the environment — a minimal axum app built the identical way, which served instantly — was *also*
+flagged by the same software, which Eric discovered only afterwards. It had served during the test
+and been quarantined later. A control is only a control while it is running under the same
+conditions as the thing it is controlling for, and that cannot be assumed when an external agent
+is quietly acting on both.
 
-**This is a debugging task, not a patching task.** Find the root cause and fix that. A workaround
-that makes the symptom go away without an explanation of why it was happening is not acceptable
-here — this runs unattended at a tournament, and a mechanism nobody understands will fail again in
-a way nobody predicts.
+**Why the heuristic fires, which is not a mystery.** The binary is unsigned, freshly compiled, and
+Task 8 gave it a sweep of 254 addresses on the local network to find refboxes. From the outside
+that is indistinguishable from network reconnaissance. This is the expected reaction to what the
+program legitimately does, not a fluke.
 
-**Scope boundary:** `overlay-bridge` only. This must not require a change to the refbox, and must
-not weaken anything the branch has established — in particular the rule that liveness comes only
-from the connection and never from message timing, and its 30-second regression guard.
-
-**Acceptance:**
-- The root cause is stated plainly, with the evidence that identifies it.
-- The Windows `.exe` serves its status page and its tables, verified by fetching them.
-- All existing tests still pass on Linux, and the suite still contains the 30-second guard.
-- A regression guard exists if the cause is one a test can reach; if it is genuinely
-  platform-specific and untestable in CI, say so explicitly and record how it would be caught.
-
-**Commit:** `fix(overlay-bridge): make the windows build serve`
+**STILL OPEN — a product decision for Eric, not an implementation detail.** If this blocks the
+machine it was built on, it will block a streaming volunteer's laptop at a venue, probably during
+setup and probably with an alarming warning. Phase 1 has no answer today. The realistic options are
+code signing (a recurring cost), written instructions for the operator to allow the program, or
+making the network sweep something the operator switches on rather than something that happens by
+default. Whichever is chosen belongs in phase 2 or in the operator documentation, not in this
+branch.
 
 ---
 

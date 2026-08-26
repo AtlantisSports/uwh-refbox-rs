@@ -13,8 +13,26 @@
 //! see [`status`]'s module doc for why), and whether the TCP keepalive check is actually active
 //! (also Task 7). `GET /` is the human-facing counterpart of the same information, rendered as a
 //! self-contained HTML operator status page by [`status::render_page`] -- see that module's doc
-//! for the full rationale. The refbox discovery list belongs to `status.rs` too, but is Task 8's
-//! job, not this one's.
+//! for the full rationale.
+//!
+//! `POST /refbox` and `POST /scan` are the two things that page can *do* (Task 8), and they are
+//! the only routes in this crate that change anything. `/refbox` points the bridge at a different
+//! refbox -- from the manual-entry field or from a scan result, which are two front ends onto one
+//! mechanism ([`choose_refbox`]); `/scan` checks the local network for refboxes. Both answer with
+//! a redirect back to `GET /` rather than a page of their own, so a browser reload after either
+//! one simply re-reads the status page instead of silently re-running the action.
+//!
+//! # Choosing a refbox never breaks a working one
+//!
+//! [`choose_refbox`] proves a candidate is a refbox **before** anything about the running bridge
+//! is touched: it connects to the candidate as a separate, throwaway connection and reads the
+//! snapshot a refbox replays on connect (`discovery::probe`). A mistyped address, or an address
+//! with something other than a refbox on it, therefore comes back as a sentence on the status page
+//! with the existing connection still running and nothing changed at all. Only once the candidate
+//! has answered as a refbox does anything change -- and then, in this order: the bridge is marked
+//! out of contact, its picture of the old game is thrown away, and only then is the supervisor
+//! pointed at the new address. That order is what stops the previous refbox's game being served,
+//! or displayed, while the new one is still being reached.
 //!
 //! **Every response reads the live state fresh at request time**, via
 //! [`state::LiveState::current`] inside each handler -- never a value cached between requests.
@@ -65,18 +83,21 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
+    net::Ipv4Addr,
+    path::PathBuf,
     sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::{Duration, Instant},
 };
 
 use axum::{
-    Json, Router,
+    Form, Json, Router,
     extract::State,
     http::{HeaderMap, header},
-    response::Html,
-    routing::get,
+    response::{Html, Redirect},
+    routing::{get, post},
 };
 use reqwest::Client;
+use serde::Deserialize;
 use tokio::{
     sync::{Notify, mpsc},
     time::{MissedTickBehavior, interval},
@@ -88,11 +109,11 @@ use uwh_common::{
 };
 
 use crate::{
-    config,
-    feed::{Connection, ConnectionState, ConnectionStatus},
+    config, discovery,
+    feed::{Connection, ConnectionState, ConnectionStatus, FeedTarget, RefboxAddress},
     portal::{Directory, TeamNames},
     state::{Display, LiveState},
-    status,
+    status::{self, Notice, ScanOutcome},
     tables::{self, Rosters},
 };
 
@@ -123,14 +144,30 @@ pub struct AppState {
     /// [`crate::feed::ConnectionStatus`]'s doc for why those must never be read as two separate
     /// calls) to decide whether to serve real values or blank ones (see `tables`' module doc).
     connection: ConnectionState,
-    /// The refbox address currently in use -- display-only, for the status page (Task 7). Never
-    /// consulted to decide where to connect: that decision is made once, in `main.rs`, before
-    /// this state is constructed.
-    refbox_host: String,
-    refbox_port: u16,
+    /// Which refbox the bridge reads -- **the** address, not a copy of one: this is the same
+    /// handle [`crate::feed::Supervisor::run`] takes its address from, so what the status page
+    /// displays and what the supervisor connects to cannot drift apart. Task 7 kept a separate
+    /// display-only copy here because the address could not change while the bridge ran; Task 8
+    /// makes it changeable, and a second copy of a value that changes is exactly the kind of
+    /// two-sources bug this crate has already had once (see [`ConnectionStatus`]'s doc).
+    target: FeedTarget,
     /// The court label operator setting (design spec §5.2, persisted by `config` since Task 7) --
-    /// display-only, same as `refbox_host`/`refbox_port` above.
+    /// display-only, unlike the address above.
     court: String,
+    /// Where to write a refbox address the operator chooses while the bridge is running, so the
+    /// next run comes back to the same refbox. `None` means "nowhere": the settings file's
+    /// location could not be worked out (see [`config::settings_path`]), or -- in this crate's own
+    /// tests -- the test deliberately does not want a real user's settings file touched. A choice
+    /// still takes effect for the current run either way; the operator is told plainly when it
+    /// could not be remembered.
+    settings_path: Option<PathBuf>,
+    /// What the last network scan the operator ran turned up, or `None` if they have not run one.
+    /// Kept here rather than rendered straight into a response so the results survive the
+    /// redirect that follows the scan, and any page reload after it.
+    last_scan: RwLock<Option<ScanOutcome>>,
+    /// The outcome of the operator's last action on the status page -- choosing a refbox, or
+    /// scanning -- in plain English, shown until they do something else.
+    notice: RwLock<Option<Notice>>,
 }
 
 impl AppState {
@@ -147,26 +184,37 @@ impl AppState {
             directory: RwLock::new(None),
             white_on_right,
             connection: ConnectionState::new(),
-            refbox_host: String::new(),
-            refbox_port: 0,
+            target: FeedTarget::new(RefboxAddress::new(
+                config::DEFAULT_REFBOX_HOST,
+                config::DEFAULT_REFBOX_PORT,
+            )),
             court: String::new(),
+            settings_path: None,
+            last_scan: RwLock::new(None),
+            notice: RwLock::new(None),
         }
     }
 
-    /// Attaches the status page's display-only fields -- the refbox address currently in use and
-    /// the court label. Kept out of [`AppState::new`]'s own signature, as a separate builder-style
-    /// method, so this crate's many existing tests (which only ever call `AppState::new` with a
-    /// `white_on_right` value) do not all need updating for fields nothing in this file's own
-    /// serving logic reads.
+    /// Attaches the operator-supplied context: which refbox to read, and the court label. Kept out
+    /// of [`AppState::new`]'s own signature, as a separate builder-style method, so this crate's
+    /// many existing tests (which only ever call `AppState::new` with a `white_on_right` value) do
+    /// not all need updating.
     pub fn with_operator_info(
         mut self,
         refbox_host: String,
         refbox_port: u16,
         court: String,
     ) -> Self {
-        self.refbox_host = refbox_host;
-        self.refbox_port = refbox_port;
+        self.target = FeedTarget::new(RefboxAddress::new(refbox_host, refbox_port));
         self.court = court;
+        self
+    }
+
+    /// Where to remember a refbox the operator chooses at runtime -- see the `settings_path`
+    /// field's own doc. `main.rs` passes `config::settings_path().ok()`; a test that has no
+    /// business writing to the machine's real settings file passes a throwaway path, or `None`.
+    pub fn with_settings_path(mut self, settings_path: Option<PathBuf>) -> Self {
+        self.settings_path = settings_path;
         self
     }
 
@@ -176,9 +224,35 @@ impl AppState {
     pub fn connection_handle(&self) -> ConnectionState {
         self.connection.clone()
     }
+
+    /// A cloned handle to the refbox address in use, for handing to
+    /// [`crate::feed::Supervisor::run`]. Cheap in the same way as [`AppState::connection_handle`],
+    /// and for the same reason: the supervisor and the status page must be looking at one value,
+    /// not two copies of one.
+    pub fn target_handle(&self) -> FeedTarget {
+        self.target.clone()
+    }
+
+    /// Throws away the bridge's live picture of the game, so nothing of the refbox just left can
+    /// be served as though it belonged to the one just chosen.
+    ///
+    /// Blanking the tables is not enough on its own here. `tables` blanks every value while the
+    /// connection is down, so a poll during the switch is already safe -- but `/status.json` and
+    /// the operator status page show the event, game and period unconditionally, and after
+    /// switching to a refbox that turns out to be slow to reach (or that goes away again), those
+    /// would go on naming the *previous* refbox's game for as long as it took, right beside a red
+    /// "Disconnected". That is the confidently-wrong display spec §4.6 exists to remove, and it is
+    /// not a millisecond-scale window: it lasts as long as the new refbox is unreachable.
+    ///
+    /// Not a timing rule and not a liveness rule: nothing here consults how long it has been since
+    /// a message arrived (see `state`'s module doc). It fires exactly once, on an explicit
+    /// operator action.
+    fn forget_game(&self) {
+        *write_lock(&self.live) = LiveState::new(GameSnapshot::default(), Instant::now());
+    }
 }
 
-/// Builds the axum app: the seven routes described in this module's doc, all backed by `state`.
+/// Builds the axum app: the routes described in this module's doc, all backed by `state`.
 /// An unmatched path falls through to axum's own default 404 response -- nothing here needs to
 /// special-case it.
 pub fn router(state: Arc<AppState>) -> Router {
@@ -190,6 +264,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/nextgame", get(get_next_game))
         .route("/status.json", get(get_status))
         .route("/", get(get_status_page))
+        .route("/refbox", post(post_refbox))
+        .route("/scan", post(post_scan))
         .with_state(state)
 }
 
@@ -257,6 +333,7 @@ async fn get_status_page(State(state): State<Arc<AppState>>, headers: HeaderMap)
         .and_then(|value| value.to_str().ok())
         .map(|host| format!("http://{host}"));
 
+    let address = state.target.current();
     let data = status::PageData {
         // ONE read of both the connection flag and its duration -- see
         // `feed::ConnectionStatus`'s doc for why this must never be two separate calls.
@@ -270,15 +347,193 @@ async fn get_status_page(State(state): State<Arc<AppState>>, headers: HeaderMap)
             .unwrap_or_default(),
         game_number: display.snapshot.game_number().clone(),
         period: display.snapshot.current_period.to_string(),
-        refbox_host: state.refbox_host.clone(),
-        refbox_port: state.refbox_port,
         white_on_right: state.white_on_right,
         court: state.court.clone(),
         base_url,
         settings_file: config::settings_location(),
+        scan_network: discovery::suggested_scan_network(&address),
+        refbox_address: address,
+        notice: read_lock(&state.notice).clone(),
+        scan: read_lock(&state.last_scan).clone(),
     };
 
     Html(status::render_page(&data))
+}
+
+/// The manual-entry field, and the hidden field behind every "use this refbox" button in a scan
+/// result -- deliberately the same field name posted to the same route, because they are the same
+/// action (see the module doc). `serde(default)` rather than a required field so a form that
+/// arrives without it produces the page's own "type an address" sentence, not a bare 400 an
+/// operator can do nothing with.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct AddressForm {
+    address: String,
+}
+
+/// `POST /refbox` -- point the bridge at a different refbox.
+async fn post_refbox(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<AddressForm>,
+) -> Redirect {
+    let notice = choose_refbox(&state, &form.address).await;
+    *write_lock(&state.notice) = Some(notice);
+    Redirect::to("/")
+}
+
+/// The scan form. Both fields are text, and both are `serde(default)`, for the same reason as
+/// [`AddressForm`]: a missing or unreadable value must produce a sentence, never a bare 400.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct ScanForm {
+    network: String,
+    port: String,
+}
+
+/// `POST /scan` -- check the local network for refboxes.
+async fn post_scan(State(state): State<Arc<AppState>>, Form(form): Form<ScanForm>) -> Redirect {
+    let notice = run_scan(&state, &form.network, &form.port).await;
+    *write_lock(&state.notice) = Some(notice);
+    Redirect::to("/")
+}
+
+/// Points the bridge at the refbox the operator submitted, and reports back in plain English.
+///
+/// The order of what follows is the whole safety argument, and it is why this is one function
+/// rather than logic spread across a handler (see the module doc's "Choosing a refbox never breaks
+/// a working one"):
+///
+/// 1. **Read the address.** Unreadable input is reported and nothing is touched.
+/// 2. **Stop if it is the address already in use.** Re-submitting it (a double-click, a reloaded
+///    form) must not drop a working connection to reconnect to the identical place.
+/// 3. **Probe the candidate**, on a separate throwaway connection. This is the step that can take
+///    a couple of seconds, and it happens while the existing connection is still running
+///    untouched: if the candidate is unreachable, or is not a refbox, the answer is a sentence and
+///    the bridge carries on exactly as it was. **Nothing that is working is ever torn down to try
+///    something speculative.**
+/// 4. **Only then switch**, in this order: mark the bridge out of contact (unless it never was in
+///    contact), forget the old refbox's game, and last of all point the supervisor at the new
+///    address. Marking first is what guarantees no request can see "connected" beside the
+///    previous refbox's game once the switch has begun.
+/// 5. **Remember it**, so a restart comes back to the same refbox -- and say so honestly if that
+///    could not be written down.
+///
+/// The residual race is the one that cannot be removed from any ordering: between the probe
+/// succeeding and the supervisor connecting, the candidate could itself vanish. That resolves
+/// itself the ordinary way -- the supervisor retries, the connection stays down, and the tables
+/// stay blank -- which is the safe outcome, not a wrong one.
+pub async fn choose_refbox(state: &AppState, submitted: &str) -> Notice {
+    let current = state.target.current();
+
+    let candidate = match RefboxAddress::parse(submitted, current.port) {
+        Ok(address) => address,
+        Err(e) => {
+            return Notice::problem(format!(
+                "Could not use \"{}\": {e}. Nothing was changed — the bridge is still set to \
+                 {current}.",
+                submitted.trim()
+            ));
+        }
+    };
+
+    if candidate == current {
+        // Not a failure, so not reported as one -- just nothing to do.
+        return Notice::done(format!("The bridge is already set to {current}."));
+    }
+
+    let found = match discovery::probe(&candidate, discovery::PROBE_TIMEOUT).await {
+        Ok(found) => found,
+        Err(e) => {
+            return Notice::problem(format!(
+                "Could not use {candidate}: {e}. Nothing was changed — the bridge is still set \
+                 to {current}."
+            ));
+        }
+    };
+
+    // Confirmed a refbox. From here the switch happens, in the order the doc above sets out.
+    state.connection.set_disconnected_if_ever_connected();
+    state.forget_game();
+    state.target.set(candidate.clone());
+
+    let remembered = match &state.settings_path {
+        Some(path) => config::remember_refbox_address(path, &candidate.host, candidate.port),
+        None => false,
+    };
+
+    // "Switched to", not "now reading": the supervisor has been pointed at it and will connect
+    // in a moment, and the indicator at the top of the page is what says whether it has. Claiming
+    // a connection this function has not seen would be the same overstatement the whole design is
+    // built to avoid.
+    let mut text = format!(
+        "Switched to the refbox at {candidate} — {}.",
+        found.label.trim()
+    );
+    if !remembered {
+        text.push_str(
+            " This could not be saved, so the bridge will go back to the previous address when \
+             it next starts.",
+        );
+    }
+    Notice::done(text)
+}
+
+/// Checks the local network for refboxes and remembers what it found, for the status page to
+/// list. Reports back in plain English, exactly like [`choose_refbox`], and changes nothing about
+/// the running bridge whatever it finds -- a scan only ever looks.
+pub async fn run_scan(state: &AppState, network: &str, port: &str) -> Notice {
+    let current = state.target.current();
+
+    let network = network.trim();
+    let Ok(subnet) = network.parse::<Ipv4Addr>() else {
+        return Notice::problem(format!(
+            "Could not look for refboxes on \"{network}\": that is not a network address. Type an \
+             address on the network to look at, such as 192.168.1.5 — this computer's own \
+             address is usually right."
+        ));
+    };
+
+    let port = match port.trim() {
+        "" => current.port,
+        text => match text.parse::<u16>() {
+            Ok(port) if port != 0 => port,
+            _ => {
+                return Notice::problem(format!(
+                    "Could not look for refboxes: \"{text}\" is not a port number between 1 and \
+                     65535 — most refboxes use {}.",
+                    config::DEFAULT_REFBOX_PORT
+                ));
+            }
+        },
+    };
+
+    let found = discovery::scan(subnet, port).await;
+    let notice = match found.len() {
+        0 => Notice::problem(format!(
+            "No refboxes answered on {}.x port {port}. Some venue networks and firewalls block \
+             this check — if that is happening here, type the refbox's address instead.",
+            network_prefix(subnet)
+        )),
+        1 => Notice::done(format!("Found 1 refbox on {}.x.", network_prefix(subnet))),
+        n => Notice::done(format!(
+            "Found {n} refboxes on {}.x.",
+            network_prefix(subnet)
+        )),
+    };
+
+    *write_lock(&state.last_scan) = Some(ScanOutcome {
+        network: format!("{}.x", network_prefix(subnet)),
+        port,
+        found,
+    });
+    notice
+}
+
+/// `192.168.1.37` -> `192.168.1`, so a scanned network can be named the way an operator reads it
+/// (`192.168.1.x`) rather than as an address that was never scanned.
+fn network_prefix(subnet: Ipv4Addr) -> String {
+    let [a, b, c, _] = subnet.octets();
+    format!("{a}.{b}.{c}")
 }
 
 /// The bridge's live picture right now -- the last real snapshot the refbox sent, relayed
@@ -1172,12 +1427,18 @@ mod tests {
             .expect("bind a local listener");
         let refbox_addr = listener.local_addr().expect("local_addr");
 
-        let state = Arc::new(AppState::new(false));
+        // The supervisor reads the address from the shared handle (Task 8), so pointing this
+        // state at the test's own listener is what makes it connect there.
+        let state = Arc::new(AppState::new(false).with_operator_info(
+            refbox_addr.ip().to_string(),
+            refbox_addr.port(),
+            String::new(),
+        ));
         let (tx, rx) = mpsc::unbounded_channel();
         let refresh_notify = Arc::new(Notify::new());
 
         let supervisor = tokio::spawn(crate::feed::Supervisor::run(
-            refbox_addr,
+            state.target_handle(),
             tx,
             state.connection_handle(),
         ));
@@ -1310,12 +1571,18 @@ mod tests {
             .expect("bind a local listener");
         let refbox_addr = listener.local_addr().expect("local_addr");
 
-        let state = Arc::new(AppState::new(false));
+        // The supervisor reads the address from the shared handle (Task 8), so pointing this
+        // state at the test's own listener is what makes it connect there.
+        let state = Arc::new(AppState::new(false).with_operator_info(
+            refbox_addr.ip().to_string(),
+            refbox_addr.port(),
+            String::new(),
+        ));
         let (tx, rx) = mpsc::unbounded_channel();
         let refresh_notify = Arc::new(Notify::new());
 
         let supervisor = tokio::spawn(crate::feed::Supervisor::run(
-            refbox_addr,
+            state.target_handle(),
             tx,
             state.connection_handle(),
         ));
@@ -1463,7 +1730,13 @@ mod tests {
             .expect("bind a local listener");
         let refbox_addr = listener.local_addr().expect("local_addr");
 
-        let state = Arc::new(AppState::new(false));
+        // The supervisor reads the address from the shared handle (Task 8), so pointing this
+        // state at the test's own listener is what makes it connect there.
+        let state = Arc::new(AppState::new(false).with_operator_info(
+            refbox_addr.ip().to_string(),
+            refbox_addr.port(),
+            String::new(),
+        ));
         let addr = spawn_test_server(Arc::clone(&state)).await;
 
         // 1. Never connected: no attempt has been made yet.
@@ -1478,7 +1751,7 @@ mod tests {
         // 2. Connected: drive a real supervisor against a real loopback socket.
         let (tx, _rx) = mpsc::unbounded_channel();
         let supervisor = tokio::spawn(crate::feed::Supervisor::run(
-            refbox_addr,
+            state.target_handle(),
             tx,
             state.connection_handle(),
         ));
@@ -1563,6 +1836,522 @@ mod tests {
              {page}"
         );
         assert!(page.contains("a lost refbox may not be detected"));
+    }
+
+    // ------------------------------------------------------ choosing a refbox at runtime (Task 8)
+    //
+    // The whole point of these is the ORDER of what `choose_refbox` does (see its own doc): prove
+    // the candidate first, and only then touch anything that is working. Each test below pins one
+    // link of that chain, and the "left alone" ones would go red the moment the order was
+    // reversed -- which is the mistake that would take a broadcast off air.
+
+    /// A listener that behaves like a refbox: it replays `snapshot` the instant anything connects
+    /// (the real refbox behaviour discovery depends on, `refbox/src/app/update_sender.rs:606-630`)
+    /// and then holds the connection open, saying nothing further, exactly as a refbox with a
+    /// stopped clock does.
+    async fn fake_refbox(snapshot: GameSnapshot) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let addr = listener.local_addr().expect("local_addr");
+        let line = format!(
+            "{}\n",
+            serde_json::to_string(&snapshot).expect("GameSnapshot should serialize")
+        );
+
+        let handle = tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    return;
+                };
+                let line = line.clone();
+                tokio::spawn(async move {
+                    let _ = socket.write_all(line.as_bytes()).await;
+                    let mut sink = Vec::new();
+                    let _ = socket.read_to_end(&mut sink).await;
+                });
+            }
+        });
+
+        (addr, handle)
+    }
+
+    /// A refbox that answers exactly one connection -- enough for a probe to confirm it is a
+    /// refbox -- and then stops listening altogether. Stands in for the refbox that is switched
+    /// off, or falls off the Wi-Fi, in the moment between being chosen and being connected to:
+    /// the bridge must end up out of contact, never back on the previous refbox's game.
+    async fn vanishing_refbox(snapshot: GameSnapshot) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let addr = listener.local_addr().expect("local_addr");
+        let line = format!(
+            "{}\n",
+            serde_json::to_string(&snapshot).expect("GameSnapshot should serialize")
+        );
+
+        let handle = tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let _ = socket.write_all(line.as_bytes()).await;
+            }
+            // Dropping `listener` here is the point: nothing is listening on that port any more.
+        });
+
+        (addr, handle)
+    }
+
+    fn game(period: GamePeriod, secs: u32, black: u8, white: u8, number: &str) -> GameSnapshot {
+        GameSnapshot {
+            current_period: period,
+            secs_in_period: secs,
+            scores: BlackWhiteBundle { black, white },
+            game_number: number.to_string(),
+            ..Default::default()
+        }
+    }
+
+    /// A bridge wired up exactly as `main.rs` wires it -- supervisor, snapshot consumer and HTTP
+    /// server -- pointed at `refbox_addr`. Returns the state, the bridge's own HTTP address, and
+    /// the background tasks to abort at the end of the test.
+    async fn bridge_reading(
+        refbox_addr: SocketAddr,
+    ) -> (Arc<AppState>, SocketAddr, Vec<tokio::task::JoinHandle<()>>) {
+        let state = Arc::new(AppState::new(false).with_operator_info(
+            refbox_addr.ip().to_string(),
+            refbox_addr.port(),
+            String::new(),
+        ));
+        let (tx, rx) = mpsc::unbounded_channel();
+        let supervisor = tokio::spawn(crate::feed::Supervisor::run(
+            state.target_handle(),
+            tx,
+            state.connection_handle(),
+        ));
+        let consumer = tokio::spawn(consume_snapshots(
+            Arc::clone(&state),
+            rx,
+            Client::new(),
+            "http://portal.invalid".to_string(),
+            Arc::new(Notify::new()),
+        ));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+        (state, addr, vec![supervisor, consumer])
+    }
+
+    /// Submits the status page's own manual-entry form, following the redirect back to `GET /` the
+    /// way a browser does, and returns the page the operator ends up looking at.
+    async fn post_address(addr: SocketAddr, address: &str) -> String {
+        reqwest::Client::new()
+            .post(format!("http://{addr}/refbox"))
+            .form(&[("address", address)])
+            .send()
+            .await
+            .expect("POST /refbox should succeed")
+            .text()
+            .await
+            .expect("the page after POST /refbox should be readable")
+    }
+
+    /// The same, for the scan form.
+    async fn post_scan_form(addr: SocketAddr, network: &str, port: &str) -> String {
+        reqwest::Client::new()
+            .post(format!("http://{addr}/scan"))
+            .form(&[("network", network), ("port", port)])
+            .send()
+            .await
+            .expect("POST /scan should succeed")
+            .text()
+            .await
+            .expect("the page after POST /scan should be readable")
+    }
+
+    #[tokio::test]
+    async fn choosing_a_different_refbox_makes_the_tables_serve_that_refbox_s_game() {
+        let (first_addr, first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "14")).await;
+        let (second_addr, second) = fake_refbox(game(GamePeriod::SecondHalf, 44, 9, 3, "15")).await;
+        let (state, addr, tasks) = bridge_reading(first_addr).await;
+
+        wait_for_scores(&state, 2, 1).await;
+        let before = get_json(addr, "/scorebug").await;
+        assert_eq!(before[0]["blackScore"].as_str(), Some("2"));
+
+        let page = post_address(addr, &second_addr.to_string()).await;
+        assert!(
+            page.contains("Switched to the refbox at"),
+            "the operator should be told plainly what happened, got:\n{page}"
+        );
+
+        // The tables now serve the newly chosen refbox's game, not the previous one's.
+        wait_for_scores(&state, 9, 3).await;
+        let after = get_json(addr, "/scorebug").await;
+        assert_eq!(after[0]["connected"].as_str(), Some("true"));
+        assert_eq!(after[0]["blackScore"].as_str(), Some("9"));
+        assert_eq!(after[0]["whiteScore"].as_str(), Some("3"));
+        assert_eq!(after[0]["clockSeconds"].as_str(), Some("44"));
+
+        // And the page reports the address it is actually reading, from the same handle the
+        // supervisor connects through -- not a display copy that could disagree with it.
+        let page = get_response(addr, "/")
+            .await
+            .text()
+            .await
+            .expect("GET / body should be readable");
+        assert!(
+            page.contains(&second_addr.to_string()),
+            "the page should show the newly chosen address, got:\n{page}"
+        );
+
+        first.abort();
+        second.abort();
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_address_is_reported_and_the_working_connection_is_left_alone() {
+        // The single most important test in this task: an operator mistypes an address while a
+        // game is on air. The bridge must say so and carry on serving, NOT tear down what works
+        // to go looking for what does not.
+        let (first_addr, first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "14")).await;
+        let (state, addr, tasks) = bridge_reading(first_addr).await;
+        wait_for_scores(&state, 2, 1).await;
+
+        let reserved = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener to reserve a port");
+        let nothing_there = reserved.local_addr().expect("local_addr");
+        drop(reserved); // every connect there is refused
+
+        let page = post_address(addr, &nothing_there.to_string()).await;
+        assert!(
+            page.contains("Could not use") && page.contains("Nothing was changed"),
+            "the operator should be told what went wrong and that nothing changed, got:\n{page}"
+        );
+
+        let still = get_json(addr, "/scorebug").await;
+        assert_eq!(
+            still[0]["connected"].as_str(),
+            Some("true"),
+            "a working connection must survive an address that turned out to be nothing"
+        );
+        assert_eq!(still[0]["blackScore"].as_str(), Some("2"));
+        assert_eq!(
+            state.target.current(),
+            RefboxAddress::from(first_addr),
+            "and the bridge must still be pointed at the refbox it was reading"
+        );
+
+        first.abort();
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn an_address_that_is_not_a_refbox_is_reported_and_changes_nothing() {
+        // Something IS listening on this port -- it just is not a refbox (it never sends a game).
+        // Judging by "did the connection succeed" would switch the bridge to it and take the
+        // graphic off air.
+        let (first_addr, first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "14")).await;
+        let (state, addr, tasks) = bridge_reading(first_addr).await;
+        wait_for_scores(&state, 2, 1).await;
+
+        let not_a_refbox = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let silent_addr = not_a_refbox.local_addr().expect("local_addr");
+        let silent = tokio::spawn(async move {
+            let held = not_a_refbox.accept().await;
+            std::future::pending::<()>().await;
+            drop(held);
+        });
+
+        let page = post_address(addr, &silent_addr.to_string()).await;
+        assert!(
+            page.contains("it did not send a game"),
+            "the operator should be told that something is there but is not a refbox, got:\n{page}"
+        );
+        assert_eq!(
+            state.target.current(),
+            RefboxAddress::from(first_addr),
+            "nothing should have changed"
+        );
+        let still = get_json(addr, "/scorebug").await;
+        assert_eq!(still[0]["connected"].as_str(), Some("true"));
+        assert_eq!(still[0]["blackScore"].as_str(), Some("2"));
+
+        silent.abort();
+        first.abort();
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn an_address_that_cannot_be_read_is_reported_and_changes_nothing() {
+        let (first_addr, first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "14")).await;
+        let (state, addr, tasks) = bridge_reading(first_addr).await;
+        wait_for_scores(&state, 2, 1).await;
+
+        let page = post_address(addr, "192.168.1.50:eight thousand").await;
+        assert!(
+            page.contains("is not a port number"),
+            "a mistyped port should come back as a sentence, got:\n{page}"
+        );
+        assert_eq!(state.target.current(), RefboxAddress::from(first_addr));
+
+        // An empty submission is the other half of the same case -- a button pressed with nothing
+        // typed must not be read as "connect to nowhere".
+        let page = post_address(addr, "   ").await;
+        assert!(
+            page.contains("type the refbox&#39;s address"),
+            "an empty submission should say what to type, got:\n{page}"
+        );
+        assert_eq!(state.target.current(), RefboxAddress::from(first_addr));
+
+        let still = get_json(addr, "/scorebug").await;
+        assert_eq!(still[0]["connected"].as_str(), Some("true"));
+        assert_eq!(still[0]["blackScore"].as_str(), Some("2"));
+
+        first.abort();
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn the_previous_refbox_s_game_is_never_served_while_the_new_one_is_being_reached() {
+        // The candidate answers the probe (so the switch is allowed to happen) and then goes away
+        // before the supervisor can connect. The bridge must be out of contact and showing
+        // nothing -- above all it must not go on serving, or displaying, the game belonging to the
+        // refbox the operator just left.
+        let (first_addr, first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "14")).await;
+        let (state, addr, tasks) = bridge_reading(first_addr).await;
+        wait_for_scores(&state, 2, 1).await;
+
+        let (gone_addr, gone) =
+            vanishing_refbox(game(GamePeriod::SecondHalf, 44, 9, 3, "15")).await;
+        let page = post_address(addr, &gone_addr.to_string()).await;
+        assert!(
+            page.contains("Switched to the refbox at"),
+            "the candidate answered the probe, so the switch should have been allowed:\n{page}"
+        );
+
+        let scorebug = get_json(addr, "/scorebug").await;
+        assert_ne!(
+            scorebug[0]["blackScore"].as_str(),
+            Some("2"),
+            "the previous refbox's score must not still be served after switching away from it"
+        );
+        assert_ne!(scorebug[0]["clockSeconds"].as_str(), Some("613"));
+
+        // `/status.json` and the status page name the game unconditionally -- they are not blanked
+        // by the connection being down the way the tables are -- so this is where a leftover would
+        // sit visibly for as long as the new refbox stayed unreachable.
+        let status = get_json(addr, "/status.json").await;
+        assert_ne!(
+            status[0]["gameNumber"].as_str(),
+            Some("14"),
+            "the previous refbox's game number must not still be reported"
+        );
+        let page = get_response(addr, "/")
+            .await
+            .text()
+            .await
+            .expect("GET / body should be readable");
+        assert!(
+            page.contains("<tr><th>Game</th><td>(none known yet)</td></tr>"),
+            "the status page must not still be naming the previous refbox's game, got:\n{page}"
+        );
+
+        gone.abort();
+        first.abort();
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn changing_address_while_already_disconnected_keeps_the_down_for_time_counting() {
+        // The coverage Task 7's re-review deferred to here: `set_disconnected`'s guard against
+        // restarting the drop clock, reached through the real address-change path rather than by
+        // calling the setter twice by hand. No supervisor runs in this test, deliberately -- it
+        // would reconnect and legitimately clear the duration, and what is under test is the
+        // moment before that.
+        let state = Arc::new(AppState::new(false).with_operator_info(
+            "127.0.0.1".to_string(),
+            9,
+            String::new(),
+        ));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        state.connection_handle().set_connected();
+        state.connection_handle().set_disconnected();
+        tokio::time::sleep(Duration::from_millis(1300)).await;
+
+        let (candidate, refbox) = fake_refbox(game(GamePeriod::SecondHalf, 44, 9, 3, "15")).await;
+        let notice = choose_refbox(&state, &candidate.to_string()).await;
+        assert!(
+            notice.done,
+            "the candidate is a real refbox: {}",
+            notice.text
+        );
+
+        let status = get_json(addr, "/status.json").await;
+        assert_eq!(status[0]["contact"].as_str(), Some("Lost"));
+        let down_for: u64 = status[0]["disconnectedForSeconds"]
+            .as_str()
+            .unwrap_or_default()
+            .parse()
+            .expect("disconnectedForSeconds should be a whole number of seconds");
+        assert!(
+            down_for >= 1,
+            "the down-for time must keep counting from the original drop, not restart at zero \
+             because the operator chose another refbox -- got {down_for}s"
+        );
+
+        refbox.abort();
+    }
+
+    #[tokio::test]
+    async fn the_chosen_refbox_is_remembered_so_the_next_run_comes_back_to_it() {
+        let settings = std::env::temp_dir().join(format!(
+            "overlay-bridge-test-chosen-{}-{:?}.toml",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_file(&settings);
+
+        let state = Arc::new(
+            AppState::new(false)
+                .with_operator_info("127.0.0.1".to_string(), 9, String::new())
+                .with_settings_path(Some(settings.clone())),
+        );
+        let (candidate, refbox) = fake_refbox(game(GamePeriod::SecondHalf, 44, 9, 3, "15")).await;
+
+        let notice = choose_refbox(&state, &candidate.to_string()).await;
+        assert!(notice.done, "{}", notice.text);
+        assert!(
+            !notice.text.contains("could not be saved"),
+            "a writable settings file should not report a save failure: {}",
+            notice.text
+        );
+
+        let stored: config::Settings =
+            confy::load_path(&settings).expect("the settings file should be readable");
+        let _ = std::fs::remove_file(&settings);
+        assert_eq!(stored.refbox_host.as_deref(), Some("127.0.0.1"));
+        assert_eq!(stored.refbox_port, Some(candidate.port()));
+
+        refbox.abort();
+    }
+
+    #[tokio::test]
+    async fn choosing_the_refbox_already_in_use_says_so_and_does_nothing() {
+        let (first_addr, first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "14")).await;
+        let (state, addr, tasks) = bridge_reading(first_addr).await;
+        wait_for_scores(&state, 2, 1).await;
+
+        let page = post_address(addr, &first_addr.to_string()).await;
+        assert!(
+            page.contains("already set to"),
+            "re-submitting the current address should say so, got:\n{page}"
+        );
+        let still = get_json(addr, "/scorebug").await;
+        assert_eq!(
+            still[0]["connected"].as_str(),
+            Some("true"),
+            "and must not have dropped the connection to reconnect to the same place"
+        );
+        assert_eq!(still[0]["blackScore"].as_str(), Some("2"));
+
+        first.abort();
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    // -------------------------------------------------------- searching the network (Task 8)
+
+    #[tokio::test]
+    async fn a_search_lists_what_it_found_with_a_button_that_reads_it() {
+        let (refbox_addr, refbox) =
+            fake_refbox(game(GamePeriod::SecondHalf, 227, 2, 1, "14")).await;
+        let state = Arc::new(AppState::new(false).with_operator_info(
+            "127.0.0.1".to_string(),
+            9,
+            String::new(),
+        ));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        let page = post_scan_form(addr, "127.0.0.1", &refbox_addr.port().to_string()).await;
+
+        assert!(
+            page.contains("Found 1 refbox"),
+            "the search should report what it found, got:\n{page}"
+        );
+        assert!(
+            page.contains(&refbox_addr.to_string()),
+            "the refbox's address should be listed, got:\n{page}"
+        );
+        assert!(
+            page.contains("Game 14 · Second Half · 3:47 · 2–1"),
+            "the label is what the operator actually picks by, got:\n{page}"
+        );
+        assert!(
+            page.contains(&format!(
+                "<input type=\"hidden\" name=\"address\" value=\"{refbox_addr}\">"
+            )),
+            "each result needs a button that reads that refbox, got:\n{page}"
+        );
+
+        // And picking it is the same action as typing it: the same route, the same outcome.
+        let page = post_address(addr, &refbox_addr.to_string()).await;
+        assert!(page.contains("Switched to the refbox at"), "{page}");
+        assert_eq!(state.target.current(), RefboxAddress::from(refbox_addr));
+
+        refbox.abort();
+    }
+
+    #[tokio::test]
+    async fn a_search_that_finds_nothing_says_so_and_suggests_typing_the_address() {
+        let reserved = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener to reserve a port");
+        let empty_port = reserved.local_addr().expect("local_addr").port();
+        drop(reserved);
+
+        let state = Arc::new(AppState::new(false));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        let page = post_scan_form(addr, "127.0.0.1", &empty_port.to_string()).await;
+
+        assert!(
+            page.contains("No refboxes answered"),
+            "an empty result must be said in words, got:\n{page}"
+        );
+        assert!(
+            page.contains("type the refbox&#39;s address instead"),
+            "and it must point at the way that always works, got:\n{page}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_search_of_something_that_is_not_a_network_is_reported() {
+        let state = Arc::new(AppState::new(false));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        let page = post_scan_form(addr, "my network", "8000").await;
+
+        assert!(
+            page.contains("that is not a network address"),
+            "got:\n{page}"
+        );
+        assert!(
+            !page.contains("Found"),
+            "nothing was searched, so nothing should be reported as found:\n{page}"
+        );
     }
 
     // ---------------------------------------------------------------- roster building

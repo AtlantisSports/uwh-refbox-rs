@@ -81,7 +81,11 @@ pub fn resolve<T>(cli: Option<T>, stored: Option<T>, default: T) -> T {
 
 /// Where the bridge's settings file lives -- the OS-standard per-user config directory for
 /// [`APP_NAME`], resolved by `confy` (via its own `directories` dependency).
-fn settings_path() -> Result<PathBuf, confy::ConfyError> {
+///
+/// Public since Task 8: `main.rs` resolves this once at startup and hands it to the HTTP server,
+/// so that an address the operator chooses while the bridge is running is remembered in the same
+/// file this one names -- see [`remember_refbox_address`].
+pub fn settings_path() -> Result<PathBuf, confy::ConfyError> {
     confy::get_configuration_file_path(APP_NAME, None)
 }
 
@@ -125,6 +129,35 @@ pub fn store(settings: &Settings) {
             }
         }
         Err(e) => eprintln!("could not determine where to save the bridge's settings: {e}"),
+    }
+}
+
+/// Remembers a refbox address the operator chose while the bridge was running (Task 8), in the
+/// settings file at `path`, leaving every other setting exactly as it is.
+///
+/// Read-modify-write rather than writing a whole [`Settings`] built from what the running process
+/// happens to know: the bridge's own HTTP port, side of pool and court all live in the same file,
+/// and writing the file from a partial picture would silently clear whichever of them the caller
+/// did not have to hand. The read is the file's current contents, so the only field this can ever
+/// change is the address.
+///
+/// Never fails loudly, for the same reason as [`store`]: an address the operator chose is already
+/// in use for this run whether or not it could be written down for the next one, and a settings
+/// problem must not interrupt a broadcast. A failure is reported to stderr and to the caller (as
+/// `false`) so the status page can say plainly that the choice will not survive a restart, rather
+/// than silently promising it will.
+pub fn remember_refbox_address(path: &Path, host: &str, port: u16) -> bool {
+    let settings = Settings {
+        refbox_host: Some(host.to_string()),
+        refbox_port: Some(port),
+        ..load_from(path)
+    };
+    match confy::store_path(path, &settings) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("could not remember the chosen refbox address: {e}");
+            false
+        }
     }
 }
 
@@ -224,6 +257,82 @@ mod tests {
             Settings::default(),
             "a settings file that exists but fails to parse must fall back to defaults, the same \
              as a missing one -- never an error that could stop the bridge from starting"
+        );
+    }
+
+    // ------------------------------------------------------------------ remember_refbox_address
+
+    #[test]
+    fn a_chosen_refbox_address_is_remembered_for_the_next_run() {
+        // The point of the whole thing: an operator who picks a refbox on the status page today
+        // finds the bridge already pointed at it tomorrow, without typing anything. `load_from`
+        // plus `resolve` here is exactly what `main.rs` does on a run with no flags at all.
+        let file = TempSettingsFile::new();
+        confy::store_path(
+            &file.0,
+            &Settings {
+                refbox_host: Some("127.0.0.1".to_string()),
+                refbox_port: Some(8000),
+                ..Settings::default()
+            },
+        )
+        .expect("writing the starting settings should succeed");
+
+        assert!(remember_refbox_address(&file.0, "192.168.1.50", 8123));
+
+        let next_run = load_from(&file.0);
+        assert_eq!(
+            resolve(None, next_run.refbox_host, DEFAULT_REFBOX_HOST.to_string()),
+            "192.168.1.50"
+        );
+        assert_eq!(
+            resolve(None, next_run.refbox_port, DEFAULT_REFBOX_PORT),
+            8123
+        );
+    }
+
+    #[test]
+    fn remembering_an_address_leaves_every_other_setting_alone() {
+        // The read-modify-write is the whole reason this function exists rather than a `store` of
+        // a freshly-built `Settings`: the HTTP port, side of pool and court are set elsewhere and
+        // must survive a change of refbox. Without the read, this test finds them cleared.
+        let file = TempSettingsFile::new();
+        let before = Settings {
+            refbox_host: Some("127.0.0.1".to_string()),
+            refbox_port: Some(8000),
+            port: Some(9001),
+            white_on_right: Some(true),
+            court: Some("Pool A".to_string()),
+        };
+        confy::store_path(&file.0, &before).expect("writing the starting settings should succeed");
+
+        assert!(remember_refbox_address(&file.0, "192.168.1.50", 8000));
+
+        let after = load_from(&file.0);
+        assert_eq!(after.port, before.port);
+        assert_eq!(after.white_on_right, before.white_on_right);
+        assert_eq!(after.court, before.court);
+        assert_eq!(after.refbox_host.as_deref(), Some("192.168.1.50"));
+    }
+
+    #[test]
+    fn remembering_an_address_reports_failure_rather_than_pretending_it_saved() {
+        // A path that cannot be written to (a directory where a file should be). The bridge must
+        // carry on -- the address is in use either way -- but it must not tell the operator the
+        // choice will survive a restart when it will not.
+        let dir = std::env::temp_dir().join(format!(
+            "overlay-bridge-test-unwritable-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).expect("creating the blocking directory should succeed");
+
+        let saved = remember_refbox_address(&dir, "192.168.1.50", 8000);
+
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            !saved,
+            "storing into a path that is a directory cannot succeed, and must be reported"
         );
     }
 

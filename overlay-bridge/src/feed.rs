@@ -23,9 +23,22 @@
 //! the supervisor logs a configuration failure to stderr and keeps reading regardless (see
 //! `configure_keepalive`'s doc for why), but stderr is invisible to an operator running a
 //! compiled program, so this is the structured signal the status page surfaces instead.
+//!
+//! [`RefboxAddress`] and [`FeedTarget`], last, are *which* refbox the supervisor is reading
+//! (Task 8). The address is no longer fixed for the life of the process: an operator can pick a
+//! different refbox from the status page at any time, and [`FeedTarget::set`] is how that reaches
+//! [`Supervisor::run`] -- it drops whatever connection it currently has and connects to the new
+//! address, without waiting out a retry delay or a stalled connect. **Choosing a new refbox never
+//! keeps the old one's game on screen**: whoever calls [`FeedTarget::set`] is expected to mark the
+//! bridge out of contact first (see [`ConnectionState::set_disconnected_if_ever_connected`]), and
+//! the supervisor publishes [`Connection::Disconnected`] again the moment it actually drops the
+//! old connection, so nothing reports "connected" until the *new* refbox has genuinely been
+//! reached. Liveness is unchanged by any of this -- it still comes only from the connection
+//! itself, never from message timing.
 
 use std::{
     fmt, io,
+    net::SocketAddr,
     pin::Pin,
     sync::{
         Arc, PoisonError, RwLock,
@@ -39,8 +52,8 @@ use futures::{Stream, StreamExt};
 use socket2::{SockRef, TcpKeepalive};
 use tokio::{
     io::{AsyncRead, ReadBuf},
-    net::{TcpStream, ToSocketAddrs},
-    sync::mpsc,
+    net::TcpStream,
+    sync::{mpsc, watch},
     time::sleep,
 };
 use uwh_common::game_snapshot::GameSnapshot;
@@ -177,14 +190,20 @@ const MAX_UNTERMINATED_BYTES: usize = 1024 * 1024;
 /// the supervisor's job, so the guard sits in front of the reader instead of inside it. The
 /// `io::Error` this produces surfaces through `SnapshotReader` as `FeedError::Io`, so it is picked
 /// up by the supervisor's existing "connection lost -> reconnect" handling with no special-casing.
-struct LineLimited<R> {
+/// `pub(crate)` rather than private: `discovery` puts the very same guard in front of the very
+/// same reader when it probes a candidate refbox (one connect, one snapshot, close), for exactly
+/// the reason described above -- a probe that hit a chatty non-refbox service would otherwise grow
+/// an unbounded buffer for as long as the probe's own timeout allowed. Sharing this rather than
+/// writing a second, differently-bounded one keeps one answer to "how much unterminated input is
+/// too much" in the crate.
+pub(crate) struct LineLimited<R> {
     reader: R,
     /// Bytes seen since the last `b'\n'` (or since the connection opened).
     unterminated: usize,
 }
 
 impl<R> LineLimited<R> {
-    fn new(reader: R) -> Self {
+    pub(crate) fn new(reader: R) -> Self {
         Self {
             reader,
             unterminated: 0,
@@ -325,6 +344,20 @@ struct ConnectionInner {
     disconnected_at: Option<Instant>,
 }
 
+/// The one place the "disconnected, and when" transition is written, shared by
+/// [`ConnectionState::set_disconnected`] and
+/// [`ConnectionState::set_disconnected_if_ever_connected`] so the two can never drift apart on the
+/// detail that matters: the drop instant is recorded **only** on the actual transition into
+/// [`Connection::Disconnected`], never overwritten by a later call while already disconnected.
+/// Takes the already-acquired guard's contents rather than acquiring anything itself, so both
+/// callers keep their whole update inside a single lock acquisition.
+fn mark_disconnected(inner: &mut ConnectionInner) {
+    if inner.connection != Connection::Disconnected {
+        inner.disconnected_at = Some(Instant::now());
+    }
+    inner.connection = Connection::Disconnected;
+}
+
 /// A cheaply cloneable handle to the bridge's live [`Connection`] state (plus, since Task 7, when
 /// it last dropped), shared between [`Supervisor::run`] (the only thing that ever writes it) and
 /// the HTTP server (which reads it, via [`ConnectionState::get`]/[`ConnectionState::snapshot`], to
@@ -419,10 +452,37 @@ impl ConnectionState {
     /// reset every time this were called rather than growing from the real drop.
     pub(crate) fn set_disconnected(&self) {
         let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
-        if inner.connection != Connection::Disconnected {
-            inner.disconnected_at = Some(Instant::now());
+        mark_disconnected(&mut inner);
+    }
+
+    /// Marks the bridge out of contact **unless it has never been in contact at all** -- what
+    /// choosing a different refbox needs (Task 8), and the only difference from
+    /// [`ConnectionState::set_disconnected`].
+    ///
+    /// Two things must both be true when an operator points the bridge at another refbox, and
+    /// this is where they meet:
+    ///
+    /// - Nothing may go on reporting "connected" while the newly-chosen refbox is still being
+    ///   reached, or the bridge would keep serving the *previous* refbox's game as though it were
+    ///   live -- the "confidently wrong" behaviour spec §4.6 exists to remove.
+    /// - A bridge that has never once reached a refbox must stay
+    ///   [`Connection::NeverConnected`]. Moving it to `Disconnected` would invent a drop that
+    ///   never happened, and the status page would start counting "down for" from a connection
+    ///   it never had (see [`Connection`]'s own doc for why those two states are kept distinct).
+    ///
+    /// Both are decided inside one lock acquisition, not by a caller reading the state and then
+    /// writing it back, so the answer cannot change in between.
+    ///
+    /// Note what this deliberately does *not* do: when the bridge is already `Disconnected`, the
+    /// original drop instant is left exactly as it was (see [`ConnectionState::set_disconnected`]).
+    /// Changing address while already disconnected is precisely that second call, and the "down
+    /// for" figure must keep counting from the real drop rather than restarting at zero because
+    /// the operator tried a different address.
+    pub(crate) fn set_disconnected_if_ever_connected(&self) {
+        let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
+        if inner.connection != Connection::NeverConnected {
+            mark_disconnected(&mut inner);
         }
-        inner.connection = Connection::Disconnected;
     }
 
     /// See [`ConnectionState::set_connected`]'s visibility note -- the same reasoning applies.
@@ -445,6 +505,206 @@ impl Default for ConnectionState {
     }
 }
 
+/// Which refbox the bridge reads: a hostname or IP address, and a TCP port.
+///
+/// A plain pair rather than a resolved [`SocketAddr`], because the host is resolved afresh on
+/// **every** connection attempt (`TcpStream::connect((host, port))`). At a venue that matters: a
+/// refbox reached by name whose address changes -- a DHCP lease renewed, a Pi rebooted onto a
+/// different address -- is found again by the next reconnect, where a resolved-once address would
+/// keep retrying somewhere nothing is listening any more.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefboxAddress {
+    pub host: String,
+    pub port: u16,
+}
+
+impl RefboxAddress {
+    pub fn new(host: impl Into<String>, port: u16) -> Self {
+        Self {
+            host: host.into(),
+            port,
+        }
+    }
+
+    /// Reads an address an operator typed into the status page. Accepts `host`, `host:port`,
+    /// `[ipv6]:port` and a bare IPv6 literal; `default_port` is used whenever no port was typed,
+    /// so an operator who knows only the address of the refbox (the normal case -- every refbox
+    /// serves its feed on the same port) can type just that.
+    ///
+    /// Deliberately does **not** try to decide whether the host "looks like" a real address:
+    /// hostnames, mDNS names (`refbox.local`) and IP addresses are all legitimate, and the only
+    /// judgement that actually matters -- is there a refbox there -- is made by connecting to it
+    /// (`discovery::probe`), never by inspecting the text. What this does catch is the class of
+    /// input that could not possibly be connected to at all, so the operator gets a plain
+    /// sentence back instead of a connection error that reads like the refbox's fault.
+    pub fn parse(input: &str, default_port: u16) -> Result<Self, AddressError> {
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            return Err(AddressError::Empty);
+        }
+
+        // `[::1]:8000` / `[::1]` -- the bracketed form is the only way to write an IPv6 literal
+        // together with a port, since the literal itself is full of colons.
+        if let Some(rest) = trimmed.strip_prefix('[') {
+            let Some((host, after)) = rest.split_once(']') else {
+                return Err(AddressError::Malformed);
+            };
+            let port = match after {
+                "" => default_port,
+                _ => match after.strip_prefix(':') {
+                    Some(port_text) => parse_port(port_text)?,
+                    None => return Err(AddressError::Malformed),
+                },
+            };
+            return Self::with_host(host, port);
+        }
+
+        match trimmed.rfind(':') {
+            // More than one colon and no brackets: an unbracketed IPv6 literal, which cannot
+            // carry a port -- the last colon is part of the address, not a separator.
+            Some(colon) if trimmed[..colon].contains(':') => Self::with_host(trimmed, default_port),
+            Some(colon) => Self::with_host(&trimmed[..colon], parse_port(&trimmed[colon + 1..])?),
+            None => Self::with_host(trimmed, default_port),
+        }
+    }
+
+    fn with_host(host: &str, port: u16) -> Result<Self, AddressError> {
+        if host.is_empty() {
+            return Err(AddressError::MissingHost);
+        }
+        Ok(Self::new(host, port))
+    }
+}
+
+fn parse_port(text: &str) -> Result<u16, AddressError> {
+    match text.trim().parse::<u16>() {
+        // Port 0 means "any free port" to the operating system, which is never something a
+        // refbox could be listening on -- treat it as a typo, not an address.
+        Ok(0) | Err(_) => Err(AddressError::BadPort(text.to_string())),
+        Ok(port) => Ok(port),
+    }
+}
+
+impl fmt::Display for RefboxAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.host.contains(':') {
+            write!(f, "[{}]:{}", self.host, self.port)
+        } else {
+            write!(f, "{}:{}", self.host, self.port)
+        }
+    }
+}
+
+impl From<SocketAddr> for RefboxAddress {
+    fn from(addr: SocketAddr) -> Self {
+        Self::new(addr.ip().to_string(), addr.port())
+    }
+}
+
+/// Why an address an operator typed could not be used. Every variant's [`fmt::Display`] is a
+/// plain sentence fragment written for a broadcast volunteer, not an error code: the status page
+/// puts it straight in front of them, and "they can read the log" is not an answer for a program
+/// with no terminal in view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AddressError {
+    /// Nothing was typed at all.
+    Empty,
+    /// Something was typed, but there is no host in front of the port (`:8000`).
+    MissingHost,
+    /// The text after the last colon is not a usable TCP port.
+    BadPort(String),
+    /// Brackets that do not close, or text after `]` that is not `:port`.
+    Malformed,
+}
+
+impl fmt::Display for AddressError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AddressError::Empty => write!(
+                f,
+                "type the refbox's address, for example 192.168.1.50 or 192.168.1.50:8000"
+            ),
+            AddressError::MissingHost => write!(
+                f,
+                "there is no address in front of the port — type something like 192.168.1.50:8000"
+            ),
+            AddressError::BadPort(text) => write!(
+                f,
+                "\"{text}\" is not a port number between 1 and 65535 — most refboxes use 8000"
+            ),
+            AddressError::Malformed => write!(
+                f,
+                "that is not an address the bridge can read — type something like 192.168.1.50:8000"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for AddressError {}
+
+/// The refbox [`Supervisor::run`] is currently reading, and the way to change it while the bridge
+/// is running.
+///
+/// Cheaply cloneable and shared: the HTTP server holds one (an operator picking a refbox on the
+/// status page calls [`FeedTarget::set`] through it), the supervisor holds one, and both see the
+/// same value. Backed by a `tokio::sync::watch` channel rather than a lock plus a notify, for one
+/// specific property: [`watch::Receiver::changed`] reports a change **relative to what this
+/// receiver has already seen**, so the supervisor cannot miss a change that lands while it is busy
+/// connecting, and equally cannot be woken spuriously by a change it has already acted on. A
+/// spurious wake here would not be cosmetic -- it would drop a perfectly good connection and blank
+/// the graphic for a moment, for nothing.
+#[derive(Debug, Clone)]
+pub struct FeedTarget {
+    /// `Arc` because `watch::Sender` is not itself cloneable, and every holder of a `FeedTarget`
+    /// must be able to *set* the address, not merely read it.
+    address: Arc<watch::Sender<RefboxAddress>>,
+}
+
+impl FeedTarget {
+    pub fn new(address: RefboxAddress) -> Self {
+        Self {
+            address: Arc::new(watch::Sender::new(address)),
+        }
+    }
+
+    /// The refbox currently chosen -- what the supervisor is connected to, or trying to reach.
+    pub fn current(&self) -> RefboxAddress {
+        self.address.borrow().clone()
+    }
+
+    /// Points the bridge at a different refbox, waking [`Supervisor::run`] to drop whatever it is
+    /// connected to and connect to this instead.
+    ///
+    /// Returns whether this actually changed anything: `false` means the bridge was already
+    /// pointed there, and **nothing at all happens** -- no wake, no reconnect, no dropped
+    /// connection. That matters because re-submitting the address already in use is an easy thing
+    /// for an operator to do (a double-click on the button, a browser reload of the form), and
+    /// tearing down a working connection to reconnect to the identical address would take the
+    /// graphic off air for no reason whatsoever.
+    ///
+    /// **Callers must mark the bridge out of contact first** -- see
+    /// [`ConnectionState::set_disconnected_if_ever_connected`] -- so that no request can observe
+    /// "connected" against the previous refbox's game between this call and the supervisor
+    /// actually noticing it.
+    pub fn set(&self, address: RefboxAddress) -> bool {
+        self.address.send_if_modified(|current| {
+            if *current == address {
+                false
+            } else {
+                *current = address;
+                true
+            }
+        })
+    }
+
+    /// A receiver for [`Supervisor::run`]'s own use. Private to this module: everything outside it
+    /// reads the address with [`FeedTarget::current`], and the change-notification half is the
+    /// supervisor's business alone.
+    fn subscribe(&self) -> watch::Receiver<RefboxAddress> {
+        self.address.subscribe()
+    }
+}
+
 /// Owns a refbox feed connection: connects, configures keepalive, forwards every snapshot to `tx`
 /// in arrival order, and reconnects -- after `RECONNECT_DELAY` -- on any kind of loss: a refused
 /// or failed connect, the refbox closing the stream, an I/O error, or a peer the keepalive probes
@@ -459,6 +719,13 @@ impl Default for ConnectionState {
 /// A malformed line (`FeedError::Parse`) is not a connection loss: it is logged and reading
 /// continues on the same connection, exactly as `SnapshotReader` already reports it, and
 /// `connection` is left untouched.
+///
+/// **Which** refbox it reads comes from a [`FeedTarget`], not a fixed address, and can change
+/// while it runs (Task 8). Every place this could otherwise sit and wait -- a connect in progress,
+/// the delay between retries, and the read loop of an established connection -- also watches for
+/// that change, so choosing a refbox on the status page takes effect immediately instead of after
+/// a retry delay, or after an operating-system connect timeout that can run to minutes against an
+/// address that is silently dropping packets.
 pub struct Supervisor;
 
 impl Supervisor {
@@ -466,22 +733,48 @@ impl Supervisor {
     /// receiver being dropped, which makes a send fail and ends the loop -- there is no other exit
     /// path, by design: silence on this feed is often legitimate (see the module doc), so nothing
     /// here ever gives up on a refbox that simply hasn't sent anything in a while.
-    pub async fn run<A>(
-        addr: A,
+    pub async fn run(
+        target: FeedTarget,
         tx: mpsc::UnboundedSender<GameSnapshot>,
         connection: ConnectionState,
-    ) where
-        A: ToSocketAddrs,
-    {
-        loop {
-            let stream = match TcpStream::connect(&addr).await {
-                Ok(stream) => stream,
-                Err(e) => {
-                    eprintln!("could not connect to the refbox feed: {e}");
-                    sleep(RECONNECT_DELAY).await;
-                    continue;
+    ) {
+        let mut chosen = target.subscribe();
+        'connect: loop {
+            // `borrow_and_update`, not `borrow`: taking the address also marks it seen, so the
+            // `chosen.changed()` arms below fire only for a change made from here on, never for
+            // the one that sent us round this loop in the first place.
+            let addr = chosen.borrow_and_update().clone();
+
+            let stream = tokio::select! {
+                result = TcpStream::connect((addr.host.as_str(), addr.port)) => match result {
+                    Ok(stream) => stream,
+                    Err(e) => {
+                        eprintln!("could not connect to the refbox feed at {addr}: {e}");
+                        // Wait before trying again -- but not if the operator picks a different
+                        // refbox in the meantime, which must not have to wait out this delay.
+                        tokio::select! {
+                            () = sleep(RECONNECT_DELAY) => {}
+                            _ = chosen.changed() => {}
+                        }
+                        continue 'connect;
+                    }
+                },
+                _ = chosen.changed() => {
+                    // A different refbox was chosen while this connect was still in progress.
+                    // Abandon it and start again against the new address. Nothing is published to
+                    // `connection`: no connection was established here, so there is nothing to
+                    // report as lost -- and in particular a bridge that has never reached a
+                    // refbox must stay `NeverConnected`.
+                    continue 'connect;
                 }
             };
+
+            // Same reasoning as the abandoned-connect arm above, for the sliver between that
+            // `select!` completing and this point: if the operator has already moved on, do not
+            // announce a connection to the refbox they just left.
+            if chosen.has_changed().unwrap_or(false) {
+                continue 'connect;
+            }
             // This fires the instant the TCP handshake completes -- before the refbox's replayed
             // snapshot (its current game state, sent to every new client immediately on connect;
             // see `refbox/src/app/update_sender.rs:606-630`) has actually been read and parsed.
@@ -506,25 +799,52 @@ impl Supervisor {
 
             let mut snapshots = SnapshotReader::new(LineLimited::new(stream));
             loop {
-                match snapshots.next().await {
-                    Some(Ok(snapshot)) => {
-                        if tx.send(snapshot).is_err() {
-                            // Nobody is listening any more; there is nothing left to run for.
-                            return;
+                // Both arms are cancellation-safe, which is what makes this `select!` sound:
+                // `SnapshotReader` keeps its part-assembled line in its own buffer (never in the
+                // dropped future), so a read cancelled here loses no bytes, and
+                // `watch::Receiver::changed` is defined in terms of a version this receiver has
+                // already seen rather than a one-shot wakeup, so a cancelled one loses no
+                // notification either.
+                tokio::select! {
+                    item = snapshots.next() => match item {
+                        Some(Ok(snapshot)) => {
+                            if tx.send(snapshot).is_err() {
+                                // Nobody is listening any more; there is nothing left to run for.
+                                return;
+                            }
                         }
-                    }
-                    Some(Err(FeedError::Parse(e))) => {
-                        eprintln!("could not parse a snapshot from the refbox feed: {e}");
-                    }
-                    Some(Err(FeedError::Io(e))) => {
-                        eprintln!("lost the refbox feed connection: {e}");
+                        Some(Err(FeedError::Parse(e))) => {
+                            eprintln!("could not parse a snapshot from the refbox feed: {e}");
+                        }
+                        Some(Err(FeedError::Io(e))) => {
+                            eprintln!("lost the refbox feed connection: {e}");
+                            connection.set_disconnected();
+                            break;
+                        }
+                        None => {
+                            eprintln!("the refbox closed the feed connection");
+                            connection.set_disconnected();
+                            break;
+                        }
+                    },
+                    _ = chosen.changed() => {
+                        // The operator chose a different refbox. Drop this connection (leaving
+                        // this scope closes the socket) and go straight round to connect to the
+                        // new one -- `continue 'connect` rather than `break`, deliberately, so
+                        // this skips the reconnect delay below: that delay exists to stop the
+                        // bridge hammering a refbox that just went away, and a deliberate choice
+                        // is not that.
+                        //
+                        // Publishing `Disconnected` here is what stops the previous refbox's game
+                        // being served as though it were live while the new one is still being
+                        // reached. Whoever called `FeedTarget::set` will normally have marked it
+                        // already (see `set_disconnected_if_ever_connected`); this is the same
+                        // transition arriving a second time, and `set_disconnected` deliberately
+                        // keeps the original drop instant rather than restarting the "down for"
+                        // clock.
+                        eprintln!("switching the refbox feed to {}", &*chosen.borrow());
                         connection.set_disconnected();
-                        break;
-                    }
-                    None => {
-                        eprintln!("the refbox closed the feed connection");
-                        connection.set_disconnected();
-                        break;
+                        continue 'connect;
                     }
                 }
             }
@@ -914,7 +1234,11 @@ mod tests {
         let addr = listener.local_addr().expect("local_addr");
 
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let handle = tokio::spawn(Supervisor::run(addr, tx, ConnectionState::new()));
+        let handle = tokio::spawn(Supervisor::run(
+            FeedTarget::new(addr.into()),
+            tx,
+            ConnectionState::new(),
+        ));
 
         let (mut refbox_side, _) = listener.accept().await.expect("accept");
         let payload = format!("{}\n{}\n", fixture_line(0), fixture_line(1));
@@ -946,7 +1270,11 @@ mod tests {
         let addr = listener.local_addr().expect("local_addr");
 
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let handle = tokio::spawn(Supervisor::run(addr, tx, ConnectionState::new()));
+        let handle = tokio::spawn(Supervisor::run(
+            FeedTarget::new(addr.into()),
+            tx,
+            ConnectionState::new(),
+        ));
 
         let (first_connection, _) = listener.accept().await.expect("first accept");
         // Closed with no data at all -- a clean close (the refbox process exiting normally), not
@@ -989,7 +1317,11 @@ mod tests {
         drop(probe); // nothing is listening at `addr` any more; every connect is refused
 
         let (tx, _rx) = mpsc::unbounded_channel();
-        let handle = tokio::spawn(Supervisor::run(addr, tx, ConnectionState::new()));
+        let handle = tokio::spawn(Supervisor::run(
+            FeedTarget::new(addr.into()),
+            tx,
+            ConnectionState::new(),
+        ));
 
         // Let several retry cycles elapse on the paused clock. Tokio auto-advances a paused clock
         // to the next pending timer once every task is idle and only a timer is outstanding, so
@@ -1034,6 +1366,381 @@ mod tests {
     #[test]
     fn a_fresh_connection_state_reports_never_connected() {
         assert_eq!(ConnectionState::new().get(), Connection::NeverConnected);
+    }
+
+    // ------------------------------------------ set_disconnected_if_ever_connected (Task 8)
+    //
+    // The variant choosing a different refbox uses. The middle test below is the one the Task 7
+    // re-review deferred to this task: `set_disconnected`'s guard against restarting the "down
+    // for" clock had no caller that could reach it twice, and changing address while already
+    // disconnected is exactly that second call.
+
+    #[test]
+    fn marking_out_of_contact_leaves_a_bridge_that_never_connected_alone() {
+        let connection = ConnectionState::new();
+
+        connection.set_disconnected_if_ever_connected();
+
+        let status = connection.snapshot();
+        assert_eq!(
+            status.connection,
+            Connection::NeverConnected,
+            "a bridge that has never reached a refbox must not be moved to Disconnected by an \
+             address change -- that would invent a drop that never happened"
+        );
+        assert_eq!(
+            status.disconnected_for, None,
+            "and it must have no duration, because there is no drop to measure from"
+        );
+    }
+
+    #[tokio::test]
+    async fn marking_out_of_contact_while_already_disconnected_keeps_the_original_drop_time() {
+        // THE guard test. If `set_disconnected`'s "only on the actual transition" check were
+        // removed, the second call below would stamp a fresh instant and the duration would fall
+        // back to roughly zero -- so an operator trying a second address would watch the "down
+        // for" figure restart, hiding how long the bridge had really been out of contact.
+        let connection = ConnectionState::new();
+        connection.set_connected();
+        connection.set_disconnected();
+        tokio::time::sleep(Duration::from_millis(60)).await;
+
+        let before = connection
+            .snapshot()
+            .disconnected_for
+            .expect("a disconnected bridge should report how long it has been down");
+        assert!(
+            before >= Duration::from_millis(50),
+            "test setup should have let a real duration accumulate first, got {before:?}"
+        );
+
+        connection.set_disconnected_if_ever_connected();
+
+        let after = connection
+            .snapshot()
+            .disconnected_for
+            .expect("still disconnected, so still reporting a duration");
+        assert!(
+            after >= before,
+            "the down-for time must keep counting from the original drop ({before:?}), not \
+             restart because the address changed (got {after:?})"
+        );
+    }
+
+    #[test]
+    fn marking_out_of_contact_while_connected_records_the_drop() {
+        let connection = ConnectionState::new();
+        connection.set_connected();
+
+        connection.set_disconnected_if_ever_connected();
+
+        let status = connection.snapshot();
+        assert_eq!(status.connection, Connection::Disconnected);
+        assert!(
+            status.disconnected_for.is_some(),
+            "leaving a live connection is a real drop and must be timed from now"
+        );
+    }
+
+    // ------------------------------------------------------------------ RefboxAddress (Task 8)
+
+    #[test]
+    fn an_address_with_no_port_uses_the_one_already_in_use() {
+        // The normal case: every refbox serves its feed on the same port, so an operator reading
+        // an address off a scan result or a router page types only the address.
+        assert_eq!(
+            RefboxAddress::parse("192.168.1.50", 8000),
+            Ok(RefboxAddress::new("192.168.1.50", 8000))
+        );
+        assert_eq!(
+            RefboxAddress::parse("refbox.local", 8123),
+            Ok(RefboxAddress::new("refbox.local", 8123))
+        );
+    }
+
+    #[test]
+    fn an_address_with_a_port_uses_that_port() {
+        assert_eq!(
+            RefboxAddress::parse("192.168.1.50:9001", 8000),
+            Ok(RefboxAddress::new("192.168.1.50", 9001))
+        );
+    }
+
+    #[test]
+    fn surrounding_whitespace_is_not_an_error() {
+        // Pasted addresses arrive with spaces around them more often than not.
+        assert_eq!(
+            RefboxAddress::parse("  192.168.1.50:9001\n", 8000),
+            Ok(RefboxAddress::new("192.168.1.50", 9001))
+        );
+    }
+
+    #[test]
+    fn ipv6_addresses_are_read_bracketed_or_bare() {
+        assert_eq!(
+            RefboxAddress::parse("[::1]:9001", 8000),
+            Ok(RefboxAddress::new("::1", 9001))
+        );
+        assert_eq!(
+            RefboxAddress::parse("[::1]", 8000),
+            Ok(RefboxAddress::new("::1", 8000))
+        );
+        // Unbracketed: the colons all belong to the address, so there is no port to read and the
+        // one already in use is kept. Reading the last group as a port would silently connect
+        // somewhere else entirely.
+        assert_eq!(
+            RefboxAddress::parse("fe80::1234", 8000),
+            Ok(RefboxAddress::new("fe80::1234", 8000))
+        );
+    }
+
+    #[test]
+    fn an_empty_address_is_reported_rather_than_guessed_at() {
+        assert_eq!(RefboxAddress::parse("   ", 8000), Err(AddressError::Empty));
+    }
+
+    #[test]
+    fn a_port_with_no_address_in_front_of_it_is_reported() {
+        assert_eq!(
+            RefboxAddress::parse(":8000", 8000),
+            Err(AddressError::MissingHost)
+        );
+    }
+
+    #[test]
+    fn a_port_that_is_not_a_port_is_reported_with_the_text_that_was_typed() {
+        assert_eq!(
+            RefboxAddress::parse("192.168.1.50:eight thousand", 8000),
+            Err(AddressError::BadPort("eight thousand".to_string()))
+        );
+        assert_eq!(
+            RefboxAddress::parse("192.168.1.50:70000", 8000),
+            Err(AddressError::BadPort("70000".to_string()))
+        );
+        // Port 0 means "any free port" to the operating system -- never something a refbox could
+        // be listening on, so it is a typo rather than an address.
+        assert_eq!(
+            RefboxAddress::parse("192.168.1.50:0", 8000),
+            Err(AddressError::BadPort("0".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_bracket_that_never_closes_is_reported() {
+        assert_eq!(
+            RefboxAddress::parse("[::1", 8000),
+            Err(AddressError::Malformed)
+        );
+        assert_eq!(
+            RefboxAddress::parse("[::1]8000", 8000),
+            Err(AddressError::Malformed)
+        );
+    }
+
+    #[test]
+    fn an_address_is_displayed_the_way_it_would_be_typed_back_in() {
+        assert_eq!(
+            RefboxAddress::new("192.168.1.50", 8000).to_string(),
+            "192.168.1.50:8000"
+        );
+        // Bracketed, or the port would look like part of the address -- and the status page puts
+        // this string straight into a form field the operator can submit again.
+        assert_eq!(RefboxAddress::new("::1", 8000).to_string(), "[::1]:8000");
+    }
+
+    #[test]
+    fn every_address_error_says_something_an_operator_can_act_on() {
+        // Not asserting exact wording -- that is the status page's business -- but these strings
+        // are shown to a broadcast volunteer, and an empty or debug-shaped one would be useless.
+        for error in [
+            AddressError::Empty,
+            AddressError::MissingHost,
+            AddressError::BadPort("eight".to_string()),
+            AddressError::Malformed,
+        ] {
+            let text = error.to_string();
+            assert!(text.len() > 20, "{error:?} produced {text:?}");
+            assert!(
+                text.contains("192.168.1.50") || text.contains("8000"),
+                "{error:?} should show an example of what to type, got {text:?}"
+            );
+        }
+    }
+
+    // ---------------------------------------------------------------------- FeedTarget (Task 8)
+
+    #[test]
+    fn choosing_a_different_refbox_changes_the_target_and_reports_that_it_did() {
+        let target = FeedTarget::new(RefboxAddress::new("127.0.0.1", 8000));
+
+        assert!(target.set(RefboxAddress::new("192.168.1.50", 8000)));
+        assert_eq!(target.current(), RefboxAddress::new("192.168.1.50", 8000));
+    }
+
+    #[test]
+    fn choosing_the_refbox_already_in_use_reports_that_nothing_changed() {
+        let target = FeedTarget::new(RefboxAddress::new("192.168.1.50", 8000));
+
+        assert!(
+            !target.set(RefboxAddress::new("192.168.1.50", 8000)),
+            "re-submitting the address already in use must be recognised as no change -- see \
+             FeedTarget::set's doc for what a needless reconnect would cost"
+        );
+    }
+
+    #[tokio::test]
+    async fn choosing_the_refbox_already_in_use_does_not_disturb_a_working_connection() {
+        // The behaviour behind the flag above. A double-clicked button, or a reloaded form, must
+        // not take the graphic off air for a reconnect to the identical address.
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let addr = listener.local_addr().expect("local_addr");
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let connection = ConnectionState::new();
+        let target = FeedTarget::new(addr.into());
+        let handle = tokio::spawn(Supervisor::run(target.clone(), tx, connection.clone()));
+
+        let _first = listener.accept().await.expect("accept");
+        wait_for(&connection, Connection::Connected).await;
+
+        target.set(addr.into());
+
+        // A second connection attempt would mean the first was dropped and remade. Nothing should
+        // arrive at all.
+        let second = tokio::time::timeout(Duration::from_millis(500), listener.accept()).await;
+        assert!(
+            second.is_err(),
+            "the supervisor must not reconnect when the address has not actually changed"
+        );
+        assert_eq!(
+            connection.get(),
+            Connection::Connected,
+            "and the existing connection must still be live"
+        );
+
+        handle.abort();
+    }
+
+    // ------------------------------------------------- Supervisor: changing refbox at runtime
+
+    #[tokio::test]
+    async fn choosing_a_different_refbox_moves_the_feed_to_it_without_waiting_out_a_delay() {
+        let first = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind the first listener");
+        let first_addr = first.local_addr().expect("local_addr");
+        let second = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind the second listener");
+        let second_addr = second.local_addr().expect("local_addr");
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let connection = ConnectionState::new();
+        let target = FeedTarget::new(first_addr.into());
+        let handle = tokio::spawn(Supervisor::run(target.clone(), tx, connection.clone()));
+
+        let (mut first_side, _) = first.accept().await.expect("accept the first connection");
+        wait_for(&connection, Connection::Connected).await;
+        first_side
+            .write_all(format!("{}\n", fixture_line(0)).as_bytes())
+            .await
+            .expect("write to the first refbox's connection");
+        let from_first = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("the first refbox's snapshot should arrive")
+            .expect("channel should not be closed");
+        assert_eq!(from_first.secs_in_period, 885);
+
+        let switched_at = tokio::time::Instant::now();
+        target.set(second_addr.into());
+
+        let (mut second_side, _) = tokio::time::timeout(Duration::from_secs(5), second.accept())
+            .await
+            .expect("the supervisor should have connected to the newly chosen refbox")
+            .expect("accept should succeed");
+        // `RECONNECT_DELAY` (one second) is the discriminating figure: switching refboxes is a
+        // deliberate operator action, not a refbox that went away, so the supervisor must go
+        // straight to the new address rather than sitting out the delay that exists to stop it
+        // hammering a refbox that just vanished. Accepting a loopback connection takes
+        // microseconds, so this budget is generous by orders of magnitude while still failing a
+        // build that reintroduced the delay.
+        let took = switched_at.elapsed();
+        assert!(
+            took < Duration::from_millis(900),
+            "switching should not wait out the reconnect delay, took {took:?}"
+        );
+
+        second_side
+            .write_all(format!("{}\n", fixture_line(9)).as_bytes())
+            .await
+            .expect("write to the second refbox's connection");
+        let from_second = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("the newly chosen refbox's snapshot should arrive")
+            .expect("channel should not be closed");
+        assert_eq!(
+            from_second.current_period,
+            GamePeriod::SecondHalf,
+            "the feed must now be the newly chosen refbox's, not the previous one's"
+        );
+        assert_eq!(from_second.secs_in_period, 89);
+
+        // And the old refbox is genuinely no longer being read: anything it sends now goes
+        // nowhere, because that connection was dropped.
+        let ignored = first_side
+            .write_all(format!("{}\n", fixture_line(1)).as_bytes())
+            .await;
+        if ignored.is_ok() {
+            let nothing = tokio::time::timeout(Duration::from_millis(300), rx.recv()).await;
+            assert!(
+                nothing.is_err(),
+                "the previous refbox must not still be feeding the bridge, got {nothing:?}"
+            );
+        }
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn a_refbox_chosen_while_the_previous_one_was_unreachable_is_still_picked_up() {
+        // The other half of the same mechanism: the supervisor spends this test in its
+        // connect-refused retry loop rather than in a read loop, and a change made during that
+        // loop must not be lost (nor wait for however long the loop happens to be sleeping).
+        let probe = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener to reserve a port");
+        let dead_addr = probe.local_addr().expect("local_addr");
+        drop(probe); // every connect to `dead_addr` is refused from here on
+
+        let live = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind the live listener");
+        let live_addr = live.local_addr().expect("local_addr");
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let connection = ConnectionState::new();
+        let target = FeedTarget::new(dead_addr.into());
+        let handle = tokio::spawn(Supervisor::run(target.clone(), tx, connection.clone()));
+
+        // Let it fail at least once, so the change below genuinely lands during the retry loop.
+        sleep(RECONNECT_DELAY / 2).await;
+        assert_eq!(
+            connection.get(),
+            Connection::NeverConnected,
+            "test setup: nothing should have connected yet"
+        );
+
+        target.set(live_addr.into());
+
+        tokio::time::timeout(Duration::from_secs(5), live.accept())
+            .await
+            .expect("the supervisor should have connected to the newly chosen refbox")
+            .expect("accept should succeed");
+        wait_for(&connection, Connection::Connected).await;
+
+        handle.abort();
     }
 
     // -------------------------------------------------------------------------- keepalive_active
@@ -1101,7 +1808,11 @@ mod tests {
             "test setup should start from a known false, not the default true"
         );
 
-        let handle = tokio::spawn(Supervisor::run(addr, tx, connection.clone()));
+        let handle = tokio::spawn(Supervisor::run(
+            FeedTarget::new(addr.into()),
+            tx,
+            connection.clone(),
+        ));
 
         let _accepted = listener.accept().await.expect("accept");
         wait_for(&connection, Connection::Connected).await;
@@ -1124,7 +1835,11 @@ mod tests {
 
         let (tx, _rx) = mpsc::unbounded_channel();
         let connection = ConnectionState::new();
-        let handle = tokio::spawn(Supervisor::run(addr, tx, connection.clone()));
+        let handle = tokio::spawn(Supervisor::run(
+            FeedTarget::new(addr.into()),
+            tx,
+            connection.clone(),
+        ));
 
         // Accept the connection but never write anything to it -- liveness must be reported from
         // the TCP connection itself, not from having received a first message.
@@ -1144,7 +1859,11 @@ mod tests {
 
         let (tx, _rx) = mpsc::unbounded_channel();
         let connection = ConnectionState::new();
-        let handle = tokio::spawn(Supervisor::run(addr, tx, connection.clone()));
+        let handle = tokio::spawn(Supervisor::run(
+            FeedTarget::new(addr.into()),
+            tx,
+            connection.clone(),
+        ));
 
         let (accepted, _) = listener.accept().await.expect("accept");
         // Wait for Connected first, so the transition this test actually exercises is genuinely
@@ -1168,7 +1887,11 @@ mod tests {
 
         let (tx, _rx) = mpsc::unbounded_channel();
         let connection = ConnectionState::new();
-        let handle = tokio::spawn(Supervisor::run(addr, tx, connection.clone()));
+        let handle = tokio::spawn(Supervisor::run(
+            FeedTarget::new(addr.into()),
+            tx,
+            connection.clone(),
+        ));
 
         // Several retry cycles, same reasoning as `a_refused_connection_retries_instead_of_exiting`
         // above: this resolves virtually, not after five real seconds.

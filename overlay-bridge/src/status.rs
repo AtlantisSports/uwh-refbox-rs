@@ -44,17 +44,25 @@
 //! This page surfaces [`crate::feed::ConnectionState::keepalive_active`] (the minimal signal
 //! `feed.rs` exposes for exactly this) so that state is not silent.
 //!
-//! # The address is not a dead end (Task 7 review, floor of Important 3 / Minor 8)
+//! # Choosing a refbox (Task 8)
 //!
-//! The page shows the refbox address currently in use, but Task 7 does not build a way to change
-//! it here -- the coordinator's ruling is that runtime address selection (picking a discovered
-//! refbox, or typing one manually, both including the reconnect) is one coherent piece of
-//! machinery that belongs entirely to Task 8, since a save-without-reconnecting form would be
-//! worse than no form at all (it would look like it worked and quietly not). What this task does
-//! owe the operator is that the page never looks like a dead end: [`render_page`] states plainly
-//! which command-line flags set each persisted value today and exactly where the settings file
-//! that remembers them lives, so a broadcast volunteer who mistyped `--port` (or any other
-//! setting) has somewhere to go even before Task 8 lands.
+//! The page does not merely display the refbox address any more: it is where an operator chooses
+//! which refbox the bridge reads, either by picking one the bridge found on the network or by
+//! typing an address. Both are plain HTML forms posting to `server.rs` (`POST /scan`,
+//! `POST /refbox`), which does the work and redirects back here -- see that module's doc for why
+//! an address is proved to be a refbox *before* anything running is touched.
+//!
+//! Two consequences for this module, both deliberate. **Everything shown here is display data
+//! already resolved by the caller** -- this stays a pure string transform with no lock, no clock
+//! and no network, so the scan results and the outcome sentence are rendered exactly the way the
+//! connection state already was. And **the forms are forms, not a front-end application**: no
+//! script of any kind, so the page behaves identically on the streaming PC's browser and on a
+//! phone at the poolside, and so nothing here can fail to load (see "Self-contained" below).
+//!
+//! Command-line flags still set every persisted value, and the page still names them and says
+//! where the settings file lives, because the address is the only one of them the page itself can
+//! change -- for the others, that hint is the difference between a mistyped setting an operator
+//! can fix and a dead end (Task 7 review, floor of Important 3 / Minor 8).
 //!
 //! # No chicken-and-egg
 //!
@@ -71,7 +79,51 @@
 
 use std::fmt::Write as _;
 
-use crate::feed::{Connection, ConnectionStatus};
+use crate::{
+    discovery::Found,
+    feed::{Connection, ConnectionStatus, RefboxAddress},
+};
+
+/// The outcome of the last thing the operator did on this page -- chose a refbox, or ran a scan --
+/// in a sentence written for them.
+///
+/// Held by `server::AppState` between the action and the page it redirects to, rather than being
+/// rendered straight into the response, so that a reload after the action shows what happened
+/// instead of silently repeating it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Notice {
+    pub text: String,
+    /// Whether what the operator asked for happened. `false` is not an internal error -- it is
+    /// "your refbox did not answer" or "that is not an address", which is ordinary and expected.
+    pub done: bool,
+}
+
+impl Notice {
+    pub fn done(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            done: true,
+        }
+    }
+
+    pub fn problem(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            done: false,
+        }
+    }
+}
+
+/// What the operator's last network scan turned up. An empty `found` is a perfectly ordinary
+/// result (spec §9.3: venue networks and firewalls can block a scan outright), and the page says
+/// so in words rather than showing an empty table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScanOutcome {
+    /// The network as the operator reads it, e.g. `192.168.1.x`.
+    pub network: String,
+    pub port: u16,
+    pub found: Vec<Found>,
+}
 
 /// Everything [`render_page`] needs, already resolved from live state. Kept separate from
 /// `server::AppState` (the wiring module) so `render_page` stays a pure, directly testable string
@@ -86,8 +138,8 @@ pub struct PageData {
     pub event_id: String,
     pub game_number: String,
     pub period: String,
-    pub refbox_host: String,
-    pub refbox_port: u16,
+    /// The refbox currently chosen -- what the supervisor is connected to, or trying to reach.
+    pub refbox_address: RefboxAddress,
     pub white_on_right: bool,
     /// The court label operator setting, or empty if not set.
     pub court: String,
@@ -97,8 +149,15 @@ pub struct PageData {
     /// multi-homed machine.
     pub base_url: Option<String>,
     /// Where the settings file lives on disk (`config::settings_location`) -- see the module
-    /// doc's "The address is not a dead end" section.
+    /// doc's last paragraph.
     pub settings_file: String,
+    /// What to pre-fill the scan form's network field with (`discovery::suggested_scan_network`),
+    /// or empty when the bridge has nothing sensible to suggest.
+    pub scan_network: String,
+    /// The outcome of the operator's last action, or `None` if they have not done anything yet.
+    pub notice: Option<Notice>,
+    /// The last scan's results, or `None` if no scan has been run this session.
+    pub scan: Option<ScanOutcome>,
 }
 
 /// The vMix-facing routes to list under "Addresses for vMix" -- kept as one list so the page and
@@ -162,6 +221,20 @@ pub fn render_page(data: &PageData) -> String {
         "White on left"
     };
 
+    let notice_html = data
+        .notice
+        .as_ref()
+        .map(|notice| {
+            let class = if notice.done { "done" } else { "problem" };
+            format!(
+                "<p class=\"notice {class}\">{}</p>\n",
+                escape_html(&notice.text)
+            )
+        })
+        .unwrap_or_default();
+
+    let scan_html = data.scan.as_ref().map(render_scan).unwrap_or_default();
+
     let base = data.base_url.as_deref().unwrap_or(
         "(open this page in the browser you'll copy addresses from, to see the exact address)",
     );
@@ -197,18 +270,35 @@ pub fn render_page(data: &PageData) -> String {
 </table>
 <h2>Refbox connection</h2>
 <table>
-<tr><th>Address</th><td>{refbox_host}:{refbox_port}</td></tr>
+<tr><th>Address</th><td>{refbox_address}</td></tr>
 </table>
-<h2>Operator settings</h2>
+{notice_html}<form class="chooser" method="post" action="/refbox">
+<label for="address">Read a different refbox:</label>
+<input id="address" name="address" size="22" placeholder="192.168.1.50" autocomplete="off">
+<button type="submit">Use this refbox</button>
+</form>
+<form class="chooser" method="post" action="/scan">
+<label for="network">Or look for refboxes on</label>
+<input id="network" name="network" size="16" value="{scan_network}" placeholder="192.168.1.5"
+ autocomplete="off">
+<label for="scan-port">port</label>
+<input id="scan-port" name="port" size="6" value="{refbox_port}" autocomplete="off">
+<button type="submit">Search the network</button>
+</form>
+<p class="hint">Searching checks every address on that network and takes a few seconds. It only
+reports something as a refbox if it answers with a game, so anything else listening on the same
+port is ignored. The first search may raise a firewall prompt on Windows; if searching is blocked
+here, type the refbox's address instead.</p>
+{scan_html}<h2>Operator settings</h2>
 <table>
 <tr><th>Side of pool</th><td>{side_text}</td></tr>
 <tr><th>Court</th><td>{court_text}</td></tr>
 </table>
-<p class="hint">Every value above is set with a command-line flag
+<p class="hint">Every value above can also be set with a command-line flag
 (<code>--refbox-host</code>, <code>--refbox-port</code>, <code>--port</code>,
-<code>--white-on-right</code>, <code>--court</code>) and remembered automatically for next time.
-There is no way to change them from this page yet -- to fix a mistyped one now, edit or delete the
-settings file: <code>{settings_file}</code></p>
+<code>--white-on-right</code>, <code>--court</code>) and is remembered automatically for next
+time. The refbox address is the only one this page can change; to fix a mistyped one of the
+others, edit or delete the settings file: <code>{settings_file}</code></p>
 <h2>Addresses for vMix</h2>
 <ul>
 {vmix_addresses}</ul>
@@ -223,13 +313,53 @@ settings file: <code>{settings_file}</code></p>
         event_text = event_text,
         game_text = game_text,
         period = escape_html(&data.period),
-        refbox_host = escape_html(&data.refbox_host),
-        refbox_port = data.refbox_port,
+        refbox_address = escape_html(&data.refbox_address.to_string()),
+        refbox_port = data.refbox_address.port,
+        scan_network = escape_html(&data.scan_network),
+        notice_html = notice_html,
+        scan_html = scan_html,
         side_text = side_text,
         court_text = court_text,
         settings_file = escape_html(&data.settings_file),
         vmix_addresses = vmix_addresses,
     )
+}
+
+/// The results of the operator's last network search: one row per refbox found, each with a
+/// button that reads that refbox -- the same `POST /refbox` the typed-address field uses, with the
+/// address filled in for them, because picking from a list and typing are the same action (see
+/// `server`'s module doc).
+///
+/// The label beside each address is what actually lets an operator choose: at a two-court venue
+/// both refboxes are on the same network, and "Game 14 · Second Half · 3:47 · 2–1" tells them
+/// which is theirs where two nearly identical IP addresses would not.
+///
+/// Finding nothing says so in a sentence rather than showing an empty table -- see [`ScanOutcome`].
+fn render_scan(scan: &ScanOutcome) -> String {
+    let network = escape_html(&scan.network);
+    if scan.found.is_empty() {
+        return format!(
+            "<p class=\"hint\">Nothing on {network} answered on port {} the last time this \
+             computer looked.</p>\n",
+            scan.port
+        );
+    }
+
+    let mut rows = String::new();
+    for refbox in &scan.found {
+        let address = escape_html(&refbox.address.to_string());
+        let label = escape_html(&refbox.label);
+        // `write!` into a `String` never fails -- see the same note in `render_page`.
+        let _ = writeln!(
+            rows,
+            "<tr><td><code>{address}</code></td><td>{label}</td>\
+             <td><form method=\"post\" action=\"/refbox\">\
+             <input type=\"hidden\" name=\"address\" value=\"{address}\">\
+             <button type=\"submit\">Use this refbox</button></form></td></tr>"
+        );
+    }
+
+    format!("<h3>Refboxes found on {network}</h3>\n<table class=\"found\">\n{rows}</table>\n")
 }
 
 /// Inline CSS only -- see the module doc's "Self-contained, deliberately" section. No external
@@ -249,6 +379,13 @@ h2 { font-size: 1.05rem; margin-bottom: 0.25rem; }
 .duration { color: #cf222e; margin: 0 0 1rem; }
 .warning { color: #9a6700; font-weight: bold; }
 .hint { font-size: 0.9rem; opacity: 0.8; max-width: 36rem; }
+.notice { padding: 0.5rem 0.75rem; border-radius: 0.25rem; max-width: 36rem; }
+.notice.done { background: rgba(26, 127, 55, 0.15); border-left: 0.25rem solid #1a7f37; }
+.notice.problem { background: rgba(207, 34, 46, 0.12); border-left: 0.25rem solid #cf222e; }
+.chooser { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: baseline; margin: 0.5rem 0; }
+.chooser input { font: inherit; padding: 0.2rem 0.35rem; }
+.chooser button, .found button { font: inherit; padding: 0.2rem 0.75rem; cursor: pointer; }
+table.found td { padding-right: 1rem; vertical-align: baseline; }
 table { border-collapse: collapse; margin: 0.25rem 0 1.25rem; }
 th, td { padding: 0.15rem 0.75rem 0.15rem 0; text-align: left; font-weight: normal; }
 th { opacity: 0.7; }
@@ -309,12 +446,14 @@ mod tests {
             event_id: String::new(),
             game_number: String::new(),
             period: String::new(),
-            refbox_host: "127.0.0.1".to_string(),
-            refbox_port: 8000,
+            refbox_address: RefboxAddress::new("127.0.0.1", 8000),
             white_on_right: false,
             court: String::new(),
             base_url: Some("http://192.168.1.5:8099".to_string()),
             settings_file: "/home/operator/.config/overlay-bridge/default-config.toml".to_string(),
+            scan_network: "192.168.1.5".to_string(),
+            notice: None,
+            scan: None,
         }
     }
 
@@ -452,8 +591,7 @@ mod tests {
         let data = PageData {
             white_on_right: true,
             court: "Pool A".to_string(),
-            refbox_host: "192.168.1.50".to_string(),
-            refbox_port: 8000,
+            refbox_address: RefboxAddress::new("192.168.1.50", 8000),
             ..base_data()
         };
         let html = render_page(&data);
@@ -494,6 +632,203 @@ mod tests {
         let html = render_page(&data);
         assert!(html.starts_with("<!doctype html>"));
         assert!(html.contains("</html>"));
+    }
+
+    // ------------------------------------------------------ choosing a refbox on the page (Task 8)
+
+    fn found(address: &str, port: u16, label: &str) -> Found {
+        Found {
+            address: RefboxAddress::new(address, port),
+            label: label.to_string(),
+        }
+    }
+
+    #[test]
+    fn the_page_offers_a_field_for_typing_a_refbox_address() {
+        // Manual entry is not a garnish on discovery: a first search can raise a Windows firewall
+        // prompt and some venue networks block searching entirely (spec §9.3), so this field is
+        // the path that always works and it must always be on the page.
+        let html = render_page(&base_data());
+        assert!(html.contains("<form class=\"chooser\" method=\"post\" action=\"/refbox\">"));
+        assert!(html.contains("name=\"address\""));
+        assert!(html.contains("Use this refbox"));
+    }
+
+    #[test]
+    fn the_page_offers_a_network_search_prefilled_with_the_suggested_network() {
+        let html = render_page(&base_data());
+        assert!(html.contains("<form class=\"chooser\" method=\"post\" action=\"/scan\">"));
+        assert!(
+            html.contains("value=\"192.168.1.5\""),
+            "the network field should be pre-filled with the suggestion, got:\n{html}"
+        );
+        assert!(
+            html.contains("value=\"8000\""),
+            "and the port field with the port already in use, got:\n{html}"
+        );
+    }
+
+    #[test]
+    fn the_page_says_what_searching_will_and_will_not_do() {
+        // A broadcast volunteer needs to know it takes a few seconds, that a firewall prompt is
+        // normal, and that typing the address is the way out if searching is blocked.
+        let html = render_page(&base_data());
+        assert!(html.contains("takes a few seconds"));
+        assert!(html.contains("firewall"));
+        // Unescaped here, unlike the notice text in `server`'s own test of the same sentence:
+        // this one is the page's own fixed wording, not something interpolated into it.
+        assert!(html.contains("type the refbox's address instead"));
+    }
+
+    #[test]
+    fn the_outcome_of_the_last_action_is_shown() {
+        let html = render_page(&PageData {
+            notice: Some(Notice::done("Switched to the refbox at 192.168.1.50:8000.")),
+            ..base_data()
+        });
+        assert!(html.contains("notice done"));
+        assert!(html.contains("Switched to the refbox at 192.168.1.50:8000."));
+
+        let html = render_page(&PageData {
+            notice: Some(Notice::problem("Could not use 192.168.1.9:8000.")),
+            ..base_data()
+        });
+        assert!(html.contains("notice problem"));
+        assert!(html.contains("Could not use 192.168.1.9:8000."));
+    }
+
+    #[test]
+    fn no_notice_is_shown_before_the_operator_has_done_anything() {
+        let html = render_page(&base_data());
+        assert!(!html.contains("class=\"notice"));
+    }
+
+    #[test]
+    fn a_notice_repeating_what_the_operator_typed_is_not_rendered_as_markup() {
+        // Every failure notice quotes the submitted text back, so an address field is a direct
+        // route from typed input into this page -- and the bridge deliberately serves with no
+        // password (spec §6), so "only the operator can type there" is not an assumption to make.
+        let html = render_page(&PageData {
+            notice: Some(Notice::problem(
+                "Could not use \"<script>evil</script>\": nothing answered there.",
+            )),
+            ..base_data()
+        });
+        assert!(!html.contains("<script>"));
+        assert!(html.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn search_results_list_each_refbox_with_its_label_and_a_button_that_reads_it() {
+        let html = render_page(&PageData {
+            scan: Some(ScanOutcome {
+                network: "192.168.1.x".to_string(),
+                port: 8000,
+                found: vec![
+                    found("192.168.1.50", 8000, "Game 14 · Second Half · 3:47 · 2–1"),
+                    found("192.168.1.51", 8000, "Game 15 · Between Games"),
+                ],
+            }),
+            ..base_data()
+        });
+
+        assert!(html.contains("Refboxes found on 192.168.1.x"));
+        for (address, label) in [
+            ("192.168.1.50:8000", "Game 14 · Second Half · 3:47 · 2–1"),
+            ("192.168.1.51:8000", "Game 15 · Between Games"),
+        ] {
+            assert!(html.contains(address), "missing {address} in:\n{html}");
+            assert!(html.contains(label), "missing {label} in:\n{html}");
+            assert!(
+                html.contains(&format!(
+                    "<input type=\"hidden\" name=\"address\" value=\"{address}\">"
+                )),
+                "missing a button for {address} in:\n{html}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_search_that_found_nothing_says_so_rather_than_showing_an_empty_table() {
+        let html = render_page(&PageData {
+            scan: Some(ScanOutcome {
+                network: "192.168.1.x".to_string(),
+                port: 8000,
+                found: Vec::new(),
+            }),
+            ..base_data()
+        });
+        assert!(html.contains("Nothing on 192.168.1.x answered on port 8000"));
+        assert!(
+            !html.contains("Refboxes found"),
+            "an empty result must not be headed as if something was found:\n{html}"
+        );
+    }
+
+    #[test]
+    fn a_label_a_refbox_supplied_is_not_rendered_as_markup() {
+        // The label is built from the candidate's own snapshot -- its game number is whatever that
+        // machine sent, which is not this program's to trust.
+        let html = render_page(&PageData {
+            scan: Some(ScanOutcome {
+                network: "192.168.1.x".to_string(),
+                port: 8000,
+                found: vec![found(
+                    "192.168.1.50",
+                    8000,
+                    "Game <script>evil</script> · First Half",
+                )],
+            }),
+            ..base_data()
+        });
+        assert!(!html.contains("<script>"));
+        assert!(html.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn the_refbox_address_is_shown_as_it_would_be_typed_back_in() {
+        let html = render_page(&PageData {
+            refbox_address: RefboxAddress::new("::1", 8000),
+            ..base_data()
+        });
+        assert!(
+            html.contains("[::1]:8000"),
+            "an IPv6 address must be shown bracketed, so pasting it back into the field works, \
+             got:\n{html}"
+        );
+    }
+
+    #[test]
+    fn the_page_still_loads_nothing_from_anywhere_else() {
+        // The forms added in Task 8 must not have brought in a framework: venue internet being
+        // unreliable is the whole reason this bridge exists, and a status page that needed the
+        // network to render would fail exactly when it was most needed.
+        let html = render_page(&PageData {
+            notice: Some(Notice::done("Switched to the refbox at 192.168.1.50:8000.")),
+            scan: Some(ScanOutcome {
+                network: "192.168.1.x".to_string(),
+                port: 8000,
+                found: vec![found(
+                    "192.168.1.50",
+                    8000,
+                    "Game 14 · First Half · 1:00 · 0–0",
+                )],
+            }),
+            ..base_data()
+        });
+        for forbidden in [
+            "<script",
+            "src=",
+            "@import",
+            "<link",
+            "cdn.",
+            "fonts.googleapis",
+        ] {
+            assert!(
+                !html.contains(forbidden),
+                "the page must be entirely self-contained, found {forbidden:?} in:\n{html}"
+            );
+        }
     }
 
     // ---------------------------------------------------------------------------- format_duration

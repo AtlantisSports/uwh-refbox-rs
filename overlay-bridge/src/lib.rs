@@ -8,6 +8,7 @@
 //! pulls everything else from here.
 
 pub mod config;
+pub mod discovery;
 pub mod feed;
 pub mod portal;
 pub mod server;

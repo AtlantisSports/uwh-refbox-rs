@@ -24,7 +24,8 @@ use tokio::sync::{Notify, mpsc};
 struct Cli {
     /// Hostname or IP address of the refbox to connect to. Overrides the saved setting when
     /// passed; otherwise the last address used is remembered (design spec §5.3), falling back to
-    /// 127.0.0.1 if nothing has ever been saved.
+    /// 127.0.0.1 if nothing has ever been saved. This is only the *starting* refbox: the operator
+    /// can pick a different one on the status page at any time, without restarting.
     #[clap(long)]
     refbox_host: Option<String>,
 
@@ -89,15 +90,22 @@ async fn main() {
 
     println!("Connecting to refbox at {refbox_host}:{refbox_port}...");
 
-    let state = Arc::new(AppState::new(white_on_right).with_operator_info(
-        refbox_host.clone(),
-        refbox_port,
-        court,
-    ));
+    let state = Arc::new(
+        AppState::new(white_on_right)
+            .with_operator_info(refbox_host, refbox_port, court)
+            // Where an address chosen on the status page while the bridge is running gets
+            // remembered, so the next run comes back to the same refbox. `ok()`: if the settings
+            // directory cannot be worked out, choosing a refbox still works for this run and the
+            // page says plainly that it will not be remembered.
+            .with_settings_path(config::settings_path().ok()),
+    );
 
     let (tx, rx) = mpsc::unbounded_channel();
+    // The address is taken from the shared handle rather than passed as a value: the operator can
+    // point the bridge at a different refbox from the status page at any time, and the supervisor
+    // follows that handle (see `feed::FeedTarget`).
     tokio::spawn(Supervisor::run(
-        (refbox_host, refbox_port),
+        state.target_handle(),
         tx,
         state.connection_handle(),
     ));

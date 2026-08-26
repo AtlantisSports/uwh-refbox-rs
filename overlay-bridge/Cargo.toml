@@ -9,5 +9,17 @@ rust-version = "1.85"
 clap = { version = "4", features = ["derive"] }
 futures = "0.3"
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"], default-features = false }
+# Already in the workspace's dependency tree via tokio's own "net" feature; adding it directly
+# here (with the "all" feature) is a feature flag on an existing transitive dependency, not a new
+# library. Used to configure per-socket TCP keepalive (see feed.rs), which tokio's own API does
+# not expose.
+socket2 = { version = "0.6", features = ["all"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"], default-features = false }
 uwh-common = { version = "0.4", path = "../uwh-common" }
+
+[dev-dependencies]
+# "io-util" (AsyncWriteExt, for tests that act as the refbox side of a socket) and "test-util"
+# (paused/advanced virtual time, so reconnect-retry tests don't burn real wall-clock seconds) are
+# both test-only: Cargo's resolver only unifies these into the "tokio" used by test/bench targets
+# of this crate, not into the plain library/binary build.
+tokio = { version = "1", features = ["io-util", "test-util"], default-features = false }

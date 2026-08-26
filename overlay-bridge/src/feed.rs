@@ -6,15 +6,28 @@
 //! the existing `overlay` crate reads into a fixed 1024-byte buffer without looking for the
 //! newline: once a message exceeds that buffer, its reads desynchronise and every subsequent
 //! message fails to parse. Nothing here bounds message size.
+//!
+//! [`Supervisor::run`], further down, owns the connection itself: it (re)connects, configures TCP
+//! keepalive so a refbox that silently disappears is noticed instead of hanging a read forever
+//! (see its doc for why), and reconnects on any kind of loss. `SnapshotReader` above stays exactly
+//! what it was -- unbounded and connection-agnostic -- because bounding a *connection*, as opposed
+//! to a message, is the supervisor's business, not the reader's.
 
 use std::{
     fmt, io,
     pin::Pin,
     task::{Context, Poll},
+    time::Duration,
 };
 
-use futures::Stream;
-use tokio::io::{AsyncRead, ReadBuf};
+use futures::{Stream, StreamExt};
+use socket2::{SockRef, TcpKeepalive};
+use tokio::{
+    io::{AsyncRead, ReadBuf},
+    net::{TcpStream, ToSocketAddrs},
+    sync::mpsc,
+    time::sleep,
+};
 use uwh_common::game_snapshot::GameSnapshot;
 
 /// How many bytes to ask the underlying reader for per read call. This is purely an I/O
@@ -127,12 +140,172 @@ impl std::error::Error for FeedError {
     }
 }
 
+/// How many consecutive bytes a peer may send with no newline before the supervisor treats it as
+/// misbehaving and drops the connection, rather than letting `SnapshotReader`'s unbounded internal
+/// buffer grow forever.
+///
+/// This is not a message-size limit -- `SnapshotReader` deliberately has none (see the module doc)
+/// -- it guards against a peer that is not sending a refbox feed at all. The bridge only ever
+/// connects *out*, to an address the operator configured, so the realistic way to trigger this is
+/// `--refbox-port` pointed at the wrong service (a web server, a database, ...) that keeps the
+/// connection open and keeps writing bytes with no newline in them; without a cap, that would grow
+/// memory without bound. The cap sits two orders of magnitude above the largest message exercised
+/// anywhere in this file's own tests (a synthetic message just over 8 KB), so no real snapshot,
+/// however unusually large, can come close to tripping it.
+const MAX_UNTERMINATED_BYTES: usize = 1024 * 1024;
+
+/// Wraps an `AsyncRead`, counting bytes seen since the last `b'\n'`, and fails the read with an
+/// `io::Error` once that count would exceed [`MAX_UNTERMINATED_BYTES`].
+///
+/// This lives here, separate from `SnapshotReader`, on purpose: bounding message size is not
+/// `SnapshotReader`'s job (see the module doc), but guarding against a misbehaving *connection* is
+/// the supervisor's job, so the guard sits in front of the reader instead of inside it. The
+/// `io::Error` this produces surfaces through `SnapshotReader` as `FeedError::Io`, so it is picked
+/// up by the supervisor's existing "connection lost -> reconnect" handling with no special-casing.
+struct LineLimited<R> {
+    reader: R,
+    /// Bytes seen since the last `b'\n'` (or since the connection opened).
+    unterminated: usize,
+}
+
+impl<R> LineLimited<R> {
+    fn new(reader: R) -> Self {
+        Self {
+            reader,
+            unterminated: 0,
+        }
+    }
+}
+
+impl<R> AsyncRead for LineLimited<R>
+where
+    R: AsyncRead + Unpin,
+{
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+        let before = buf.filled().len();
+        let result = Pin::new(&mut this.reader).poll_read(cx, buf);
+        if let Poll::Ready(Ok(())) = result {
+            let newly_read = &buf.filled()[before..];
+            match newly_read.iter().rposition(|&b| b == b'\n') {
+                Some(pos) => this.unterminated = newly_read.len() - pos - 1,
+                None => this.unterminated += newly_read.len(),
+            }
+            if this.unterminated > MAX_UNTERMINATED_BYTES {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "peer sent over {MAX_UNTERMINATED_BYTES} bytes with no newline; \
+                         dropping the connection"
+                    ),
+                )));
+            }
+        }
+        result
+    }
+}
+
+/// How long a socket may sit idle before the OS starts sending TCP keepalive probes.
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(5);
+/// How far apart consecutive keepalive probes are sent once idle.
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(3);
+/// How many unanswered probes the OS sends before giving up on the connection.
+const KEEPALIVE_RETRIES: u32 = 3;
+
+/// Configures TCP keepalive on `stream` so a refbox that silently disappears -- Wi-Fi drop, power
+/// cycle -- is noticed by the OS and reported as a read error, instead of the read waiting
+/// forever. This is the fix for the bug described in the module doc: the feed is one-way, so the
+/// bridge never transmits, and a peer that has rebooted never gets the chance to reset the
+/// connection, because nothing is ever sent to it for it to reset.
+///
+/// With the settings above, a dead peer is noticed within `KEEPALIVE_IDLE + KEEPALIVE_RETRIES *
+/// KEEPALIVE_INTERVAL` = 5s + 3 * 3s = 14s in the worst case -- inside the "roughly ten to fifteen
+/// seconds" the design calls for, and comfortably short of the 25-second stopped-clock silence
+/// measured on a live refbox on 2026-08-26, which is exactly why a read timeout was rejected in
+/// favour of this instead (see the module doc).
+fn configure_keepalive(stream: &TcpStream) -> io::Result<()> {
+    let params = TcpKeepalive::new()
+        .with_time(KEEPALIVE_IDLE)
+        .with_interval(KEEPALIVE_INTERVAL)
+        .with_retries(KEEPALIVE_RETRIES);
+    SockRef::from(stream).set_tcp_keepalive(&params)
+}
+
+/// How long to wait before a (re)connect attempt, whether the previous one was refused or an
+/// established connection was just lost.
+const RECONNECT_DELAY: Duration = Duration::from_secs(1);
+
+/// Owns a refbox feed connection: connects, configures keepalive, forwards every snapshot to `tx`
+/// in arrival order, and reconnects -- after `RECONNECT_DELAY` -- on any kind of loss: a refused
+/// or failed connect, the refbox closing the stream, an I/O error, or a peer the keepalive probes
+/// above have given up on.
+///
+/// A malformed line (`FeedError::Parse`) is not a connection loss: it is logged and reading
+/// continues on the same connection, exactly as `SnapshotReader` already reports it.
+pub struct Supervisor;
+
+impl Supervisor {
+    /// Runs forever, reconnecting as needed. The only way it stops is `tx`'s corresponding
+    /// receiver being dropped, which makes a send fail and ends the loop -- there is no other exit
+    /// path, by design: silence on this feed is often legitimate (see the module doc), so nothing
+    /// here ever gives up on a refbox that simply hasn't sent anything in a while.
+    pub async fn run<A>(addr: A, tx: mpsc::UnboundedSender<GameSnapshot>)
+    where
+        A: ToSocketAddrs,
+    {
+        loop {
+            let stream = match TcpStream::connect(&addr).await {
+                Ok(stream) => stream,
+                Err(e) => {
+                    eprintln!("could not connect to the refbox feed: {e}");
+                    sleep(RECONNECT_DELAY).await;
+                    continue;
+                }
+            };
+
+            if let Err(e) = configure_keepalive(&stream) {
+                eprintln!("could not configure TCP keepalive on the refbox feed connection: {e}");
+            }
+
+            let mut snapshots = SnapshotReader::new(LineLimited::new(stream));
+            loop {
+                match snapshots.next().await {
+                    Some(Ok(snapshot)) => {
+                        if tx.send(snapshot).is_err() {
+                            // Nobody is listening any more; there is nothing left to run for.
+                            return;
+                        }
+                    }
+                    Some(Err(FeedError::Parse(e))) => {
+                        eprintln!("could not parse a snapshot from the refbox feed: {e}");
+                    }
+                    Some(Err(FeedError::Io(e))) => {
+                        eprintln!("lost the refbox feed connection: {e}");
+                        break;
+                    }
+                    None => {
+                        eprintln!("the refbox closed the feed connection");
+                        break;
+                    }
+                }
+            }
+
+            sleep(RECONNECT_DELAY).await;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
 
     use futures::StreamExt;
     use serde_json::Value;
+    use tokio::{io::AsyncWriteExt, net::TcpListener};
     use uwh_common::{
         bundles::{BlackWhiteBundle, OptColorBundle},
         color::Color,
@@ -440,5 +613,160 @@ mod tests {
 
         // The trailing fragment is silently dropped, not surfaced as an error.
         assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_peer_with_no_newline_past_the_cap_is_reported_as_a_connection_error() {
+        // One byte over the cap, with no newline anywhere in it.
+        let payload = vec![b'x'; MAX_UNTERMINATED_BYTES + 1];
+        let reader = ChunkedReader::new(vec![payload]);
+        let mut stream = SnapshotReader::new(LineLimited::new(reader));
+
+        let result = stream.next().await.expect("stream ended before erroring");
+        assert!(
+            matches!(result, Err(FeedError::Io(_))),
+            "an unterminated peer past the cap should surface as a connection-level error, got \
+             {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn keepalive_is_actually_applied_to_the_connected_socket() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let addr = listener.local_addr().expect("local_addr");
+
+        let accept = tokio::spawn(async move { listener.accept().await });
+        let stream = TcpStream::connect(addr)
+            .await
+            .expect("connect to the local listener");
+        accept
+            .await
+            .expect("accept task should not panic")
+            .expect("accept should succeed");
+
+        configure_keepalive(&stream).expect("keepalive should be configurable on a real socket");
+
+        // Read the options back from the OS via getsockopt, rather than trusting that the setter
+        // call above didn't error -- this is the only way to actually prove the settings landed on
+        // the socket, since a genuinely half-open connection can't be produced reliably in a unit
+        // test.
+        let sock = SockRef::from(&stream);
+        assert!(
+            sock.keepalive().expect("read SO_KEEPALIVE"),
+            "SO_KEEPALIVE should be enabled"
+        );
+        assert_eq!(
+            sock.tcp_keepalive_time().expect("read TCP_KEEPIDLE"),
+            KEEPALIVE_IDLE
+        );
+        assert_eq!(
+            sock.tcp_keepalive_interval().expect("read TCP_KEEPINTVL"),
+            KEEPALIVE_INTERVAL
+        );
+        assert_eq!(
+            sock.tcp_keepalive_retries().expect("read TCP_KEEPCNT"),
+            KEEPALIVE_RETRIES
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshots_arriving_on_the_stream_reach_the_channel_in_order() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let addr = listener.local_addr().expect("local_addr");
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let handle = tokio::spawn(Supervisor::run(addr, tx));
+
+        let (mut refbox_side, _) = listener.accept().await.expect("accept");
+        let payload = format!("{}\n{}\n", fixture_line(0), fixture_line(1));
+        refbox_side
+            .write_all(payload.as_bytes())
+            .await
+            .expect("write to the accepted connection");
+
+        let first = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("first snapshot should arrive")
+            .expect("channel should not be closed");
+        assert_eq!(first.secs_in_period, 885);
+
+        let second = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("second snapshot should arrive")
+            .expect("channel should not be closed");
+        assert_eq!(second.secs_in_period, 90);
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn a_closed_connection_triggers_a_reconnect_instead_of_ending_the_task() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let addr = listener.local_addr().expect("local_addr");
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let handle = tokio::spawn(Supervisor::run(addr, tx));
+
+        let (first_connection, _) = listener.accept().await.expect("first accept");
+        // Closed with no data at all -- a clean close (the refbox process exiting normally), not
+        // a hang. The keepalive-detected silent disappearance is a different case, and can't be
+        // reliably produced in a unit test (see the module doc); this test covers the "stream
+        // just ends" path through the very same reconnect logic.
+        drop(first_connection);
+
+        // A second accept only succeeds if the supervisor noticed the loss and reconnected; if
+        // reconnection were broken (e.g. the outer loop failing to run again), this would hang
+        // until the timeout and fail the test.
+        let (mut second_connection, _) =
+            tokio::time::timeout(Duration::from_secs(5), listener.accept())
+                .await
+                .expect("supervisor should have reconnected after the connection closed")
+                .expect("second accept should succeed");
+
+        // Prove the reconnected connection is actually being used, not just accepted and ignored.
+        let payload = format!("{}\n", fixture_line(0));
+        second_connection
+            .write_all(payload.as_bytes())
+            .await
+            .expect("write to the reconnected connection");
+
+        let snapshot = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("should receive a snapshot over the reconnected connection")
+            .expect("channel should not be closed");
+        assert_eq!(snapshot.secs_in_period, 885);
+
+        handle.abort();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_refused_connection_retries_instead_of_exiting() {
+        let probe = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener to reserve a port");
+        let addr = probe.local_addr().expect("local_addr");
+        drop(probe); // nothing is listening at `addr` any more; every connect is refused
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let handle = tokio::spawn(Supervisor::run(addr, tx));
+
+        // Let several retry cycles elapse on the paused clock. Tokio auto-advances a paused clock
+        // to the next pending timer once every task is idle and only a timer is outstanding, so
+        // this does not actually wait five real seconds -- it resolves as soon as both this sleep
+        // and the supervisor's own retry timers have played out virtually.
+        sleep(RECONNECT_DELAY * 5).await;
+
+        assert!(
+            !handle.is_finished(),
+            "supervisor should keep retrying a refused connection rather than exit"
+        );
+
+        handle.abort();
     }
 }

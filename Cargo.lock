@@ -4668,6 +4668,7 @@ dependencies = [
  "clap",
  "futures",
  "serde_json",
+ "socket2",
  "tokio",
  "uwh-common",
 ]

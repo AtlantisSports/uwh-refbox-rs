@@ -186,14 +186,36 @@ the plan's Deviations section if taken.
 **Produces:** `portal::Directory` with `names_for(game_number) -> Option<TeamNames>` and
 `player_name(team, cap_number) -> Option<String>`.
 
-**Mirror what the overlay already does, with no credentials** (verified: the overlay sends none
-anywhere):
+**No credentials anywhere** — verified: the overlay sends none, and both calls below were made
+unauthenticated against the live dev portal on 2026-08-26 to capture the fixtures.
 
-1. `GET {portal}/api/events/{event_id_partial}/schedule` — find the game by number in the `games`
-   **array**; read `dark.assignment.teamId`, `light.assignment.teamId`, `court`, `startsOn` **from
-   the matched game**, not from the top level. (Reading them from the top level was PR #2474's bug.)
-2. `GET {portal}/api/admin/get-event-team?teamId={team_id_full}` — the `roster` array gives each
-   member's `name` and `number`.
+**One call gets both team names.** `GET {portal}/api/events/{event_id_partial}/schedule` returns:
+
+- `games` — an **array**. Find the game whose `number` matches (it is a **string**, e.g. `"1"`).
+- **`court` and `startsOn` live on the matched game, never at the top level.** Reading them from
+  the top level was PR #2474's bug; do not reintroduce it.
+- `dark.assignment.teamId` / `light.assignment.teamId` — e.g. `"teams/2529-B"`, or **`null`** when
+  the slot is not yet assigned (a bracket placeholder). Handle null; it is common.
+- **`teams`** — a top-level **object keyed by team id**, each with a `name` (and a `logo`). This is
+  where team names come from. **A second call is not needed for names.**
+
+**The second call is only for player rosters** (turning a cap number into a name):
+`GET {portal}/api/admin/get-event-team?teamId={team_id_full}` returns `name`, `logoUrl`, `photos`
+and `roster`. **Each roster member's fields are `capNumber`, `rosterName`, `roles`, `photos` —
+not `number`, `name`, `role`.** An earlier draft of this plan named the wrong three; the overlay
+itself reads the correct ones (`overlay/src/network.rs:126-136`).
+
+Follow the overlay's two conventions for display: a team name is trimmed and upper-cased, and a
+member with no `rosterName` displays as `"Player"`.
+
+**Fixtures are already captured and committed** — use them, do not invent responses:
+- `overlay-bridge/tests/fixtures/schedule-response.json` — trimmed from the real dev-portal
+  response for event `1889-B`: two games (one with both teams assigned, one with `teamId: null`)
+  and the `teams` entries they reference.
+- `overlay-bridge/tests/fixtures/team-roster-response.json` — a real 12-member roster response.
+  Cap numbers and every field name are exactly as the portal returned them; **the player names are
+  replaced and photo URLs nulled**, because the originals are real people and this file is
+  committed.
 
 **No failure is ever fatal.** Spec §5.5 and §10.2: the overlay treats a failed team fetch as final
 for that lookup and never retries, so a brief Portal outage means a game's names never appear. The
@@ -204,8 +226,10 @@ and if a roster has never been fetched, serve cap numbers with empty names.
 panic point in the overlay today.
 
 **Tests must prove:**
-- A schedule fixture (trimmed from a real dev-portal response) yields the right two team IDs, court
-  and start time for a given game number.
+- The schedule fixture yields the right two team IDs, court and start time for game `"1"`, and the
+  team names come from the top-level `teams` map with no second call.
+- The game with `teamId: null` yields no team id and does not error — the bridge shows whatever the
+  refbox gave it rather than failing.
 - A roster fixture maps cap numbers to names.
 - A failing request leaves a previously cached roster intact and still served.
 - A failing request with no cache yields empty names, not an error and not a panic.

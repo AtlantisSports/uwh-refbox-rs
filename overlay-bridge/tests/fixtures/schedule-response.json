@@ -1,0 +1,223 @@
+{
+ "games": [
+  {
+   "identifier": "5f54b75d-0374-42ab-98da-705a940fe5e4",
+   "number": "1",
+   "startsOn": "2026-08-01T09:30:00+10:00",
+   "dark": {
+    "assignment": {
+     "teamId": "teams/2529-B",
+     "resultOf": null,
+     "seededBy": null,
+     "pendingAssignmentName": "Sydney Kings A"
+    },
+    "partnerAssignment": null,
+    "score": {
+     "value": 1,
+     "forfeit": false
+    },
+    "wonCoinFlip": false
+   },
+   "light": {
+    "assignment": {
+     "teamId": "teams/2530-B",
+     "resultOf": null,
+     "seededBy": null,
+     "pendingAssignmentName": "Brisbane Barracudas"
+    },
+    "partnerAssignment": null,
+    "score": {
+     "value": 1,
+     "forfeit": false
+    },
+    "wonCoinFlip": false
+   },
+   "timingRule": {
+    "identifier": "4722677f-593b-43a9-943d-6ac95966e3a3",
+    "name": "RR"
+   },
+   "description": "A Grade open RR RR R1",
+   "court": "1",
+   "pod": null,
+   "division": {
+    "identifier": "b6b8bb2d-62c2-4ef8-9884-f922a0f757ed",
+    "name": "A Grade open Round Robin",
+    "shortName": "A_GRADE_OPEN_RR",
+    "type": "Division",
+    "maxSeedCount": 0
+   },
+   "watchUrl": null
+  },
+  {
+   "identifier": "3a417c4b-1286-4e81-a7e2-9b39d76caaf4",
+   "number": "51",
+   "startsOn": "2026-08-02T09:30:00+10:00",
+   "dark": {
+    "assignment": {
+     "teamId": null,
+     "resultOf": null,
+     "seededBy": {
+      "number": 4,
+      "group": {
+       "identifier": "2c82e831-2736-473f-93ef-09c00c86c754",
+       "name": "B Grade open Pod 2"
+      }
+     },
+     "pendingAssignmentName": null
+    },
+    "partnerAssignment": null,
+    "score": null,
+    "wonCoinFlip": false
+   },
+   "light": {
+    "assignment": {
+     "teamId": null,
+     "resultOf": null,
+     "seededBy": {
+      "number": 3,
+      "group": {
+       "identifier": "42a9a660-8e97-49d6-a030-21ca7106b392",
+       "name": "B Grade open Pod 1"
+      }
+     },
+     "pendingAssignmentName": null
+    },
+    "partnerAssignment": null,
+    "score": null,
+    "wonCoinFlip": false
+   },
+   "timingRule": {
+    "identifier": "17dddf35-445c-42f4-8391-7455d0a8c199",
+    "name": "FINALS"
+   },
+   "description": "B Grade open Finals P5A",
+   "court": "1",
+   "pod": null,
+   "division": {
+    "identifier": "307510ca-89e6-43a9-91cb-af8f83d9e065",
+    "name": "B Grade open Finals",
+    "shortName": "B_GRADE_OPEN_FINALS",
+    "type": "Division",
+    "maxSeedCount": 0
+   },
+   "watchUrl": null
+  }
+ ],
+ "teams": {
+  "teams/2529-B": {
+   "links": {},
+   "division": {
+    "identifier": "f676f64f-5f7e-43d6-8554-eda347701233",
+    "name": "Open A",
+    "shortName": "A",
+    "description": "Any player of any age",
+    "ageRestriction": null,
+    "genderRestriction": "Open",
+    "levels": null
+   },
+   "divisionLevel": null,
+   "representedCountry": null,
+   "id": "teams/2529-B",
+   "name": "Sydney Kings A",
+   "slug": "sydney-kings-a",
+   "logo": null,
+   "status": "Draft",
+   "hasMinimumApproval": true,
+   "createdBy": "users/1153-B"
+  },
+  "teams/2530-B": {
+   "links": {},
+   "division": {
+    "identifier": "f676f64f-5f7e-43d6-8554-eda347701233",
+    "name": "Open A",
+    "shortName": "A",
+    "description": "Any player of any age",
+    "ageRestriction": null,
+    "genderRestriction": "Open",
+    "levels": null
+   },
+   "divisionLevel": null,
+   "representedCountry": null,
+   "id": "teams/2530-B",
+   "name": "Brisbane A",
+   "slug": "brisbane-a",
+   "logo": null,
+   "status": "Draft",
+   "hasMinimumApproval": true,
+   "createdBy": "users/1153-B"
+  }
+ },
+ "courtNames": [
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2",
+  "1",
+  "2"
+ ]
+}

@@ -1,4 +1,5 @@
 //! Create interactive, native cross-platform applications for WGPU.
+mod cursor;
 mod state;
 mod window_manager;
 

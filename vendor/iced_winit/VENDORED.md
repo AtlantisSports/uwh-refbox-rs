@@ -1,6 +1,6 @@
 # Vendored `iced_winit` 0.13.0
 
-Verbatim copy of `iced_winit` 0.13.0 from crates.io, with ONE deliberate divergence so far:
+Verbatim copy of `iced_winit` 0.13.0 from crates.io, with TWO deliberate divergences so far:
 
 1. An empty `[workspace]` table added near the top of `Cargo.toml`.
 
@@ -15,20 +15,29 @@ Verbatim copy of `iced_winit` 0.13.0 from crates.io, with ONE deliberate diverge
    which is the fix cargo's own error message recommends, and it works identically in both a
    normal checkout and a nested one.
 
-This vendoring exists so a forthcoming fix can be applied here, but that fix is **not** part of
-this commit yet — nothing under `src/` has changed from upstream. The fix it is being prepared
-for: iced 0.13 exposes a single cursor position shared between mouse and touch. Wayland
-compositors restore the mouse pointer immediately after a touch ends, and that synthetic
-pointer position overwrites the touch position before the widget tree sees the finger lift, so
-touchscreen taps are silently discarded. See
-`docs/superpowers/plans/2026-08-26-touch-tap-discarded-cursor-warp.md`. When that fix lands (as
-cursor bookkeeping in `src/program/state.rs` plus a new `src/program/cursor.rs`), it becomes
-divergence 2 and this file gets updated to describe it — that update is not this task's concern.
+2. Cursor bookkeeping extracted out of `src/program/state.rs` into a new
+   `src/program/cursor.rs`.
+
+   Why: iced 0.13 exposes a single cursor position shared between mouse and touch. Wayland
+   compositors restore the mouse pointer immediately after a touch ends, and that synthetic
+   pointer position overwrites the touch position before the widget tree sees the finger lift,
+   so touchscreen taps are silently discarded. See
+   `docs/superpowers/plans/2026-08-26-touch-tap-discarded-cursor-warp.md`. This vendoring
+   exists so that fix can be applied here.
+
+   This divergence is **not** the fix itself — it is a pure extraction, with no behaviour
+   change, made so the fix can land in a small, unit-tested place. `state.rs`'s
+   `cursor_position: Option<PhysicalPosition<f64>>` field became a `CursorTracker` value
+   (defined in the new `cursor.rs`), and `state.rs` now delegates to it; the tracker's tests
+   lock in today's behaviour, including that `entered()` is presently an empty method, exactly
+   as the old code did nothing on that event. The actual behaviour change is a later change,
+   not this one.
 
 Every other file must stay byte-identical to upstream so re-vendoring is a clean diff.
 To re-vendor: copy the new upstream version in, then re-add the empty `[workspace]` table to
-the new `Cargo.toml` (and re-apply the cursor fix, once it exists, per whatever instructions
-land alongside it).
+the new `Cargo.toml`, and re-apply the cursor-tracking extraction (and the fix, once it exists)
+to `src/program/state.rs` and `src/program/cursor.rs`, per whatever instructions land alongside
+them.
 
 This crate is deliberately EXCLUDED from the workspace so our `-D warnings` clippy
 settings are not applied to third-party code. Its tests run via `just test-vendor`.

@@ -1,13 +1,14 @@
 use clap::Parser;
-use futures::StreamExt;
-use overlay_bridge::feed::SnapshotReader;
-use tokio::net::TcpStream;
+use overlay_bridge::feed::Supervisor;
+use tokio::sync::mpsc;
 
 /// Reads a refbox's live game feed.
 ///
-/// This is the crate skeleton: it proves the feed reader against a real refbox by connecting once
-/// and printing each snapshot as it arrives. The HTTP server that republishes the game to vMix,
-/// reconnect-on-dropout, and everything else described in the design arrive in later tasks.
+/// This is the crate skeleton: it proves the connection supervisor against a real refbox by
+/// connecting, printing each snapshot as it arrives, and reconnecting -- with TCP keepalive so a
+/// silently-vanished refbox is noticed instead of hanging forever -- if the connection is ever
+/// lost. The HTTP server that republishes the game to vMix, and everything else described in the
+/// design, arrive in later tasks.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Cli {
@@ -28,22 +29,12 @@ async fn main() {
         "Connecting to refbox at {}:{}...",
         cli.refbox_host, cli.refbox_port
     );
-    let stream = match TcpStream::connect((cli.refbox_host.as_str(), cli.refbox_port)).await {
-        Ok(stream) => stream,
-        Err(e) => {
-            eprintln!("Could not connect to refbox: {e}");
-            std::process::exit(1);
-        }
-    };
-    println!("Connected. Streaming game snapshots (Ctrl+C to stop)...");
 
-    let mut snapshots = SnapshotReader::new(stream);
-    while let Some(result) = snapshots.next().await {
-        match result {
-            Ok(snapshot) => println!("{snapshot:?}"),
-            Err(e) => eprintln!("Could not read a snapshot from the feed: {e}"),
-        }
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    tokio::spawn(Supervisor::run((cli.refbox_host, cli.refbox_port), tx));
+
+    println!("Streaming game snapshots (Ctrl+C to stop)...");
+    while let Some(snapshot) = rx.recv().await {
+        println!("{snapshot:?}");
     }
-
-    println!("Refbox closed the connection.");
 }

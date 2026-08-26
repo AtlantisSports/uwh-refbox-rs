@@ -328,11 +328,23 @@ there must be no chicken-and-egg. It shows a large green/red indicator, time sin
 the current event/game/period, the manual address field, the two operator settings, and the
 addresses to paste into vMix.
 
+**It must also report whether the connection check (TCP keepalive) is actually active.** Task 3
+configures it, but if the operating system or network stack refuses, the supervisor logs to stderr
+and carries on reading. That is the right call — tearing down a connection that still delivers
+frames would turn degraded detection into a total outage — but stderr is invisible to an operator
+running a compiled program that feeds vMix, and the bridge would then be silently back to the
+freeze behaviour Task 3 exists to prevent. **This task owns making it visible, and owns adding
+whatever minimal signal the supervisor must expose** — Task 3 deliberately did not build a flag
+with no reader. Wording along the lines of "connection check unavailable — a lost refbox may not
+be detected". Rare on Windows and Linux in practice; this is insurance, not a common case.
+
 **Tests must prove:**
 - Settings round-trip through save and load.
 - A missing or corrupt settings file yields defaults rather than an error.
 - `/` returns HTML with a 200 even when no refbox has ever been reached.
 - `/status.json` reports `Stale` with a duration once contact is lost, and `Live` otherwise.
+- The page reports the connection check as unavailable when the supervisor could not enable it, and
+  as active when it could.
 
 **Commit:** `feat(overlay-bridge): add settings and the operator status page`
 

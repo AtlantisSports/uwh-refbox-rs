@@ -359,9 +359,19 @@ passes that through. Do not invent a rule for it.
 serving the status page.
 
 The status page is available **the moment the bridge starts, before any refbox is configured** —
-there must be no chicken-and-egg. It shows a large green/red indicator, time since last contact,
-the current event/game/period, the manual address field, the two operator settings, and the
-addresses to paste into vMix.
+there must be no chicken-and-egg. It shows a large green/red indicator, how long the connection has
+been down (only while it is down), the current event/game/period, the manual address field, the two
+operator settings, and the addresses to paste into vMix.
+
+**Amended after Task 10 — read this before writing any test.** Task 10 deleted `state::Contact` and
+its `Live`/`Stale { since }` pair outright, because both were derived from how long it had been
+since a message ARRIVED. Do not reinstate them or anything shaped like them. The refbox sends
+nothing at all whenever the clock is stopped (25 seconds measured), so a page driven by message
+timing would show red at every stoppage. Everything on this page that concerns liveness comes from
+the connection: `feed::Connection`, which distinguishes never-connected, connected, and
+disconnected. The only duration this page may show is **time since the connection dropped**, and
+only while it is dropped — never time since the last message. Never-connected shows no duration at
+all, because there is nothing to measure from.
 
 **It must also report whether the connection check (TCP keepalive) is actually active.** Task 3
 configures it, but if the operating system or network stack refuses, the supervisor logs to stderr
@@ -377,7 +387,13 @@ be detected". Rare on Windows and Linux in practice; this is insurance, not a co
 - Settings round-trip through save and load.
 - A missing or corrupt settings file yields defaults rather than an error.
 - `/` returns HTML with a 200 even when no refbox has ever been reached.
-- `/status.json` reports `Stale` with a duration once contact is lost, and `Live` otherwise.
+- `/status.json` distinguishes all three connection states — never connected, connected, and
+  disconnected — and carries a duration only in the disconnected case.
+- **The regression guard for the trap, on this surface:** with the connection alive and no messages
+  arriving for well over any plausible timeout, the page and `/status.json` still report connected
+  and show no duration. This must fail against any implementation that derives liveness from
+  message timing. `server.rs`'s existing `assert_scorebug_survives_silence` helper is the pattern to
+  copy, including its 30-second case.
 - The page reports the connection check as unavailable when the supervisor could not enable it, and
   as active when it could.
 

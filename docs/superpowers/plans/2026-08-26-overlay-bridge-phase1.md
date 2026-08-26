@@ -538,6 +538,43 @@ exactly right, not stale.
 
 ---
 
+## Task 11 — The Windows build accepts connections but never answers
+
+**Found by Task 9, which was required to prove the executable actually serves rather than merely
+build.** Without that requirement this would have shipped and failed at a venue.
+
+**Symptom:** the cross-compiled `overlay-bridge.exe` starts, runs as a genuine Windows process, and
+accepts a TCP connection on its HTTP port — then never returns a response. Confirmed from native
+Windows loopback with three independent clients (curl.exe, PowerShell, a raw TcpClient), waiting 45
+seconds.
+
+**Already ruled out by Task 9, do not re-derive:**
+- Not the toolchain or WSL: a minimal axum app built the identical mingw way serves instantly.
+- Not a latent bug visible on both platforms: overlay-bridge's own Linux build serves instantly.
+- Not packaging: the .exe is self-contained, 10.8 MB, needing only stock Windows system DLLs.
+
+So it is specific to overlay-bridge's own server or task wiring under Windows.
+
+**This is a debugging task, not a patching task.** Find the root cause and fix that. A workaround
+that makes the symptom go away without an explanation of why it was happening is not acceptable
+here — this runs unattended at a tournament, and a mechanism nobody understands will fail again in
+a way nobody predicts.
+
+**Scope boundary:** `overlay-bridge` only. This must not require a change to the refbox, and must
+not weaken anything the branch has established — in particular the rule that liveness comes only
+from the connection and never from message timing, and its 30-second regression guard.
+
+**Acceptance:**
+- The root cause is stated plainly, with the evidence that identifies it.
+- The Windows `.exe` serves its status page and its tables, verified by fetching them.
+- All existing tests still pass on Linux, and the suite still contains the 30-second guard.
+- A regression guard exists if the cause is one a test can reach; if it is genuinely
+  platform-specific and untestable in CI, say so explicitly and record how it would be caught.
+
+**Commit:** `fix(overlay-bridge): make the windows build serve`
+
+---
+
 ## Acceptance
 
 The walkthrough Eric runs, from spec §8. Steps 7 and 8 are the whole design in two actions:

@@ -34,7 +34,9 @@ the calls the refbox **makes to a website**. This work is the mirror image: the 
   data format. See §4.2 — this is a deliberate design outcome, not an omission.
 - **Any change to the existing overlay program.** It keeps working exactly as it does today.
 - Anything touching the LED panel, the wireless remote, or the binary feed.
-- Retiring the current Pi + capture-card setup. This adds a second route; it replaces nothing.
+- Retiring the current Pi + capture-card setup. This adds a second route; it replaces nothing, and
+  the overlay stays in service. Full retirement is a possible later direction, not a goal of this
+  work, and it should not be assumed — see §9.5 for what it would require.
 - How the **web refbox** publishes its game state. That is a real and separate gap (§9.1).
 
 ---
@@ -214,8 +216,15 @@ self-correcting: the instant contact returns, real values overwrite the estimate
 The residual gap is a **long legitimate stoppage** — half time, an injury — during which the link
 dies. Silence is expected there, so the bridge has no reason to suspect anything; the picture is
 still correct, but the operator is not warned promptly. Closed on our side by keeping the
-connection actively checked, which requires nothing from the refbox. Implementation detail for
-the plan.
+connection actively checked, which requires nothing from the refbox.
+
+**This is not optional.** It is the same failure as §10.4, the most likely cause of the overlay
+freezes already seen at events. A bridge without it inherits the exact bug it exists to replace.
+
+**The "lost contact" threshold must be at least 3 seconds.** Measured in phase 0b: while the clock
+runs the tick is precise (0.999s, 1.000s), but whenever the operator interacts — scoring, entering a
+penalty — gaps stretch to **1.5–2.0 seconds**. A shorter threshold would flash the status red every
+time the referee's screen is touched.
 
 Sudden death counts **up**, not down; the period is in the feed, so the local count handles it.
 
@@ -328,6 +337,21 @@ roster caching and the fall back to bare cap numbers, and the served table shape
 crate ran for years with no tests at all; its first two arrived in August 2026. The bridge does
 not repeat that.
 
+### 8.1 Where each test can actually run
+
+**Windows and WSL are separate network endpoints, and this was measured.** A listener inside WSL
+was reached from the Windows host both at the WSL address (`172.17.110.180`) and via `localhost`,
+returning HTTP 200 in both cases. So vMix on Windows can point at a bridge running in WSL over a
+real network connection: **the phase-1 vMix run does not need a second PC.**
+
+Phase 0b does not either -- the bytes crossing the wire are identical over loopback and over a
+network, so a refbox on this machine tells us exactly what a refbox on another one would.
+
+**A second machine earns its keep for one thing only:** acceptance step 7, pulling the network
+mid-half. Loopback never drops. That is the tournament-readiness test, on real hardware, and it
+cannot be faked convincingly -- though killing the refbox process or blocking its port exercises
+the same code paths during development.
+
 Before a tournament: it runs on the real streaming PC; it survives a genuinely weak link rather
 than a simulated one; and a full game runs start to finish without attention.
 
@@ -354,6 +378,26 @@ The remaining unknowns are the title-binding step and the practical minimum refr
 both settled at the end of phase 1 (§7). Accepted rather than mitigated, because the served shape
 is the cheapest part of the bridge to change if it turns out wrong.
 
+### 9.5 What a vMix setup would need to cover the overlay's full range
+
+Informational, not a gate. The overlay draws considerably more than a scorebug, and this is the
+inventory phase 2's title design works against — and the list full retirement would have to satisfy
+if it were ever pursued.
+
+| Overlay page | What it draws |
+|---|---|
+| In-game | Scorebug, timeout indicators, goal callout flags, penalty flags with countdowns and `TD` |
+| Pre-game | Teams, logos, half length |
+| Next game | Next teams, court, start time |
+| Final scores | End-of-game result |
+| Overtime / sudden death | Its own layout |
+| Roster | Every player's name, number and **photograph**, per team, plus team flags and event/sponsor logos |
+
+The scorebug half maps cleanly onto data sources. **The roster pages are the open question**: they
+are built from player photographs, team flags and event logos, and vMix data sources map *text*
+into title fields. Whether images can be driven the same way is unverified. Worth settling before
+anyone assumes the vMix path can do everything the overlay does.
+
 ### 9.3 Network discovery may be blocked
 
 Venue networks and Windows firewall may interfere with §5.3. Mitigated by keeping manual entry
@@ -371,11 +415,47 @@ taken with evidence.
 
 ## 10. Defects found during design — out of scope, each needs its own branch
 
-### 10.1 The overlay can silently discard a large update
+### 10.1 The overlay stops updating permanently once a message exceeds 1024 bytes
 
-The feed terminates each update with a newline, but the overlay reads up to 1024 bytes and parses
-whatever arrived (`overlay/src/network.rs:492-505`). A game with many penalties, fouls and
-warnings could exceed that; the update is then discarded as corrupt with only a log warning.
+**Measured, not theorised.** The feed terminates each update with a newline, but the overlay reads
+up to 1024 bytes and parses whatever arrived (`overlay/src/network.rs:492-505`). Because it never
+looks for the newline, the first oversized message leaves its reads misaligned mid-message and
+**every subsequent read is garbage too**. Replaying six oversized messages through that exact read
+pattern parsed **zero** of them. It does not drop a frame and recover; it stops for the rest of the
+game, and the message never shrinks back because fouls and warnings are never culled.
+
+Measured growth from a live capture (2026-08-26, phase 0b): 362 bytes with nothing recorded, 794
+bytes at seven entries, crossing 1024 at roughly a dozen. Penalties are culled once served
+(`cull_penalties`), so they are self-limiting; fouls and warnings accumulate for the whole game and
+are cleared only at a game reset.
+
+**It is dormant today and will not stay that way.** Eric confirms fouls and warnings have never been
+used significantly at an event, and penalties alone do not realistically reach a dozen concurrent
+entries — so the threshold has almost certainly never been crossed in the field. **It becomes live
+the day fouls and warnings are recorded in earnest**, which is where both the portal-statistics work
+and the "fouls on the overlay" backlog item are heading. A scheduled failure, not a historical one;
+fix it before that rollout, not after.
+
+### 10.4 The overlay can wait forever on a connection that has silently died
+
+If the refbox goes away without the network delivering a proper close — a Pi dropped off Wi-Fi, or
+power-cycled — the overlay's read waits indefinitely for data that will never arrive. It never
+errors, so it never reaches its reconnect logic (`overlay/src/network.rs:487-497`); it sits with the
+last picture frozen and only a restart clears it.
+
+**Why this feed specifically:** the connection is one-way, so the reading side never transmits. A
+peer that has rebooted would answer an outgoing packet with a reset — but the overlay sends nothing,
+so it is never told.
+
+**This is the more likely cause of the freezes actually seen at events.** Restarting the overlay
+recovers it, which is what a stale connection needs and what the oversize fault above would *not* be
+fixed by. Distinguishable from the overlay's own log
+(`%LOCALAPPDATA%\uwh-overlay-logs\overlay-log.txt` and its `.gz` archives): the oversize fault
+fills it with `Corrupted snapshot discarded!`; this one leaves it silent after the last good
+snapshot.
+
+**Consequence for the bridge:** the keepalive in §5.4 is not a nicety. It is the difference between
+the bridge inheriting this failure and not.
 
 ### 10.2 The overlay loses a game's team data permanently if the Portal is briefly unreachable
 

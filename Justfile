@@ -40,14 +40,18 @@ test:
 # `--features program` is load-bearing: without it the module those tests live in is
 # never compiled, so `cargo test` reports "0 tests, ok" and PASSES with an empty gate.
 # That is not hypothetical — it happened on this branch and went unnoticed for two
-# tasks. So after running them, count them, and fail loudly if there were none.
+# tasks. So this checks the SAME invocation's own output for the cursor tests, rather
+# than a second `-- --list` run carrying its own copy of `--features program` that
+# could silently drift from the run line and certify a gate it never actually ran.
 test-vendor:
     #!/usr/bin/env bash
     set -euo pipefail
-    cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked --features program
-    found=$(cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked --features program -- --list | grep -c 'cursor::tests::' || true)
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked --features program 2>&1 | tee "$tmp"
+    found=$(grep -c 'cursor::tests::' "$tmp" || true)
     if [ "$found" -eq 0 ]; then
-        echo "ERROR: no cursor tests found in the vendored iced_winit." >&2
+        echo "ERROR: no cursor tests found in the vendored iced_winit test run." >&2
         echo "That run proved nothing. The touchscreen-tap regression gate is inert —" >&2
         echo "check that --features program is still being passed, and see" >&2
         echo "vendor/iced_winit/VENDORED.md." >&2
@@ -58,13 +62,43 @@ test-vendor:
 # Fail if the workspace is no longer building iced_winit from vendor/iced_winit.
 # The `[patch.crates-io]` redirect stops applying the moment nothing in the graph asks
 # for iced_winit 0.13 any more (an iced 0.14 upgrade, say). Cargo only WARNS about an
-# unused patch, and `test-vendor` keeps passing because it tests the vendored crate
-# standalone — so the touchscreen-tap fix would silently drop out of the shipped binary
-# while every gate stayed green.
+# unused patch — to stderr, worded "was not used in the crate graph" — and
+# `test-vendor` keeps passing because it tests the vendored crate standalone, so the
+# touchscreen-tap fix would silently drop out of the shipped binary while every gate
+# stayed green. Checking stdout alone for "vendor/iced_winit" is not enough: that
+# unused-patch warning also contains the path string, so folding stderr into the same
+# text passes in exactly the case this exists to catch. So: stdout and stderr are
+# checked separately, the unused-patch warning is an explicit failure, and a `cargo
+# tree` command that errors out is a failure too, decided from its exit status.
 check-patch-applied:
     #!/usr/bin/env bash
     set -uo pipefail
-    out=$(cargo tree --locked --invert iced_winit 2>&1)
+    err_file=$(mktemp)
+    status=0
+    out=$(cargo tree --locked --invert iced_winit 2>"$err_file") || status=$?
+    err=$(cat "$err_file")
+    rm -f "$err_file"
+    if [ "$status" -ne 0 ]; then
+        echo "ERROR: 'cargo tree --locked --invert iced_winit' failed to run (exit $status)." >&2
+        echo "Cannot verify the touchscreen-tap fix is in the binary. See" >&2
+        echo "vendor/iced_winit/VENDORED.md before changing anything." >&2
+        echo "" >&2
+        echo "stderr was:" >&2
+        echo "$err" >&2
+        exit 1
+    fi
+    if grep -q 'was not used in the crate graph' <<<"$err"; then
+        echo "ERROR: cargo reported the vendored iced_winit patch was NOT used in the crate graph." >&2
+        echo "The [patch.crates-io] redirect in Cargo.toml has stopped applying, so the" >&2
+        echo "touchscreen-tap fix is NOT in the binary — taps will be dropped on the Pi." >&2
+        echo "Most likely cause: iced was upgraded so nothing depends on iced_winit 0.13," >&2
+        echo "or the vendored crate's own version no longer matches what the graph resolves." >&2
+        echo "See vendor/iced_winit/VENDORED.md before changing anything." >&2
+        echo "" >&2
+        echo "cargo's stderr said:" >&2
+        echo "$err" >&2
+        exit 1
+    fi
     if ! grep -q 'vendor/iced_winit' <<<"$out"; then
         echo "ERROR: the workspace is NOT building iced_winit from vendor/iced_winit." >&2
         echo "The [patch.crates-io] redirect in Cargo.toml has stopped applying, so the" >&2
@@ -72,7 +106,7 @@ check-patch-applied:
         echo "Most likely cause: iced was upgraded, so nothing depends on iced_winit 0.13." >&2
         echo "See vendor/iced_winit/VENDORED.md before changing anything." >&2
         echo "" >&2
-        echo "cargo tree --locked --invert iced_winit said:" >&2
+        echo "cargo tree --locked --invert iced_winit said (stdout):" >&2
         echo "$out" >&2
         exit 1
     fi

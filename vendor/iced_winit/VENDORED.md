@@ -25,13 +25,18 @@ Verbatim copy of `iced_winit` 0.13.0 from crates.io, with TWO deliberate diverge
    `docs/superpowers/plans/2026-08-26-touch-tap-discarded-cursor-warp.md`. This vendoring
    exists so that fix can be applied here.
 
-   This divergence is **not** the fix itself — it is a pure extraction, with no behaviour
-   change, made so the fix can land in a small, unit-tested place. `state.rs`'s
+   This divergence now carries the actual behaviour fix. `state.rs`'s
    `cursor_position: Option<PhysicalPosition<f64>>` field became a `CursorTracker` value
-   (defined in the new `cursor.rs`), and `state.rs` now delegates to it; the tracker's tests
-   lock in today's behaviour, including that `entered()` is presently an empty method, exactly
-   as the old code did nothing on that event. The actual behaviour change is a later change,
-   not this one.
+   (defined in the new `cursor.rs`), and `state.rs` delegates to it. `CursorTracker` tracks
+   two extra bits of state: whether touch or the mouse last owned the cursor
+   (`touch_is_current`), and whether the next mouse move is the synthetic one winit emits
+   right after a pointer enter (`suppress_next_moved`). On `entered()`, if touch currently
+   owns the cursor, the tracker arms that suppression flag; the next `moved()` then consumes
+   the flag and is dropped instead of overwriting the position, so the compositor's restored
+   pointer can no longer clobber a touch that just landed. `left()` is now a no-op while touch
+   owns the cursor, so a compositor hiding the pointer around a touch can no longer blank the
+   position the finger set. Neither change affects a genuine mouse move or leave once the
+   mouse has reclaimed the cursor via `moved()`.
 
 Every other file must stay byte-identical to upstream so re-vendoring is a clean diff.
 To re-vendor: copy the new upstream version in, then re-add the empty `[workspace]` table to

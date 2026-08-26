@@ -4662,6 +4662,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "overlay-bridge"
+version = "0.4.9"
+dependencies = [
+ "clap",
+ "futures",
+ "serde_json",
+ "tokio",
+ "uwh-common",
+]
+
+[[package]]
 name = "owned_ttf_parser"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

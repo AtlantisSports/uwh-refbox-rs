@@ -7,6 +7,7 @@ members = [
   "led-panel-sim",
   "matrix-drawing",
   "overlay",
+  "overlay-bridge",
   "refbox",
   "schedule-processor",
   "uwh-common",

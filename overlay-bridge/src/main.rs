@@ -1,13 +1,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use clap::Parser;
-use overlay_bridge::{
-    config,
-    feed::Supervisor,
-    server::{self, AppState},
-};
-use reqwest::Client;
-use tokio::sync::{Notify, mpsc};
+use overlay_bridge::{config, server};
 
 /// Reads a refbox's live game feed and serves it to vMix (or any other third party) as JSON
 /// tables over HTTP, surviving refbox dropouts and Portal outages without the served picture
@@ -58,73 +52,47 @@ struct Cli {
     court: Option<String>,
 }
 
+impl Cli {
+    /// What the operator actually typed this run, in the form `config` resolves settings from.
+    /// The only place `clap` meets the rest of the crate: everything downstream sees
+    /// [`config::Overrides`] and [`config::Resolved`], both of which a test can build by hand.
+    fn overrides(&self) -> config::Overrides {
+        config::Overrides {
+            refbox_host: self.refbox_host.clone(),
+            refbox_port: self.refbox_port,
+            port: self.port,
+            white_on_right: self.white_on_right,
+            court: self.court.clone(),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-    let stored = config::load();
 
-    let refbox_host = config::resolve(
-        cli.refbox_host.clone(),
-        stored.refbox_host.clone(),
-        config::DEFAULT_REFBOX_HOST.to_string(),
+    // Everything the bridge needs, decided in one place under one precedence rule -- see
+    // `config::Resolved`, and `server::start`, for why this is a value handed over whole rather
+    // than a series of optional attachments. `settings_path().ok()`: if the settings directory
+    // cannot be worked out, the bridge still runs and a refbox chosen on the status page still
+    // applies, and the page says plainly that it will not be remembered.
+    let settings = config::resolve_all(
+        cli.overrides(),
+        config::load(),
+        config::settings_path().ok(),
     );
-    let refbox_port = config::resolve(
-        cli.refbox_port,
-        stored.refbox_port,
-        config::DEFAULT_REFBOX_PORT,
-    );
-    let port = config::resolve(cli.port, stored.port, config::DEFAULT_PORT);
-    let white_on_right = config::resolve(cli.white_on_right, stored.white_on_right, false);
-    let court = config::resolve(cli.court.clone(), stored.court.clone(), String::new());
 
     // Persist whatever was actually resolved this run -- including a value that came from the
     // built-in default -- so it becomes "what was last used" for the next run with no flags at
     // all (design spec §5.3: "the last address used is remembered").
-    config::store(&config::Settings {
-        refbox_host: Some(refbox_host.clone()),
-        refbox_port: Some(refbox_port),
-        port: Some(port),
-        white_on_right: Some(white_on_right),
-        court: Some(court.clone()),
-    });
+    config::store(&settings.to_settings());
 
-    println!("Connecting to refbox at {refbox_host}:{refbox_port}...");
+    println!("Connecting to refbox at {}...", settings.refbox);
 
-    let state = Arc::new(
-        AppState::new(white_on_right)
-            .with_operator_info(refbox_host, refbox_port, court)
-            // Where an address chosen on the status page while the bridge is running gets
-            // remembered, so the next run comes back to the same refbox. `ok()`: if the settings
-            // directory cannot be worked out, choosing a refbox still works for this run and the
-            // page says plainly that it will not be remembered.
-            .with_settings_path(config::settings_path().ok()),
-    );
-
-    let (tx, rx) = mpsc::unbounded_channel();
-    // The address is taken from the shared handle rather than passed as a value: the operator can
-    // point the bridge at a different refbox from the status page at any time, and the supervisor
-    // follows that handle (see `feed::FeedTarget`).
-    tokio::spawn(Supervisor::run(
-        state.target_handle(),
-        tx,
-        state.connection_handle(),
-    ));
-
-    let refresh_notify = Arc::new(Notify::new());
-    let client = Client::new();
-
-    tokio::spawn(server::consume_snapshots(
-        Arc::clone(&state),
-        rx,
-        client,
-        cli.portal_url.clone(),
-        Arc::clone(&refresh_notify),
-    ));
-    tokio::spawn(server::refresh_portal_loop(
-        Arc::clone(&state),
-        refresh_notify,
-        server::PORTAL_REFRESH_INTERVAL,
-    ));
+    let port = settings.port;
+    // Assembling the running bridge is `server::start`'s job, not this file's: it is wiring worth
+    // testing, and this file cannot be tested (Task 8 review, Important 3).
+    let bridge = server::start(settings, cli.portal_url.clone());
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = match tokio::net::TcpListener::bind(addr).await {
@@ -136,7 +104,7 @@ async fn main() {
     };
     println!("Serving vMix tables at http://{addr}/ (Ctrl+C to stop)...");
 
-    if let Err(e) = axum::serve(listener, server::router(state)).await {
+    if let Err(e) = axum::serve(listener, server::router(Arc::clone(&bridge.state))).await {
         eprintln!("the bridge's HTTP server stopped unexpectedly: {e}");
     }
 }
@@ -218,6 +186,57 @@ mod tests {
             config::resolve(cli.court, None, String::new()),
             String::new()
         );
+    }
+
+    #[test]
+    fn a_typed_refbox_address_reaches_the_settings_the_bridge_actually_runs_on() {
+        // The last link of the chain the review asked to be made testable (Important 3): the flag
+        // an operator types must survive `Cli` -> `Overrides` -> `Resolved`, which is what
+        // `server::start` then reads the refbox address from. Asserting on `cli.refbox_host`
+        // alone -- as the tests below do for parsing -- would not have caught a conversion that
+        // dropped the value on the floor.
+        let cli = Cli::try_parse_from(["overlay-bridge", "--refbox-host", "192.168.1.50"])
+            .expect("--refbox-host should be accepted");
+
+        let settings = config::resolve_all(
+            cli.overrides(),
+            config::Settings {
+                refbox_host: Some("10.0.0.9".to_string()),
+                ..config::Settings::default()
+            },
+            None,
+        );
+
+        assert_eq!(
+            settings.refbox,
+            overlay_bridge::feed::RefboxAddress::new("192.168.1.50", 8000),
+            "the typed address must beat the stored one and arrive intact"
+        );
+    }
+
+    #[test]
+    fn every_flag_reaches_the_resolved_settings() {
+        let cli = Cli::try_parse_from([
+            "overlay-bridge",
+            "--refbox-host",
+            "192.168.1.50",
+            "--refbox-port",
+            "8123",
+            "--port",
+            "9001",
+            "--white-on-right",
+            "--court",
+            "Pool B",
+        ])
+        .expect("every flag should be accepted");
+
+        let settings = config::resolve_all(cli.overrides(), config::Settings::default(), None);
+
+        assert_eq!(settings.refbox.host, "192.168.1.50");
+        assert_eq!(settings.refbox.port, 8123);
+        assert_eq!(settings.port, 9001);
+        assert!(settings.white_on_right);
+        assert_eq!(settings.court, "Pool B");
     }
 
     #[test]

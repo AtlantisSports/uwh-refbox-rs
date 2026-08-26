@@ -37,7 +37,7 @@ test:
 # Run the vendored iced_winit tests (excluded from the workspace, so `cargo test
 # --workspace` does not reach them)
 test-vendor:
-    cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked
+    cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked --features program
 
 # ── Security ──────────────────────────────────────────────────────────────────
 

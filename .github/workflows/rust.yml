@@ -123,7 +123,7 @@ jobs:
     # platform-independent, so running it on windows-latest/macOS-latest too
     # would buy nothing.
     - if: ${{ matrix.os == 'ubuntu-latest' }}
-      run: cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked
+      run: cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked --features program
 
   build-ndf:
     name: Test debug without default features

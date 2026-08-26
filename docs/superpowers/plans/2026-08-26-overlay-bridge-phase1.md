@@ -596,6 +596,31 @@ Carried into phase 2 as consequences, not blockers:
 **Requires a CI change** (`.github/workflows/release.yml`), which is shared infrastructure — to be
 made deliberately in phase 2, not on this branch.
 
+**DECIDED, Eric, 2026-08-27 — how the operator starts it: open the browser automatically.** On
+launch the bridge opens the operator's default browser at its own address. A menu-bar or
+system-tray icon was considered and deliberately deferred: it is the more polished answer, and it
+is only worth its cost if volunteers actually struggle with the simple version.
+
+The reasoning that settled it: **no interface needs designing, because one already exists.** Tasks
+7 and 8 built the operator page — connection status, the refbox picker, the scan, the settings, and
+the vMix addresses. The gap was never the interface; it was that a volunteer had to know to open a
+browser and type an address, and on a Mac had nothing to double-click at all. So the fix is a
+launcher, not a UI.
+
+Rejected: a native window in `iced`. It would duplicate a page a browser already renders correctly,
+in a framework this project has repeatedly fought (text that fails to repaint, a canvas that
+crashes on the settings page, no table widget), and would leave two interfaces to keep in step.
+
+Kept deliberately: the Windows console window. It is ugly, but it is the off switch a volunteer
+intuitively understands — closing it stops the bridge. Hiding it would make the program harder to
+quit, not easier.
+
+Pairs with the Mac `.app` bundle, which is four lines of `[package.metadata.bundle]` — refbox's own
+is just an identifier, an icon and a minimum OS version.
+
+**Its own branch, not this one** (`.claude/rules/scope.md`: a new concern gets a new branch). Small:
+open the browser on startup, plus a flag to suppress it for anyone running the bridge headless.
+
 **Superseded context — the options weighed before that decision:** If this blocks the
 machine it was built on, it will block a streaming volunteer's laptop at a venue, probably during
 setup and probably with an alarming warning. Phase 1 has no answer today. The realistic options are

@@ -567,7 +567,36 @@ Task 8 gave it a sweep of 254 addresses on the local network to find refboxes. F
 that is indistinguishable from network reconnaissance. This is the expected reaction to what the
 program legitimately does, not a fluke.
 
-**STILL OPEN — a product decision for Eric, not an implementation detail.** If this blocks the
+**DECIDED, Eric, 2026-08-27: ship it exactly like refbox.** Build Windows, Mac ARM and Mac Intel
+versions as release assets and let the operator bypass the security warning manually, as they
+already do for refbox. No code signing for now.
+
+This is a better answer than the options offered against it, for a reason worth recording: the
+release workflow builds each platform **natively on that platform's runner** — Windows on
+`windows-latest`, producing an MSVC-toolchain `refbox.exe`, not a mingw cross-build. So following
+the existing pattern removes the mingw factor for free, without anyone having to decide about it.
+The binary blocked on 2026-08-27 was the worst possible case: cross-compiled with mingw, built
+locally, downloaded by nobody, and therefore carrying no reputation at all. What an operator
+downloads from a release is not that file.
+
+Carried into phase 2 as consequences, not blockers:
+- **Antivirus quarantine is a harder failure than SmartScreen's "Run anyway".** Eric hit one file
+  he could not create an exception for at all. A locked-down or managed laptop may simply refuse,
+  so the operator documentation needs a fallback — running the bridge on another machine on the
+  venue network, which works because vMix only needs a URL.
+- **macOS is stricter than Windows, and the shape is an open question.** refbox ships `.app`
+  bundles via `cargo bundle` because it is a GUI application. overlay-bridge is a headless server
+  with a web page: a plain binary would require a volunteer to use Terminal, which is a real
+  usability cost. Whether the Mac build is a bundle, a plain binary, or a small wrapper needs
+  deciding before that build is added.
+- Confirm rather than assume that refbox's existing unsigned Mac builds actually launch on Apple
+  Silicon, since an unsigned arm64 binary needs at least an ad-hoc signature to run at all. If
+  refbox's bundles work today, whatever makes that true applies here too.
+
+**Requires a CI change** (`.github/workflows/release.yml`), which is shared infrastructure — to be
+made deliberately in phase 2, not on this branch.
+
+**Superseded context — the options weighed before that decision:** If this blocks the
 machine it was built on, it will block a streaming volunteer's laptop at a venue, probably during
 setup and probably with an alarming warning. Phase 1 has no answer today. The realistic options are
 code signing (a recurring cost), written instructions for the operator to allow the program, or

@@ -36,12 +36,24 @@ Verbatim copy of `iced_winit` 0.13.0 from crates.io, with TWO deliberate diverge
    pointer can no longer clobber a touch that just landed. `left()` is now a no-op while touch
    owns the cursor, so a compositor hiding the pointer around a touch can no longer blank the
    position the finger set. Neither change affects a genuine mouse move or leave once the
-   mouse has reclaimed the cursor via `moved()`.
+   mouse has reclaimed the cursor via an unsuppressed `moved()` — a `moved()` that itself gets
+   suppressed does not reclaim anything.
+
+   The `left()` half of the fix is prophylactic rather than evidence-driven: in the capture,
+   both pointer-leaves arrive *before* the touch-down, so the observed bug only ever needed
+   the `entered`/`moved` half — nothing in the capture exercises `left()` blanking a live
+   touch. It is kept anyway, deliberately, because leave/enter ordering between the capture's
+   two pointer objects is compositor-dependent, and a `leave` landing mid-gesture on a
+   different compositor would otherwise blank a touch position that is still current. The
+   residual this creates: after any tap, the cursor never reports as unavailable again until
+   an unsuppressed mouse move reclaims it, so on a touch-only Pi `position()` keeps reading
+   "available at the last tap point" indefinitely. That is a deliberate choice, not an
+   accident, and a future maintainer should know it.
 
 Every other file must stay byte-identical to upstream so re-vendoring is a clean diff.
 To re-vendor: copy the new upstream version in, then re-add the empty `[workspace]` table to
-the new `Cargo.toml`, and re-apply the cursor-tracking extraction (and the fix, once it exists)
-to `src/program/state.rs` and `src/program/cursor.rs`, per whatever instructions land alongside
+the new `Cargo.toml`, and re-apply the cursor-tracking extraction and its fix to
+`src/program/state.rs` and `src/program/cursor.rs`, per whatever instructions land alongside
 them.
 
 This crate is deliberately EXCLUDED from the workspace so our `-D warnings` clippy

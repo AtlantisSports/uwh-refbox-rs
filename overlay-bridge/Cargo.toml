@@ -10,11 +10,22 @@ rust-version = "1.85"
 # one new dependency for this task, approved by Eric 2026-08-26 (phase-1 plan and task 6's brief).
 axum = "0.8"
 clap = { version = "4", features = ["derive"] }
+# Persists the bridge's own settings (Task 7) -- the same crate `refbox` itself already uses for
+# exactly this (`refbox/Cargo.toml`'s own `confy = "1.0"`), so this does not add a new library to
+# the workspace's dependency graph.
+confy = "1.0"
+# Resolves the OS-standard per-user config directory `confy` stores into. Already in the
+# workspace via `refbox/Cargo.toml`'s own `directories = "6"`, and is `confy`'s own dependency
+# regardless.
+directories = "6"
 futures = "0.3"
 # Same version and feature set as `overlay`'s own use of reqwest (it talks to the same portal
 # endpoints), so this does not add a new library to the workspace's dependency graph -- it is
 # already resolved in Cargo.lock.
 reqwest = { version = "0.12", features = ["gzip"] }
+# Derives (de)serialization for `config::Settings` (Task 7). Already used across the workspace
+# (`uwh-common`, `refbox`); the "derive" feature is what `#[derive(Serialize, Deserialize)]` needs.
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Already in the workspace's dependency tree via tokio's own "net" feature; adding it directly
 # here (with the "all" feature) is a feature flag on an existing transitive dependency, not a new

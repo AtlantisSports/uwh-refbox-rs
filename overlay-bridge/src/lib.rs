@@ -7,8 +7,10 @@
 //! binary (`main.rs`) is kept thin -- CLI parsing, config load, wiring, the tokio runtime -- and
 //! pulls everything else from here.
 
+pub mod config;
 pub mod feed;
 pub mod portal;
 pub mod server;
 pub mod state;
+pub mod status;
 pub mod tables;

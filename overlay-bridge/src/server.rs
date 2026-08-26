@@ -6,13 +6,15 @@
 //!
 //! `GET /scorebug`, `/penalties`, `/fouls`, `/warnings`, `/nextgame` each serve exactly what
 //! [`tables`] builds for them -- a JSON array of objects, every row carrying a `connected`
-//! column, as documented on those functions. `GET /status.json` is new here, not part of
-//! `tables`' published shapes: a single-row array reporting whether the refbox is currently in
-//! contact ([`feed::Connection`]) and the current game number and period. It follows the same
-//! "always an array" convention as every other route so a poller can treat all six routes
-//! uniformly, even though its columns are this module's own invention rather than a `tables`
-//! shape -- the fuller operator status page (an HTML `GET /`, plus richer content such as the
-//! discovery list and the keepalive-availability signal) is Task 7's job, not this one's.
+//! column, as documented on those functions. `GET /status.json` reports, in the same
+//! "always a JSON array" shape (its columns are this module's own invention, not a `tables`
+//! shape), whether the refbox is currently in contact ([`feed::Connection`]), the current game
+//! number and period, how long the connection has been down (Task 7, only while it is down --
+//! see [`status`]'s module doc for why), and whether the TCP keepalive check is actually active
+//! (also Task 7). `GET /` is the human-facing counterpart of the same information, rendered as a
+//! self-contained HTML operator status page by [`status::render_page`] -- see that module's doc
+//! for the full rationale. The refbox discovery list belongs to `status.rs` too, but is Task 8's
+//! job, not this one's.
 //!
 //! **Every response reads the live state fresh at request time**, via
 //! [`state::LiveState::current`] inside each handler -- never a value cached between requests.
@@ -67,7 +69,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::{HeaderMap, header},
+    response::Html,
+    routing::get,
+};
 use reqwest::Client;
 use tokio::{
     sync::{Notify, mpsc},
@@ -83,6 +91,7 @@ use crate::{
     feed::{Connection, ConnectionState},
     portal::{Directory, TeamNames},
     state::{Display, LiveState},
+    status::{self, DisconnectWatch},
     tables::{self, Rosters},
 };
 
@@ -102,27 +111,65 @@ pub struct AppState {
     /// outer `RwLock`) so [`refresh_once`] can clone a handle out and drop the lock before making
     /// any network call -- no lock guard in this module is ever held across an `.await`.
     directory: RwLock<Option<Arc<Directory>>>,
-    /// The operator's side-of-pool setting (`--white-on-right`), fixed for the life of the
-    /// process. Persisting it and changing it at runtime is Task 7's job, not this one's.
+    /// The operator's side-of-pool setting (`--white-on-right`, persisted by `config` since
+    /// Task 7), fixed for the life of the process.
     white_on_right: bool,
     /// The bridge's connection to the refbox right now -- see [`Connection`]. The only writer is
     /// [`crate::feed::Supervisor::run`], via the handle [`AppState::connection_handle`] hands out;
     /// every route handler reads it (through [`is_connected`]) to decide whether to serve real
     /// values or blank ones (see `tables`' module doc).
     connection: ConnectionState,
+    /// Tracks how long `connection` has been continuously disconnected, for `/status.json` and
+    /// `GET /`'s "how long has this been down" figure -- see [`status::DisconnectWatch`]'s own
+    /// doc for why this is a background poll and why it is safe against the trap.
+    disconnect_watch: DisconnectWatch,
+    /// The refbox address currently in use -- display-only, for the status page (Task 7). Never
+    /// consulted to decide where to connect: that decision is made once, in `main.rs`, before
+    /// this state is constructed.
+    refbox_host: String,
+    refbox_port: u16,
+    /// The court label operator setting (design spec §5.2, persisted by `config` since Task 7) --
+    /// display-only, same as `refbox_host`/`refbox_port` above.
+    court: String,
 }
 
 impl AppState {
     /// Builds a fresh, unconnected bridge state: no event known yet, no connection made yet
     /// ([`Connection::NeverConnected`]), and the live picture seeded from
     /// [`GameSnapshot::default`] so every route is servable immediately.
+    ///
+    /// The status-page-only fields (the refbox address on display, and the court setting) start
+    /// empty here -- see [`AppState::with_operator_info`] for why they are attached separately
+    /// rather than through this constructor's own signature.
     pub fn new(white_on_right: bool) -> Self {
+        let connection = ConnectionState::new();
         Self {
             live: RwLock::new(LiveState::new(GameSnapshot::default(), Instant::now())),
             directory: RwLock::new(None),
             white_on_right,
-            connection: ConnectionState::new(),
+            disconnect_watch: DisconnectWatch::spawn(connection.clone()),
+            connection,
+            refbox_host: String::new(),
+            refbox_port: 0,
+            court: String::new(),
         }
+    }
+
+    /// Attaches the status page's display-only fields -- the refbox address currently in use and
+    /// the court label. Kept out of [`AppState::new`]'s own signature, as a separate builder-style
+    /// method, so this crate's many existing tests (which only ever call `AppState::new` with a
+    /// `white_on_right` value) do not all need updating for fields nothing in this file's own
+    /// serving logic reads.
+    pub fn with_operator_info(
+        mut self,
+        refbox_host: String,
+        refbox_port: u16,
+        court: String,
+    ) -> Self {
+        self.refbox_host = refbox_host;
+        self.refbox_port = refbox_port;
+        self.court = court;
+        self
     }
 
     /// A cloned handle to this state's connection tracker, for handing to
@@ -133,8 +180,8 @@ impl AppState {
     }
 }
 
-/// Builds the axum app: the six routes described in this module's doc, all backed by `state`. An
-/// unmatched path falls through to axum's own default 404 response -- nothing here needs to
+/// Builds the axum app: the seven routes described in this module's doc, all backed by `state`.
+/// An unmatched path falls through to axum's own default 404 response -- nothing here needs to
 /// special-case it.
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
@@ -144,6 +191,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/warnings", get(get_warnings))
         .route("/nextgame", get(get_next_game))
         .route("/status.json", get(get_status))
+        .route("/", get(get_status_page))
         .with_state(state)
 }
 
@@ -189,7 +237,46 @@ async fn get_next_game(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<
 
 async fn get_status(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<String, String>>> {
     let display = current_display(&state);
-    Json(status_row(&display, state.connection.get()))
+    Json(status_row(
+        &display,
+        state.connection.get(),
+        state.disconnect_watch.duration(),
+        state.connection.keepalive_active(),
+    ))
+}
+
+/// `GET /` -- the operator status page. See [`status`]'s module doc for the full rationale;
+/// this handler's only job is extracting `state` (and the request's own `Host` header, for the
+/// vMix addresses `status::render_page` lists) into a [`status::PageData`] and delegating the
+/// actual rendering to that pure function.
+async fn get_status_page(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Html<String> {
+    let display = current_display(&state);
+
+    let base_url = headers
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .map(|host| format!("http://{host}"));
+
+    let data = status::PageData {
+        connection: state.connection.get(),
+        disconnected_for: state.disconnect_watch.duration(),
+        keepalive_active: state.connection.keepalive_active(),
+        event_id: display
+            .snapshot
+            .event_id
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default(),
+        game_number: display.snapshot.game_number().clone(),
+        period: display.snapshot.current_period.to_string(),
+        refbox_host: state.refbox_host.clone(),
+        refbox_port: state.refbox_port,
+        white_on_right: state.white_on_right,
+        court: state.court.clone(),
+        base_url,
+    };
+
+    Html(status::render_page(&data))
 }
 
 /// The bridge's live picture right now -- the last real snapshot the refbox sent, relayed
@@ -281,14 +368,20 @@ fn cap_numbers_for(snapshot: &GameSnapshot, color: Color) -> impl Iterator<Item 
 /// Builds `/status.json`'s single row. See the module doc's "Routes" section for why this shape
 /// is this module's own invention rather than a `tables` shape.
 ///
-/// `contact` is [`Connection`], not the old timing-derived `state::Contact` this replaced -- see
-/// the report for this task. There is deliberately no `sinceSeconds` (or similar) column any
-/// more: the old one measured silence since the last message, which is exactly the quantity this
-/// task established must never be treated as meaningful (a stopped clock produces long silence
-/// legitimately). A "how long has the connection been down" figure would need its own tracking
-/// this task does not add -- the fuller operator status page, including its own-worded contact
-/// display, is Task 7's job (see the module doc's "Routes" section).
-fn status_row(display: &Display, contact: Connection) -> Vec<BTreeMap<String, String>> {
+/// `contact` is [`Connection`], not the old timing-derived `state::Contact` this replaced (Task
+/// 10) -- see `feed`'s and `status`'s module docs. There is deliberately no `sinceSeconds` (or
+/// similar) column keyed off message arrival: the old one measured silence since the last
+/// message, which is exactly the quantity Task 10 established must never be treated as
+/// meaningful (a stopped clock produces long silence legitimately). `disconnected_for` (Task 7,
+/// [`status::DisconnectWatch`]) is different in kind, not just in name: it measures time since
+/// the *connection* dropped, sourced from `feed::Connection` alone, and is `None` unless `contact`
+/// is `Connection::Disconnected` right now.
+fn status_row(
+    display: &Display,
+    contact: Connection,
+    disconnected_for: Option<Duration>,
+    keepalive_active: bool,
+) -> Vec<BTreeMap<String, String>> {
     let contact_text = match contact {
         Connection::NeverConnected => "NeverConnected",
         Connection::Connected => "Live",
@@ -305,6 +398,13 @@ fn status_row(display: &Display, contact: Connection) -> Vec<BTreeMap<String, St
         "period".to_string(),
         display.snapshot.current_period.to_string(),
     );
+    row.insert(
+        "disconnectedForSeconds".to_string(),
+        disconnected_for
+            .map(|d| d.as_secs().to_string())
+            .unwrap_or_default(),
+    );
+    row.insert("keepaliveActive".to_string(), keepalive_active.to_string());
     vec![row]
 }
 
@@ -1055,8 +1155,12 @@ mod tests {
     /// Runs a real `feed::Supervisor` against a real loopback socket, sends exactly one real
     /// snapshot, then leaves the connection open and silent for `silent_for` before asserting
     /// `/scorebug` still reports `connected: "true"` and exactly the values that one snapshot
-    /// carried. Shared by the two regression guards for "the trap" (spec §4.6, §5.4) below, which
-    /// differ only in how long they wait -- see each test's own doc for why both exist.
+    /// carried -- and, since Task 7, that `/status.json` and `GET /` (the operator status page)
+    /// agree: still `"Live"`/the live indicator, with no `disconnectedForSeconds`/down-duration
+    /// at all. Shared by the two regression guards for "the trap" (spec §4.6, §5.4) below, which
+    /// differ only in how long they wait -- see each test's own doc for why both exist. Extending
+    /// this one shared helper, rather than adding a second 30-second test, reuses the exact same
+    /// real sleep for both surfaces at zero extra wall-clock cost.
     async fn assert_scorebug_survives_silence(silent_for: Duration) {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
@@ -1121,6 +1225,41 @@ mod tests {
              served completely unchanged -- never blanked, never projected forward"
         );
         assert_eq!(row["blackScore"].as_str(), Some("2"));
+
+        // Task 7's new surfaces must agree -- see this helper's own doc. These are the direct
+        // regression guards for the NEW risk this task adds (deriving `disconnectedForSeconds` /
+        // the page's down-duration from something other than `feed::Connection`); the assertions
+        // above already covered `/scorebug`'s pre-existing `connected` flag.
+        let status_json = get_json(addr, "/status.json").await;
+        let status_row = &status_json[0];
+        assert_eq!(
+            status_row["contact"].as_str(),
+            Some("Live"),
+            "/status.json must also report the connection as live after {silent_for:?} of \
+             silence with the connection still alive"
+        );
+        assert_eq!(
+            status_row["disconnectedForSeconds"].as_str(),
+            Some(""),
+            "a live connection must never carry a disconnected-for duration, no matter how long \
+             it has been silent -- {silent_for:?} of silence alone must never populate this"
+        );
+
+        let page = get_response(addr, "/")
+            .await
+            .text()
+            .await
+            .unwrap_or_else(|e| panic!("GET / body should be readable: {e}"));
+        assert!(
+            page.contains("indicator live"),
+            "the operator status page must also show the live indicator after {silent_for:?} \
+             of silence with the connection still alive"
+        );
+        assert!(
+            !page.contains("class=\"duration\""),
+            "the operator status page must never show a down-duration while still connected, \
+             no matter how long the silence"
+        );
 
         supervisor.abort();
         consumer.abort();
@@ -1271,6 +1410,153 @@ mod tests {
             );
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
+    }
+
+    // ---------------------------------------------------------------- the operator status page
+    //
+    // `GET /` (status.rs's own module has the pure `render_page` unit tests); these cover the
+    // route's wiring -- what `AppState`'s real fields, `feed::ConnectionState` and
+    // `status::DisconnectWatch` actually produce when driven through real HTTP requests.
+
+    #[tokio::test]
+    async fn the_status_page_returns_200_html_before_any_refbox_has_ever_connected() {
+        // No `feed::Supervisor` involved at all -- `AppState::new` alone, exactly as the bridge
+        // looks the instant it starts (design spec §5.6: "available ... before any refbox is
+        // configured, so there is no chicken-and-egg").
+        let state = Arc::new(AppState::new(false));
+        let addr = spawn_test_server(state).await;
+
+        let response = get_response(addr, "/").await;
+        assert_eq!(response.status(), 200);
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(
+            content_type.starts_with("text/html"),
+            "GET / should be text/html, got {content_type:?}"
+        );
+
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|e| panic!("GET / body should be readable: {e}"));
+        assert!(body.starts_with("<!doctype html>"));
+        assert!(
+            body.contains("indicator down"),
+            "a bridge that has never connected should show the down indicator, not a live one"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_json_distinguishes_all_three_connection_states_with_a_duration_only_when_disconnected()
+     {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let refbox_addr = listener.local_addr().expect("local_addr");
+
+        let state = Arc::new(AppState::new(false));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        // 1. Never connected: no attempt has been made yet.
+        let never = get_json(addr, "/status.json").await;
+        assert_eq!(never[0]["contact"].as_str(), Some("NeverConnected"));
+        assert_eq!(
+            never[0]["disconnectedForSeconds"].as_str(),
+            Some(""),
+            "never-connected has nothing to measure a duration from"
+        );
+
+        // 2. Connected: drive a real supervisor against a real loopback socket.
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let supervisor = tokio::spawn(crate::feed::Supervisor::run(
+            refbox_addr,
+            tx,
+            state.connection_handle(),
+        ));
+        let (accepted, _) = listener.accept().await.expect("accept");
+        wait_for_connection(&state, Connection::Connected).await;
+
+        let connected = get_json(addr, "/status.json").await;
+        assert_eq!(connected[0]["contact"].as_str(), Some("Live"));
+        assert_eq!(
+            connected[0]["disconnectedForSeconds"].as_str(),
+            Some(""),
+            "a live connection must never carry a disconnected-for duration"
+        );
+
+        // 3. Disconnected: drop the connection and give the duration a moment to become
+        // measurable (`status::DisconnectWatch` polls in the background rather than computing
+        // this synchronously on request -- see its module doc).
+        drop(accepted);
+        wait_for_connection(&state, Connection::Disconnected).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let disconnected = get_json(addr, "/status.json").await;
+        assert_eq!(disconnected[0]["contact"].as_str(), Some("Lost"));
+        let seconds: u64 = disconnected[0]["disconnectedForSeconds"]
+            .as_str()
+            .expect("disconnectedForSeconds should be present")
+            .parse()
+            .unwrap_or_else(|e| {
+                panic!(
+                    "disconnectedForSeconds should be a plain integer, got {:?}: {e}",
+                    disconnected[0]["disconnectedForSeconds"]
+                )
+            });
+        assert!(
+            seconds < 5,
+            "duration should be small this soon after the transition, got {seconds}s"
+        );
+
+        supervisor.abort();
+    }
+
+    #[tokio::test]
+    async fn the_status_page_and_json_report_keepalive_as_active_by_default() {
+        let state = Arc::new(AppState::new(false));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        let json = get_json(addr, "/status.json").await;
+        assert_eq!(json[0]["keepaliveActive"].as_str(), Some("true"));
+
+        let page = get_response(addr, "/")
+            .await
+            .text()
+            .await
+            .unwrap_or_else(|e| panic!("GET / body should be readable: {e}"));
+        assert!(!page.contains("Connection check unavailable"));
+    }
+
+    #[tokio::test]
+    async fn the_status_page_and_json_report_keepalive_as_unavailable_when_the_supervisor_could_not_enable_it()
+     {
+        // Drives `feed::ConnectionState`'s own `pub(crate)` setter directly, the same as
+        // `mark_connected` above and `feed.rs`'s own keepalive tests -- a genuine OS-level
+        // keepalive failure can't be produced portably in a unit test (see
+        // `configure_keepalive`'s doc), so this proves the page/JSON correctly surface the flag
+        // once `feed::Supervisor::run` (or, here, a test standing in for it) has set it.
+        let state = Arc::new(AppState::new(false));
+        state.connection_handle().set_keepalive_unavailable();
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        let json = get_json(addr, "/status.json").await;
+        assert_eq!(json[0]["keepaliveActive"].as_str(), Some("false"));
+
+        let page = get_response(addr, "/")
+            .await
+            .text()
+            .await
+            .unwrap_or_else(|e| panic!("GET / body should be readable: {e}"));
+        assert!(
+            page.contains("Connection check unavailable"),
+            "the status page should surface the wording an operator would need to see -- got:\n\
+             {page}"
+        );
+        assert!(page.contains("a lost refbox may not be detected"));
     }
 
     // ---------------------------------------------------------------- roster building

@@ -18,14 +18,18 @@
 //! §5.4): the bridge no longer projects the clock forward through a dropout, so whether a served
 //! table shows real values or blanks them is decided by nothing but the connection's own
 //! liveness -- never by how long it has been since a message arrived, because a stopped clock
-//! produces exactly that kind of silence legitimately.
+//! produces exactly that kind of silence legitimately. [`ConnectionState`] also carries whether
+//! keepalive is actually configured right now (Task 7, [`ConnectionState::keepalive_active`]) --
+//! the supervisor logs a configuration failure to stderr and keeps reading regardless (see
+//! `configure_keepalive`'s doc for why), but stderr is invisible to an operator running a
+//! compiled program, so this is the structured signal the status page surfaces instead.
 
 use std::{
     fmt, io,
     pin::Pin,
     sync::{
         Arc,
-        atomic::{AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
     task::{Context, Poll},
     time::Duration,
@@ -291,17 +295,29 @@ const DISCONNECTED: u8 = 2;
 /// via [`ConnectionState::get`], to decide whether to serve real values or blank ones). Backed by
 /// an atomic rather than a lock: `Connection` is a small `Copy` value, and there is never a
 /// multi-step update that needs to be seen atomically as a whole.
+///
+/// Also carries whether TCP keepalive is actually configured right now (Task 7) -- a second,
+/// independent atomic rather than folded into `Connection` itself, because it answers a different
+/// question ("is the mechanism that detects a dead refbox running at all") from the one
+/// `Connection` answers ("is the refbox reachable right now"). See
+/// [`ConnectionState::keepalive_active`]'s doc for why an operator needs to see this.
 #[derive(Debug, Clone)]
 pub struct ConnectionState {
     state: Arc<AtomicU8>,
+    keepalive_active: Arc<AtomicBool>,
 }
 
 impl ConnectionState {
-    /// A fresh handle reporting [`Connection::NeverConnected`], for the bridge's startup state
-    /// before any connection attempt has been made.
+    /// A fresh handle reporting [`Connection::NeverConnected`] and `keepalive_active() == true`,
+    /// for the bridge's startup state before any connection attempt has been made. Starting
+    /// `true` (rather than some third "unknown" state) matches this crate's no-chicken-and-egg
+    /// principle for the status page: `configure_keepalive` fails to apply only in rare
+    /// platform/network edge cases (see its own doc), so assuming success is more useful to show
+    /// before the first attempt than an "unknown" a real operator would have to interpret.
     pub fn new() -> Self {
         Self {
             state: Arc::new(AtomicU8::new(NEVER_CONNECTED)),
+            keepalive_active: Arc::new(AtomicBool::new(true)),
         }
     }
 
@@ -312,6 +328,20 @@ impl ConnectionState {
             DISCONNECTED => Connection::Disconnected,
             _ => Connection::NeverConnected,
         }
+    }
+
+    /// Whether TCP keepalive is configured on the connection right now. `false` only once
+    /// `configure_keepalive` has actually failed on some connection attempt (see
+    /// [`Supervisor::run`]) -- see [`ConnectionState::new`] for why it starts `true`.
+    ///
+    /// This matters because when it is `false`, the bridge is silently back to the freeze bug
+    /// keepalive exists to prevent: a refbox that dies without closing the connection (power
+    /// loss, a cable pulled) will not be noticed at all, on this connection, until something else
+    /// eventually breaks it. `configure_keepalive` failing is logged to stderr, which is invisible
+    /// to an operator running a compiled program with no terminal in view -- the status page
+    /// (Task 7) is what actually surfaces it.
+    pub fn keepalive_active(&self) -> bool {
+        self.keepalive_active.load(Ordering::SeqCst)
     }
 
     /// `pub(crate)`, not `pub`: outside this module, the only legitimate writer is
@@ -327,6 +357,19 @@ impl ConnectionState {
     pub(crate) fn set_disconnected(&self) {
         self.state.store(DISCONNECTED, Ordering::SeqCst);
     }
+
+    /// See [`ConnectionState::set_connected`]'s visibility note -- the same reasoning applies.
+    /// Also used directly by `server`'s and `status`'s own tests to exercise the "unavailable"
+    /// display without forcing a genuine OS-level keepalive failure, which cannot be done
+    /// portably (see [`configure_keepalive`]'s doc).
+    pub(crate) fn set_keepalive_active(&self) {
+        self.keepalive_active.store(true, Ordering::SeqCst);
+    }
+
+    /// See [`ConnectionState::set_keepalive_active`]'s doc -- the same reasoning applies.
+    pub(crate) fn set_keepalive_unavailable(&self) {
+        self.keepalive_active.store(false, Ordering::SeqCst);
+    }
 }
 
 impl Default for ConnectionState {
@@ -340,7 +383,11 @@ impl Default for ConnectionState {
 /// or failed connect, the refbox closing the stream, an I/O error, or a peer the keepalive probes
 /// above have given up on. Publishes every one of those events to `connection` as they happen --
 /// see [`Connection`] for why this, and not message timing, is the only thing allowed to decide
-/// whether the bridge is "in contact".
+/// whether the bridge is "in contact". Also publishes whether `configure_keepalive` actually
+/// succeeded on the current connection, via
+/// [`ConnectionState::set_keepalive_active`]/[`ConnectionState::set_keepalive_unavailable`] --
+/// re-evaluated on every (re)connect, since a failure on one attempt does not necessarily mean the
+/// next one will fail too.
 ///
 /// A malformed line (`FeedError::Parse`) is not a connection loss: it is logged and reading
 /// continues on the same connection, exactly as `SnapshotReader` already reports it, and
@@ -385,6 +432,9 @@ impl Supervisor {
 
             if let Err(e) = configure_keepalive(&stream) {
                 eprintln!("could not configure TCP keepalive on the refbox feed connection: {e}");
+                connection.set_keepalive_unavailable();
+            } else {
+                connection.set_keepalive_active();
             }
 
             let mut snapshots = SnapshotReader::new(LineLimited::new(stream));
@@ -917,6 +967,71 @@ mod tests {
     #[test]
     fn a_fresh_connection_state_reports_never_connected() {
         assert_eq!(ConnectionState::new().get(), Connection::NeverConnected);
+    }
+
+    // -------------------------------------------------------------------------- keepalive_active
+    //
+    // A genuine OS-level keepalive configuration failure can't be produced portably in a unit
+    // test (see `configure_keepalive`'s doc), so these exercise the same `pub(crate)` setters
+    // `Supervisor::run` itself calls, proving the flag's storage and the getter/setter wiring
+    // independent of ever actually forcing the OS to refuse. The Task 7 report covers the
+    // `status` module's own test of what the page renders in each state.
+
+    #[test]
+    fn a_fresh_connection_state_reports_keepalive_active() {
+        assert!(
+            ConnectionState::new().keepalive_active(),
+            "keepalive should be assumed active before any connection attempt has been made -- \
+             see ConnectionState::new's doc"
+        );
+    }
+
+    #[test]
+    fn marking_keepalive_unavailable_is_reflected_by_the_getter() {
+        let connection = ConnectionState::new();
+        connection.set_keepalive_unavailable();
+        assert!(!connection.keepalive_active());
+    }
+
+    #[test]
+    fn marking_keepalive_active_again_after_unavailable_is_reflected_by_the_getter() {
+        let connection = ConnectionState::new();
+        connection.set_keepalive_unavailable();
+        assert!(!connection.keepalive_active());
+
+        connection.set_keepalive_active();
+        assert!(
+            connection.keepalive_active(),
+            "a later successful configure_keepalive call must be able to clear an earlier failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_successful_connect_leaves_keepalive_active_when_the_os_allows_it() {
+        // An end-to-end proof through the real `Supervisor::run` path (rather than poking the
+        // setters directly, as the tests above do): on an ordinary CI runner, configuring
+        // keepalive on a fresh loopback socket succeeds, so this proves the wiring between
+        // `configure_keepalive`'s success path and `ConnectionState` actually runs, not just that
+        // the setter works in isolation.
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let addr = listener.local_addr().expect("local_addr");
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let connection = ConnectionState::new();
+        let handle = tokio::spawn(Supervisor::run(addr, tx, connection.clone()));
+
+        let _accepted = listener.accept().await.expect("accept");
+        wait_for(&connection, Connection::Connected).await;
+
+        assert!(
+            connection.keepalive_active(),
+            "a successful connect on a platform that supports TCP keepalive should leave the \
+             flag active"
+        );
+
+        handle.abort();
     }
 
     #[tokio::test]

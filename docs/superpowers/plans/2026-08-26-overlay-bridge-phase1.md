@@ -162,11 +162,20 @@ one-way, the bridge never transmits, so a refbox that has silently gone away is 
 the read waits forever. That is the most likely cause of the overlay freezes seen at real events.
 **A bridge without keepalive inherits that exact bug.**
 
-Configure keepalive so a dead peer is noticed within roughly ten to fifteen seconds. `socket2`
-exposes the per-socket settings on both Linux and Windows; if adding it is unwelcome, a read
-timeout plus reconnect achieves the same outcome — but silence is legitimate here, so any read
-timeout must be long enough not to fight a stopped clock, and this trade-off must be recorded in
-the plan's Deviations section if taken.
+**Use `socket2`** — decided by Eric, 2026-08-26. It exposes the per-socket keepalive settings on
+both Linux and Windows, and it is **already in the workspace dependency tree** via tokio, so this
+adds a feature flag rather than a new library. Configure keepalive so a dead peer is noticed within
+roughly ten to fifteen seconds.
+
+A read timeout was considered and **rejected**: silence is legitimate here — a 25-second
+stopped-clock silence was measured on 2026-08-26 — so any timeout short enough to detect a dead
+refbox quickly would also fire during a normal half-time. That confuses the two meanings of
+silence, which is the exact mistake this design exists to avoid.
+
+**Carried from Task 1's review:** `feed.rs`'s `line_buf` grows without a cap if a peer connects and
+never sends a newline. That is correct for Task 1 (no size ceilings), but peer misbehaviour is this
+task's business. Decide whether the supervisor should drop a connection that has sent a very large
+amount with no newline, and say what you decided either way.
 
 **Tests must prove:**
 - Snapshots arriving on a stream reach the channel in order.

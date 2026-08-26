@@ -305,8 +305,18 @@ become a published contract.
 Every response recomputes the clock at request time from `state::LiveState`, so what vMix reads is
 correct to the moment rather than correct as of the refbox's last message.
 
+**This task also owns the Portal refresh loop, and nothing else does.** Task 4 built
+`portal::Directory`'s refresh methods to be safe to call repeatedly, but deliberately did not drive
+them: `tables.rs` is pure with no I/O and cannot own a timer, and no other task touched it. So the
+loop falls to the wiring here — `main.rs`, whose charter is exactly CLI, config, wiring and the
+runtime. Spawn a periodic refresh alongside the feed supervisor, the same way `Supervisor::run` is
+already spawned, and refresh when the game number changes. **"Retry on a timer" is the whole reason
+Task 4 was specified as never-fatal; without this loop a Portal outage is permanent for that run.**
+
 **Tests must prove:**
 - Each route returns HTTP 200, `Content-Type: application/json`, and a JSON **array**.
+- The Portal refresh loop retries after a failure rather than giving up, and a refresh failure never
+  disturbs the game data coming from the refbox.
 - Two requests a second apart against a running clock return **different** clock values, proving
   the recompute-per-request behaviour rather than a cached body.
 - The port is configurable and defaults to 8099.

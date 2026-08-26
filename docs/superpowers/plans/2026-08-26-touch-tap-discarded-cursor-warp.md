@@ -703,8 +703,76 @@ explicitly stated as not done.
 
 ## Deviations
 
-_(Record any divergence from this plan here rather than in standalone commits — see
-`.claude/rules/plan-execution.md`.)_
+Execution ran 2026-08-26/27 as 16 commits. The full decision log lived in
+`.superpowers/sdd/2026-08-26-touch-tap-discarded-cursor-warp/progress.md`, which is **gitignored**
+and does not survive removal of the worktree; the durable part is recorded here.
+
+**Defects in this plan, found during execution:**
+
+1. **The plan never mentioned `ci/check-msrv-present.sh`.** It scans every `*.toml` for a
+   `rust-version` key and fails on any unexcluded file lacking one, so vendoring a manifest broke the
+   `check-for-msrv` CI job. Nothing in `just check` invokes that script, so neither the plan's
+   verification steps nor a clean local run would ever have caught it. Fixed by adding the path to
+   the script's `excluded_files`. **Any future task adding a `.toml` must update that script.**
+2. **The plan claimed the regression test would run in CI via the `Justfile` recipe. It would not** —
+   `.github/workflows/rust.yml` invokes `cargo` directly at every step and never calls `just`, and
+   the vendored crate is `exclude`d so `cargo test --all` never reaches it. A CI step was added with
+   the owner's approval. This was the stated justification for vendoring over forking, so the claim
+   mattered.
+3. **The plan's Task 1 mandated `VENDORED.md` text asserting the fix was present before it existed.**
+   Corrected so each commit's documentation is true at that commit.
+4. **The plan did not anticipate that `lib.rs` gates the whole `program` module behind a non-default
+   Cargo feature.** Without `--features program` the suite reported "0 tests, ok" and passed — an
+   inert gate that went unnoticed for two tasks. Both the recipe and the CI step now pass the flag,
+   and both assert a non-zero test count so it cannot go quiet again.
+5. **The plan's layer-comparison table omitted a real cost of the chosen layer.** Fixing
+   `iced_widget`'s `button` instead would not have produced the mouse-click-after-tap residual now
+   documented in `VENDORED.md`. The choice still stands (it fixes every widget, not just buttons),
+   but the table understated the trade-off.
+6. **The plan's File structure never called for a decision record or a workspace-map entry**, so the
+   vendoring would have been undiscoverable except from a cargo error. ADR 025 and a
+   `docs/workspace-map.md` section were added. Note ADR 025 is deliberately **not** in
+   `docs/decisions/README.md`'s index, which has been stale since 018 — consistent with records
+   019-024, and back-filling seven rows was out of scope for this branch.
+7. **Task 4 Step 1 was wrong about what can be built locally.** `just build-rpi` needs `cross` plus
+   Docker; a direct `cargo check --target aarch64-unknown-linux-gnu -p refbox` fails on
+   `openssl-sys` needing cross-compiled system libraries. Only the vendored crate alone was
+   cross-checked successfully. **A Docker-capable machine or the release pipeline is required to
+   produce a Pi binary** — corrected in Step 1.
+
+**Decisions taken during execution that shaped the result:**
+
+- The vendored crate carries **three** documented divergences, not the one the plan foresaw: the
+  empty `[workspace]` table (so cargo stops walking up to the parent checkout), the cursor
+  extraction plus fix, and `deprecated = "allow"` in `[lints.rust]`. The third is not cosmetic — a
+  `[patch.crates-io]` **path** package gets no `--cap-lints allow`, so the workflow-wide
+  `RUSTFLAGS: "-D warnings"` turned two upstream deprecation warnings into hard errors. It also
+  pre-empts a latent break: the root lock pins `futures-channel 0.3.31` while the vendored lock has
+  `0.3.34`, so a Renovate bump would otherwise fail `cargo build --all` on all three platforms with
+  an error inside third-party code.
+- `vendor/iced_winit/Cargo.lock` is **committed** and both invocations pass `--locked`, because the
+  crate resolves independently of the workspace lock once it is its own workspace root. It is not an
+  MSRV guarantee and `cargo audit` does not scan it — both stated in `VENDORED.md`.
+- The `left()` half of the fix is **deliberately prophylactic**. The capture's pointer-leaves arrive
+  *before* the touch-down, so the observed bug needs only the `entered`/`moved` half. Kept because
+  leave/enter ordering between two pointer objects is compositor-dependent. Its residual is
+  documented.
+- Two tests were written to pin behaviour the fix inverts, specifically so the fix could not land
+  without editing them. The regression test replays **both** `wl_pointer` objects, because the
+  device sends two restore pairs per tap and the single line that makes the second one safe
+  (`touch_is_current = false` living inside `moved()`'s `else`) is otherwise unconstrained — a hoist
+  would pass a single-pair test while reshipping the bug.
+- The event mapping was moved into `CursorTracker::handle` late in execution, after review found
+  that every test exercised the tracker directly and none exercised the wiring. Without it, a
+  re-vendor that restored upstream's shared `CursorMoved | Touch` arm would have made the fix inert
+  with a fully green suite.
+- A reviewer's claim that the capture's "0.04 ms" figure was wrong by 1000× was **rejected** after
+  checking: under a seconds reading the same trace shows touch motions 7.9 s apart and a 21.9 s tap,
+  while the libinput capture (explicitly in seconds) shows 18-22 ms motions and ~50 ms taps. The
+  unit is milliseconds with a microsecond fraction. A second reviewer independently concurred.
+
+**Known-good but unproven:** every claim above is verified locally. The fix itself is **unproven on
+hardware** — see Task 4, which cannot be run on a development machine.
 
 ## Follow-ups — deliberately out of scope
 

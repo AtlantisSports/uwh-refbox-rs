@@ -8,6 +8,7 @@ excluded_files=(
   './rust-toolchain.toml'
   './wireless-remote/rust-toolchain.toml'
   './wireless-remote/.cargo/config.toml'
+  './vendor/iced_winit/Cargo.toml'
 )
 
 missing_rust_version=$(grep -rL 'rust-version' --include \*.toml .)

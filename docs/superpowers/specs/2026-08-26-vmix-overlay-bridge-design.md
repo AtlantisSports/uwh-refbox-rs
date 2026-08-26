@@ -252,6 +252,24 @@ The flag appears on **every** table, not only the scorebug, since a penalties ti
 Sudden death counts up rather than down, but that no longer matters to the bridge: it relays
 `secs_in_period` verbatim and never computes with it.
 
+**Known limitation, accepted deliberately: a frozen refbox looks healthy.** The connection test
+detects a refbox that has *died* — crashed, unplugged, or cut off from the network — because the
+connection itself fails. It cannot detect a refbox whose process is still alive but wedged: the
+operating system keeps that connection open and keeps answering for it, so the bridge goes on
+serving the last values believing all is well.
+
+The only thing that would close this is the refbox sending a signal of its own while the clock is
+stopped. **Asked and declined, Eric, 2026-08-26.** Three reasons, in order of weight. Every refbox
+already in the field would still go silent, so the bridge needs the connection test regardless —
+a signal would add a second mechanism rather than replace one, against §4.2. It would make this
+document's central safety rule conditional: "silence never means disconnected" becomes "unless you
+are connected to a newer refbox", and a rule that holds only sometimes is the kind that gets
+misapplied later, blanking the graphic at every whistle. And it could not help until every Pi at
+every venue had been updated, which this project has found expensive before.
+
+Revisit only if a refbox is actually observed freezing without crashing. Until then this is a gap
+we know about rather than one we have designed around.
+
 ### 5.5 When the Portal is unreachable
 
 The bridge retries on a timer, caches everything it successfully fetched, and keeps serving the

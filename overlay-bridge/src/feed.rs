@@ -642,6 +642,27 @@ impl fmt::Display for AddressError {
 
 impl std::error::Error for AddressError {}
 
+/// One snapshot, together with **the refbox it came from**.
+///
+/// The address is not decoration and not a log line: it is what lets a receiver refuse to apply a
+/// snapshot that arrived from a refbox the operator has since left. Without it, a snapshot already
+/// in the channel (or read in the instant before [`Supervisor::run`] notices an address change)
+/// would be applied to the bridge's live picture and then served, with `connected: true`, as
+/// though the refbox now connected had sent it. At a two-court event that is one court's game
+/// appearing on the other court's overlay. The window is small; the wrongness is not the duration
+/// but the attribution -- the bridge would be showing a value the refbox it is connected to never
+/// sent.
+///
+/// So every snapshot carries its origin from the moment it is read, and `server::consume_snapshots`
+/// checks it against the currently chosen refbox before applying anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeedMessage {
+    /// The refbox this snapshot was read from -- the address the supervisor was connected to at
+    /// the time, not whichever one happens to be chosen when it is received.
+    pub from: RefboxAddress,
+    pub snapshot: GameSnapshot,
+}
+
 /// The refbox [`Supervisor::run`] is currently reading, and the way to change it while the bridge
 /// is running.
 ///
@@ -735,7 +756,7 @@ impl Supervisor {
     /// here ever gives up on a refbox that simply hasn't sent anything in a while.
     pub async fn run(
         target: FeedTarget,
-        tx: mpsc::UnboundedSender<GameSnapshot>,
+        tx: mpsc::UnboundedSender<FeedMessage>,
         connection: ConnectionState,
     ) {
         let mut chosen = target.subscribe();
@@ -808,7 +829,15 @@ impl Supervisor {
                 tokio::select! {
                     item = snapshots.next() => match item {
                         Some(Ok(snapshot)) => {
-                            if tx.send(snapshot).is_err() {
+                            // Tagged with the address this connection was made to, at the moment
+                            // it was read -- see `FeedMessage`. Not `target.current()`: that could
+                            // already have moved on, which is precisely the case the tag exists to
+                            // catch.
+                            let message = FeedMessage {
+                                from: addr.clone(),
+                                snapshot,
+                            };
+                            if tx.send(message).is_err() {
                                 // Nobody is listening any more; there is nothing left to run for.
                                 return;
                             }
@@ -1251,13 +1280,18 @@ mod tests {
             .await
             .expect("first snapshot should arrive")
             .expect("channel should not be closed");
-        assert_eq!(first.secs_in_period, 885);
+        assert_eq!(first.snapshot.secs_in_period, 885);
+        assert_eq!(
+            first.from,
+            RefboxAddress::from(addr),
+            "every snapshot must carry the refbox it was actually read from"
+        );
 
         let second = tokio::time::timeout(Duration::from_secs(5), rx.recv())
             .await
             .expect("second snapshot should arrive")
             .expect("channel should not be closed");
-        assert_eq!(second.secs_in_period, 90);
+        assert_eq!(second.snapshot.secs_in_period, 90);
 
         handle.abort();
     }
@@ -1303,7 +1337,7 @@ mod tests {
             .await
             .expect("should receive a snapshot over the reconnected connection")
             .expect("channel should not be closed");
-        assert_eq!(snapshot.secs_in_period, 885);
+        assert_eq!(snapshot.snapshot.secs_in_period, 885);
 
         handle.abort();
     }
@@ -1651,7 +1685,12 @@ mod tests {
             .await
             .expect("the first refbox's snapshot should arrive")
             .expect("channel should not be closed");
-        assert_eq!(from_first.secs_in_period, 885);
+        assert_eq!(from_first.snapshot.secs_in_period, 885);
+        assert_eq!(
+            from_first.from,
+            RefboxAddress::from(first_addr),
+            "every snapshot must carry the refbox it was actually read from"
+        );
 
         let switched_at = tokio::time::Instant::now();
         target.set(second_addr.into());
@@ -1681,11 +1720,17 @@ mod tests {
             .expect("the newly chosen refbox's snapshot should arrive")
             .expect("channel should not be closed");
         assert_eq!(
-            from_second.current_period,
+            from_second.snapshot.current_period,
             GamePeriod::SecondHalf,
             "the feed must now be the newly chosen refbox's, not the previous one's"
         );
-        assert_eq!(from_second.secs_in_period, 89);
+        assert_eq!(from_second.snapshot.secs_in_period, 89);
+        assert_eq!(
+            from_second.from,
+            RefboxAddress::from(second_addr),
+            "and it must be tagged with the refbox it came from, so nothing downstream can \
+             attribute it to the one just left"
+        );
 
         // And the old refbox is genuinely no longer being read: anything it sends now goes
         // nowhere, because that connection was dropped.

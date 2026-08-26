@@ -110,7 +110,7 @@ use uwh_common::{
 
 use crate::{
     config, discovery,
-    feed::{Connection, ConnectionState, ConnectionStatus, FeedTarget, RefboxAddress},
+    feed::{Connection, ConnectionState, ConnectionStatus, FeedMessage, FeedTarget, RefboxAddress},
     portal::{Directory, TeamNames},
     state::{Display, LiveState},
     status::{self, Notice, ScanOutcome},
@@ -674,9 +674,20 @@ fn status_row(
 /// full idle interval to appear. Returns once `snapshots` closes, which only happens if the feed
 /// supervisor itself has stopped (it does not stop on its own -- see `feed::Supervisor::run`'s
 /// doc).
+///
+/// # A snapshot is only ever applied to the refbox it came from
+///
+/// Every message carries the address it was read from ([`FeedMessage`]), and anything not from the
+/// refbox currently chosen is **discarded, not applied**. This is the receiving half of the
+/// attribution rule: when an operator switches refboxes, a snapshot from the previous one can
+/// already be sitting in this channel, or be read in the instant before the supervisor notices the
+/// change. Applying it would put a value the newly-connected refbox never sent into the bridge's
+/// live picture, to be served with `connected: true` the moment that refbox connects -- one
+/// court's game on another court's overlay. The check is on receipt rather than on send because
+/// only the receiver knows what "currently chosen" means at the moment of applying.
 pub async fn consume_snapshots(
     state: Arc<AppState>,
-    mut snapshots: mpsc::UnboundedReceiver<GameSnapshot>,
+    mut snapshots: mpsc::UnboundedReceiver<FeedMessage>,
     client: Client,
     portal_url: String,
     refresh_notify: Arc<Notify>,
@@ -684,7 +695,21 @@ pub async fn consume_snapshots(
     let mut last_event_id: Option<EventId> = None;
     let mut last_game_number: Option<GameNumber> = None;
 
-    while let Some(snapshot) = snapshots.recv().await {
+    while let Some(message) = snapshots.recv().await {
+        let chosen = state.target.current();
+        if message.from != chosen {
+            // See this function's doc. Reported rather than silently dropped: in normal operation
+            // this happens at most for the handful of messages in flight across a switch, so a
+            // stream of these would mean the supervisor had failed to follow the chosen address --
+            // worth being able to see.
+            eprintln!(
+                "ignoring a snapshot from {} -- the bridge is now reading {chosen}",
+                message.from
+            );
+            continue;
+        }
+        let snapshot = message.snapshot;
+
         let now = Instant::now();
         let event_id = snapshot.event_id.clone();
         let game_number = snapshot.game_number().clone();
@@ -825,6 +850,19 @@ mod tests {
             let _ = axum::serve(listener, app).await;
         });
         addr
+    }
+
+    /// Tags `snapshot` as having come from the refbox `state` is currently pointed at -- what the
+    /// real `feed::Supervisor` does for every snapshot it reads (see `feed::FeedMessage`).
+    ///
+    /// Every test that feeds the consumer directly goes through this, which makes them all the
+    /// positive control for `consume_snapshots`' origin check: a check that discarded everything,
+    /// rather than only what came from a refbox the operator has left, would fail all of them.
+    fn from_chosen_refbox(state: &AppState, snapshot: GameSnapshot) -> FeedMessage {
+        FeedMessage {
+            from: state.target.current(),
+            snapshot,
+        }
     }
 
     /// Marks `state` as connected without a real socket, for tests that want to see a table's
@@ -1199,12 +1237,15 @@ mod tests {
         ));
 
         let event = EventId::from_partial("evt");
-        tx.send(GameSnapshot {
-            scores: BlackWhiteBundle { black: 5, white: 2 },
-            game_number: "1".to_string(),
-            event_id: Some(event),
-            ..Default::default()
-        })
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                scores: BlackWhiteBundle { black: 5, white: 2 },
+                game_number: "1".to_string(),
+                event_id: Some(event),
+                ..Default::default()
+            },
+        ))
         .expect("channel should accept the first snapshot");
 
         // Let several real refresh cycles run against the always-failing Portal while the feed
@@ -1246,24 +1287,30 @@ mod tests {
             refresh_notify,
         ));
 
-        tx.send(GameSnapshot {
-            current_period: GamePeriod::FirstHalf,
-            event_id: Some(EventId::from_partial("event-a")),
-            game_number: "1".to_string(),
-            ..Default::default()
-        })
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                event_id: Some(EventId::from_partial("event-a")),
+                game_number: "1".to_string(),
+                ..Default::default()
+            },
+        ))
         .expect("channel should accept the first snapshot");
         tokio::time::sleep(Duration::from_millis(50)).await;
         let directory_a = read_lock(&state.directory)
             .clone()
             .expect("a directory should exist after the first event id is learned");
 
-        tx.send(GameSnapshot {
-            current_period: GamePeriod::FirstHalf,
-            event_id: Some(EventId::from_partial("event-b")),
-            game_number: "1".to_string(),
-            ..Default::default()
-        })
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                event_id: Some(EventId::from_partial("event-b")),
+                game_number: "1".to_string(),
+                ..Default::default()
+            },
+        ))
         .expect("channel should accept the second snapshot");
         tokio::time::sleep(Duration::from_millis(50)).await;
         let directory_b = read_lock(&state.directory)
@@ -1292,11 +1339,14 @@ mod tests {
         ));
 
         let event = EventId::from_partial("evt");
-        tx.send(GameSnapshot {
-            event_id: Some(event.clone()),
-            game_number: "1".to_string(),
-            ..Default::default()
-        })
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                event_id: Some(event.clone()),
+                game_number: "1".to_string(),
+                ..Default::default()
+            },
+        ))
         .expect("channel should accept the first snapshot");
         tokio::time::sleep(Duration::from_millis(50)).await;
         let directory_before = read_lock(&state.directory)
@@ -1305,19 +1355,25 @@ mod tests {
 
         // A snapshot with no event id at all -- a transient gap on the wire, not a real change of
         // event -- followed by the same real event id coming back.
-        tx.send(GameSnapshot {
-            event_id: None,
-            game_number: "1".to_string(),
-            ..Default::default()
-        })
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                event_id: None,
+                game_number: "1".to_string(),
+                ..Default::default()
+            },
+        ))
         .expect("channel should accept the blip");
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        tx.send(GameSnapshot {
-            event_id: Some(event),
-            game_number: "1".to_string(),
-            ..Default::default()
-        })
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                event_id: Some(event),
+                game_number: "1".to_string(),
+                ..Default::default()
+            },
+        ))
         .expect("channel should accept the recovered snapshot");
         tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -1357,12 +1413,15 @@ mod tests {
         // would hang waiting for a wake that correctly never fires. See the sibling
         // `a_new_event_id_creates_a_fresh_directory_replacing_the_previous_one` test above, which
         // sets the same field for the same reason.
-        tx.send(GameSnapshot {
-            current_period: GamePeriod::FirstHalf,
-            event_id: Some(event.clone()),
-            game_number: "1".to_string(),
-            ..Default::default()
-        })
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                event_id: Some(event.clone()),
+                game_number: "1".to_string(),
+                ..Default::default()
+            },
+        ))
         .expect("channel should accept the first snapshot");
         // The first snapshot always wakes the loop too (a new event) -- drain that wake so the
         // assertion below is specifically about the game-number change that follows it.
@@ -1370,12 +1429,15 @@ mod tests {
             .await
             .expect("the first snapshot (a new event) should wake the refresh loop");
 
-        tx.send(GameSnapshot {
-            current_period: GamePeriod::FirstHalf,
-            event_id: Some(event),
-            game_number: "2".to_string(),
-            ..Default::default()
-        })
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                event_id: Some(event),
+                game_number: "2".to_string(),
+                ..Default::default()
+            },
+        ))
         .expect("channel should accept the second snapshot");
         tokio::time::timeout(Duration::from_secs(1), refresh_notify.notified())
             .await
@@ -2170,6 +2232,91 @@ mod tests {
         for task in tasks {
             task.abort();
         }
+    }
+
+    #[tokio::test]
+    async fn a_snapshot_from_the_refbox_just_left_is_never_applied_to_the_one_now_connected() {
+        // The invariant, stated as a test: a value served while the bridge is connected to refbox
+        // B can never have originated from refbox A.
+        //
+        // Marking out of contact and forgetting the game (see `choose_refbox`) close the long
+        // window -- the seconds or minutes a newly chosen refbox may take to answer. They cannot
+        // close this one: a snapshot from A can already be sitting in the channel, or be read in
+        // the instant before the supervisor notices the change, and would then be applied *after*
+        // the switch. It would be served, with `connected: true`, as though B had sent it. The
+        // duration is milliseconds; the wrongness is not the duration but the attribution -- at a
+        // two-court event that is one court's game on the other court's overlay.
+        //
+        // Nothing here is timed. The channel is closed after the leftover is queued, and the
+        // consumer is awaited to completion, so "the leftover has been handled" is a fact rather
+        // than a wait.
+        let (first_addr, first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "14")).await;
+        let state = Arc::new(AppState::new(false).with_operator_info(
+            first_addr.ip().to_string(),
+            first_addr.port(),
+            String::new(),
+        ));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        // No supervisor: this test drives the channel itself, which is the only way to place a
+        // message from the previous refbox *after* the switch with certainty.
+        let (tx, rx) = mpsc::unbounded_channel();
+        let consumer = tokio::spawn(consume_snapshots(
+            Arc::clone(&state),
+            rx,
+            Client::new(),
+            "http://portal.invalid".to_string(),
+            Arc::new(Notify::new()),
+        ));
+
+        tx.send(from_chosen_refbox(
+            &state,
+            game(GamePeriod::FirstHalf, 613, 2, 1, "14"),
+        ))
+        .expect("channel should accept the first refbox's snapshot");
+        wait_for_scores(&state, 2, 1).await;
+
+        // Switch to a second, genuine refbox through the real path.
+        let (second_addr, second) = fake_refbox(game(GamePeriod::SecondHalf, 44, 9, 3, "15")).await;
+        let notice = choose_refbox(&state, &second_addr.to_string()).await;
+        assert!(notice.done, "{}", notice.text);
+
+        // The leftover: read from the FIRST refbox, delivered after the switch.
+        tx.send(FeedMessage {
+            from: RefboxAddress::from(first_addr),
+            snapshot: game(GamePeriod::FirstHalf, 600, 5, 5, "14"),
+        })
+        .expect("channel should accept the leftover");
+        drop(tx);
+        consumer
+            .await
+            .expect("the consumer should finish once the channel closes");
+
+        // And now the second refbox connects, which is the moment a leftover would become
+        // visible: real values are served again, so anything left in the live picture is served
+        // as though this refbox had sent it.
+        mark_connected(&state);
+
+        let held = current_display(&state).snapshot;
+        assert_eq!(
+            held,
+            GameSnapshot::default(),
+            "nothing of the refbox just left may survive the switch, and a snapshot from it \
+             arriving afterwards must be discarded rather than applied"
+        );
+
+        let scorebug = get_json(addr, "/scorebug").await;
+        assert_eq!(scorebug[0]["connected"].as_str(), Some("true"));
+        assert_ne!(
+            scorebug[0]["blackScore"].as_str(),
+            Some("5"),
+            "a score the connected refbox never sent must never be served as its own"
+        );
+        let status = get_json(addr, "/status.json").await;
+        assert_ne!(status[0]["gameNumber"].as_str(), Some("14"));
+
+        first.abort();
+        second.abort();
     }
 
     #[tokio::test]

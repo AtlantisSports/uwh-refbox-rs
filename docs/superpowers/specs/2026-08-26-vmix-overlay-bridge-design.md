@@ -124,10 +124,34 @@ served from uwhportal.com needs internet at a venue where internet is the unreli
 turns that into `#7 SMITH` using the roster it fetched itself. A third party running their own
 site already has their own roster.
 
-### 4.6 On losing contact, the picture stays correct and only the operator is warned
+### 4.6 The bridge never invents a value. On losing the connection, the graphic stops displaying
 
-*Why:* a frozen clock is wrong information that happens to sit still, and it is wrong by the full
-length of the outage. The alarm belongs where the crew sees it, not on air.
+**REVERSED 2026-08-26, by Eric, after seeing the complexity the original decision caused.** The
+original read: "on losing contact the picture stays correct and only the operator is warned", and
+the bridge kept the clock counting locally through a dropout.
+
+The new rule: **the bridge shows only what the refbox actually sent, or nothing at all.**
+
+*Why:* keeping the clock counting meant the bridge could be **confidently wrong** — showing a
+plausible time nobody sent. A relay can only ever be correct or visibly behind; a projecting bridge
+can be neither. Eric's framing: he would rather the graphic disappear than display wrong or guessed
+information. That is a property explainable to a referee in one sentence, and it deletes an entire
+class of defect rather than testing around it.
+
+*What it removes:* the clock projection, the direction handling (sudden death counts up, everything
+else down), the inference of whether the clock was running, and the startup-seeding problem that
+came with it. §5.4 is rewritten accordingly. The bridge stops reasoning about the game entirely —
+the only place it ever inspected a game period was to choose a counting direction.
+
+*What it costs, accepted by Eric:* a dead connection takes roughly ten to fifteen seconds to detect,
+and during that window the graphic shows the last real values before going. Never wrong, briefly
+behind.
+
+*What it makes load-bearing:* **TCP keepalive (§10.4 and Task 3) is now the thing the design rests
+on, not insurance.** The refbox goes completely silent whenever the clock is stopped — 25 seconds
+measured — so silence can never mean "connection lost", or the graphic would vanish every time the
+referee stops the clock. Only the connection's own liveness distinguishes "paused" from "gone", and
+guessing is exactly what this decision removes.
 
 ---
 
@@ -203,30 +227,30 @@ some venue networks block it), and the last address used is remembered.
 **The event and game identify themselves.** Every update carries the event ID and game number, so
 nobody tells the bridge which tournament it is at. When the game changes, it fetches the new teams.
 
-### 5.4 When contact with the refbox is lost
+### 5.4 When the connection to the refbox is lost
 
-The bridge decides for itself whether the clock was running, from whether it was being fed:
+The rule is a connection test, not a timing test:
 
-- **Updates were arriving, then stopped** -> the clock was running -> **keep counting.**
-- **Updates were not arriving** -> the clock was stopped -> **hold everything.**
+- **Connection alive, no messages arriving** → the clock is stopped → **keep showing the last
+  message.** This is not stale data; it is exactly what the refbox is showing.
+- **Connection dead** → **stop displaying.**
 
-Both are the correct display behaviour, and both are derived without help from the refbox. It is
-self-correcting: the instant contact returns, real values overwrite the estimate.
+Nothing is inferred from silence, because silence is legitimate: the refbox sends nothing at all
+whenever the clock is stopped (25 seconds observed, 2026-08-26). Liveness comes from the connection
+itself — a read error, an end-of-stream, or a keepalive failure — never from message timing.
 
-The residual gap is a **long legitimate stoppage** — half time, an injury — during which the link
-dies. Silence is expected there, so the bridge has no reason to suspect anything; the picture is
-still correct, but the operator is not warned promptly. Closed on our side by keeping the
-connection actively checked, which requires nothing from the refbox.
+**How "stop displaying" reaches the screen.** The bridge serves data; vMix draws. So every table
+carries a **`connected`** column, and the graphic is hidden by binding a title's visibility to it.
+Eric's stated preference is the flag as the primary mechanism. In addition, when disconnected
+**every other value in every row is blanked**, so a title that was never wired to the flag degrades
+to empty text rather than showing stale numbers. Careless titles show nothing meaningful; careful
+ones vanish completely, background and all.
 
-**This is not optional.** It is the same failure as §10.4, the most likely cause of the overlay
-freezes already seen at events. A bridge without it inherits the exact bug it exists to replace.
+The flag appears on **every** table, not only the scorebug, since a penalties title binds to
+`/penalties` and needs the flag on the source it actually reads.
 
-**The "lost contact" threshold must be at least 3 seconds.** Measured in phase 0b: while the clock
-runs the tick is precise (0.999s, 1.000s), but whenever the operator interacts — scoring, entering a
-penalty — gaps stretch to **1.5–2.0 seconds**. A shorter threshold would flash the status red every
-time the referee's screen is touched.
-
-Sudden death counts **up**, not down; the period is in the feed, so the local count handles it.
+Sudden death counts up rather than down, but that no longer matters to the bridge: it relays
+`secs_in_period` verbatim and never computes with it.
 
 ### 5.5 When the Portal is unreachable
 

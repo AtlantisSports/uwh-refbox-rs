@@ -48,8 +48,12 @@ Every task's requirements implicitly include this section.
   central design decision (spec §4.2): the bridge must work with every refbox already in the field.
   A task that seems to need a refbox change has gone wrong — stop and raise it.
 - **Default HTTP port is 8099. Never 8088** — that is vMix's own web controller and would collide.
-- **Lost-contact threshold is at least 3 seconds.** Measured: the tick is 1.000s while running, but
-  operator interaction stretches gaps to 1.5–2.0s. A shorter threshold flashes red spuriously.
+- **Never infer anything from silence.** The refbox sends nothing at all while the clock is stopped
+  (25 seconds measured), so message timing can never indicate a lost connection. Liveness comes only
+  from the connection itself — read error, end-of-stream, or keepalive failure. (This supersedes an
+  earlier "lost-contact threshold of at least 3 seconds"; see Task 10.)
+- **The bridge never invents a value.** It serves what the refbox sent, or nothing. No projection,
+  no interpolation, no derived clock.
 - **Every served table is a JSON array of objects, one object per row**, fixed length, blank-padded.
   vMix requires the array form and binds titles to explicit row numbers.
 - **Every served value is a string**, including numbers.
@@ -425,6 +429,62 @@ approach. **Any CI workflow change is shared infrastructure: ask before making i
 
 ---
 
+## Task 10 — Relay only: stop inventing values, hide the graphic when disconnected
+
+**Execute this NEXT, before Tasks 7–9.** It reverses part of Tasks 2, 3, 5 and 6, all of which are
+complete and review-clean. Numbered 10 only to keep earlier task indices stable.
+
+**Origin:** Eric, 2026-08-26, on seeing the complexity the clock projection caused — "I will want
+the overlay to turn off if it loses connection, instead of displaying wrong info or guessed
+(calculated) info." Full reasoning in the spec, §4.6 (reversed) and §5.4 (rewritten).
+
+**Files:** modify `src/state.rs` (mostly deletion), `src/feed.rs`, `src/tables.rs`, `src/server.rs`,
+and `docs/superpowers/specs/2026-08-26-vmix-integration-steps.md`.
+
+### Delete
+
+From `state.rs`: the clock projection, the counting-direction handling, and the inference of whether
+the clock was running. `LiveState` keeps the last snapshot and when it arrived — nothing more. The
+`started`-flag seeding problem disappears with it. **This is mostly deletion; resist the urge to
+replace it with something.**
+
+### Add
+
+`feed.rs` publishes **connection state** — connected or not — updated when the supervisor connects,
+when a read fails, when the stream ends, and when keepalive reports the peer gone. The server reads
+it. **Liveness must come from the connection, never from message timing.**
+
+`tables.rs` gains a **`connected`** column on **every** table (a penalties title binds to
+`/penalties` and needs the flag on the source it reads). When disconnected, every other value in
+every row is **blanked**, so a title never wired to the flag degrades to empty text rather than
+stale numbers. Eric's preference is the flag as the primary mechanism, with blanking as the
+backstop.
+
+`server.rs` wires it: handlers ask the feed for connection state and pass it to the table builders.
+
+### The trap
+
+**Do not hide the graphic on silence.** The refbox sends nothing whenever the clock is stopped — 25
+seconds observed — so a silence-based rule would blank the graphic every time the referee stops the
+clock. Connection alive plus no messages means *the clock is stopped*, and the last message is then
+exactly right, not stale.
+
+### Tests must prove
+
+- With the connection alive and no messages arriving for well over any plausible timeout, the tables
+  still serve the last real values and `connected` stays true. **This is the regression guard for
+  the trap above** — it must fail against a silence-based implementation.
+- On disconnection, `connected` is false on every table and every other value is blank.
+- On reconnection, values return.
+- No served clock value ever differs from the last one the refbox sent — assert directly that the
+  clock is relayed verbatim, since removing projection is the whole point.
+- Sudden death relays verbatim like any other period. (The old direction-handling test should be
+  deleted, not adapted.)
+
+**Commit:** `refactor(overlay-bridge): relay only, hide the graphic when disconnected`
+
+---
+
 ## Acceptance
 
 The walkthrough Eric runs, from spec §8. Steps 7 and 8 are the whole design in two actions:
@@ -435,9 +495,12 @@ The walkthrough Eric runs, from spec §8. Steps 7 and 8 are the whole design in 
 4. In vMix, add a Data Source pointing at `/scorebug`; bind a title to team names, scores, clock.
 5. Score a goal on the refbox — the bug updates.
 6. Issue a penalty — it appears with a countdown and the player's name.
-7. **Cut the refbox's network mid-half** — the clock keeps counting on screen; the status page goes
-   red with time since contact. Restore it — the clock corrects silently.
-8. **Stop the clock on the refbox normally** — the clock holds; the status page stays green.
+7. **Cut the refbox's network mid-half** — within ten to fifteen seconds the graphic stops
+   displaying entirely, and the status page goes red. Restore it — the graphic returns with real
+   values. At no point does it show a time the refbox did not send.
+8. **Stop the clock on the refbox normally** — the graphic **stays on screen**, holding the last
+   values, and the status page stays green. This is the one that catches a silence-based
+   implementation: a wrong build blanks the graphic here.
 
 **Where each test can run** (spec §8.1): the Windows host reaches services inside WSL, measured — so
 the vMix leg needs no second PC. Only step 7 needs real hardware, because loopback never drops.

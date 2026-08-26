@@ -33,6 +33,15 @@ Every task's requirements implicitly include this section.
 - **Rust edition 2024, MSRV 1.85.** No language or standard-library features newer than 1.85.
 - **`cargo clippy --workspace --all-targets --all-features -- -D warnings` must pass** on Linux,
   Windows and macOS. Zero warnings. No `#[allow(...)]` without discussion.
+- **CI's actual gate is weaker than that**, and the difference matters. `.github/workflows/rust.yml`
+  runs `cargo clippy --all -- --deny=warnings` (and a `--no-default-features` pass) — **without
+  `--all-targets`**. Consequence: any module compiled only under `cfg(test)` is **not linted by CI
+  at all**. Never hide a module behind `#[cfg(test)]` to satisfy the dead-code lint; that trades a
+  warning for a silent coverage hole.
+- **The crate is a library plus a thin binary** (`src/lib.rs` + `src/main.rs`). Unused `pub` items
+  in a library are legitimately part of its API surface and are exempt from `dead_code`, so a module
+  that no later task has wired up yet still compiles and lints normally. This is the structural
+  answer to the problem above — do not reintroduce per-module gates.
 - **`cargo fmt --all` before every commit.**
 - **No `unwrap()` or `expect()` in non-test code** without a comment explaining why it cannot panic.
 - **Do NOT modify `refbox`, `uwh-common`, `overlay`, or the shared data format.** This is the
@@ -129,9 +138,11 @@ parallel type.
 "Was arriving" means at least two snapshots whose arrival times were under the threshold apart and
 whose `secs_in_period` differed.
 
-**Time must be injected.** Every function takes `now: Instant`. No task in this plan may call
-`Instant::now()` inside `state.rs` — tests drive the clock by hand, and a test that sleeps is a
-failed test.
+**Time must be injected.** Every function takes `now: Instant`. **No non-test code** in this plan
+may call `Instant::now()` inside `state.rs` — tests drive the clock by hand, and a test that sleeps
+is a failed test. Tests may seed a single `t0 = Instant::now()` and derive every later timestamp
+by arithmetic (`t0 + Duration::from_secs(n)`); `std::time::Instant` has no other constructor, so
+that is not a violation.
 
 **Tests must prove:**
 - Ticks arriving each second, then silence → the clock continues to count down in real time.

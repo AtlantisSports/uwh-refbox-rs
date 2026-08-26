@@ -2,6 +2,8 @@
 
 The main software component here is the [`refbox`](refbox) crate. The other crates are support crates that are also used by other binaries, not included here.
 
+One of them is also run directly: [`overlay-bridge`](overlay-bridge) runs on a streaming PC and republishes the live game as plain web pages, so third-party graphics software such as vMix can build its own graphics from real game data.
+
 # Running the Binary
 
 On Windows and Mac the app can be run by downloading the latest relase from GitHub and following the bundled instructions.

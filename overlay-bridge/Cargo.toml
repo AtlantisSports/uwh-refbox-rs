@@ -6,6 +6,9 @@ edition = "2024"
 rust-version = "1.85"
 
 [dependencies]
+# The bridge's own HTTP server -- serves the tables vMix (and any other third party) polls. The
+# one new dependency for this task, approved by Eric 2026-08-26 (phase-1 plan and task 6's brief).
+axum = "0.8"
 clap = { version = "4", features = ["derive"] }
 futures = "0.3"
 # Same version and feature set as `overlay`'s own use of reqwest (it talks to the same portal

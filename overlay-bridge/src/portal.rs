@@ -31,7 +31,10 @@ use std::{
 
 use reqwest::{Client, RequestBuilder};
 use serde_json::Value;
-use uwh_common::uwhportal::schedule::{EventId, TeamId};
+use uwh_common::{
+    bundles::BlackWhiteBundle,
+    uwhportal::schedule::{EventId, TeamId},
+};
 
 /// Team names, court, and scheduled start resolved for one game, as read from the public
 /// schedule.
@@ -217,6 +220,31 @@ impl Directory {
             .get(team)?
             .get(&cap_number)
             .cloned()
+    }
+
+    /// The team ids assigned to `game_number`'s dark and light slots, as cached by the most
+    /// recent successful [`refresh_schedule`]. This is what makes the roster half of this
+    /// directory reachable from outside: [`refresh_roster`] and [`player_name`] both require a
+    /// `TeamId`, and this is the only way a caller can obtain one for a given game.
+    ///
+    /// `None` if `game_number` is not present in the schedule cache -- either because nothing has
+    /// ever been fetched successfully, or because the schedule genuinely has no such game --
+    /// matching [`names_for`]'s own `None` case exactly. A slot with no team assigned yet (a
+    /// bracket placeholder) comes back as `None` within the bundle rather than the whole call
+    /// failing, again matching [`names_for`]: the caller's fallback in both cases is to show
+    /// whatever the refbox itself already has instead of erroring out.
+    ///
+    /// [`refresh_schedule`]: Directory::refresh_schedule
+    /// [`refresh_roster`]: Directory::refresh_roster
+    /// [`player_name`]: Directory::player_name
+    /// [`names_for`]: Directory::names_for
+    pub fn team_ids_for(&self, game_number: &str) -> Option<BlackWhiteBundle<Option<TeamId>>> {
+        let schedule = read_lock(&self.schedule);
+        let entry = schedule.games.get(game_number)?;
+        Some(BlackWhiteBundle {
+            black: entry.dark_team.clone(),
+            white: entry.light_team.clone(),
+        })
     }
 }
 
@@ -478,6 +506,43 @@ mod tests {
             parse_schedule(&schedule_fixture_json()).expect("fixture should parse");
 
         assert_eq!(directory.names_for("does-not-exist"), None);
+    }
+
+    // ---- team_ids_for: the accessor that makes roster lookups reachable from outside ----
+
+    #[test]
+    fn team_ids_for_resolves_both_teams_dark_to_black_light_to_white() {
+        let directory = directory_at("http://portal.invalid".to_string());
+        *write_lock(&directory.schedule) =
+            parse_schedule(&schedule_fixture_json()).expect("fixture should parse");
+
+        let ids = directory
+            .team_ids_for("1")
+            .expect("game 1 should be present");
+        assert_eq!(ids.black, Some(team_2529b()));
+        assert_eq!(ids.white, Some(team_2530b()));
+    }
+
+    #[test]
+    fn team_ids_for_an_unassigned_slot_is_none_within_the_bundle_not_a_missing_game() {
+        let directory = directory_at("http://portal.invalid".to_string());
+        *write_lock(&directory.schedule) =
+            parse_schedule(&schedule_fixture_json()).expect("fixture should parse");
+
+        let ids = directory
+            .team_ids_for("51")
+            .expect("game 51 should be present, just with no teams assigned");
+        assert_eq!(ids.black, None);
+        assert_eq!(ids.white, None);
+    }
+
+    #[test]
+    fn team_ids_for_an_unknown_game_number_is_none() {
+        let directory = directory_at("http://portal.invalid".to_string());
+        *write_lock(&directory.schedule) =
+            parse_schedule(&schedule_fixture_json()).expect("fixture should parse");
+
+        assert_eq!(directory.team_ids_for("does-not-exist"), None);
     }
 
     #[test]

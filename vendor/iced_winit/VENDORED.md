@@ -1,6 +1,6 @@
 # Vendored `iced_winit` 0.13.0
 
-Verbatim copy of `iced_winit` 0.13.0 from crates.io, with TWO deliberate divergences so far:
+Verbatim copy of `iced_winit` 0.13.0 from crates.io, with THREE deliberate divergences:
 
 1. An empty `[workspace]` table added near the top of `Cargo.toml`.
 
@@ -50,14 +50,46 @@ Verbatim copy of `iced_winit` 0.13.0 from crates.io, with TWO deliberate diverge
    "available at the last tap point" indefinitely. That is a deliberate choice, not an
    accident, and a future maintainer should know it.
 
+3. `deprecated = "allow"` added to the existing `[lints.rust]` table in `Cargo.toml`.
+
+   Why: cargo passes `--cap-lints allow` only to packages it fetches from a registry or a git
+   source. This crate is reached through `[patch.crates-io]` as a **path** package, which is a
+   local unit and gets no cap, so lint settings apply to it in full. CI sets
+   `RUSTFLAGS: "-D warnings"` for the entire workflow (`.github/workflows/rust.yml`), and that
+   has two separate consequences here:
+
+   - **Today:** built with `--features program`, upstream's two `UnboundedReceiver::try_next`
+     deprecations become hard errors, so the CI step that runs this crate's tests — the
+     regression gate whose existence justified vendoring rather than forking — could not
+     compile at all. It passed locally only because `just test-vendor` runs without
+     `RUSTFLAGS`.
+   - **Latent:** the main workspace compiles this same crate as a local path unit, with the
+     `program` feature enabled by `iced`, under the same `RUSTFLAGS`. That is clean today only
+     because the root `Cargo.lock` pins `futures-channel 0.3.31`, which predates the
+     deprecation, while this crate's own lock pins `0.3.34`, which carries it. The day a
+     dependency update bumps the root lock's `futures-channel` to 0.3.34 or later,
+     `cargo build --all` fails on all three CI platforms with an error pointing into
+     third-party code that nobody would connect to this vendoring.
+
+   Allowing the lint on the package closes both faces at once: cargo emits a package's
+   `[lints]` on the rustc command line in a position that beats `RUSTFLAGS`, verified by
+   running the CI command with `RUSTFLAGS="-D warnings"` before and after (101, then 0).
+   Setting `env: RUSTFLAGS: ""` on the CI step instead would have fixed only the first face and
+   left the second armed.
+
 Every other file must stay byte-identical to upstream so re-vendoring is a clean diff.
 To re-vendor: copy the new upstream version in, then re-add the empty `[workspace]` table to
 the new `Cargo.toml`, and re-apply the cursor-tracking extraction and its fix to
 `src/program/state.rs` and `src/program/cursor.rs`, per whatever instructions land alongside
 them.
 
-This crate is deliberately EXCLUDED from the workspace so our `-D warnings` clippy
-settings are not applied to third-party code. Its tests run via `just test-vendor`.
+This crate is deliberately EXCLUDED from the main workspace, which keeps it out of
+`cargo clippy --all`'s primary set, so our clippy lints are never reported against
+third-party code. Note what exclusion does NOT do: before vendoring, this crate came from a
+registry, and cargo builds registry packages with `--cap-lints allow`, which silenced every
+lint in it. A `[patch.crates-io]` **path** package is a local unit and gets no such cap, so
+`RUSTFLAGS` and the package's own `[lints]` tables now apply to it in full — see divergence 3.
+Its tests run via `just test-vendor`.
 
 The cursor tracker's tests live inside `src/program`, which upstream gates behind the
 `program` Cargo feature (`Cargo.toml`'s `[features]` table) — a feature this crate does not
@@ -69,10 +101,11 @@ does not fail — it just goes quiet again, so treat its presence in both places
 
 Enabling `program` also compiles upstream code that was never built before this feature flag
 was added, which surfaces two pre-existing `deprecated` warnings about
-`UnboundedReceiver::try_next` in `src/program.rs`. Those warnings are upstream's, not ours —
-fixing them would mean editing code that must stay byte-identical, so they are left alone. If
-`just test-vendor` or its CI step ever shows warnings, this is why: it is not a regression
-introduced by anything in this repo.
+`UnboundedReceiver::try_next` in `src/program.rs`. Those are upstream's, not ours, and fixing
+them would mean editing code that must stay byte-identical — so divergence 3 allows the lint
+on the package instead. Under CI's workflow-wide `RUSTFLAGS: "-D warnings"` they are not
+warnings but hard **errors**, which is why that divergence exists rather than being a matter
+of tidiness.
 
 ## Dependency resolution and the committed lock
 

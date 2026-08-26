@@ -9,7 +9,7 @@
 # will likely look very different (and much more reasonable).
 # See Cargo.toml.orig for the original contents.
 
-# Vendoring divergence 2 (see VENDORED.md): an empty `[workspace]` table, so cargo
+# Vendoring divergence 1 (see VENDORED.md): an empty `[workspace]` table, so cargo
 # treats this crate as its own workspace root instead of walking up to an
 # ancestor workspace.
 [workspace]
@@ -119,6 +119,13 @@ unused_async = "deny"
 useless_conversion = "deny"
 
 [lints.rust]
+# Vendoring divergence 3 (see VENDORED.md): this crate is reached through
+# `[patch.crates-io]` as a local path unit, so cargo does NOT build it with
+# `--cap-lints allow`. CI sets `RUSTFLAGS: "-D warnings"` workflow-wide, which
+# turns upstream's two `UnboundedReceiver::try_next` deprecations in
+# `src/program.rs` into hard errors. Allow the lint on the package instead of
+# editing upstream code that must stay byte-identical.
+deprecated = "allow"
 missing_debug_implementations = "deny"
 missing_docs = "deny"
 unsafe_code = "deny"

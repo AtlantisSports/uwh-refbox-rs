@@ -142,6 +142,15 @@ build-release:
 build-rpi:
     cross build --release --target aarch64-unknown-linux-gnu -p refbox
 
+# Requires the `x86_64-pc-windows-gnu` rustup target and the mingw-w64 gcc/ar tools installed
+# (`sudo apt-get install gcc-mingw-w64-x86-64` on Debian/Ubuntu). Deliberately plain `cargo` with
+# the mingw toolchain, not `cross`/Docker (see README's "Cross Compiling" section) -- Docker is
+# not usable in this environment, and mingw is the approach already proven here for
+# schedule-processor's own Windows build.
+# Cross-compile overlay-bridge for Windows (the streaming PC) -- uses mingw, not `cross`/Docker
+build-overlay-bridge-windows:
+    CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc CARGO_TARGET_X86_64_PC_WINDOWS_GNU_AR=x86_64-w64-mingw32-ar cargo build -p overlay-bridge --release --target x86_64-pc-windows-gnu
+
 # ── Embedded ──────────────────────────────────────────────────────────────────
 
 # Check the wireless-remote embedded firmware (separate toolchain)

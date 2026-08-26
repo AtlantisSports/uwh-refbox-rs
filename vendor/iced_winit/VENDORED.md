@@ -50,6 +50,13 @@ them. Because of this, `just test-vendor`'s recipe and the CI step that mirrors 
 `--features program` explicitly, alongside `--locked`. If that flag is ever dropped, the gate
 does not fail — it just goes quiet again, so treat its presence in both places as load-bearing.
 
+Enabling `program` also compiles upstream code that was never built before this feature flag
+was added, which surfaces two pre-existing `deprecated` warnings about
+`UnboundedReceiver::try_next` in `src/program.rs`. Those warnings are upstream's, not ours —
+fixing them would mean editing code that must stay byte-identical, so they are left alone. If
+`just test-vendor` or its CI step ever shows warnings, this is why: it is not a regression
+introduced by anything in this repo.
+
 ## Dependency resolution and the committed lock
 
 Because this crate is its own workspace root (see above), `cargo test --manifest-path

@@ -70,4 +70,48 @@ mod tests {
         c.left();
         assert_eq!(c.position(), None);
     }
+
+    // ---- Characterisation tests ------------------------------------------
+    //
+    // The two `today_*` tests below pin down behaviour that the cursor fix is
+    // going to CHANGE. They pass as written and are expected to be rewritten
+    // by that fix — that is their whole purpose: the change cannot land
+    // without editing them, so it cannot land unnoticed.
+    //
+    // If one of them fails, decide which case you are in. If you meant to
+    // change this behaviour, update the test and say so in your commit. If you
+    // did not, you have an unintended regression.
+
+    #[test]
+    fn today_a_pointer_enter_lets_the_next_mouse_move_overwrite_a_touch() {
+        let mut c = CursorTracker::default();
+
+        c.touched(at(530.0, 190.0));
+        c.entered();
+        c.moved(at(100.0, 100.0));
+
+        // This IS the dropped-tap bug: the finger's position is lost to a
+        // pointer the compositor restored after the finger lifted.
+        assert_eq!(c.position(), Some(at(100.0, 100.0)));
+    }
+
+    #[test]
+    fn today_a_pointer_leave_blanks_a_touch_position() {
+        let mut c = CursorTracker::default();
+
+        c.touched(at(530.0, 190.0));
+        c.left();
+
+        assert_eq!(c.position(), None);
+    }
+
+    #[test]
+    fn a_pointer_enter_alone_never_moves_the_cursor() {
+        let mut c = CursorTracker::default();
+
+        c.touched(at(530.0, 190.0));
+        c.entered();
+
+        assert_eq!(c.position(), Some(at(530.0, 190.0)));
+    }
 }

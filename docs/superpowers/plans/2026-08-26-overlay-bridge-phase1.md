@@ -462,6 +462,14 @@ backstop.
 
 `server.rs` wires it: handlers ask the feed for connection state and pass it to the table builders.
 
+**Also add the both-at-fault foul total to `/scorebug`** (Eric, 2026-08-26 — this closes the
+question Task 5's review left open). The scorebug already carries per-team foul totals for black
+and white; it gains a third, independent count for equal ("both at fault") fouls. *Why:* `/fouls`
+already lists equal fouls as their own rows, so two totals under-report against the list printed
+beside them, which reads as a defect on air. Folded in here only because Task 10 reopens
+`tables.rs` anyway — it is otherwise unrelated to the relay-only change. Like the per-team totals,
+it counts every entry, not only those within the rows carried.
+
 ### The trap
 
 **Do not hide the graphic on silence.** The refbox sends nothing whenever the clock is stopped — 25
@@ -480,6 +488,9 @@ exactly right, not stale.
   clock is relayed verbatim, since removing projection is the whole point.
 - Sudden death relays verbatim like any other period. (The old direction-handling test should be
   deleted, not adapted.)
+- The both-at-fault foul total is independent of the two per-team totals — a game with equal fouls
+  and no team fouls must show the equal count non-zero while both team counts stay zero — and, like
+  them, counts entries beyond the rows carried.
 
 **Commit:** `refactor(overlay-bridge): relay only, hide the graphic when disconnected`
 

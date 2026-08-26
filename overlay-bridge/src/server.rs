@@ -5,19 +5,25 @@
 //! # Routes
 //!
 //! `GET /scorebug`, `/penalties`, `/fouls`, `/warnings`, `/nextgame` each serve exactly what
-//! [`tables`] builds for them -- a JSON array of objects, fixed length, blank-padded, as
-//! documented on those functions. `GET /status.json` is new here, not part of `tables`' published
-//! shapes: a single-row array reporting whether the refbox is currently in contact
-//! ([`state::Contact`]), how long it has been silent if not, and the current game number and
-//! period. It follows the same "always an array" convention as every other route so a poller can
-//! treat all six routes uniformly, even though its columns are this module's own invention rather
-//! than a `tables` shape -- the fuller operator status page (an HTML `GET /`, plus richer content
-//! such as the discovery list and the keepalive-availability signal) is Task 7's job, not this
-//! one's.
+//! [`tables`] builds for them -- a JSON array of objects, every row carrying a `connected`
+//! column, as documented on those functions. `GET /status.json` is new here, not part of
+//! `tables`' published shapes: a single-row array reporting whether the refbox is currently in
+//! contact ([`feed::Connection`]) and the current game number and period. It follows the same
+//! "always an array" convention as every other route so a poller can treat all six routes
+//! uniformly, even though its columns are this module's own invention rather than a `tables`
+//! shape -- the fuller operator status page (an HTML `GET /`, plus richer content such as the
+//! discovery list and the keepalive-availability signal) is Task 7's job, not this one's.
 //!
-//! **Every response recomputes the clock at request time**, via [`state::LiveState::current`]
-//! called with a fresh [`Instant::now`] inside each handler -- never a value computed once at
-//! startup or cached between requests.
+//! **Every response reads the live state fresh at request time**, via
+//! [`state::LiveState::current`] inside each handler -- never a value cached between requests.
+//! This module used to recompute a projected clock value here as well, from a fresh
+//! [`Instant::now`] on every call; that projection is gone (spec §4.6), so `current` now simply
+//! returns the last real snapshot the refbox sent, verbatim, and there is nothing left to
+//! recompute. What every handler still reads fresh on every request is **connection state**
+//! ([`is_connected`], backed by [`feed::ConnectionState::get`]) -- the thing that now decides
+//! whether a table shows real values or blanks them (see `tables`' module doc's "The `connected`
+//! column" section), and which can change between one request and the next exactly as the old
+//! clock projection used to.
 //!
 //! # Closing the roster gap
 //!
@@ -74,8 +80,9 @@ use uwh_common::{
 };
 
 use crate::{
+    feed::{Connection, ConnectionState},
     portal::{Directory, TeamNames},
-    state::{Contact, Display, LiveState},
+    state::{Display, LiveState},
     tables::{self, Rosters},
 };
 
@@ -98,17 +105,31 @@ pub struct AppState {
     /// The operator's side-of-pool setting (`--white-on-right`), fixed for the life of the
     /// process. Persisting it and changing it at runtime is Task 7's job, not this one's.
     white_on_right: bool,
+    /// The bridge's connection to the refbox right now -- see [`Connection`]. The only writer is
+    /// [`crate::feed::Supervisor::run`], via the handle [`AppState::connection_handle`] hands out;
+    /// every route handler reads it (through [`is_connected`]) to decide whether to serve real
+    /// values or blank ones (see `tables`' module doc).
+    connection: ConnectionState,
 }
 
 impl AppState {
-    /// Builds a fresh, unconnected bridge state: no event known yet, and the live picture seeded
-    /// from [`GameSnapshot::default`] so every route is servable immediately.
+    /// Builds a fresh, unconnected bridge state: no event known yet, no connection made yet
+    /// ([`Connection::NeverConnected`]), and the live picture seeded from
+    /// [`GameSnapshot::default`] so every route is servable immediately.
     pub fn new(white_on_right: bool) -> Self {
         Self {
             live: RwLock::new(LiveState::new(GameSnapshot::default(), Instant::now())),
             directory: RwLock::new(None),
             white_on_right,
+            connection: ConnectionState::new(),
         }
+    }
+
+    /// A cloned handle to this state's connection tracker, for handing to
+    /// [`crate::feed::Supervisor::run`] -- the only thing that ever writes it. Cheap: clones the
+    /// `Arc` inside [`ConnectionState`], not any of `AppState`'s own data.
+    pub fn connection_handle(&self) -> ConnectionState {
+        self.connection.clone()
     }
 }
 
@@ -133,25 +154,26 @@ async fn get_scorebug(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<S
         &display,
         names.as_ref(),
         state.white_on_right,
+        is_connected(&state),
     ))
 }
 
 async fn get_penalties(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<String, String>>> {
     let display = current_display(&state);
     let rosters = current_rosters(&state, &display.snapshot);
-    Json(tables::penalties(&display, &rosters))
+    Json(tables::penalties(&display, &rosters, is_connected(&state)))
 }
 
 async fn get_fouls(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<String, String>>> {
     let display = current_display(&state);
     let rosters = current_rosters(&state, &display.snapshot);
-    Json(tables::fouls(&display, &rosters))
+    Json(tables::fouls(&display, &rosters, is_connected(&state)))
 }
 
 async fn get_warnings(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<String, String>>> {
     let display = current_display(&state);
     let rosters = current_rosters(&state, &display.snapshot);
-    Json(tables::warnings(&display, &rosters))
+    Json(tables::warnings(&display, &rosters, is_connected(&state)))
 }
 
 async fn get_next_game(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<String, String>>> {
@@ -162,19 +184,28 @@ async fn get_next_game(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<
         .snapshot
         .next_game_number()
         .and_then(|number| names_for_game(&state, number));
-    Json(tables::next_game(names.as_ref()))
+    Json(tables::next_game(names.as_ref(), is_connected(&state)))
 }
 
 async fn get_status(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<String, String>>> {
     let display = current_display(&state);
-    let contact = read_lock(&state.live).contact(Instant::now());
-    Json(status_row(&display, contact))
+    Json(status_row(&display, state.connection.get()))
 }
 
-/// The bridge's live picture right now, recomputed fresh from [`Instant::now`] on every call --
-/// never a value cached from a previous request or from startup.
+/// The bridge's live picture right now -- the last real snapshot the refbox sent, relayed
+/// verbatim (see `state`'s module doc). Read fresh on every call, never a value cached from a
+/// previous request or from startup, even though (unlike before this task) nothing here is
+/// actually time-dependent any more: a stale read would only be possible if a newer snapshot had
+/// arrived and this simply failed to notice it, not because of any clock math.
 fn current_display(state: &AppState) -> Display {
-    read_lock(&state.live).current(Instant::now())
+    read_lock(&state.live).current()
+}
+
+/// Whether a served table should show the refbox's real values right now, or blank them -- see
+/// [`Connection::is_live`] and `tables`' module doc's "The `connected` column" section. Judged
+/// entirely by the connection itself, never by `state.live`'s arrival timing.
+fn is_connected(state: &AppState) -> bool {
+    state.connection.get().is_live()
 }
 
 /// Looks up `game_number`'s team names, court and start time from the currently-known Portal
@@ -249,15 +280,23 @@ fn cap_numbers_for(snapshot: &GameSnapshot, color: Color) -> impl Iterator<Item 
 
 /// Builds `/status.json`'s single row. See the module doc's "Routes" section for why this shape
 /// is this module's own invention rather than a `tables` shape.
-fn status_row(display: &Display, contact: Contact) -> Vec<BTreeMap<String, String>> {
-    let (contact_text, since_secs) = match contact {
-        Contact::Live => ("Live", String::new()),
-        Contact::Stale { since } => ("Stale", since.as_secs().to_string()),
+///
+/// `contact` is [`Connection`], not the old timing-derived `state::Contact` this replaced -- see
+/// the report for this task. There is deliberately no `sinceSeconds` (or similar) column any
+/// more: the old one measured silence since the last message, which is exactly the quantity this
+/// task established must never be treated as meaningful (a stopped clock produces long silence
+/// legitimately). A "how long has the connection been down" figure would need its own tracking
+/// this task does not add -- the fuller operator status page, including its own-worded contact
+/// display, is Task 7's job (see the module doc's "Routes" section).
+fn status_row(display: &Display, contact: Connection) -> Vec<BTreeMap<String, String>> {
+    let contact_text = match contact {
+        Connection::NeverConnected => "NeverConnected",
+        Connection::Connected => "Live",
+        Connection::Disconnected => "Lost",
     };
 
     let mut row = BTreeMap::new();
     row.insert("contact".to_string(), contact_text.to_string());
-    row.insert("sinceSeconds".to_string(), since_secs);
     row.insert(
         "gameNumber".to_string(),
         display.snapshot.game_number().clone(),
@@ -282,7 +321,6 @@ pub async fn consume_snapshots(
     portal_url: String,
     refresh_notify: Arc<Notify>,
 ) {
-    let mut started = false;
     let mut last_event_id: Option<EventId> = None;
     let mut last_game_number: Option<GameNumber> = None;
 
@@ -291,15 +329,7 @@ pub async fn consume_snapshots(
         let event_id = snapshot.event_id.clone();
         let game_number = snapshot.game_number().clone();
 
-        {
-            let mut live = write_lock(&state.live);
-            if started {
-                live.apply(snapshot, now);
-            } else {
-                *live = LiveState::new(snapshot, now);
-                started = true;
-            }
-        }
+        write_lock(&state.live).apply(snapshot, now);
 
         // `Some` only when the feed just reported a *different* known event id -- `None` both
         // when the event id is unknown (`None` on the wire) and when it is unchanged.
@@ -435,6 +465,16 @@ mod tests {
             let _ = axum::serve(listener, app).await;
         });
         addr
+    }
+
+    /// Marks `state` as connected without a real socket, for tests that want to see a table's
+    /// real values and have nothing to do with connection lifecycle itself (that is what the
+    /// dedicated tests further down, which drive a real `feed::Supervisor`, are for). `AppState`
+    /// starts `NeverConnected` (see `AppState::new`), so any test asserting on a table's actual
+    /// values -- rather than just its shape -- needs this first, or every value would already be
+    /// blanked by `tables::finish_table`.
+    fn mark_connected(state: &AppState) {
+        state.connection_handle().set_connected();
     }
 
     async fn get_response(addr: SocketAddr, path: &str) -> reqwest::Response {
@@ -597,6 +637,7 @@ mod tests {
         );
 
         let state = Arc::new(AppState::new(false));
+        mark_connected(&state);
         *write_lock(&state.directory) = Some(Arc::new(directory));
         *write_lock(&state.live) = LiveState::new(
             GameSnapshot {
@@ -618,26 +659,30 @@ mod tests {
         assert_ne!(row["blackTeam"].as_str(), Some("CURRENT DARK"));
     }
 
-    // ---------------------------------------------------------------- clock recomputed per request
+    // ---------------------------------------------------------------- the clock is relayed verbatim
 
     #[tokio::test]
-    async fn two_requests_a_second_apart_against_a_running_clock_return_different_clock_values() {
+    async fn the_clock_is_never_projected_forward_between_requests_even_after_a_real_gap() {
+        // This replaces a pre-Task-10 test of the opposite claim: it used to assert the served
+        // clock *changed* between two requests spaced a real second apart, proving the old local
+        // clock projection was recomputing on every request. That behaviour is deleted (spec
+        // §4.6) -- the bridge now relays exactly what the refbox last sent, nothing else, so the
+        // correct assertion is now the reverse: however much real time passes, and regardless of
+        // how many real ticks arrived before the wait, the served clock is always exactly the
+        // last real value, never a locally-continued one.
         let base = GameSnapshot {
             current_period: GamePeriod::FirstHalf,
             secs_in_period: 200,
             ..Default::default()
         };
         let state = Arc::new(AppState::new(false));
+        mark_connected(&state);
         let t0 = Instant::now();
         *write_lock(&state.live) = LiveState::new(base.clone(), t0);
-        // A second real tick, shortly after `t0` with the clock down by one -- the steady-state
-        // pattern that gives `LiveState` evidence the clock is running (see `state.rs`). Uses a
-        // freshly-read `Instant::now()` rather than an offset computed from `t0`, so this anchor
-        // is genuinely in the past by the time either HTTP request below reads the real clock --
-        // an earlier version of this test used `t0 + Duration::from_secs(1)` as the anchor, which
-        // is actually *in the future* relative to `Instant::now()` at the moment the first
-        // request lands (essentially no real time has passed since `t0` yet), so `LiveState`
-        // correctly refused to project forward and both requests read the same held value.
+        // A second real tick, matching the steady-state arrival pattern the old projection logic
+        // used to key off of -- kept here specifically so this test would have failed against
+        // that old logic (which would have started projecting forward from this point) rather
+        // than passing by accident because no second tick ever arrived.
         let t1 = Instant::now();
         write_lock(&state.live).apply(
             GameSnapshot {
@@ -653,10 +698,12 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(1100)).await;
         let second = get_json(addr, "/scorebug").await;
 
-        assert_ne!(
-            first[0]["clockSeconds"], second[0]["clockSeconds"],
-            "the clock should have moved between the two requests, proving each request \
-             recomputes it rather than serving a cached body"
+        assert_eq!(first[0]["clockSeconds"].as_str(), Some("199"));
+        assert_eq!(
+            second[0]["clockSeconds"].as_str(),
+            Some("199"),
+            "the clock must still read exactly the last real value after a real second has \
+             passed with no further message -- never locally continued"
         );
     }
 
@@ -827,45 +874,6 @@ mod tests {
     // ---------------------------------------------------------------- consume_snapshots
 
     #[tokio::test]
-    async fn the_first_real_snapshot_never_projects_forward_from_the_startup_seeded_default() {
-        // `AppState::new` seeds `LiveState` with a blank default (secs_in_period: 0) at
-        // construction. If the first *real* snapshot were fed to `LiveState::apply` instead of
-        // `LiveState::new`, that comparison against the synthetic seed could spuriously conclude
-        // the clock was running (a jump from 0 to 900 within the arrival-timing threshold), and
-        // this test would see the value below drift downward over the sleep. The `started` guard
-        // in `consume_snapshots` exists to prevent exactly that.
-        let state = Arc::new(AppState::new(false));
-        let (tx, rx) = mpsc::unbounded_channel();
-        let refresh_notify = Arc::new(Notify::new());
-        let consumer = tokio::spawn(consume_snapshots(
-            Arc::clone(&state),
-            rx,
-            Client::new(),
-            "http://portal.invalid".to_string(),
-            refresh_notify,
-        ));
-
-        tx.send(GameSnapshot {
-            secs_in_period: 900,
-            ..Default::default()
-        })
-        .expect("channel should accept the snapshot");
-
-        // Long enough that a wrongly-`apply`-ed first snapshot would have visibly counted down at
-        // least one second by the time this reads it.
-        tokio::time::sleep(Duration::from_millis(1200)).await;
-
-        let display = current_display(&state);
-        assert_eq!(
-            display.snapshot.secs_in_period, 900,
-            "the first real snapshot must seed a fresh LiveState (clock held, not running), \
-             never be applied against the startup-seeded default"
-        );
-
-        consumer.abort();
-    }
-
-    #[tokio::test]
     async fn a_new_event_id_creates_a_fresh_directory_replacing_the_previous_one() {
         let state = Arc::new(AppState::new(false));
         let (tx, rx) = mpsc::unbounded_channel();
@@ -1014,6 +1022,232 @@ mod tests {
             .expect("a game-number change within the same event should also wake the refresh loop");
 
         consumer.abort();
+    }
+
+    // ---------------------------------------------------------------- connection state end-to-end
+    //
+    // These are the regression guards for "the trap" (spec §4.6, §5.4): the refbox goes
+    // completely silent for ~25s whenever its clock is stopped, so nothing here may ever treat
+    // silence itself as evidence of disconnection. Unlike the rest of this file's tests, these
+    // drive a real `feed::Supervisor` against a real loopback socket rather than poking
+    // `AppState` directly, because the property under test -- that connection state comes from
+    // the connection and nothing else -- is a property of the wiring between `feed` and `server`,
+    // not of either module in isolation.
+
+    #[tokio::test]
+    async fn a_never_connected_bridge_serves_connected_false_and_blank_tables() {
+        // No `feed::Supervisor` involved at all here -- `AppState::new` alone, exactly as the
+        // bridge looks the instant it starts, before any connection attempt has even begun. This
+        // is the case the old timing-based `Contact` handled badly (see the report for this
+        // task): it would report `Live` for the first few seconds after startup, purely because
+        // the seeded default snapshot's arrival time was recent, with nothing behind it.
+        let state = Arc::new(AppState::new(false));
+        let addr = spawn_test_server(state).await;
+
+        let body = get_json(addr, "/scorebug").await;
+        let row = &body[0];
+
+        assert_eq!(row["connected"].as_str(), Some("false"));
+        assert_eq!(row["blackScore"].as_str(), Some(""));
+        assert_eq!(row["clockSeconds"].as_str(), Some(""));
+    }
+
+    #[tokio::test]
+    async fn a_long_silence_with_the_connection_still_alive_keeps_serving_real_values_and_connected_true()
+     {
+        // THE regression guard for the trap. If this were ever rewritten to derive `connected`
+        // (or anything else) from how long it has been since a message arrived -- instead of
+        // from `feed::Connection` -- this test would go red: the wait below deliberately outlasts
+        // the 3-second `CONTACT_THRESHOLD` the old, now-deleted, silence-based `state::Contact`
+        // used, while the TCP connection itself stays open and healthy throughout.
+        //
+        // This was verified directly while implementing this task: temporarily changing
+        // `is_connected` to `Instant::now().duration_since(read_lock(&state.live).last_arrived_at())
+        // < Duration::from_secs(3)` made this test fail (`connected` read `"false"` and every
+        // other field came back blank) after the sleep below; reverting to the real
+        // `state.connection.get().is_live()` makes it pass again. See the report for this task
+        // for the full red/green transcript.
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let refbox_addr = listener.local_addr().expect("local_addr");
+
+        let state = Arc::new(AppState::new(false));
+        let (tx, rx) = mpsc::unbounded_channel();
+        let refresh_notify = Arc::new(Notify::new());
+
+        let supervisor = tokio::spawn(crate::feed::Supervisor::run(
+            refbox_addr,
+            tx,
+            state.connection_handle(),
+        ));
+        let consumer = tokio::spawn(consume_snapshots(
+            Arc::clone(&state),
+            rx,
+            Client::new(),
+            "http://portal.invalid".to_string(),
+            refresh_notify,
+        ));
+
+        let (mut refbox_side, _) = listener
+            .accept()
+            .await
+            .expect("accept the supervisor's connection");
+        let one_real_message = format!(
+            "{}\n",
+            serde_json::to_string(&GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                secs_in_period: 613,
+                scores: BlackWhiteBundle { black: 2, white: 1 },
+                ..Default::default()
+            })
+            .expect("GameSnapshot should serialize")
+        );
+        refbox_side
+            .write_all(one_real_message.as_bytes())
+            .await
+            .expect("write the one real snapshot");
+
+        // Let the consumer apply it, then leave the connection open -- `refbox_side` stays in
+        // scope, so the socket stays alive -- and send nothing further for well over the deleted
+        // 3-second threshold. This is exactly what the refbox itself does for ~25s every time the
+        // clock is stopped.
+        tokio::time::sleep(Duration::from_secs(6)).await;
+
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+        let body = get_json(addr, "/scorebug").await;
+        let row = &body[0];
+
+        assert_eq!(
+            row["connected"].as_str(),
+            Some("true"),
+            "the TCP connection is still alive and nothing about it has gone wrong -- silence \
+             alone must never flip this to false"
+        );
+        assert_eq!(
+            row["clockSeconds"].as_str(),
+            Some("613"),
+            "the clock is stopped (nothing sent during the wait), so the last real value must be \
+             served completely unchanged -- never blanked, never projected forward"
+        );
+        assert_eq!(row["blackScore"].as_str(), Some("2"));
+
+        supervisor.abort();
+        consumer.abort();
+    }
+
+    #[tokio::test]
+    async fn disconnection_blanks_every_table_and_reconnection_restores_real_values() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let refbox_addr = listener.local_addr().expect("local_addr");
+
+        let state = Arc::new(AppState::new(false));
+        let (tx, rx) = mpsc::unbounded_channel();
+        let refresh_notify = Arc::new(Notify::new());
+
+        let supervisor = tokio::spawn(crate::feed::Supervisor::run(
+            refbox_addr,
+            tx,
+            state.connection_handle(),
+        ));
+        let consumer = tokio::spawn(consume_snapshots(
+            Arc::clone(&state),
+            rx,
+            Client::new(),
+            "http://portal.invalid".to_string(),
+            refresh_notify,
+        ));
+
+        let (first_connection, _) = listener
+            .accept()
+            .await
+            .expect("accept the first connection");
+        wait_for_connection(&state, Connection::Connected).await;
+
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        // Still connected but nothing sent yet -- `/scorebug` should already read `connected` and
+        // blank values (the seeded startup default), same as the never-connected case above.
+        // This isn't the main point of the test, just establishing the starting condition.
+        drop(first_connection); // a clean close -- EOF, not a hang
+        wait_for_connection(&state, Connection::Disconnected).await;
+
+        let while_disconnected = get_json(addr, "/scorebug").await;
+        let row = &while_disconnected[0];
+        assert_eq!(row["connected"].as_str(), Some("false"));
+        assert_eq!(row["blackScore"].as_str(), Some(""));
+        assert_eq!(row["clockSeconds"].as_str(), Some(""));
+
+        // The supervisor keeps retrying (`feed::RECONNECT_DELAY`) -- accept its next attempt and
+        // send a real snapshot over it.
+        let (mut second_connection, _) =
+            tokio::time::timeout(Duration::from_secs(5), listener.accept())
+                .await
+                .expect("the supervisor should have reconnected")
+                .expect("second accept should succeed");
+        let payload = format!(
+            "{}\n",
+            serde_json::to_string(&GameSnapshot {
+                current_period: GamePeriod::SecondHalf,
+                secs_in_period: 44,
+                scores: BlackWhiteBundle { black: 9, white: 3 },
+                ..Default::default()
+            })
+            .expect("GameSnapshot should serialize")
+        );
+        second_connection
+            .write_all(payload.as_bytes())
+            .await
+            .expect("write the reconnection snapshot");
+
+        wait_for_connection(&state, Connection::Connected).await;
+        wait_for_scores(&state, 9, 3).await;
+
+        let after_reconnect = get_json(addr, "/scorebug").await;
+        let row = &after_reconnect[0];
+        assert_eq!(row["connected"].as_str(), Some("true"));
+        assert_eq!(row["blackScore"].as_str(), Some("9"));
+        assert_eq!(row["whiteScore"].as_str(), Some("3"));
+        assert_eq!(row["clockSeconds"].as_str(), Some("44"));
+
+        supervisor.abort();
+        consumer.abort();
+    }
+
+    /// Polls `state`'s connection handle until it reports `target`, failing the test (rather than
+    /// hanging forever) if it never does within a generous real-time budget. Used instead of a
+    /// fixed sleep-then-assert because exactly how long the supervisor takes to notice and
+    /// publish a transition depends on async scheduling, not a fixed duration.
+    async fn wait_for_connection(state: &AppState, target: Connection) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while state.connection_handle().get() != target {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "connection state did not reach {target:?} in time, currently {:?}",
+                state.connection_handle().get()
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+
+    /// Polls `state`'s live snapshot until both scores match, for the same reason as
+    /// [`wait_for_connection`]: `consume_snapshots` applies an incoming snapshot asynchronously,
+    /// so there is no single instant after which it is guaranteed to have happened.
+    async fn wait_for_scores(state: &AppState, black: u8, white: u8) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let snapshot = current_display(state).snapshot;
+            if snapshot.scores.black == black && snapshot.scores.white == white {
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "scores did not reach {black}-{white} in time"
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
     }
 
     // ---------------------------------------------------------------- roster building

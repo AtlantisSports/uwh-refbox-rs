@@ -12,10 +12,21 @@
 //! (see its doc for why), and reconnects on any kind of loss. `SnapshotReader` above stays exactly
 //! what it was -- unbounded and connection-agnostic -- because bounding a *connection*, as opposed
 //! to a message, is the supervisor's business, not the reader's.
+//!
+//! [`Connection`] and [`ConnectionState`], further down still, are what the supervisor publishes
+//! its connection status through. This is now load-bearing rather than incidental (spec §4.6,
+//! §5.4): the bridge no longer projects the clock forward through a dropout, so whether a served
+//! table shows real values or blanks them is decided by nothing but the connection's own
+//! liveness -- never by how long it has been since a message arrived, because a stopped clock
+//! produces exactly that kind of silence legitimately.
 
 use std::{
     fmt, io,
     pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicU8, Ordering},
+    },
     task::{Context, Poll},
     time::Duration,
 };
@@ -239,13 +250,101 @@ fn configure_keepalive(stream: &TcpStream) -> io::Result<()> {
 /// established connection was just lost.
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
 
+/// Whether the bridge's feed connection to the refbox is alive right now -- and, if not, whether
+/// it ever has been. Judged **entirely by the connection itself**: a successful connect, a read
+/// error, an end-of-stream, or a keepalive probe reporting the peer gone. **Never** by how long it
+/// has been since a message arrived -- see the module doc: the refbox goes completely silent
+/// whenever the clock is stopped (25 seconds observed), so silence can never be evidence the
+/// connection is down, or the graphic would vanish every time the referee stops the clock.
+///
+/// `NeverConnected` and `Disconnected` are kept as distinct variants, not collapsed into a single
+/// "not connected" state, so a caller can tell "hasn't found a refbox yet" apart from "found one,
+/// then lost it" -- a bridge that has never once connected has nothing meaningful to say about
+/// when it was last in contact, which a bridge that just lost a connection does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Connection {
+    /// No connection has ever been established since the bridge started.
+    NeverConnected,
+    /// The connection is live right now.
+    Connected,
+    /// A connection was established at least once, and has since been lost.
+    Disconnected,
+}
+
+impl Connection {
+    /// Whether a served table should show the refbox's real values right now. Only true while
+    /// the connection is actually live -- both `NeverConnected` and `Disconnected` mean "nothing
+    /// trustworthy to show" (see `tables`' module doc for what happens to a table's values when
+    /// this is false).
+    pub fn is_live(self) -> bool {
+        matches!(self, Connection::Connected)
+    }
+}
+
+/// Encodes [`Connection`] as a single byte for [`ConnectionState`]'s atomic storage.
+const NEVER_CONNECTED: u8 = 0;
+const CONNECTED: u8 = 1;
+const DISCONNECTED: u8 = 2;
+
+/// A cheaply cloneable handle to the bridge's live [`Connection`] state, shared between
+/// [`Supervisor::run`] (the only thing that ever writes it) and the HTTP server (which reads it,
+/// via [`ConnectionState::get`], to decide whether to serve real values or blank ones). Backed by
+/// an atomic rather than a lock: `Connection` is a small `Copy` value, and there is never a
+/// multi-step update that needs to be seen atomically as a whole.
+#[derive(Debug, Clone)]
+pub struct ConnectionState {
+    state: Arc<AtomicU8>,
+}
+
+impl ConnectionState {
+    /// A fresh handle reporting [`Connection::NeverConnected`], for the bridge's startup state
+    /// before any connection attempt has been made.
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(AtomicU8::new(NEVER_CONNECTED)),
+        }
+    }
+
+    /// The connection state right now.
+    pub fn get(&self) -> Connection {
+        match self.state.load(Ordering::SeqCst) {
+            CONNECTED => Connection::Connected,
+            DISCONNECTED => Connection::Disconnected,
+            _ => Connection::NeverConnected,
+        }
+    }
+
+    /// `pub(crate)`, not `pub`: outside this module, the only legitimate writer is
+    /// [`Supervisor::run`]. Visible at the crate level (rather than private to this module) so
+    /// `server`'s own tests can drive a table-serving test into the `Connected` state directly,
+    /// without needing a real socket for scenarios that have nothing to do with connection
+    /// lifecycle itself.
+    pub(crate) fn set_connected(&self) {
+        self.state.store(CONNECTED, Ordering::SeqCst);
+    }
+
+    /// See [`ConnectionState::set_connected`]'s visibility note -- the same reasoning applies.
+    pub(crate) fn set_disconnected(&self) {
+        self.state.store(DISCONNECTED, Ordering::SeqCst);
+    }
+}
+
+impl Default for ConnectionState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Owns a refbox feed connection: connects, configures keepalive, forwards every snapshot to `tx`
 /// in arrival order, and reconnects -- after `RECONNECT_DELAY` -- on any kind of loss: a refused
 /// or failed connect, the refbox closing the stream, an I/O error, or a peer the keepalive probes
-/// above have given up on.
+/// above have given up on. Publishes every one of those events to `connection` as they happen --
+/// see [`Connection`] for why this, and not message timing, is the only thing allowed to decide
+/// whether the bridge is "in contact".
 ///
 /// A malformed line (`FeedError::Parse`) is not a connection loss: it is logged and reading
-/// continues on the same connection, exactly as `SnapshotReader` already reports it.
+/// continues on the same connection, exactly as `SnapshotReader` already reports it, and
+/// `connection` is left untouched.
 pub struct Supervisor;
 
 impl Supervisor {
@@ -253,8 +352,11 @@ impl Supervisor {
     /// receiver being dropped, which makes a send fail and ends the loop -- there is no other exit
     /// path, by design: silence on this feed is often legitimate (see the module doc), so nothing
     /// here ever gives up on a refbox that simply hasn't sent anything in a while.
-    pub async fn run<A>(addr: A, tx: mpsc::UnboundedSender<GameSnapshot>)
-    where
+    pub async fn run<A>(
+        addr: A,
+        tx: mpsc::UnboundedSender<GameSnapshot>,
+        connection: ConnectionState,
+    ) where
         A: ToSocketAddrs,
     {
         loop {
@@ -266,6 +368,7 @@ impl Supervisor {
                     continue;
                 }
             };
+            connection.set_connected();
 
             if let Err(e) = configure_keepalive(&stream) {
                 eprintln!("could not configure TCP keepalive on the refbox feed connection: {e}");
@@ -285,10 +388,12 @@ impl Supervisor {
                     }
                     Some(Err(FeedError::Io(e))) => {
                         eprintln!("lost the refbox feed connection: {e}");
+                        connection.set_disconnected();
                         break;
                     }
                     None => {
                         eprintln!("the refbox closed the feed connection");
+                        connection.set_disconnected();
                         break;
                     }
                 }
@@ -679,7 +784,7 @@ mod tests {
         let addr = listener.local_addr().expect("local_addr");
 
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let handle = tokio::spawn(Supervisor::run(addr, tx));
+        let handle = tokio::spawn(Supervisor::run(addr, tx, ConnectionState::new()));
 
         let (mut refbox_side, _) = listener.accept().await.expect("accept");
         let payload = format!("{}\n{}\n", fixture_line(0), fixture_line(1));
@@ -711,7 +816,7 @@ mod tests {
         let addr = listener.local_addr().expect("local_addr");
 
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let handle = tokio::spawn(Supervisor::run(addr, tx));
+        let handle = tokio::spawn(Supervisor::run(addr, tx, ConnectionState::new()));
 
         let (first_connection, _) = listener.accept().await.expect("first accept");
         // Closed with no data at all -- a clean close (the refbox process exiting normally), not
@@ -754,7 +859,7 @@ mod tests {
         drop(probe); // nothing is listening at `addr` any more; every connect is refused
 
         let (tx, _rx) = mpsc::unbounded_channel();
-        let handle = tokio::spawn(Supervisor::run(addr, tx));
+        let handle = tokio::spawn(Supervisor::run(addr, tx, ConnectionState::new()));
 
         // Let several retry cycles elapse on the paused clock. Tokio auto-advances a paused clock
         // to the next pending timer once every task is idle and only a timer is outstanding, so
@@ -765,6 +870,106 @@ mod tests {
         assert!(
             !handle.is_finished(),
             "supervisor should keep retrying a refused connection rather than exit"
+        );
+
+        handle.abort();
+    }
+
+    // ---------------------------------------------------------------- Connection / ConnectionState
+    //
+    // These prove the connection state is driven by the connection itself, not by message
+    // timing. `a_connection_that_has_never_succeeded_reports_never_connected_not_disconnected` in
+    // particular is the direct test of the `NeverConnected`/`Disconnected` distinction the phase-1
+    // plan's Task 10 notes call for: collapsing them into one "not connected" state would lose
+    // the information a status display needs to tell "hasn't found a refbox yet" apart from
+    // "found one, then lost it".
+
+    /// Polls `connection` until it reports `target`, failing the test rather than hanging forever
+    /// if it never does. Used instead of a fixed sleep-then-assert because how long the supervisor
+    /// takes to notice and publish a transition is not exactly predictable (it depends on how the
+    /// async runtime happens to schedule the read), and a fixed sleep long enough to never flake
+    /// would make every test using it needlessly slow.
+    async fn wait_for(connection: &ConnectionState, target: Connection) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while connection.get() != target {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "connection state did not reach {target:?} in time, currently {:?}",
+                connection.get()
+            );
+            sleep(Duration::from_millis(5)).await;
+        }
+    }
+
+    #[test]
+    fn a_fresh_connection_state_reports_never_connected() {
+        assert_eq!(ConnectionState::new().get(), Connection::NeverConnected);
+    }
+
+    #[tokio::test]
+    async fn a_successful_connect_reports_connected_before_any_message_ever_arrives() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let addr = listener.local_addr().expect("local_addr");
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let connection = ConnectionState::new();
+        let handle = tokio::spawn(Supervisor::run(addr, tx, connection.clone()));
+
+        // Accept the connection but never write anything to it -- liveness must be reported from
+        // the TCP connection itself, not from having received a first message.
+        let _accepted = listener.accept().await.expect("accept");
+
+        wait_for(&connection, Connection::Connected).await;
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn a_lost_connection_reports_disconnected() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let addr = listener.local_addr().expect("local_addr");
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let connection = ConnectionState::new();
+        let handle = tokio::spawn(Supervisor::run(addr, tx, connection.clone()));
+
+        let (accepted, _) = listener.accept().await.expect("accept");
+        // Wait for Connected first, so the transition this test actually exercises is genuinely
+        // Connected -> Disconnected, not NeverConnected -> Disconnected.
+        wait_for(&connection, Connection::Connected).await;
+
+        drop(accepted); // a clean close, same as the reconnect test above -- EOF, not a hang
+
+        wait_for(&connection, Connection::Disconnected).await;
+
+        handle.abort();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_connection_that_has_never_succeeded_reports_never_connected_not_disconnected() {
+        let probe = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener to reserve a port");
+        let addr = probe.local_addr().expect("local_addr");
+        drop(probe); // nothing is listening at `addr` any more; every connect is refused
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let connection = ConnectionState::new();
+        let handle = tokio::spawn(Supervisor::run(addr, tx, connection.clone()));
+
+        // Several retry cycles, same reasoning as `a_refused_connection_retries_instead_of_exiting`
+        // above: this resolves virtually, not after five real seconds.
+        sleep(RECONNECT_DELAY * 5).await;
+
+        assert_eq!(
+            connection.get(),
+            Connection::NeverConnected,
+            "a connection that has never once succeeded must stay distinguishable from one that \
+             connected and was then lost -- it must never report Disconnected"
         );
 
         handle.abort();

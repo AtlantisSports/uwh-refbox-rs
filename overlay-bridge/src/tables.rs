@@ -24,9 +24,29 @@
 //!   kit colours (the "side of pool" setting -- see [`scorebug`]'s doc) can bind to a column that
 //!   is never the wrong team, without displacing the black/white columns anyone else already
 //!   bound to.
-//! - `/scorebug` also carries `blackFouls`/`whiteFouls`/`blackWarnings`/`whiteWarnings`: the true,
-//!   untruncated total recorded for each team, so a title can show a running count even though the
-//!   `/fouls` and `/warnings` tables themselves may not carry every entry (see "Row counts" below).
+//! - `/scorebug` also carries `blackFouls`/`whiteFouls`/`blackWarnings`/`whiteWarnings`/
+//!   `equalFouls`: the true, untruncated total recorded for each team (plus the independent
+//!   both-at-fault count), so a title can show a running count even though the `/fouls` and
+//!   `/warnings` tables themselves may not carry every entry (see "Row counts" below).
+//!
+//! # The `connected` column
+//!
+//! **Every table carries a `connected` column, on every row** -- `"true"` or `"false"`, following
+//! the "bare values" rule below. It reflects whether the bridge's connection to the refbox is
+//! alive right now, judged entirely by the connection itself ([`crate::feed::Connection`]) --
+//! never by how long it has been since a message arrived, because the refbox goes completely
+//! silent whenever the clock is stopped and a silence-based rule would blank the graphic every
+//! time the referee stops the clock (spec §4.6, §5.4). The flag is added to every table, not only
+//! `/scorebug`, because a title can bind to any one of them directly (a penalties title binds to
+//! `/penalties`, not `/scorebug`) and needs the flag on the source it actually reads.
+//!
+//! **When disconnected, every other value in every row is also blanked to `""`** -- the row keeps
+//! its shape (every column key still present, exactly as a normal padding row already does) but
+//! nothing except `connected` itself is a value the refbox actually sent. This is the backstop
+//! for a title that was never wired to `connected`: a careless one shows nothing meaningful
+//! instead of stale numbers; a careful one, bound to `connected`, vanishes completely. Every
+//! public function in this module ends by calling [`finish_table`], which is what applies this
+//! rule -- see its doc for the exact mechanics.
 //!
 //! # Fixed length, blank padding
 //!
@@ -153,7 +173,8 @@ pub type Roster = HashMap<u8, String>;
 pub type Rosters = BlackWhiteBundle<Roster>;
 
 /// The single-row `/scorebug` table: the live score, clock, period, and active timeout (if any),
-/// plus per-team foul and warning counts and a side-of-pool-aware left/right pairing.
+/// plus per-team foul and warning counts, the independent both-at-fault foul count, and a
+/// side-of-pool-aware left/right pairing.
 ///
 /// `names` supplies the team names for the game currently being played (`display.snapshot`'s own
 /// `game_number()`), resolved by the caller from [`crate::portal::Directory::names_for`] --
@@ -165,10 +186,14 @@ pub type Rosters = BlackWhiteBundle<Roster>;
 /// `refbox/src/app/update_sender.rs:536-545`, which the live feed itself never carries). It only
 /// affects `leftTeam`/`leftScore`/`rightTeam`/`rightScore` -- `blackTeam`/`whiteTeam`/`blackScore`/
 /// `whiteScore` are unaffected, since a team's kit colour never changes mid-game.
+///
+/// `connected` is passed straight through to [`finish_table`] -- see that function's doc and the
+/// module doc's "The `connected` column" section.
 pub fn scorebug(
     display: &Display,
     names: Option<&TeamNames>,
     white_on_right: bool,
+    connected: bool,
 ) -> Vec<BTreeMap<String, String>> {
     let snapshot = &display.snapshot;
 
@@ -243,8 +268,16 @@ pub fn scorebug(
         "whiteWarnings".to_string(),
         snapshot.warnings.white.len().to_string(),
     );
+    // The both-at-fault ("equal") foul count, independent of `blackFouls`/`whiteFouls` -- a foul
+    // recorded as equal fault is never counted as either team's own. Like those two, this is the
+    // true, untruncated total, not limited to whatever `/fouls` itself carries (see that table's
+    // doc and the module doc's "Row counts" section).
+    row.insert(
+        "equalFouls".to_string(),
+        snapshot.fouls.equal.len().to_string(),
+    );
 
-    vec![row]
+    finish_table(vec![row], connected)
 }
 
 /// The single-row `/nextgame` table: the upcoming game's team names, court, and start time.
@@ -255,7 +288,10 @@ pub fn scorebug(
 /// know about; see the report for this task). Pass `None` when the caller has decided there's
 /// nothing to show yet, and every column comes back empty rather than a placeholder -- the same
 /// happens for any individual field `names` itself doesn't have.
-pub fn next_game(names: Option<&TeamNames>) -> Vec<BTreeMap<String, String>> {
+///
+/// `connected` is passed straight through to [`finish_table`] -- see that function's doc and the
+/// module doc's "The `connected` column" section.
+pub fn next_game(names: Option<&TeamNames>, connected: bool) -> Vec<BTreeMap<String, String>> {
     let mut row = BTreeMap::new();
     row.insert(
         "blackTeam".to_string(),
@@ -277,7 +313,7 @@ pub fn next_game(names: Option<&TeamNames>) -> Vec<BTreeMap<String, String>> {
             .unwrap_or_default(),
     );
 
-    vec![row]
+    finish_table(vec![row], connected)
 }
 
 /// The `/penalties` table: always exactly [`PENALTY_ROWS`] rows, ordered the way the overlay
@@ -286,7 +322,14 @@ pub fn next_game(names: Option<&TeamNames>) -> Vec<BTreeMap<String, String>> {
 /// (`TotalDismissal` sorts greatest; `Seconds` compares numerically) sorted descending. If more
 /// than [`PENALTY_ROWS`] are somehow active at once, the least significant by that same ordering
 /// are dropped -- in practice this never happens, since penalties are culled once served.
-pub fn penalties(display: &Display, rosters: &Rosters) -> Vec<BTreeMap<String, String>> {
+///
+/// `connected` is passed straight through to [`finish_table`] -- see that function's doc and the
+/// module doc's "The `connected` column" section.
+pub fn penalties(
+    display: &Display,
+    rosters: &Rosters,
+    connected: bool,
+) -> Vec<BTreeMap<String, String>> {
     let snapshot = &display.snapshot;
 
     let mut entries: Vec<(Color, &PenaltySnapshot)> = snapshot
@@ -313,33 +356,47 @@ pub fn penalties(display: &Display, rosters: &Rosters) -> Vec<BTreeMap<String, S
     while rows.len() < PENALTY_ROWS {
         rows.push(blank_row(PENALTY_COLUMNS));
     }
-    rows
+    finish_table(rows, connected)
 }
 
 /// The `/fouls` table: at least [`MIN_EVENT_ROWS`] rows, growing up to [`MAX_EVENT_ROWS`] as
 /// described in the module doc's "Row counts" section. Carries all three of the refbox's foul
 /// buckets -- black, white, and `equal` (the both-at-fault case) -- as `team: "EQUAL"` rows; the
 /// `equal` bucket is never dropped.
-pub fn fouls(display: &Display, rosters: &Rosters) -> Vec<BTreeMap<String, String>> {
+///
+/// `connected` is passed straight through to [`finish_table`] -- see that function's doc and the
+/// module doc's "The `connected` column" section.
+pub fn fouls(
+    display: &Display,
+    rosters: &Rosters,
+    connected: bool,
+) -> Vec<BTreeMap<String, String>> {
     let bundle = &display.snapshot.fouls;
     let buckets: [(Option<Color>, &[InfractionSnapshot]); 3] = [
         (Some(Color::Black), bundle.black.as_slice()),
         (Some(Color::White), bundle.white.as_slice()),
         (None, bundle.equal.as_slice()),
     ];
-    event_rows(&buckets, rosters)
+    finish_table(event_rows(&buckets, rosters), connected)
 }
 
 /// The `/warnings` table: at least [`MIN_EVENT_ROWS`] rows, growing up to [`MAX_EVENT_ROWS`] as
 /// described in the module doc's "Row counts" section. Warnings have no `equal` (both-at-fault)
 /// bucket -- only `GameSnapshot`'s `fouls` does.
-pub fn warnings(display: &Display, rosters: &Rosters) -> Vec<BTreeMap<String, String>> {
+///
+/// `connected` is passed straight through to [`finish_table`] -- see that function's doc and the
+/// module doc's "The `connected` column" section.
+pub fn warnings(
+    display: &Display,
+    rosters: &Rosters,
+    connected: bool,
+) -> Vec<BTreeMap<String, String>> {
     let bundle = &display.snapshot.warnings;
     let buckets: [(Option<Color>, &[InfractionSnapshot]); 2] = [
         (Some(Color::Black), bundle.black.as_slice()),
         (Some(Color::White), bundle.white.as_slice()),
     ];
-    event_rows(&buckets, rosters)
+    finish_table(event_rows(&buckets, rosters), connected)
 }
 
 /// Shared row-building logic for `/fouls` and `/warnings`: merges `buckets` (each a team-labelled
@@ -463,6 +520,34 @@ fn blank_row(columns: &[&str]) -> BTreeMap<String, String> {
         .collect()
 }
 
+/// Adds the `connected` column to every row of `rows`, and -- when `connected` is `false` --
+/// clears every other value in every row first, to `""`. See the module doc's "The `connected`
+/// column" section: this is what every one of this module's public table-building functions ends
+/// with, so the rule is applied identically everywhere rather than reimplemented per table.
+///
+/// `connected` is always `"true"` or `"false"` (via `bool::to_string`), matching the "bare
+/// values, no baked-in labels" rule the rest of this module already follows for every other
+/// column.
+///
+/// The row's shape -- its set of column keys, and how many rows there are -- is preserved either
+/// way; only values change. A row that was already blank (a `/penalties`, `/fouls`, or
+/// `/warnings` padding row from [`blank_row`]) is unaffected by the clearing step, since its
+/// other columns were already `""`.
+fn finish_table(
+    mut rows: Vec<BTreeMap<String, String>>,
+    connected: bool,
+) -> Vec<BTreeMap<String, String>> {
+    for row in &mut rows {
+        if !connected {
+            for value in row.values_mut() {
+                value.clear();
+            }
+        }
+        row.insert("connected".to_string(), connected.to_string());
+    }
+    rows
+}
+
 /// `"BLACK"` / `"WHITE"` -- the literal team identifiers used in every table's `team` column,
 /// matching the overlay's own convention (`overlay/src/network.rs`, `BLACK_TEAM_NAME` /
 /// `WHITE_TEAM_NAME`).
@@ -569,14 +654,14 @@ mod tests {
     #[test]
     fn scorebug_is_always_exactly_one_row() {
         let display = display_with(base_snapshot());
-        let rows = scorebug(&display, None, false);
+        let rows = scorebug(&display, None, false, true);
         assert_eq!(rows.len(), 1);
     }
 
     #[test]
     fn scorebug_renders_scores_clock_and_period_as_bare_strings() {
         let display = display_with(base_snapshot());
-        let rows = scorebug(&display, None, false);
+        let rows = scorebug(&display, None, false, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "blackScore"), "3");
@@ -589,7 +674,7 @@ mod tests {
     #[test]
     fn scorebug_with_no_names_resolved_yields_empty_team_columns_not_a_placeholder() {
         let display = display_with(base_snapshot());
-        let rows = scorebug(&display, None, false);
+        let rows = scorebug(&display, None, false, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "blackTeam"), "");
@@ -600,7 +685,7 @@ mod tests {
     fn scorebug_takes_team_names_from_the_portal_directory_dark_and_light_fields() {
         let display = display_with(base_snapshot());
         let team_names = names(Some("AUSTRALIA"), Some("CANADA"), None, None);
-        let rows = scorebug(&display, Some(&team_names), false);
+        let rows = scorebug(&display, Some(&team_names), false, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "blackTeam"), "AUSTRALIA");
@@ -610,7 +695,7 @@ mod tests {
     #[test]
     fn scorebug_with_no_active_timeout_leaves_timeout_columns_empty() {
         let display = display_with(base_snapshot());
-        let rows = scorebug(&display, None, false);
+        let rows = scorebug(&display, None, false, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "timeout"), "");
@@ -624,7 +709,7 @@ mod tests {
             timeout: Some(TimeoutSnapshot::White(75)),
             ..base_snapshot()
         });
-        let rows = scorebug(&display, None, false);
+        let rows = scorebug(&display, None, false, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "timeout"), "White Timeout");
@@ -641,7 +726,7 @@ mod tests {
             timeout: Some(TimeoutSnapshot::PenaltyShot(20)),
             ..base_snapshot()
         });
-        let rows = scorebug(&display, None, false);
+        let rows = scorebug(&display, None, false, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "timeout"), "Penalty Shot");
@@ -652,14 +737,14 @@ mod tests {
         let display = display_with(base_snapshot());
         let team_names = names(Some("AUSTRALIA"), Some("CANADA"), None, None);
 
-        let white_on_right = scorebug(&display, Some(&team_names), true);
+        let white_on_right = scorebug(&display, Some(&team_names), true, true);
         let row = row0(&white_on_right);
         assert_eq!(get(row, "leftTeam"), "AUSTRALIA");
         assert_eq!(get(row, "leftScore"), "3");
         assert_eq!(get(row, "rightTeam"), "CANADA");
         assert_eq!(get(row, "rightScore"), "2");
 
-        let white_on_left = scorebug(&display, Some(&team_names), false);
+        let white_on_left = scorebug(&display, Some(&team_names), false, true);
         let row = row0(&white_on_left);
         assert_eq!(get(row, "leftTeam"), "CANADA");
         assert_eq!(get(row, "leftScore"), "2");
@@ -687,19 +772,168 @@ mod tests {
 
         // The count on /scorebug must be the true 120, not the 100 the /fouls table itself caps
         // out at.
-        let scorebug_rows = scorebug(&display, None, false);
+        let scorebug_rows = scorebug(&display, None, false, true);
         assert_eq!(get(row0(&scorebug_rows), "blackFouls"), "120");
 
         let rosters = Rosters::default();
-        let fouls_rows = fouls(&display, &rosters);
+        let fouls_rows = fouls(&display, &rosters, true);
         assert_eq!(fouls_rows.len(), MAX_EVENT_ROWS);
+    }
+
+    #[test]
+    fn scorebug_equal_foul_total_is_independent_of_the_per_team_totals_and_counts_beyond_truncation()
+     {
+        // A game with 120 equal (both-at-fault) fouls and none recorded against either team on
+        // its own. If `equalFouls` were derived from -- or confused with -- `blackFouls`/
+        // `whiteFouls`, or only counted whatever `/fouls` itself carries, this would catch it:
+        // both per-team totals must stay "0" while `equalFouls` reports the true, untruncated
+        // 120, the same way `blackFouls`/`whiteFouls` already do for their own buckets (see
+        // `scorebug_counts_report_the_true_total_even_when_the_fouls_table_has_been_truncated`
+        // above).
+        let equal_fouls: Vec<InfractionSnapshot> = (0..120)
+            .map(|n| InfractionSnapshot {
+                player_number: Some((n % 15) + 1),
+                infraction: Infraction::Unknown,
+            })
+            .collect();
+        let snapshot = GameSnapshot {
+            fouls: uwh_common::bundles::OptColorBundle {
+                black: Vec::new(),
+                equal: equal_fouls,
+                white: Vec::new(),
+            },
+            ..base_snapshot()
+        };
+        let display = display_with(snapshot);
+        let rows = scorebug(&display, None, false, true);
+        let row = row0(&rows);
+
+        assert_eq!(get(row, "equalFouls"), "120");
+        assert_eq!(get(row, "blackFouls"), "0");
+        assert_eq!(get(row, "whiteFouls"), "0");
+    }
+
+    // ---------------------------------------------------------------- the `connected` column
+
+    #[test]
+    fn every_scorebug_row_carries_connected_true_when_connected() {
+        let display = display_with(base_snapshot());
+        let rows = scorebug(&display, None, false, true);
+        assert_eq!(get(row0(&rows), "connected"), "true");
+    }
+
+    #[test]
+    fn scorebug_blanks_every_value_but_connected_when_disconnected() {
+        let display = display_with(base_snapshot());
+        let team_names = names(Some("AUSTRALIA"), Some("CANADA"), None, None);
+        let rows = scorebug(&display, Some(&team_names), false, false);
+        let row = row0(&rows);
+
+        assert_eq!(get(row, "connected"), "false");
+        for column in row.keys() {
+            if column != "connected" {
+                assert_eq!(
+                    get(row, column),
+                    "",
+                    "column {column:?} should be blank while disconnected"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn next_game_blanks_every_value_but_connected_when_disconnected() {
+        let team_names = names(Some("SYDNEY KINGS A"), Some("BRISBANE A"), Some("2"), None);
+        let rows = next_game(Some(&team_names), false);
+        let row = row0(&rows);
+
+        assert_eq!(get(row, "connected"), "false");
+        assert_eq!(get(row, "blackTeam"), "");
+        assert_eq!(get(row, "whiteTeam"), "");
+        assert_eq!(get(row, "court"), "");
+    }
+
+    #[test]
+    fn penalties_blanks_every_row_but_keeps_the_connected_column_when_disconnected() {
+        let snapshot = GameSnapshot {
+            penalties: BlackWhiteBundle {
+                black: vec![penalty(7, PenaltyTime::Seconds(102))],
+                white: Vec::new(),
+            },
+            ..base_snapshot()
+        };
+        let display = display_with(snapshot);
+        let rows = penalties(&display, &Rosters::default(), false);
+
+        assert_eq!(rows.len(), PENALTY_ROWS);
+        for row in &rows {
+            assert_eq!(get(row, "connected"), "false");
+            for column in PENALTY_COLUMNS {
+                assert_eq!(
+                    get(row, column),
+                    "",
+                    "column {column:?} should be blank while disconnected, including on the row \
+                     that had a real penalty when connected"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fouls_blanks_every_row_but_keeps_the_connected_column_when_disconnected() {
+        let black = vec![infraction(Some(3))];
+        let display = display_with(fouls_snapshot(black, Vec::new(), Vec::new()));
+        let rows = fouls(&display, &Rosters::default(), false);
+
+        assert_eq!(rows.len(), MIN_EVENT_ROWS);
+        for row in &rows {
+            assert_eq!(get(row, "connected"), "false");
+            for column in EVENT_COLUMNS {
+                assert_eq!(get(row, column), "");
+            }
+        }
+    }
+
+    #[test]
+    fn warnings_blanks_every_row_but_keeps_the_connected_column_when_disconnected() {
+        let black = vec![infraction(Some(6))];
+        let display = display_with(warnings_snapshot(black, Vec::new()));
+        let rows = warnings(&display, &Rosters::default(), false);
+
+        assert_eq!(rows.len(), MIN_EVENT_ROWS);
+        for row in &rows {
+            assert_eq!(get(row, "connected"), "false");
+            for column in EVENT_COLUMNS {
+                assert_eq!(get(row, column), "");
+            }
+        }
+    }
+
+    #[test]
+    fn a_blank_padding_row_still_carries_the_connected_column_when_connected() {
+        // `blank_row` (used for padding) never sets `connected` itself -- `finish_table` adds it
+        // afterward, uniformly, to every row including padding ones. If that step only touched
+        // populated rows, a title bound to a padding row's `connected` column would read a
+        // missing key instead of "true".
+        let display = display_with(base_snapshot()); // no active penalties at all
+        let rows = penalties(&display, &Rosters::default(), true);
+
+        assert_eq!(rows.len(), PENALTY_ROWS);
+        for row in &rows {
+            assert_eq!(get(row, "connected"), "true");
+            assert_eq!(
+                get(row, "number"),
+                "",
+                "sanity check: this row is genuinely blank"
+            );
+        }
     }
 
     // ---------------------------------------------------------------- next_game
 
     #[test]
     fn next_game_with_nothing_resolved_yields_every_column_empty() {
-        let rows = next_game(None);
+        let rows = next_game(None, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "blackTeam"), "");
@@ -716,7 +950,7 @@ mod tests {
             Some("2"),
             Some("2026-08-01T09:30:00+10:00"),
         );
-        let rows = next_game(Some(&team_names));
+        let rows = next_game(Some(&team_names), true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "blackTeam"), "SYDNEY KINGS A");
@@ -731,7 +965,7 @@ mod tests {
     #[test]
     fn next_game_with_no_court_or_start_time_yields_empty_strings_not_a_placeholder() {
         let team_names = names(Some("SYDNEY KINGS A"), Some("BRISBANE A"), None, None);
-        let rows = next_game(Some(&team_names));
+        let rows = next_game(Some(&team_names), true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "court"), "");
@@ -741,7 +975,7 @@ mod tests {
     #[test]
     fn next_game_with_an_unparseable_start_time_yields_an_empty_string_not_a_panic() {
         let team_names = names(None, None, None, Some("not a real timestamp"));
-        let rows = next_game(Some(&team_names));
+        let rows = next_game(Some(&team_names), true);
         assert_eq!(get(row0(&rows), "startTime"), "");
     }
 
@@ -758,7 +992,7 @@ mod tests {
     #[test]
     fn no_penalties_still_returns_the_full_row_count_every_value_empty() {
         let display = display_with(base_snapshot());
-        let rows = penalties(&display, &Rosters::default());
+        let rows = penalties(&display, &Rosters::default(), true);
 
         assert_eq!(rows.len(), PENALTY_ROWS);
         for row in &rows {
@@ -778,7 +1012,7 @@ mod tests {
             ..base_snapshot()
         };
         let display = display_with(snapshot);
-        let rows = penalties(&display, &Rosters::default());
+        let rows = penalties(&display, &Rosters::default(), true);
 
         assert_eq!(rows.len(), PENALTY_ROWS);
         assert_ne!(get(&rows[0], "number"), "");
@@ -800,7 +1034,7 @@ mod tests {
             ..base_snapshot()
         };
         let display = display_with(snapshot);
-        let rows = penalties(&display, &Rosters::default());
+        let rows = penalties(&display, &Rosters::default(), true);
         let row = &rows[0];
 
         assert_eq!(get(row, "time"), "TD");
@@ -817,7 +1051,7 @@ mod tests {
             ..base_snapshot()
         };
         let display = display_with(snapshot);
-        let rows = penalties(&display, &Rosters::default());
+        let rows = penalties(&display, &Rosters::default(), true);
         let row = &rows[0];
 
         assert_eq!(get(row, "number"), "42");
@@ -840,7 +1074,7 @@ mod tests {
             ..base_snapshot()
         };
         let display = display_with(snapshot);
-        let rows = penalties(&display, &rosters);
+        let rows = penalties(&display, &rosters, true);
         let row = &rows[0];
 
         assert_eq!(get(row, "team"), "BLACK");
@@ -862,7 +1096,7 @@ mod tests {
             ..base_snapshot()
         };
         let display = display_with(snapshot);
-        let rows = penalties(&display, &Rosters::default());
+        let rows = penalties(&display, &Rosters::default(), true);
 
         // TD (cap 2) first, then the 90s penalty (cap 3), then the 30s penalty (cap 1).
         assert_eq!(get(&rows[0], "number"), "2");
@@ -886,7 +1120,7 @@ mod tests {
             ..base_snapshot()
         };
         let display = display_with(snapshot);
-        let rows = penalties(&display, &Rosters::default());
+        let rows = penalties(&display, &Rosters::default(), true);
 
         assert_eq!(rows.len(), PENALTY_ROWS);
         // The longest-remaining ten (cap numbers 3-12) survive; the two shortest (1, 2) are the
@@ -924,7 +1158,7 @@ mod tests {
     #[test]
     fn fouls_with_no_entries_returns_exactly_ten_blank_rows() {
         let display = display_with(fouls_snapshot(Vec::new(), Vec::new(), Vec::new()));
-        let rows = fouls(&display, &Rosters::default());
+        let rows = fouls(&display, &Rosters::default(), true);
 
         assert_eq!(rows.len(), MIN_EVENT_ROWS);
         for row in &rows {
@@ -942,7 +1176,7 @@ mod tests {
             infraction(Some(3)),
         ];
         let display = display_with(fouls_snapshot(black, Vec::new(), Vec::new()));
-        let rows = fouls(&display, &Rosters::default());
+        let rows = fouls(&display, &Rosters::default(), true);
 
         assert_eq!(rows.len(), MIN_EVENT_ROWS);
         let populated = rows
@@ -956,7 +1190,7 @@ mod tests {
     fn fouls_with_twenty_five_entries_returns_exactly_twenty_five_rows_none_blank() {
         let black: Vec<InfractionSnapshot> = (1..=25).map(|n| infraction(Some(n))).collect();
         let display = display_with(fouls_snapshot(black, Vec::new(), Vec::new()));
-        let rows = fouls(&display, &Rosters::default());
+        let rows = fouls(&display, &Rosters::default(), true);
 
         assert_eq!(rows.len(), 25);
         for row in &rows {
@@ -969,7 +1203,7 @@ mod tests {
         // Cap numbers double as a sequence marker: 1 is oldest (pushed first), 150 is newest.
         let black: Vec<InfractionSnapshot> = (1..=150u8).map(|n| infraction(Some(n))).collect();
         let display = display_with(fouls_snapshot(black, Vec::new(), Vec::new()));
-        let rows = fouls(&display, &Rosters::default());
+        let rows = fouls(&display, &Rosters::default(), true);
 
         assert_eq!(rows.len(), MAX_EVENT_ROWS);
         // Newest-first: row 0 is the very last one pushed (150), row 99 is the oldest survivor
@@ -992,7 +1226,7 @@ mod tests {
     fn the_equal_foul_bucket_appears_in_the_fouls_table_and_is_not_dropped() {
         let equal = vec![infraction(Some(5))];
         let display = display_with(fouls_snapshot(Vec::new(), Vec::new(), equal));
-        let rows = fouls(&display, &Rosters::default());
+        let rows = fouls(&display, &Rosters::default(), true);
 
         let equal_row = rows
             .iter()
@@ -1005,7 +1239,7 @@ mod tests {
     fn a_foul_with_no_player_number_renders_an_empty_number_and_player_not_a_placeholder() {
         let black = vec![infraction(None)];
         let display = display_with(fouls_snapshot(black, Vec::new(), Vec::new()));
-        let rows = fouls(&display, &Rosters::default());
+        let rows = fouls(&display, &Rosters::default(), true);
         let populated = rows
             .iter()
             .find(|row| get(row, "team") == "BLACK")
@@ -1023,7 +1257,7 @@ mod tests {
         let black = vec![infraction(Some(1)), infraction(Some(2))];
         let white = vec![infraction(Some(3))];
         let display = display_with(fouls_snapshot(black, white, Vec::new()));
-        let rows = fouls(&display, &Rosters::default());
+        let rows = fouls(&display, &Rosters::default(), true);
 
         let order: Vec<&str> = rows
             .iter()
@@ -1045,7 +1279,7 @@ mod tests {
         let black: Vec<InfractionSnapshot> = (1..=80u8).map(|n| infraction(Some(n))).collect();
         let white: Vec<InfractionSnapshot> = (101..=180u8).map(|n| infraction(Some(n))).collect();
         let display = display_with(fouls_snapshot(black, white, Vec::new()));
-        let rows = fouls(&display, &Rosters::default());
+        let rows = fouls(&display, &Rosters::default(), true);
 
         assert_eq!(rows.len(), MAX_EVENT_ROWS);
 
@@ -1124,7 +1358,7 @@ mod tests {
     #[test]
     fn warnings_with_no_entries_returns_exactly_ten_blank_rows() {
         let display = display_with(warnings_snapshot(Vec::new(), Vec::new()));
-        let rows = warnings(&display, &Rosters::default());
+        let rows = warnings(&display, &Rosters::default(), true);
 
         assert_eq!(rows.len(), MIN_EVENT_ROWS);
         for row in &rows {
@@ -1138,7 +1372,7 @@ mod tests {
     fn warnings_with_twenty_five_entries_returns_exactly_twenty_five_rows_none_blank() {
         let black: Vec<InfractionSnapshot> = (1..=25).map(|n| infraction(Some(n))).collect();
         let display = display_with(warnings_snapshot(black, Vec::new()));
-        let rows = warnings(&display, &Rosters::default());
+        let rows = warnings(&display, &Rosters::default(), true);
 
         assert_eq!(rows.len(), 25);
         for row in &rows {
@@ -1150,7 +1384,7 @@ mod tests {
     fn warnings_beyond_one_hundred_entries_keeps_the_newest_one_hundred() {
         let black: Vec<InfractionSnapshot> = (1..=130u8).map(|n| infraction(Some(n))).collect();
         let display = display_with(warnings_snapshot(black, Vec::new()));
-        let rows = warnings(&display, &Rosters::default());
+        let rows = warnings(&display, &Rosters::default(), true);
 
         assert_eq!(rows.len(), MAX_EVENT_ROWS);
         assert_eq!(get(&rows[0], "number"), "130");
@@ -1166,7 +1400,7 @@ mod tests {
             white: white_roster,
         };
         let display = display_with(warnings_snapshot(Vec::new(), vec![infraction(Some(11))]));
-        let rows = warnings(&display, &rosters);
+        let rows = warnings(&display, &rosters, true);
         let row = rows
             .iter()
             .find(|row| get(row, "team") == "WHITE")

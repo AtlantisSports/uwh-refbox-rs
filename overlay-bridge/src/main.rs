@@ -54,13 +54,15 @@ async fn main() {
         cli.refbox_host, cli.refbox_port
     );
 
+    let state = Arc::new(AppState::new(cli.white_on_right));
+
     let (tx, rx) = mpsc::unbounded_channel();
     tokio::spawn(Supervisor::run(
         (cli.refbox_host.clone(), cli.refbox_port),
         tx,
+        state.connection_handle(),
     ));
 
-    let state = Arc::new(AppState::new(cli.white_on_right));
     let refresh_notify = Arc::new(Notify::new());
     let client = Client::new();
 

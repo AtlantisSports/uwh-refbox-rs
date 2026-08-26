@@ -39,6 +39,23 @@ differences from the original sketch, made deliberately during implementation an
   G2 below. This is the one shape change that isn't purely additive, and it matters to anyone
   binding a title to a row past 10.
 
+**Status update (Task 10):** the design reversed §4.6 of the companion design doc — the bridge no
+longer keeps the clock counting locally through a dropout; it now shows only what the refbox
+actually sent, or nothing at all. Two consequences for what is served, both additive:
+
+- **Every table gained a `connected` column, on every row** — `"true"` or `"false"`. It reflects
+  whether the bridge's connection to the refbox is alive right now, judged by the connection
+  itself (a successful connect, a read error, an end of stream, or a keepalive failure) — **never**
+  by how long it has been since a message arrived, because the refbox is legitimately silent for
+  ~25s every time the clock is stopped. **When disconnected, every other value in every row is
+  also blanked to `""`** — the row keeps its shape, but nothing except `connected` is a value the
+  refbox actually sent. Bind a title's visibility to `connected` directly for the primary
+  mechanism (hide the whole graphic); the blanking is the backstop for a title that was never
+  wired to it, so it degrades to empty text instead of showing stale numbers.
+- **`/scorebug` gained `equalFouls`** — the both-at-fault foul count, independent of `blackFouls`
+  and `whiteFouls` (a foul recorded as equal fault is never counted as either team's own). Like
+  those two, it is the true, untruncated total, not limited to whatever `/fouls` itself carries.
+
 `/scorebug` — always exactly one row:
 
 ```json
@@ -61,7 +78,9 @@ differences from the original sketch, made deliberately during implementation an
     "blackFouls": "4",
     "whiteFouls": "2",
     "blackWarnings": "1",
-    "whiteWarnings": "0"
+    "whiteWarnings": "0",
+    "equalFouls": "1",
+    "connected": "true"
   }
 ]
 ```
@@ -72,25 +91,27 @@ teams, reordered by the operator's side-of-pool setting (whichever physical side
 white on) — the example above has white on the left, i.e. `white_on_right = false`. Bind to
 black/white if a title only ever needs to say "the black team"; bind to left/right if the title's
 physical position on screen needs to match the physical side of the pool, however the venue is
-set up. `blackFouls`/`whiteFouls`/`blackWarnings`/`whiteWarnings` are the *true* total recorded
-for that team — independent of how many rows `/fouls` and `/warnings` themselves carry (see those
-tables' entries below), so a title can show a running count even when the row-carrying table has
-been truncated.
+set up. `blackFouls`/`whiteFouls`/`blackWarnings`/`whiteWarnings`/`equalFouls` are the *true*
+totals recorded — independent of how many rows `/fouls` and `/warnings` themselves carry (see
+those tables' entries below), so a title can show a running count even when the row-carrying
+table has been truncated. `equalFouls` counts a both-at-fault foul, which is never also counted
+in `blackFouls` or `whiteFouls`. `connected` is covered under "When the connection is lost"
+below — every table carries it, not only `/scorebug`.
 
 `/penalties` — **always exactly ten rows**, blank-padded (see "Gotchas", G2):
 
 ```json
 [
-  {"team": "BLACK", "number": "7",  "player": "SMITH",  "time": "1:42", "timeSeconds": "102", "infraction": "Stick Foul"},
-  {"team": "WHITE", "number": "3",  "player": "NGUYEN", "time": "TD",   "timeSeconds": "",    "infraction": "Free Arm"},
-  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": ""},
-  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": ""},
-  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": ""},
-  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": ""},
-  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": ""},
-  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": ""},
-  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": ""},
-  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": ""}
+  {"team": "BLACK", "number": "7",  "player": "SMITH",  "time": "1:42", "timeSeconds": "102", "infraction": "Stick Foul",  "connected": "true"},
+  {"team": "WHITE", "number": "3",  "player": "NGUYEN", "time": "TD",   "timeSeconds": "",    "infraction": "Free Arm",    "connected": "true"},
+  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": "",            "connected": "true"},
+  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": "",            "connected": "true"},
+  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": "",            "connected": "true"},
+  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": "",            "connected": "true"},
+  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": "",            "connected": "true"},
+  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": "",            "connected": "true"},
+  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": "",            "connected": "true"},
+  {"team": "",      "number": "",   "player": "",       "time": "",     "timeSeconds": "",    "infraction": "",            "connected": "true"}
 ]
 ```
 
@@ -104,10 +125,10 @@ table never grows past it.
 
 ```json
 [
-  {"team": "WHITE", "number": "3", "player": "NGUYEN", "infraction": "Obstruction"},
-  {"team": "BLACK", "number": "7", "player": "SMITH",  "infraction": "Out Of Bounds"},
-  {"team": "EQUAL", "number": "5", "player": "",       "infraction": "Delay Of Game"},
-  {"team": "",      "number": "",  "player": "",       "infraction": ""}
+  {"team": "WHITE", "number": "3", "player": "NGUYEN", "infraction": "Obstruction",   "connected": "true"},
+  {"team": "BLACK", "number": "7", "player": "SMITH",  "infraction": "Out Of Bounds", "connected": "true"},
+  {"team": "EQUAL", "number": "5", "player": "",       "infraction": "Delay Of Game", "connected": "true"},
+  {"team": "",      "number": "",  "player": "",       "infraction": "",              "connected": "true"}
 ]
 ```
 
@@ -130,7 +151,8 @@ bucket): `team`, `number`, `player`, `infraction`, same row-count rule.
     "blackTeam": "SYDNEY KINGS A",
     "whiteTeam": "BRISBANE A",
     "court": "2",
-    "startTime": "09:30"
+    "startTime": "09:30",
+    "connected": "true"
   }
 ]
 ```
@@ -146,6 +168,35 @@ placeholder.
 the bridge always serves strings; whether vMix would also accept native JSON numbers is still an
 open question for the live run, but is a preference at most, not something the bridge needs to
 revisit.
+
+---
+
+## When the connection is lost
+
+**Every table carries a `connected` column** (`"true"` or `"false"`), on every row — see the
+`/scorebug` and `/penalties` examples above. It reflects whether the bridge's connection to the
+refbox is alive right now, judged by the connection itself — a successful connect, a read error,
+an end of stream, or a keepalive failure — **never** by how long it has been since a message
+arrived. That distinction matters because the refbox is legitimately silent for around 25 seconds
+every time the clock is stopped; a rule based on message timing would hide the graphic every time
+a referee pauses the clock, which is exactly the trap this design avoids (see the design doc's
+§4.6, reversed 2026-08-26).
+
+**Recommended vMix setup:** bind a title's own visibility to `connected` (Title Editor → the
+title's visibility/animation controls, not a text field) so the whole graphic disappears the
+instant the refbox goes unreachable, rather than showing frozen numbers. This is the primary
+mechanism, Eric's stated preference.
+
+**The backstop, for any title that skips that step:** while disconnected, every column except
+`connected` itself is blanked to `""` in every row of every table — the row keeps its shape (every
+key still present), but nothing else is a value the refbox actually sent. A title bound to
+`blackScore` but never wired to `connected` shows empty text instead of a frozen score, rather
+than looking like a working scorebug that has simply stopped updating.
+
+**What this means for the clock specifically:** the bridge no longer keeps counting locally
+through a dropout. While connected but quiet (the normal case whenever the clock is stopped), the
+clock shown is the exact last value the refbox sent — not stale, because the game itself is
+stopped. Only on an actual disconnection does the clock (and everything else) blank.
 
 ---
 

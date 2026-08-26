@@ -115,9 +115,15 @@ jobs:
       working-directory: wireless-remote
     - run: cargo test --all
     # The vendored `iced_winit` is excluded from the workspace, so `cargo test
-    # --all` does not reach it. Run its tests explicitly — they cover the touch
-    # cursor fix. See vendor/iced_winit/VENDORED.md.
-    - run: cargo test --manifest-path vendor/iced_winit/Cargo.toml
+    # --all` does not reach it. Run its tests explicitly so a future divergence
+    # there (see vendor/iced_winit/VENDORED.md) is covered. `--locked` uses the
+    # committed vendor/iced_winit/Cargo.lock so this crate's independent
+    # dependency resolution stays deterministic. Linux-only: the crate's default
+    # features are X11/Wayland-specific and the logic under test is
+    # platform-independent, so running it on windows-latest/macOS-latest too
+    # would buy nothing.
+    - if: ${{ matrix.os == 'ubuntu-latest' }}
+      run: cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked
 
   build-ndf:
     name: Test debug without default features

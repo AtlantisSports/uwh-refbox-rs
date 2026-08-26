@@ -5,7 +5,7 @@ use crate::graphics::Viewport;
 use crate::program::{self, Program};
 use std::fmt::{Debug, Formatter};
 
-use winit::event::{Touch, WindowEvent};
+use winit::event::WindowEvent;
 use winit::window::Window;
 
 /// The state of a multi-windowed [`Program`].
@@ -143,6 +143,8 @@ where
         event: &WindowEvent,
         _debug: &mut crate::runtime::Debug,
     ) {
+        self.cursor.handle(event);
+
         match event {
             WindowEvent::Resized(new_size) => {
                 let size = Size::new(new_size.width, new_size.height);
@@ -166,18 +168,6 @@ where
                 );
 
                 self.viewport_version = self.viewport_version.wrapping_add(1);
-            }
-            WindowEvent::CursorMoved { position, .. } => {
-                self.cursor.moved(*position);
-            }
-            WindowEvent::Touch(Touch { location, .. }) => {
-                self.cursor.touched(*location);
-            }
-            WindowEvent::CursorEntered { .. } => {
-                self.cursor.entered();
-            }
-            WindowEvent::CursorLeft { .. } => {
-                self.cursor.left();
             }
             WindowEvent::ModifiersChanged(new_modifiers) => {
                 self.modifiers = new_modifiers.state();

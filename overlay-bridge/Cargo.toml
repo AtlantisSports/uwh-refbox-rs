@@ -14,10 +14,6 @@ clap = { version = "4", features = ["derive"] }
 # exactly this (`refbox/Cargo.toml`'s own `confy = "1.0"`), so this does not add a new library to
 # the workspace's dependency graph.
 confy = "1.0"
-# Resolves the OS-standard per-user config directory `confy` stores into. Already in the
-# workspace via `refbox/Cargo.toml`'s own `directories = "6"`, and is `confy`'s own dependency
-# regardless.
-directories = "6"
 futures = "0.3"
 # Same version and feature set as `overlay`'s own use of reqwest (it talks to the same portal
 # endpoints), so this does not add a new library to the workspace's dependency graph -- it is

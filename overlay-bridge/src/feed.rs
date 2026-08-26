@@ -28,11 +28,11 @@ use std::{
     fmt, io,
     pin::Pin,
     sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicU8, Ordering},
+        Arc, PoisonError, RwLock,
+        atomic::{AtomicBool, Ordering},
     },
     task::{Context, Poll},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use futures::{Stream, StreamExt};
@@ -285,48 +285,103 @@ impl Connection {
     }
 }
 
-/// Encodes [`Connection`] as a single byte for [`ConnectionState`]'s atomic storage.
-const NEVER_CONNECTED: u8 = 0;
-const CONNECTED: u8 = 1;
-const DISCONNECTED: u8 = 2;
-
-/// A cheaply cloneable handle to the bridge's live [`Connection`] state, shared between
-/// [`Supervisor::run`] (the only thing that ever writes it) and the HTTP server (which reads it,
-/// via [`ConnectionState::get`], to decide whether to serve real values or blank ones). Backed by
-/// an atomic rather than a lock: `Connection` is a small `Copy` value, and there is never a
-/// multi-step update that needs to be seen atomically as a whole.
+/// One consistent read of both [`Connection`] and, when disconnected, how long it has been --
+/// returned together, from a single lock acquisition, specifically so the two can never be
+/// observed to disagree.
 ///
-/// Also carries whether TCP keepalive is actually configured right now (Task 7) -- a second,
-/// independent atomic rather than folded into `Connection` itself, because it answers a different
+/// **This exists because they used to be able to disagree.** Task 7's first version tracked the
+/// drop duration in a *separate* background-polled watcher, reading `ConnectionState::get()` on
+/// its own timer independently of whatever reads `ConnectionState` for the connection flag
+/// itself. A caller (`server.rs`) that read the connection flag and the duration as two separate
+/// calls could observe them from two different moments: on reconnect, a window of up to the
+/// watcher's poll interval existed where `get()` already read `Connected` but the watcher had not
+/// yet noticed and cleared its own stale duration -- a served page showing a green "Connected"
+/// indicator above a red "Down for 42s" line. Review caught it (Task 7 fix round 1). Gating the
+/// duration's *display* on the connection flag at the point of use would only have hidden the
+/// symptom in the HTML page while leaving `/status.json`'s raw `disconnectedForSeconds` field
+/// just as capable of disagreeing with `contact` -- the two pieces would still come from two
+/// independently-timed sources, still capable of disagreeing, just less visibly so. The actual
+/// fix is this type: `disconnected_for` is now recorded *at the exact moment*
+/// [`ConnectionState::set_disconnected`] is called, in the same lock acquisition that changes
+/// `Connection` itself, and read back through [`ConnectionState::snapshot`] in one more single
+/// acquisition -- so a caller can no longer construct a comparison between two different
+/// moments in time, because there is only ever one read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConnectionStatus {
+    pub connection: Connection,
+    /// How long the connection has been continuously disconnected, or `None` if it is not
+    /// currently disconnected -- this covers both `Connected` and `NeverConnected` alike, because
+    /// `NeverConnected` has no drop instant to measure from (see [`Connection`]'s doc).
+    pub disconnected_for: Option<Duration>,
+}
+
+/// [`ConnectionState`]'s internal storage: [`Connection`] and, when it is `Disconnected`, exactly
+/// when that happened -- updated together, under one lock, by [`ConnectionState::set_connected`]
+/// and [`ConnectionState::set_disconnected`]. See [`ConnectionStatus`]'s doc for why this is one
+/// struct behind one lock rather than two independently-updated pieces of state.
+#[derive(Debug, Clone, Copy)]
+struct ConnectionInner {
+    connection: Connection,
+    disconnected_at: Option<Instant>,
+}
+
+/// A cheaply cloneable handle to the bridge's live [`Connection`] state (plus, since Task 7, when
+/// it last dropped), shared between [`Supervisor::run`] (the only thing that ever writes it) and
+/// the HTTP server (which reads it, via [`ConnectionState::get`]/[`ConnectionState::snapshot`], to
+/// decide whether to serve real values or blank ones, and how long it's been down). Backed by a
+/// lock rather than a bare atomic: `Connection` alone was a small `Copy` value with no multi-step
+/// update to make atomic, but pairing it with *when* it changed (see [`ConnectionStatus`]) is
+/// exactly a multi-step update that must be seen as a whole, so a lock is what actually makes
+/// that true rather than merely convenient.
+///
+/// Also carries whether TCP keepalive is actually configured right now (Task 7) -- a separate,
+/// independent atomic, not folded into [`ConnectionInner`], because it answers a different
 /// question ("is the mechanism that detects a dead refbox running at all") from the one
-/// `Connection` answers ("is the refbox reachable right now"). See
-/// [`ConnectionState::keepalive_active`]'s doc for why an operator needs to see this.
+/// `Connection` answers ("is the refbox reachable right now"), and nothing ever needs to read it
+/// paired atomically with the other two -- see [`ConnectionState::keepalive_active`]'s doc for why
+/// an operator needs to see it at all.
 #[derive(Debug, Clone)]
 pub struct ConnectionState {
-    state: Arc<AtomicU8>,
+    inner: Arc<RwLock<ConnectionInner>>,
     keepalive_active: Arc<AtomicBool>,
 }
 
 impl ConnectionState {
-    /// A fresh handle reporting [`Connection::NeverConnected`] and `keepalive_active() == true`,
-    /// for the bridge's startup state before any connection attempt has been made. Starting
-    /// `true` (rather than some third "unknown" state) matches this crate's no-chicken-and-egg
-    /// principle for the status page: `configure_keepalive` fails to apply only in rare
-    /// platform/network edge cases (see its own doc), so assuming success is more useful to show
-    /// before the first attempt than an "unknown" a real operator would have to interpret.
+    /// A fresh handle reporting [`Connection::NeverConnected`] (with no drop instant -- there is
+    /// nothing to measure from) and `keepalive_active() == true`, for the bridge's startup state
+    /// before any connection attempt has been made. Starting keepalive `true` (rather than some
+    /// third "unknown" state) matches this crate's no-chicken-and-egg principle for the status
+    /// page: `configure_keepalive` fails to apply only in rare platform/network edge cases (see
+    /// its own doc), so assuming success is more useful to show before the first attempt than an
+    /// "unknown" a real operator would have to interpret.
     pub fn new() -> Self {
         Self {
-            state: Arc::new(AtomicU8::new(NEVER_CONNECTED)),
+            inner: Arc::new(RwLock::new(ConnectionInner {
+                connection: Connection::NeverConnected,
+                disconnected_at: None,
+            })),
             keepalive_active: Arc::new(AtomicBool::new(true)),
         }
     }
 
-    /// The connection state right now.
+    /// The connection state right now. Equivalent to `self.snapshot().connection`, kept as its
+    /// own method because most callers (every table handler, most of this crate's own tests) only
+    /// ever need this half of [`ConnectionStatus`] and have no duration to keep consistent with
+    /// it.
     pub fn get(&self) -> Connection {
-        match self.state.load(Ordering::SeqCst) {
-            CONNECTED => Connection::Connected,
-            DISCONNECTED => Connection::Disconnected,
-            _ => Connection::NeverConnected,
+        self.snapshot().connection
+    }
+
+    /// [`Connection`] and, when disconnected, how long it has been -- read together from a single
+    /// lock acquisition. Use this (never `get()` plus a separately-tracked duration) anywhere both
+    /// pieces are served or displayed together, such as `/status.json` and the operator status
+    /// page -- see [`ConnectionStatus`]'s doc for why that distinction is the actual fix for a
+    /// real bug this crate shipped once already.
+    pub fn snapshot(&self) -> ConnectionStatus {
+        let inner = self.inner.read().unwrap_or_else(PoisonError::into_inner);
+        ConnectionStatus {
+            connection: inner.connection,
+            disconnected_for: inner.disconnected_at.map(|at| at.elapsed()),
         }
     }
 
@@ -348,14 +403,26 @@ impl ConnectionState {
     /// [`Supervisor::run`]. Visible at the crate level (rather than private to this module) so
     /// `server`'s own tests can drive a table-serving test into the `Connected` state directly,
     /// without needing a real socket for scenarios that have nothing to do with connection
-    /// lifecycle itself.
+    /// lifecycle itself. Clears any previously-recorded drop instant in the same write -- see
+    /// [`ConnectionStatus`]'s doc for why this must happen together with the state change, not as
+    /// a separate step a caller (or a background poller) might observe only later.
     pub(crate) fn set_connected(&self) {
-        self.state.store(CONNECTED, Ordering::SeqCst);
+        let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
+        inner.connection = Connection::Connected;
+        inner.disconnected_at = None;
     }
 
     /// See [`ConnectionState::set_connected`]'s visibility note -- the same reasoning applies.
+    /// Records the drop instant in the same write as the state change (see [`ConnectionStatus`]'s
+    /// doc), and only on the actual transition into `Disconnected` -- a repeated call while
+    /// already disconnected leaves the original instant alone, or the reported duration would
+    /// reset every time this were called rather than growing from the real drop.
     pub(crate) fn set_disconnected(&self) {
-        self.state.store(DISCONNECTED, Ordering::SeqCst);
+        let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
+        if inner.connection != Connection::Disconnected {
+            inner.disconnected_at = Some(Instant::now());
+        }
+        inner.connection = Connection::Disconnected;
     }
 
     /// See [`ConnectionState::set_connected`]'s visibility note -- the same reasoning applies.
@@ -1007,12 +1074,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_successful_connect_leaves_keepalive_active_when_the_os_allows_it() {
+    async fn a_successful_connect_flips_a_previously_unavailable_keepalive_back_to_active() {
         // An end-to-end proof through the real `Supervisor::run` path (rather than poking the
         // setters directly, as the tests above do): on an ordinary CI runner, configuring
         // keepalive on a fresh loopback socket succeeds, so this proves the wiring between
-        // `configure_keepalive`'s success path and `ConnectionState` actually runs, not just that
-        // the setter works in isolation.
+        // `configure_keepalive`'s success path and `ConnectionState` actually runs.
+        //
+        // Starting from `set_keepalive_unavailable()` (not the default) is load-bearing, not
+        // decoration -- see the Task 7 fix report for the full transcript. The flag defaults to
+        // `true`, so a version of this test that never forced it `false` first would pass
+        // identically whether or not `Supervisor::run`'s success arm
+        // (`connection.set_keepalive_active()`) existed at all: deleting that line entirely would
+        // leave the flag exactly where it started (`true`) and this test green regardless. Only
+        // by starting from a known `false` does a passing assertion actually prove the success
+        // arm ran.
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind a local listener");
@@ -1020,6 +1095,12 @@ mod tests {
 
         let (tx, _rx) = mpsc::unbounded_channel();
         let connection = ConnectionState::new();
+        connection.set_keepalive_unavailable();
+        assert!(
+            !connection.keepalive_active(),
+            "test setup should start from a known false, not the default true"
+        );
+
         let handle = tokio::spawn(Supervisor::run(addr, tx, connection.clone()));
 
         let _accepted = listener.accept().await.expect("accept");
@@ -1027,8 +1108,8 @@ mod tests {
 
         assert!(
             connection.keepalive_active(),
-            "a successful connect on a platform that supports TCP keepalive should leave the \
-             flag active"
+            "a successful connect on a platform that supports TCP keepalive should flip an \
+             earlier failure back to active, not merely leave a default alone"
         );
 
         handle.abort();

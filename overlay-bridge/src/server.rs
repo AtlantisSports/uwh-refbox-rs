@@ -88,10 +88,11 @@ use uwh_common::{
 };
 
 use crate::{
-    feed::{Connection, ConnectionState},
+    config,
+    feed::{Connection, ConnectionState, ConnectionStatus},
     portal::{Directory, TeamNames},
     state::{Display, LiveState},
-    status::{self, DisconnectWatch},
+    status,
     tables::{self, Rosters},
 };
 
@@ -114,15 +115,14 @@ pub struct AppState {
     /// The operator's side-of-pool setting (`--white-on-right`, persisted by `config` since
     /// Task 7), fixed for the life of the process.
     white_on_right: bool,
-    /// The bridge's connection to the refbox right now -- see [`Connection`]. The only writer is
+    /// The bridge's connection to the refbox right now, and (since Task 7) when it last dropped --
+    /// see [`Connection`] and [`crate::feed::ConnectionStatus`]. The only writer is
     /// [`crate::feed::Supervisor::run`], via the handle [`AppState::connection_handle`] hands out;
-    /// every route handler reads it (through [`is_connected`]) to decide whether to serve real
-    /// values or blank ones (see `tables`' module doc).
+    /// every route handler reads it (through [`is_connected`] for the flag alone, or
+    /// [`ConnectionState::snapshot`] where the duration is needed too -- see
+    /// [`crate::feed::ConnectionStatus`]'s doc for why those must never be read as two separate
+    /// calls) to decide whether to serve real values or blank ones (see `tables`' module doc).
     connection: ConnectionState,
-    /// Tracks how long `connection` has been continuously disconnected, for `/status.json` and
-    /// `GET /`'s "how long has this been down" figure -- see [`status::DisconnectWatch`]'s own
-    /// doc for why this is a background poll and why it is safe against the trap.
-    disconnect_watch: DisconnectWatch,
     /// The refbox address currently in use -- display-only, for the status page (Task 7). Never
     /// consulted to decide where to connect: that decision is made once, in `main.rs`, before
     /// this state is constructed.
@@ -142,13 +142,11 @@ impl AppState {
     /// empty here -- see [`AppState::with_operator_info`] for why they are attached separately
     /// rather than through this constructor's own signature.
     pub fn new(white_on_right: bool) -> Self {
-        let connection = ConnectionState::new();
         Self {
             live: RwLock::new(LiveState::new(GameSnapshot::default(), Instant::now())),
             directory: RwLock::new(None),
             white_on_right,
-            disconnect_watch: DisconnectWatch::spawn(connection.clone()),
-            connection,
+            connection: ConnectionState::new(),
             refbox_host: String::new(),
             refbox_port: 0,
             court: String::new(),
@@ -237,10 +235,12 @@ async fn get_next_game(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<
 
 async fn get_status(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<String, String>>> {
     let display = current_display(&state);
+    // ONE read of both the connection flag and its duration -- see
+    // `feed::ConnectionStatus`'s doc for why this must never be two separate calls.
+    let status = state.connection.snapshot();
     Json(status_row(
         &display,
-        state.connection.get(),
-        state.disconnect_watch.duration(),
+        status,
         state.connection.keepalive_active(),
     ))
 }
@@ -258,8 +258,9 @@ async fn get_status_page(State(state): State<Arc<AppState>>, headers: HeaderMap)
         .map(|host| format!("http://{host}"));
 
     let data = status::PageData {
-        connection: state.connection.get(),
-        disconnected_for: state.disconnect_watch.duration(),
+        // ONE read of both the connection flag and its duration -- see
+        // `feed::ConnectionStatus`'s doc for why this must never be two separate calls.
+        status: state.connection.snapshot(),
         keepalive_active: state.connection.keepalive_active(),
         event_id: display
             .snapshot
@@ -274,6 +275,7 @@ async fn get_status_page(State(state): State<Arc<AppState>>, headers: HeaderMap)
         white_on_right: state.white_on_right,
         court: state.court.clone(),
         base_url,
+        settings_file: config::settings_location(),
     };
 
     Html(status::render_page(&data))
@@ -368,21 +370,23 @@ fn cap_numbers_for(snapshot: &GameSnapshot, color: Color) -> impl Iterator<Item 
 /// Builds `/status.json`'s single row. See the module doc's "Routes" section for why this shape
 /// is this module's own invention rather than a `tables` shape.
 ///
-/// `contact` is [`Connection`], not the old timing-derived `state::Contact` this replaced (Task
-/// 10) -- see `feed`'s and `status`'s module docs. There is deliberately no `sinceSeconds` (or
-/// similar) column keyed off message arrival: the old one measured silence since the last
+/// `status` is [`ConnectionStatus`], not the old timing-derived `state::Contact` this replaced
+/// (Task 10) -- see `feed`'s and `status`'s module docs. There is deliberately no `sinceSeconds`
+/// (or similar) column keyed off message arrival: the old one measured silence since the last
 /// message, which is exactly the quantity Task 10 established must never be treated as
-/// meaningful (a stopped clock produces long silence legitimately). `disconnected_for` (Task 7,
-/// [`status::DisconnectWatch`]) is different in kind, not just in name: it measures time since
-/// the *connection* dropped, sourced from `feed::Connection` alone, and is `None` unless `contact`
-/// is `Connection::Disconnected` right now.
+/// meaningful (a stopped clock produces long silence legitimately). `disconnectedForSeconds`
+/// below is different in kind, not just in name: it measures time since the *connection*
+/// dropped, and it is taken from the SAME `ConnectionStatus` value as `contact` -- both fields of
+/// this row always come from one [`ConnectionState::snapshot`] call in the caller, never two
+/// separate reads, which is what makes it structurally impossible for this row to ship
+/// `contact: "Live"` beside a nonzero `disconnectedForSeconds` (see [`ConnectionStatus`]'s doc for
+/// the real bug this closes).
 fn status_row(
     display: &Display,
-    contact: Connection,
-    disconnected_for: Option<Duration>,
+    status: ConnectionStatus,
     keepalive_active: bool,
 ) -> Vec<BTreeMap<String, String>> {
-    let contact_text = match contact {
+    let contact_text = match status.connection {
         Connection::NeverConnected => "NeverConnected",
         Connection::Connected => "Live",
         Connection::Disconnected => "Lost",
@@ -400,7 +404,8 @@ fn status_row(
     );
     row.insert(
         "disconnectedForSeconds".to_string(),
-        disconnected_for
+        status
+            .disconnected_for
             .map(|d| d.as_secs().to_string())
             .unwrap_or_default(),
     );
@@ -1415,8 +1420,8 @@ mod tests {
     // ---------------------------------------------------------------- the operator status page
     //
     // `GET /` (status.rs's own module has the pure `render_page` unit tests); these cover the
-    // route's wiring -- what `AppState`'s real fields, `feed::ConnectionState` and
-    // `status::DisconnectWatch` actually produce when driven through real HTTP requests.
+    // route's wiring -- what `AppState`'s real fields and `feed::ConnectionState` actually
+    // produce when driven through real HTTP requests.
 
     #[tokio::test]
     async fn the_status_page_returns_200_html_before_any_refbox_has_ever_connected() {
@@ -1488,12 +1493,13 @@ mod tests {
             "a live connection must never carry a disconnected-for duration"
         );
 
-        // 3. Disconnected: drop the connection and give the duration a moment to become
-        // measurable (`status::DisconnectWatch` polls in the background rather than computing
-        // this synchronously on request -- see its module doc).
+        // 3. Disconnected: drop the connection. No extra wait beyond the connection state
+        // transition itself is needed for the duration to be measurable -- `ConnectionState`
+        // records the drop instant in the same update as the state change (Task 7 review,
+        // Important 1: this used to require a background poller's catch-up window, which is
+        // exactly the two-source race that was fixed).
         drop(accepted);
         wait_for_connection(&state, Connection::Disconnected).await;
-        tokio::time::sleep(Duration::from_millis(500)).await;
 
         let disconnected = get_json(addr, "/status.json").await;
         assert_eq!(disconnected[0]["contact"].as_str(), Some("Lost"));

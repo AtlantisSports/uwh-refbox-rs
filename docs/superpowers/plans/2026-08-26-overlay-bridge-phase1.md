@@ -637,7 +637,13 @@ The walkthrough Eric runs, from spec §8. Steps 7 and 8 are the whole design in 
 
 1. Start the bridge; open its status page.
 2. It lists refboxes found, each labelled with the game on it. Pick the court.
-3. Green indicator, "last heard from: just now", vMix addresses shown.
+3. Green indicator reading "Connected", the current game filled in under "Current game", and the
+   vMix addresses listed.
+   *There is deliberately no "last heard from" or "last seen" line on the page, and there must
+   never be one: a refbox with a stopped clock sends nothing for around 25 seconds at a time, so
+   silence never means disconnected. The page reports the connection itself — "Connected",
+   "Disconnected", "Never connected to a refbox yet" — and the "Down for" time is measured from
+   the moment the connection dropped, not from the last data.*
 4. In vMix, add a Data Source pointing at `/scorebug`; bind a title to team names, scores, clock.
 5. Score a goal on the refbox — the bug updates.
 6. Issue a penalty — it appears with a countdown and the player's name.

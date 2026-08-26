@@ -8,4 +8,5 @@
 //! pulls everything else from here.
 
 pub mod feed;
+pub mod portal;
 pub mod state;

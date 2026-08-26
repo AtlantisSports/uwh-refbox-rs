@@ -364,13 +364,23 @@ Walked by Eric, on real hardware:
 
 1. Start the bridge on the streaming PC; open its status page.
 2. It lists refboxes found, each labelled with the game on it. Pick the court.
-3. Indicator green, "last heard from: just now", vMix addresses shown.
+3. Green indicator reading "Connected", the current game filled in under "Current game", and the
+   vMix addresses listed.
+   *There is deliberately no "last heard from" or "last seen" line on the page, and there must
+   never be one: a refbox with a stopped clock sends nothing for around 25 seconds at a time, so
+   silence never means disconnected. The page reports the connection itself — "Connected",
+   "Disconnected", "Never connected to a refbox yet" — and the "Down for" time is measured from
+   the moment the connection dropped, not from the last data.*
 4. In vMix, add a Data Source pointing at `/scorebug`; bind a title to team names, scores, clock.
 5. Score a goal on the refbox — the bug updates.
 6. Issue a penalty — it appears with a countdown and the player's name, matching the overlay.
-7. **Unplug the refbox's network mid-half** — the clock keeps counting on screen; the status page
-   goes red with time since last contact. Reconnect — the clock corrects silently.
-8. **Stop the clock on the refbox normally** — the clock holds; the status page stays green.
+7. **Unplug the refbox's network mid-half** — within ten to fifteen seconds the graphic stops
+   displaying entirely, and the status page goes red showing how long it has been down.
+   Reconnect — the graphic returns with real values. At no point does it show a time the refbox
+   did not send.
+8. **Stop the clock on the refbox normally** — the graphic stays on screen, holding the last
+   values the refbox sent, and the status page stays green. This is the one that catches a
+   silence-based implementation: a wrong build blanks the graphic here.
 
 Steps 7 and 8 are the entire design in two actions.
 

@@ -328,10 +328,16 @@ runtime. Spawn a periodic refresh alongside the feed supervisor, the same way `S
 already spawned, and refresh when the game number changes. **"Retry on a timer" is the whole reason
 Task 4 was specified as never-fatal; without this loop a Portal outage is permanent for that run.**
 
+**It also decides which game is "next".** Task 5's `next_game()` deliberately does not — it renders
+whatever game number it is handed. The answer is already in the feed: every snapshot carries
+`next_game_number` alongside `game_number` (`uwh-common/src/game_snapshot.rs:51-52`), so the wiring
+passes that through. Do not invent a rule for it.
+
 **Tests must prove:**
 - Each route returns HTTP 200, `Content-Type: application/json`, and a JSON **array**.
 - The Portal refresh loop retries after a failure rather than giving up, and a refresh failure never
   disturbs the game data coming from the refbox.
+- `/nextgame` renders the game the feed names in `next_game_number`, not the current game.
 - Two requests a second apart against a running clock return **different** clock values, proving
   the recompute-per-request behaviour rather than a cached body.
 - The port is configurable and defaults to 8099.

@@ -5,11 +5,12 @@
 //!
 //! Backed by [`confy`], the same crate `refbox` itself already uses for exactly this
 //! (`refbox/src/main.rs:551`, `confy::load`/`confy::store`): a TOML file in the operating
-//! system's standard per-user config directory, resolved via [`directories`] (confy's own
-//! dependency), keyed by [`APP_NAME`]. Neither crate is new to the workspace --
-//! `refbox/Cargo.toml` already pins `confy = "1.0"` and `directories = "6"`, and this task adds
-//! the same versions here, plus `serde`'s `derive` feature (already used across `uwh-common` and
-//! `refbox`) for [`Settings`] itself.
+//! system's standard per-user config directory, resolved internally by confy via its own
+//! `directories` dependency (not a direct dependency of this crate -- nothing here calls
+//! `directories` itself, only `confy`'s own path-resolution functions), keyed by [`APP_NAME`].
+//! `confy` is not new to the workspace -- `refbox/Cargo.toml` already pins `confy = "1.0"`, and
+//! this task adds the same version here, plus `serde`'s `derive` feature (already used across
+//! `uwh-common` and `refbox`) for [`Settings`] itself.
 //!
 //! # Precedence
 //!
@@ -79,9 +80,22 @@ pub fn resolve<T>(cli: Option<T>, stored: Option<T>, default: T) -> T {
 }
 
 /// Where the bridge's settings file lives -- the OS-standard per-user config directory for
-/// [`APP_NAME`], resolved by `confy`/`directories`.
+/// [`APP_NAME`], resolved by `confy` (via its own `directories` dependency).
 fn settings_path() -> Result<PathBuf, confy::ConfyError> {
     confy::get_configuration_file_path(APP_NAME, None)
+}
+
+/// A human-readable description of where the settings file lives, for the operator status page
+/// (Task 7 review, Important 3's floor: the page must tell an operator where to go to fix a
+/// mistyped setting even though it cannot edit one itself yet -- see `status`'s module doc's "The
+/// address is not a dead end" section). Falls back to an explanatory placeholder rather than an
+/// error if the path can't be determined -- this is display text, not something the bridge's own
+/// operation depends on succeeding.
+pub fn settings_location() -> String {
+    match settings_path() {
+        Ok(path) => path.display().to_string(),
+        Err(e) => format!("(could not be determined: {e})"),
+    }
 }
 
 /// Loads the bridge's persisted settings, falling back to [`Settings::default`] if there is
@@ -226,5 +240,19 @@ mod tests {
     #[test]
     fn resolve_falls_back_to_the_built_in_default_when_nothing_else_supplied_a_value() {
         assert_eq!(resolve::<i32>(None, None, 3), 3);
+    }
+
+    #[test]
+    fn settings_location_names_the_app_so_it_is_not_a_generic_or_empty_path() {
+        // Not asserting an exact path -- that's platform-dependent (XDG on Linux, AppData on
+        // Windows, etc., all via confy's own `directories` dependency) -- but the app name must
+        // appear somewhere in it, and it must not be empty, or the status page's "where to go to
+        // fix a mistyped setting" hint (see `status`'s module doc) would be useless.
+        let location = settings_location();
+        assert!(!location.is_empty());
+        assert!(
+            location.contains(APP_NAME),
+            "settings_location() should mention {APP_NAME:?}, got {location:?}"
+        );
     }
 }

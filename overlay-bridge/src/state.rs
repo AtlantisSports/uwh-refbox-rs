@@ -25,13 +25,17 @@ use uwh_common::game_snapshot::GameSnapshot;
 pub struct LiveState {
     /// The most recent real snapshot received from the refbox.
     last: GameSnapshot,
-    /// When `last` arrived, on the caller's clock. **Deliberately has no accessor.** It is kept
-    /// (not deleted) because a future operator status page (Task 7's job, spec §5.6: "how long
-    /// since the refbox last spoke") will want it -- but nothing anywhere in this crate reads it
-    /// today, and that is on purpose, not an oversight: with no way to get elapsed time out of
-    /// this struct, a timing-based liveness rule cannot be reintroduced here by accident. That
-    /// question belongs entirely to [`crate::feed::Connection`]; see the module doc. When Task 7
-    /// actually needs this value, add the accessor back then, deliberately, at the point of use.
+    /// When `last` arrived, on the caller's clock. **Deliberately has no accessor, and never
+    /// will.** Task 7 (settings persistence and the operator status page) considered, and
+    /// rejected, using this field for the page's "how long since the refbox last spoke" figure
+    /// (spec §5.6) -- twice, because the refbox goes completely silent whenever the clock is
+    /// stopped (25 seconds observed), so a duration measured from here would show the graphic as
+    /// "gone" at every stoppage. That page instead measures time since the *connection* dropped,
+    /// entirely from [`crate::feed::ConnectionState`], which is the only thing allowed to answer
+    /// any liveness question in this crate -- see that module's doc. With no way to get elapsed
+    /// time out of this struct, a timing-based liveness rule cannot be reintroduced here by
+    /// accident. This field is kept (not deleted) only because `apply` needs an arrival time to
+    /// store; nothing reads it back.
     last_arrived_at: Instant,
 }
 
@@ -125,9 +129,9 @@ mod tests {
             ..first_half_snapshot()
         };
         // `t1` is passed to `apply` purely because the method requires an arrival time to store
-        // (see the `last_arrived_at` field doc: kept for a future caller, deliberately with no
-        // accessor, so nothing here can read it back to assert on). This test's only observable
-        // claim is about `current()`'s snapshot.
+        // (see the `last_arrived_at` field doc: kept only for that, deliberately with no
+        // accessor and never getting one, so nothing here can read it back to assert on). This
+        // test's only observable claim is about `current()`'s snapshot.
         state.apply(next.clone(), t1);
 
         assert_eq!(

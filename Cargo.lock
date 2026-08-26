@@ -4733,7 +4733,6 @@ dependencies = [
  "axum",
  "clap",
  "confy",
- "directories",
  "futures",
  "reqwest",
  "serde",

@@ -281,6 +281,18 @@ become a published contract.
 - Which team is on the left is an operator setting — the feed does not carry it
   (`refbox/src/app/update_sender.rs:536-545`).
 
+**Court and start time come from `portal::TeamNames`,** which Task 4 now exposes as `court:
+Option<String>` and `start_time: Option<String>` — the latter a **raw ISO 8601 string** exactly as
+the Portal returned it (e.g. `"2026-08-01T09:30:00+10:00"`). Render it as `HH:MM` using the offset
+carried in the timestamp, which is what the overlay does (`overlay/src/network.rs:16,339-341` —
+format `[hour]:[minute]`, giving `09:30`). The `time` crate is already a workspace dependency.
+
+**Serve bare values, never baked-in labels.** The overlay emits `"COURT: 2"` and `"START: 09:55"`
+(`overlay/src/network.rs:335,340`) because it draws the picture itself. **The bridge must not.**
+vMix titles add their own prefix through the data source's Format setting (`Court {0}`), so a label
+baked into the value cannot be removed — the operator would get `Court COURT: 2` and have no way to
+fix it short of us changing the code. Serve `"2"` and `"09:30"`.
+
 **Tests must prove:**
 - With no penalties, `/penalties` still returns the full row count, every value empty.
 - With two penalties, rows 1 and 2 are populated and the rest are empty.
@@ -289,6 +301,9 @@ become a published contract.
 - A cap number with no roster entry renders the number with an empty name, never `"None"`,
   `"null"`, or `"Unknown"`.
 - Swapping the side-of-pool setting swaps which team appears in the left-hand columns.
+- The next-game row renders a raw ISO 8601 start time as `HH:MM`, and serves the court and time as
+  bare values with no `COURT:`/`START:` prefix baked in.
+- A game with no court or no start time yields empty strings, not `"None"` or a placeholder.
 - The both-at-fault (`equal`) foul bucket appears in the fouls table and is not silently dropped.
 
 **Commit:** `feat(overlay-bridge): serve the game as fixed-length tables`

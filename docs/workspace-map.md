@@ -49,7 +49,8 @@ standard library) environments. Uses `serde` for serialization.
 crates (e.g., a new field on `GameSnapshot`, a new portal API response type).
 
 **Be careful:** This is the highest-impact crate in the workspace. Any change here can break
-`refbox`, `schedule-processor`, `overlay`, `led-panel-sim`, and potentially `wireless-remote`.
+`refbox`, `schedule-processor`, `overlay`, `overlay-bridge`, `led-panel-sim`, and potentially
+`wireless-remote`.
 Always check all dependent crates after changing this.
 
 **Special rule:** Must remain `no_std` compatible for the embedded use case. Never add a
@@ -106,6 +107,37 @@ is copied to the streaming machine by hand.
 
 ---
 
+### `overlay-bridge`
+
+**What it is:** A small program that runs on the streaming PC and republishes the live game as
+plain web pages, so third-party graphics software — vMix in particular — can build its own
+graphics from real game data. It is an alternative to the `overlay` crate for streams that
+already have their own graphics package, not a replacement for it.
+
+**Tech:** An `axum` HTTP server. Reads the same network feed from the refbox that `overlay`
+reads, and fetches team and player names from the portal. Has no window of its own: the operator
+drives it from a status page in a browser.
+
+**Key files:**
+- `overlay-bridge/src/feed.rs` — the connection to the refbox, including reconnection
+- `overlay-bridge/src/tables.rs` — turns a game snapshot into the tables vMix reads
+- `overlay-bridge/src/server.rs` — the HTTP routes, including the operator's status page
+- `overlay-bridge/src/status.rs` — renders that status page
+- `overlay-bridge/src/discovery.rs` — finding refboxes on the local network
+
+**Changes belong here when:** changing what a third-party graphics tool can read, or how the
+operator chooses and monitors a refbox.
+
+**Be careful:** This crate **relays, it does not decide**. It never computes a clock, never
+advances a game and never infers a value the refbox did not send — a graphic that goes to air
+showing a time the refbox never sent is worse than one that goes blank. Two rules follow from
+that and must not be softened: **silence never means disconnected** (a refbox with a stopped
+clock legitimately sends nothing for around 25 seconds at a time, so only the connection itself
+says whether it is live), and **when it is not connected, tables are served blank** rather than
+holding stale values.
+
+---
+
 ## Utility Crates
 
 These crates are smaller and more self-contained. Changes here are usually narrow in scope.
@@ -152,6 +184,7 @@ Who depends on what:
 refbox ──────────────────────┐
 schedule-processor ──────────┤──► uwh-common
 overlay ─────────────────────┤
+overlay-bridge ──────────────┤
 led-panel-sim ───────────────┤
 matrix-drawing ──────────────┘
 wireless-remote ──────────────► wireless-modes, uwh-common (partially)

@@ -50,6 +50,7 @@ At the start of every session, before doing any work:
 | `uwh-common` | Shared library — core game types, portal API types, wire format |
 | `schedule-processor` | CLI tool — processes tournament schedules before a tournament |
 | `overlay` | Stream broadcast display — shows live game state on video stream |
+| `overlay-bridge` | Serves live game data as web pages for third-party graphics tools (vMix) |
 | `matrix-drawing` | Drawing primitives for the LED panel display (no_std) |
 | `fonts` | Embedded font data for the LED panel |
 | `led-panel-sim` | LED panel simulator for testing without hardware |
@@ -72,7 +73,7 @@ See `docs/workspace-map.md` for full details on each crate.
 | `chore` — maintenance | `uwh-common` |
 | `refactor` — restructure | `overlay` |
 | `docs` — documentation | `wireless-remote` |
-| `hotfix` — urgent fix | |
+| `hotfix` — urgent fix | `overlay-bridge` |
 | `wip` — work in progress | `ci`, `deps`, `workspace` |
 | `audit` — auditing existing code | |
 

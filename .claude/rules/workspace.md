@@ -16,7 +16,8 @@ Touch `uwh-common` only when:
 
 When changing `uwh-common`, always:
 1. State which downstream crates may be affected before editing
-2. Check `refbox`, `schedule-processor`, `overlay`, and `led-panel-sim` after the change
+2. Check `refbox`, `schedule-processor`, `overlay`, `overlay-bridge`, and `led-panel-sim`
+   after the change
 3. Run `just check` before committing
 
 ### `refbox` — Main application
@@ -43,6 +44,17 @@ Touch `overlay` for:
 - How the overlay connects to the refbox
 - Overlay visual layout changes
 
+### `overlay-bridge` — Data feed for third-party graphics tools
+
+Touch `overlay-bridge` for:
+- What the bridge serves to vMix and other graphics tools (the shape of its tables)
+- How the operator's status page behaves
+- How the bridge finds and connects to a refbox
+
+**It relays, it does not decide.** The bridge never computes a clock, never advances a game and
+never guesses what a refbox meant. If a value is not one the refbox sent, it is not served. Game
+logic changes belong in `refbox`, never here.
+
 ### `wireless-remote` — Embedded firmware
 
 **Do not touch without explicit discussion.** See `embedded.md` for full rules.
@@ -55,8 +67,8 @@ changes to these.
 ## The Dependency Rule
 
 If a task requires changing `uwh-common`, identify *every* crate that imports from it before
-starting. The full list is: `refbox`, `schedule-processor`, `overlay`, `led-panel-sim`,
-`matrix-drawing`, and partially `wireless-remote`.
+starting. The full list is: `refbox`, `schedule-processor`, `overlay`, `overlay-bridge`,
+`led-panel-sim`, `matrix-drawing`, and partially `wireless-remote`.
 
 A change to `uwh-common` that breaks any of these crates will fail CI. Check all of them.
 

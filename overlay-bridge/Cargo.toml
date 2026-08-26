@@ -18,6 +18,11 @@ serde_json = "1"
 # library. Used to configure per-socket TCP keepalive (see feed.rs), which tokio's own API does
 # not expose.
 socket2 = { version = "0.6", features = ["all"] }
+# Same version and feature set as `overlay`'s (and `uwh-common`'s own) use of `time`, so this does
+# not add a new feature combination to the workspace's dependency graph -- it is already resolved
+# in Cargo.lock. Used in tables.rs to parse the ISO 8601 start time the portal returns and render
+# it as the `HH:MM` the overlay itself displays.
+time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-human-readable"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"], default-features = false }
 uwh-common = { version = "0.4", path = "../uwh-common" }
 

@@ -10,3 +10,4 @@
 pub mod feed;
 pub mod portal;
 pub mod state;
+pub mod tables;

@@ -108,6 +108,7 @@ jobs:
         workspaces: |
           . -> target
           wireless-remote -> target
+          vendor/iced_winit -> target
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo build --all
@@ -122,8 +123,37 @@ jobs:
     # features are X11/Wayland-specific and the logic under test is
     # platform-independent, so running it on windows-latest/macOS-latest too
     # would buy nothing.
+    #
+    # `--features program` is load-bearing: without it the module the tests live in is
+    # never compiled and `cargo test` reports "0 tests, ok" — a green but empty gate,
+    # which is exactly what this step did when it was first added. So after running
+    # them, count them and fail if there were none, rather than trusting the exit code.
     - if: ${{ matrix.os == 'ubuntu-latest' }}
-      run: cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked --features program
+      name: Test the vendored iced_winit (touchscreen-tap regression gate)
+      run: |
+        cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked --features program
+        found=$(cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked --features program -- --list | grep -c 'cursor::tests::' || true)
+        if [ "$found" -eq 0 ]; then
+          echo "::error::That run proved nothing: no cursor tests exist in the vendored iced_winit, so the touchscreen-tap regression gate is inert. Check that --features program is still passed. See vendor/iced_winit/VENDORED.md."
+          exit 1
+        fi
+        echo "$found cursor regression tests ran."
+    # The `[patch.crates-io]` redirect above stops applying the moment nothing in the
+    # graph asks for `iced_winit` 0.13 any more (an iced 0.14 upgrade, say). Cargo only
+    # WARNS about an unused patch, and the step above keeps passing because it tests the
+    # vendored crate standalone — so without this check the touchscreen-tap fix could drop
+    # out of the shipped binary with every gate still green. Mirrors
+    # `just check-patch-applied`.
+    - if: ${{ matrix.os == 'ubuntu-latest' }}
+      name: Check the vendored iced_winit patch still applies
+      run: |
+        out="$(cargo tree --locked --invert iced_winit 2>&1)" || true
+        echo "$out"
+        if ! grep -q 'vendor/iced_winit' <<<"$out"; then
+          echo "::error::The workspace is NOT building iced_winit from vendor/iced_winit — the [patch.crates-io] redirect has stopped applying, so the touchscreen-tap fix is NOT in the binary. Most likely iced was upgraded and nothing depends on iced_winit 0.13 any more. See vendor/iced_winit/VENDORED.md."
+          exit 1
+        fi
+        echo "iced_winit is built from vendor/iced_winit."
 
   build-ndf:
     name: Test debug without default features

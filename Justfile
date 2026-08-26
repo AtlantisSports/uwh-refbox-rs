@@ -9,7 +9,7 @@ default:
 # ── Validation ────────────────────────────────────────────────────────────────
 
 # Run the full validation suite (same checks as CI) — use before any PR
-check: fmt-check lint test test-vendor audit
+check: fmt-check lint test test-vendor check-patch-applied audit
 
 # ── Formatting ────────────────────────────────────────────────────────────────
 
@@ -35,9 +35,48 @@ test:
     cargo test --workspace
 
 # Run the vendored iced_winit tests (excluded from the workspace, so `cargo test
-# --workspace` does not reach them)
+# --workspace` does not reach them).
+#
+# `--features program` is load-bearing: without it the module those tests live in is
+# never compiled, so `cargo test` reports "0 tests, ok" and PASSES with an empty gate.
+# That is not hypothetical — it happened on this branch and went unnoticed for two
+# tasks. So after running them, count them, and fail loudly if there were none.
 test-vendor:
+    #!/usr/bin/env bash
+    set -euo pipefail
     cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked --features program
+    found=$(cargo test --manifest-path vendor/iced_winit/Cargo.toml --locked --features program -- --list | grep -c 'cursor::tests::' || true)
+    if [ "$found" -eq 0 ]; then
+        echo "ERROR: no cursor tests found in the vendored iced_winit." >&2
+        echo "That run proved nothing. The touchscreen-tap regression gate is inert —" >&2
+        echo "check that --features program is still being passed, and see" >&2
+        echo "vendor/iced_winit/VENDORED.md." >&2
+        exit 1
+    fi
+    echo "Vendored iced_winit: $found cursor regression tests ran."
+
+# Fail if the workspace is no longer building iced_winit from vendor/iced_winit.
+# The `[patch.crates-io]` redirect stops applying the moment nothing in the graph asks
+# for iced_winit 0.13 any more (an iced 0.14 upgrade, say). Cargo only WARNS about an
+# unused patch, and `test-vendor` keeps passing because it tests the vendored crate
+# standalone — so the touchscreen-tap fix would silently drop out of the shipped binary
+# while every gate stayed green.
+check-patch-applied:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    out=$(cargo tree --locked --invert iced_winit 2>&1)
+    if ! grep -q 'vendor/iced_winit' <<<"$out"; then
+        echo "ERROR: the workspace is NOT building iced_winit from vendor/iced_winit." >&2
+        echo "The [patch.crates-io] redirect in Cargo.toml has stopped applying, so the" >&2
+        echo "touchscreen-tap fix is NOT in the binary — taps will be dropped on the Pi." >&2
+        echo "Most likely cause: iced was upgraded, so nothing depends on iced_winit 0.13." >&2
+        echo "See vendor/iced_winit/VENDORED.md before changing anything." >&2
+        echo "" >&2
+        echo "cargo tree --locked --invert iced_winit said:" >&2
+        echo "$out" >&2
+        exit 1
+    fi
+    echo "iced_winit is built from vendor/iced_winit — the touchscreen-tap fix is in the binary."
 
 # ── Security ──────────────────────────────────────────────────────────────────
 

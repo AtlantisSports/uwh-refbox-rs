@@ -8,6 +8,10 @@ excluded_files=(
   './rust-toolchain.toml'
   './wireless-remote/rust-toolchain.toml'
   './wireless-remote/.cargo/config.toml'
+  # Unlike every entry above, this one IS a package manifest — and it deliberately has no
+  # `rust-version`. It is vendored third-party code that must stay byte-identical to upstream
+  # apart from the divergences recorded in vendor/iced_winit/VENDORED.md, so do not "fix" this
+  # by adding the key to the vendored manifest.
   './vendor/iced_winit/Cargo.toml'
 )
 

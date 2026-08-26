@@ -63,9 +63,10 @@
 //! because [`InfractionSnapshot`] carries no timestamp -- nothing in the feed says whether a given
 //! black foul happened before or after a given white one, and a foul or warning can even be
 //! reassigned from one team's list to the other's mid-game (`refbox/src/tournament_manager/mod.rs`,
-//! `change_foul_color`/`change_warning_color`), which would put it at the *front* of its new list
-//! however long ago it actually happened. [`event_rows`] resolves this by round-robin: newest of
-//! team A, newest of team B, (newest of team C, for fouls' `equal` bucket), then second-newest of
+//! `edit_warning`/`edit_foul`, lines 884 and 916 -- both `remove` then `push`), which would put it
+//! at the *front* of its new list however long ago it actually happened. [`event_rows`] resolves
+//! this by round-robin: newest of team A, newest of team B, (newest of team C, for fouls' `equal`
+//! bucket), then second-newest of
 //! each in the same order, and so on. This guarantees both teams' latest activity surfaces within
 //! the first few rows -- rather than, say, one team's fifteen fouls filling every row a title binds
 //! to before the other team's single very recent one ever appears -- but it is not a true
@@ -176,9 +177,9 @@ pub fn scorebug(
     let black_score = snapshot.scores.black.to_string();
     let white_score = snapshot.scores.white.to_string();
 
-    let (timeout_label, timeout_secs) = match snapshot.timeout {
+    let (timeout_text, timeout_secs) = match snapshot.timeout {
         Some(timeout) => (
-            timeout.to_string(),
+            timeout_label(timeout).to_string(),
             Some(u32::from(timeout_seconds(timeout))),
         ),
         None => (String::new(), None),
@@ -211,7 +212,7 @@ pub fn scorebug(
         snapshot.secs_in_period.to_string(),
     );
     row.insert("period".to_string(), snapshot.current_period.to_string());
-    row.insert("timeout".to_string(), timeout_label);
+    row.insert("timeout".to_string(), timeout_text);
     row.insert(
         "timeoutClock".to_string(),
         timeout_secs.map(clock_string).unwrap_or_default(),
@@ -489,6 +490,26 @@ fn timeout_seconds(timeout: TimeoutSnapshot) -> u16 {
     }
 }
 
+/// A broadcast-appropriate label for a timeout -- deliberately not `TimeoutSnapshot`'s own
+/// `Display` impl (`uwh-common/src/game_snapshot.rs`). That impl was written for internal use and
+/// has never actually been viewer-facing anywhere: the refbox's own screens render a timeout
+/// through a Fluent translation instead
+/// (`refbox/src/app/view_builders/shared_elements.rs:806`, `fl!("penalty-shot-short")` ->
+/// `"PNLTY SHT"` in en-US, properly spaced in every locale), the overlay matches on the enum
+/// variant rather than the string, and the only other consumer is the golden-trace debug tool.
+/// Its `PenaltyShot` case renders as `"PenaltyShot"`, with no space, unlike the other three
+/// variants -- harmless where nothing ever put it in front of an audience, but this bridge would
+/// be the first thing that did, so it gets its own labels instead of inheriting that
+/// inconsistency onto a live broadcast.
+fn timeout_label(timeout: TimeoutSnapshot) -> &'static str {
+    match timeout {
+        TimeoutSnapshot::Black(_) => "Black Timeout",
+        TimeoutSnapshot::White(_) => "White Timeout",
+        TimeoutSnapshot::Ref(_) => "Ref Timeout",
+        TimeoutSnapshot::PenaltyShot(_) => "Penalty Shot",
+    }
+}
+
 /// Renders a raw ISO 8601 timestamp, exactly as the portal returned it, as `HH:MM` in the offset
 /// the timestamp itself carries -- matching the overlay's own rendering
 /// (`overlay/src/network.rs:16,339-341`). Empty if `raw` doesn't parse: a malformed or otherwise
@@ -609,6 +630,21 @@ mod tests {
         assert_eq!(get(row, "timeout"), "White Timeout");
         assert_eq!(get(row, "timeoutClock"), "1:15");
         assert_eq!(get(row, "timeoutClockSeconds"), "75");
+    }
+
+    #[test]
+    fn a_penalty_shot_timeout_serves_a_properly_spaced_broadcast_label() {
+        // TimeoutSnapshot's own `Display` impl renders this variant as "PenaltyShot", with no
+        // space -- fine for the internal/debug uses it was written for, but never before put in
+        // front of a viewer. This bridge must not be the first thing that does.
+        let display = display_with(GameSnapshot {
+            timeout: Some(TimeoutSnapshot::PenaltyShot(20)),
+            ..base_snapshot()
+        });
+        let rows = scorebug(&display, None, false);
+        let row = row0(&rows);
+
+        assert_eq!(get(row, "timeout"), "Penalty Shot");
     }
 
     #[test]
@@ -995,6 +1031,82 @@ mod tests {
             .map(|row| get(row, "number"))
             .collect();
         assert_eq!(order, vec!["2", "3", "1"]);
+    }
+
+    #[test]
+    fn fouls_with_both_teams_heavily_populated_interleaves_before_truncating() {
+        // The compound case a real long, foul-heavy game actually produces: both teams well past
+        // ten entries each, and the combined total well over MAX_EVENT_ROWS. Cap numbers double
+        // as a push-order/recency marker, using disjoint ranges per team (black 1-80, white
+        // 101-180) so surviving/dropped membership can be asserted per team without ambiguity.
+        // Both buckets are the same length (80), so round-robin alternates evenly: black's
+        // newest, white's newest, black's next-newest, white's next-newest, and so on -- 160
+        // entries total, truncated to the newest 100.
+        let black: Vec<InfractionSnapshot> = (1..=80u8).map(|n| infraction(Some(n))).collect();
+        let white: Vec<InfractionSnapshot> = (101..=180u8).map(|n| infraction(Some(n))).collect();
+        let display = display_with(fouls_snapshot(black, white, Vec::new()));
+        let rows = fouls(&display, &Rosters::default());
+
+        assert_eq!(rows.len(), MAX_EVENT_ROWS);
+
+        // Row-by-row: round-robin alternates black/white, newest first, so the first four rows
+        // are black's newest, white's newest, black's second-newest, white's second-newest -- and
+        // the last two rows (99, 100) are the *last* survivors round-robin admitted before the
+        // 100-row cutoff.
+        assert_eq!(get(&rows[0], "team"), "BLACK");
+        assert_eq!(get(&rows[0], "number"), "80");
+        assert_eq!(get(&rows[1], "team"), "WHITE");
+        assert_eq!(get(&rows[1], "number"), "180");
+        assert_eq!(get(&rows[2], "team"), "BLACK");
+        assert_eq!(get(&rows[2], "number"), "79");
+        assert_eq!(get(&rows[3], "team"), "WHITE");
+        assert_eq!(get(&rows[3], "number"), "179");
+        assert_eq!(get(&rows[98], "team"), "BLACK");
+        assert_eq!(get(&rows[98], "number"), "31");
+        assert_eq!(get(&rows[99], "team"), "WHITE");
+        assert_eq!(get(&rows[99], "number"), "131");
+
+        // Both teams are represented in the surviving 100, in exactly equal proportion -- proves
+        // truncation didn't let one team's bucket crowd the other out even under heavy load.
+        let black_survivors: std::collections::HashSet<&str> = rows
+            .iter()
+            .filter(|row| get(row, "team") == "BLACK")
+            .map(|row| get(row, "number"))
+            .collect();
+        let white_survivors: std::collections::HashSet<&str> = rows
+            .iter()
+            .filter(|row| get(row, "team") == "WHITE")
+            .map(|row| get(row, "number"))
+            .collect();
+        assert_eq!(black_survivors.len(), 50);
+        assert_eq!(white_survivors.len(), 50);
+
+        // The survivors on each side are exactly that team's newest 50 -- not, say, its oldest 50
+        // or an arbitrary 50.
+        assert!(
+            black_survivors.contains("80"),
+            "black's newest must survive"
+        );
+        assert!(
+            black_survivors.contains("31"),
+            "the 50th-newest black entry is the cutoff"
+        );
+        assert!(
+            !black_survivors.contains("30"),
+            "the 51st-newest black entry should have been dropped as too old"
+        );
+        assert!(
+            white_survivors.contains("180"),
+            "white's newest must survive"
+        );
+        assert!(
+            white_survivors.contains("131"),
+            "the 50th-newest white entry is the cutoff"
+        );
+        assert!(
+            !white_survivors.contains("130"),
+            "the 51st-newest white entry should have been dropped as too old"
+        );
     }
 
     // ---------------------------------------------------------------- warnings

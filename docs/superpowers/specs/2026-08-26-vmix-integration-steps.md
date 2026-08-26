@@ -106,16 +106,18 @@ table never grows past it.
 [
   {"team": "WHITE", "number": "3", "player": "NGUYEN", "infraction": "Obstruction"},
   {"team": "BLACK", "number": "7", "player": "SMITH",  "infraction": "Out Of Bounds"},
-  {"team": "EQUAL", "number": "",  "player": "",       "infraction": "Delay Of Game"},
+  {"team": "EQUAL", "number": "5", "player": "",       "infraction": "Delay Of Game"},
   {"team": "",      "number": "",  "player": "",       "infraction": ""}
 ]
 ```
 
 (shown here at 4 rows for brevity; the real table is never fewer than 10). Carries all three of
 the refbox's foul buckets — `BLACK`, `WHITE`, and `EQUAL` (the "both teams at fault" case, which
-the bridge does not drop). Ordered most-recent-first: row 1 is (an approximation of, see below)
-the most recently committed foul, and the newest are what survive if the table has grown past 100
-and needs to shed the oldest.
+the bridge does not drop). **An `EQUAL` row's `player` column is always empty, even when a cap
+number is present** (as in the example row above) — there's no single team's roster to check a
+both-at-fault cap number against, so it's never guessed at. Ordered most-recent-first: row 1 is
+(an approximation of, see below) the most recently committed foul, and the newest are what
+survive if the table has grown past 100 and needs to shed the oldest.
 
 `/warnings` — same shape as `/fouls` minus the `EQUAL` case (warnings have no both-at-fault
 bucket): `team`, `number`, `player`, `infraction`, same row-count rule.

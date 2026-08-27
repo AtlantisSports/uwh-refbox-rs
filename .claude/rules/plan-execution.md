@@ -12,8 +12,10 @@ For feature work in lower-risk crates — `refbox` UI, `overlay` layout, transla
 1. **No per-task deviation commits.** If execution deviates from the plan, note it in the PR
    description or a running "Deviations" section at the bottom of the plan file. Do not create
    standalone `docs(workspace): record Task N deviations` commits.
-2. **Code review once per feature, at the end.** Run `superpowers:requesting-code-review` when
-   the feature is complete and ready for PR review, not after every task.
+2. **Code review once per feature, at the end.** The mandatory review is check 1 in
+   `pr-review.md` — the built-in `code-review` skill, run against the finished diff rather than
+   after every task. `superpowers:requesting-code-review` is an optional extra pass during
+   execution, never a substitute for it.
 3. **Skip verification ceremony on mechanical tasks.** Translation-key additions, message-enum
    variant wire-up, field-passthrough tasks, and similar no-behaviour-change work do not need
    `superpowers:verification-before-completion`. Compilation + `just check` is enough.

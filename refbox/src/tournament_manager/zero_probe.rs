@@ -36,10 +36,18 @@ const DRIVER_FALLBACK_STEP: Duration = Duration::from_millis(100);
 /// What driving one config produced.
 #[derive(Debug, PartialEq, Eq)]
 enum Outcome {
-    /// Ran the whole window with every tick succeeding.
+    /// Every tick succeeded. The run either used the whole window or stopped early
+    /// because the clock latch went off, which is a legitimate resting state.
     Clean,
-    /// One or more ticks reported a failure. Records the first, with the state it left.
-    Reported { reason: String, period: GamePeriod },
+    /// One or more ticks reported a failure. Records the first, with the state it left,
+    /// plus how many of the run's ticks failed — the difference between "stumbled once
+    /// and carried on" and "never recovered", which is the whole point of this branch.
+    Reported {
+        reason: String,
+        period: GamePeriod,
+        failed_ticks: u32,
+        total_ticks: u32,
+    },
     /// The tick crashed. This is the bug; it must never happen.
     Crashed(String),
     /// The driver never settled. Also a failure of this test.
@@ -110,9 +118,13 @@ fn drive(config: GameConfig, decided: bool, secs: u64) -> Outcome {
         if decided {
             tm.add_score(Color::Black, 3, base);
         }
+        // Hoisted: `get_start_stop_rx` clones the receiver, and this is the largest test
+        // in the crate by iteration count.
+        let running = tm.get_start_stop_rx();
         let deadline = base + Duration::from_secs(secs);
         let mut now = base;
         let mut iters = 0u32;
+        let mut failed_ticks = 0u32;
         let mut first_failure: Option<(String, GamePeriod)> = None;
 
         while now < deadline {
@@ -121,6 +133,7 @@ fn drive(config: GameConfig, decided: bool, secs: u64) -> Outcome {
                 return Outcome::NoProgress;
             }
             if let Err(e) = tm.updater_tick(now) {
+                failed_ticks += 1;
                 if first_failure.is_none() {
                     first_failure = Some((e.to_string(), tm.current_period));
                 }
@@ -135,7 +148,12 @@ fn drive(config: GameConfig, decided: bool, secs: u64) -> Outcome {
         }
 
         match first_failure {
-            Some((reason, period)) => Outcome::Reported { reason, period },
+            Some((reason, period)) => Outcome::Reported {
+                reason,
+                period,
+                failed_ticks,
+                total_ticks: iters,
+            },
             None => Outcome::Clean,
         }
     }));
@@ -152,8 +170,17 @@ fn drive(config: GameConfig, decided: bool, secs: u64) -> Outcome {
 /// what state each is left in — that is the evidence promised in the design spec.
 #[test]
 fn no_degenerate_config_crashes_the_tick() {
+    /// Which FIELDS entries may legitimately make a tick fail. Checked against the mask
+    /// itself, not against the rendered label — a substring test on the label happened to
+    /// work only because "ot_half_play" contains "half_play", exempted any mask that also
+    /// zeroed half_play whatever actually caused its failure, and would have silently
+    /// become a no-op if either field were renamed.
+    const MAY_FAIL: [usize; 2] = [0 /* half_play */, 3 /* ot_half_play */];
+
     let mut crashed: Vec<String> = Vec::new();
     let mut stalled: Vec<String> = Vec::new();
+    let mut unexpected: Vec<String> = Vec::new();
+    let mut never_recovered: Vec<String> = Vec::new();
     let mut reported: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     for (zlabel, zero) in [
@@ -170,9 +197,10 @@ fn no_degenerate_config_crashes_the_tick() {
                     mask_name(mask)
                 );
                 let outcome = drive(cfg, decided, 90);
+
                 // mask 0 is the untouched base_config: a healthy game. Without this the
-                // whole sweep passes on "nothing crashed", so an engine regression that
-                // made EVERY config fail every tick would still be reported green.
+                // sweep passes on "nothing crashed", so a regression that made EVERY
+                // config fail every tick would still be reported green.
                 if mask == 0 {
                     assert_eq!(
                         outcome,
@@ -180,12 +208,32 @@ fn no_degenerate_config_crashes_the_tick() {
                         "the healthy baseline config must tick cleanly ({label})"
                     );
                 }
+
                 match outcome {
                     Outcome::Clean => {}
-                    Outcome::Reported { reason, period } => reported
-                        .entry(format!("{reason} (left in {period:?})"))
-                        .or_default()
-                        .push(label),
+                    Outcome::Reported {
+                        reason,
+                        period,
+                        failed_ticks,
+                        total_ticks,
+                    } => {
+                        // Pin WHICH parameters may make a tick fail, by mask.
+                        if !MAY_FAIL.iter().any(|i| mask & (1 << i) != 0) {
+                            unexpected.push(label.clone());
+                        }
+                        // And pin that a failure is a stumble, not a permanent wedge.
+                        // Surviving a fault is only worth anything if the game then
+                        // carries on; a config that fails every tick is an app frozen
+                        // for the whole run, which is what this branch exists to avoid.
+                        if failed_ticks == total_ticks {
+                            never_recovered
+                                .push(format!("{label}: all {total_ticks} ticks failed"));
+                        }
+                        reported
+                            .entry(format!("{reason} (left in {period:?})"))
+                            .or_default()
+                            .push(format!("{label} — {failed_ticks}/{total_ticks} ticks"));
+                    }
                     Outcome::Crashed(message) => crashed.push(format!("{label}: {message}")),
                     Outcome::NoProgress => stalled.push(label),
                 }
@@ -207,22 +255,6 @@ fn no_degenerate_config_crashes_the_tick() {
         }
     }
 
-    // Pin WHICH parameters may make a tick fail. Without this the sweep only says
-    // "nothing crashed", so an engine regression that made a third parameter start
-    // failing — or made every config fail forever — would still report green.
-    let unexpected: Vec<&String> = reported
-        .values()
-        .flatten()
-        .filter(|label| !label.contains("half_play"))
-        .collect();
-    assert!(
-        unexpected.is_empty(),
-        "only zeroing half_play or ot_half_play may make a tick fail, but {} other \
-         config(s) did:\n{:#?}",
-        unexpected.len(),
-        unexpected
-    );
-
     assert!(
         crashed.is_empty(),
         "the tick crashed on {} config(s):\n{}",
@@ -234,6 +266,20 @@ fn no_degenerate_config_crashes_the_tick() {
         "the tick never settled on {} config(s):\n{}",
         stalled.len(),
         stalled.join("\n")
+    );
+    assert!(
+        never_recovered.is_empty(),
+        "{} config(s) failed EVERY tick — surviving a fault is only worth something if \
+         the game then carries on:\n{}",
+        never_recovered.len(),
+        never_recovered.join("\n")
+    );
+    assert!(
+        unexpected.is_empty(),
+        "only zeroing half_play or ot_half_play may make a tick fail, but {} other \
+         config(s) did:\n{}",
+        unexpected.len(),
+        unexpected.join("\n")
     );
 }
 

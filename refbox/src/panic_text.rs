@@ -17,3 +17,23 @@ pub(crate) fn panic_reason(payload: &(dyn std::any::Any + Send)) -> String {
         "panic with an unrecognised payload".to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::panic_reason;
+
+    #[test]
+    fn reads_both_payload_shapes_and_neither() {
+        let from_str: Box<dyn std::any::Any + Send> = Box::new("No snapshot");
+        assert_eq!(panic_reason(&*from_str), "No snapshot");
+
+        let from_string: Box<dyn std::any::Any + Send> = Box::new(String::from("boom"));
+        assert_eq!(panic_reason(&*from_string), "boom");
+
+        let from_other: Box<dyn std::any::Any + Send> = Box::new(7u8);
+        assert_eq!(
+            panic_reason(&*from_other),
+            "panic with an unrecognised payload"
+        );
+    }
+}

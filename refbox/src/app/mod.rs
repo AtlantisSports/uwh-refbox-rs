@@ -32,7 +32,7 @@ use std::{
 };
 use tokio::{
     sync::mpsc,
-    time::{Duration, Instant, sleep, timeout_at},
+    time::{Duration, Instant, sleep, sleep_until, timeout_at},
 };
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
@@ -6921,14 +6921,14 @@ impl UpdaterFailures {
         let same_run = self
             .last_failure
             .is_some_and(|last| now.duration_since(last) < UPDATER_FAULT_RUN_WINDOW);
-        self.consecutive = if same_run {
-            self.consecutive.saturating_add(1)
+        if same_run {
+            self.consecutive = self.consecutive.saturating_add(1);
         } else {
+            self.consecutive = 0;
             // A new fault: report it in full straight away rather than holding it back
             // behind the previous fault's interval.
             self.last_report = None;
-            0
-        };
+        }
         self.last_failure = Some(now);
 
         let due = self
@@ -7069,21 +7069,6 @@ mod updater_wake_tests {
     }
 
     #[test]
-    fn panic_reason_reads_both_payload_shapes() {
-        let from_str: Box<dyn std::any::Any + Send> = Box::new("No snapshot");
-        assert_eq!(panic_reason(&*from_str), "No snapshot");
-
-        let from_string: Box<dyn std::any::Any + Send> = Box::new(String::from("boom"));
-        assert_eq!(panic_reason(&*from_string), "boom");
-
-        let from_other: Box<dyn std::any::Any + Send> = Box::new(7u8);
-        assert_eq!(
-            panic_reason(&*from_other),
-            "panic with an unrecognised payload"
-        );
-    }
-
-    #[test]
     fn stopped_clock_has_no_scheduled_wake() {
         let now = Instant::now();
         assert_eq!(next_updater_wake(false, Some(now), now), None);
@@ -7127,10 +7112,19 @@ fn time_updater() -> impl Stream<Item = Message> {
         };
         let mut clock_running_receiver = tm.lock().get_start_stop_rx();
         let mut next_time = Some(Instant::now());
+        let mut retry_after_failure: Option<Instant> = None;
         let mut failures = UpdaterFailures::default();
 
         loop {
-            if let Some(wake_at) = next_time {
+            if let Some(retry_at) = retry_after_failure.take() {
+                // A retry pause is a BOUND, so it must not be cancellable. Waiting on the
+                // clock-latch channel here would let the failing tick cancel its own
+                // pause — `send_clock_running` fires from inside several transitions, and
+                // tokio's watch wakes on every send whether or not the value changed — so
+                // a fault that touches the latch would spin the loop at full speed. On a
+                // Raspberry Pi that is a pinned core for as long as the fault lasts.
+                sleep_until(retry_at).await;
+            } else if let Some(wake_at) = next_time {
                 if wake_at > Instant::now() {
                     match timeout_at(wake_at, clock_running_receiver.changed()).await {
                         Err(_) => {}
@@ -7154,9 +7148,11 @@ fn time_updater() -> impl Stream<Item = Message> {
             // is set exclusively for a running clock — an invariant the failure path
             // cannot honour, because a tick that fails as the clock stops still has to
             // retry or the screen, LED panel and overlay keep a stale running value.
-            // The watch channel always holds the current value, so ask it.
-            let clock_running = *clock_running_receiver.borrow();
-            debug!("Clock running: {clock_running}");
+            //
+            // `borrow_and_update` rather than `borrow`: it marks the value seen, so a send
+            // the previous tick made does not leave the next `changed()` resolving
+            // instantly and skipping the wait.
+            let clock_running = *clock_running_receiver.borrow_and_update();
 
             // One guarded call. Both a returned failure and an engine panic land here,
             // so there is a single place where a bad tick is handled — and no place
@@ -7203,7 +7199,7 @@ fn time_updater() -> impl Stream<Item = Message> {
                         }
                         None => trace!("Clock updater tick {reason} (report held back)"),
                     }
-                    next_time = Some(now + action.retry_after);
+                    retry_after_failure = Some(now + action.retry_after);
                     continue;
                 }
             };

@@ -2524,6 +2524,7 @@ impl TournamentManager {
             game_number: self.game_number(),
             next_game_number: self.next_game_number(),
             event_id: None,
+            portal_base_url: None,
             recent_goal: self.recent_goal.map(|(c, n, _, _)| (c, n)),
             next_period_len_secs,
             conf_pause_time,

@@ -640,6 +640,7 @@ mod tests {
             game_number: _,          // not core timing/state
             next_game_number: _,     // not core timing/state
             event_id: _,             // hardcoded None in the snapshot constructor
+            portal_base_url: _,      // not core timing/state; network config, not game state
             recent_goal: _,          // display sugar; verified deterministic, no outcome effect
             next_period_len_secs: _, // not core timing/state
         } = snap;

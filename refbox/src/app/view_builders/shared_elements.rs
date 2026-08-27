@@ -1195,13 +1195,53 @@ pub(super) fn cancel_or_back_label(has_changes: bool) -> String {
     }
 }
 
+/// A button that keeps `MIN_BUTTON_SIZE` whatever room the page has.
+///
+/// Two kinds of caller, and the second is easy to misread as a tile:
+///
+/// * Page furniture — footers, Back buttons — which must read at the same size
+///   on every page.
+/// * Body content that sits beside a *fixed* sibling from a helper this split
+///   did not touch: the DARK/LIGHT team selectors, the team-timeout count
+///   buttons, the TWO HALVES / ONE PERIOD control. They are only chrome because
+///   `make_multi_label_button` and friends are still fixed — convert one to a
+///   tile on its own and it grows away from the buttons beside it.
+///
+/// For a content cell whose neighbours already fill, use [`make_tile_button`].
 pub(super) fn make_chrome_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     label: T,
 ) -> Button<'a, Message> {
-    button(fit_text(label))
-        .padding(PADDING)
-        .height(Length::Fixed(MIN_BUTTON_SIZE))
-        .width(Length::Fill)
+    base_button(label).height(Length::Fixed(MIN_BUTTON_SIZE))
+}
+
+/// A large content cell in the body of a page, which takes an equal share of
+/// whatever vertical room the page has.
+///
+/// Height is deliberately not a parameter: a tile beside another tile must be
+/// the same height as it, and leaving that to each call site is what let the
+/// MANUAL GAMES tile render short beside the source buttons on the Game Options
+/// page.
+///
+/// Do NOT use this in a footer that declares no height of its own. `Row::push`
+/// and `Column::push` run `Length::enclose`, which hands a `Shrink` container
+/// its first filling child's length — so a tile there does not collapse; the
+/// footer claims a share of the page and grows at the body's expense. Note the
+/// two limits: `enclose` returns the *child's* length (a `FillPortion(2)` child
+/// makes the container `FillPortion(2)`), and it runs at push time, so a later
+/// `.height(...)` on the container wins. A container that already sets its own
+/// height cannot grow — there, the reason to stay chrome is a fixed sibling to
+/// match, not page height.
+pub(super) fn make_tile_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
+    label: T,
+) -> Button<'a, Message> {
+    base_button(label).height(Length::Fill)
+}
+
+/// Shared construction for the two roles. Neither is implemented in terms of the
+/// other: a property that belongs to one role must not reach the other by
+/// accident.
+fn base_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(label: T) -> Button<'a, Message> {
+    button(fit_text(label)).padding(PADDING).width(Length::Fill)
 }
 
 pub(super) fn make_smaller_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
@@ -1230,6 +1270,11 @@ pub(super) enum NameLines<T> {
     OneLineSmall(T),
 }
 
+/// A language tile with a small note beneath the name. Fills its row, and must
+/// stay in step with the plain `lang_btn` closures in `configuration.rs` and
+/// `beep_test_settings.rs`: the two shapes sit side by side in the same row, so
+/// changing the height of one without the other is the MANUAL GAMES defect
+/// again.
 pub(super) fn make_lang_button_with_note<'a, Message, T>(
     main: NameLines<T>,
     note: T,
@@ -1263,7 +1308,7 @@ where
     ];
     button(container(name_column.width(Length::Fill)).center(Length::Fill))
         .padding(PADDING)
-        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .height(Length::Fill)
         .width(Length::Fill)
 }
 
@@ -1284,6 +1329,11 @@ pub(super) fn make_small_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
         .height(Length::Fixed(MIN_BUTTON_SIZE))
 }
 
+/// A label-and-value tile in the body of a page. Fills its row, like every
+/// other tile — see [`make_tile_button`].
+///
+/// Where a label-and-value button is furniture rather than a tile, use
+/// [`make_value_chrome_button`] instead — see its doc for the current list.
 pub(super) fn make_value_button<'a, T, U>(
     first_label: T,
     second_label: U,
@@ -1306,8 +1356,8 @@ where
             // Do NOT pair `align_y(Center)` with `height(Fill)` here: that caches
             // a paragraph-position anchor that bleeds across renders (iced 0.13
             // bug; see portal_detail::row_text_centered and the time-view fix in
-            // this file). The row's `.align_y(Center)` handles the vertical
-            // centering instead.
+            // this file). The row handles the vertical centering instead — see
+            // the comment on its `height(Fill)` below.
             fit_text(first_label)
                 .size(if large_text.0 {
                     MEDIUM_TEXT
@@ -1329,9 +1379,19 @@ where
         ]
         .spacing(SPACING)
         .align_y(Alignment::Center)
+        // The row must fill the button. `iced_core::layout::flex` seeds the cross
+        // axis at 0 for a Shrink-height row, grows it only to the tallest child,
+        // and then centres the children in *that* band — which sits at the top
+        // padding. A Shrink row therefore leaves the label riding high in a
+        // fixed-height button, and stranded at the top of a filling one.
+        //
+        // This is not confined to filling tiles: it also moves the label down a
+        // few pixels in every fixed-height value button, bringing them into line
+        // with `make_chrome_button`, whose `fit_text` already centres itself.
+        .height(Length::Fill)
         .padding(PADDING),
     )
-    .height(Length::Fixed(MIN_BUTTON_SIZE))
+    .height(Length::Fill)
     .width(Length::Fill)
     .style(light_gray_button);
 
@@ -1339,6 +1399,32 @@ where
         button = button.on_press(message);
     }
     button
+}
+
+/// The fixed-height counterpart to [`make_value_button`], for a label-and-value
+/// button that is page furniture rather than a tile. Three call sites: the Game
+/// Options footer's game picker, the brightness button beside the display
+/// preview, and the Updates page's version row.
+///
+/// The Game Options footer declares no height, so a filling child there would
+/// make the whole footer claim a share of the page and grow — see
+/// [`make_tile_button`]. The other two containers set their own height, so they
+/// cannot grow; those two stay fixed for the simpler reason that each has a
+/// fixed sibling to match (OPEN NEW DISPLAY, CHECK FOR UPDATES). Filling one
+/// without the other is the MANUAL GAMES defect again.
+pub(super) fn make_value_chrome_button<'a, T, U>(
+    first_label: T,
+    second_label: U,
+    large_text: (bool, bool),
+    message: Option<Message>,
+) -> Button<'a, Message>
+where
+    Message: 'a + Clone,
+    T: IntoFragment<'a>,
+    U: IntoFragment<'a>,
+{
+    make_value_button(first_label, second_label, large_text, message)
+        .height(Length::Fixed(MIN_BUTTON_SIZE))
 }
 
 /// A value row whose value is long and whose label is short — the custom site's
@@ -1384,9 +1470,12 @@ where
         ]
         .spacing(SPACING)
         .align_y(Alignment::Center)
+        // Fills the button for the same reason as `make_value_button` — see the
+        // comment there.
+        .height(Length::Fill)
         .padding(PADDING),
     )
-    .height(Length::Fixed(MIN_BUTTON_SIZE))
+    .height(Length::Fill)
     .width(Length::Fill)
     .style(light_gray_button);
 

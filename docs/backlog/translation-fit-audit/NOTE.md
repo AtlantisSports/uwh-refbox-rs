@@ -44,7 +44,7 @@ dedicated `*-line-1` / `*-line-2` key pairs, which is what the existing keys cor
 
 ## Scope when picked up
 
-- Enumerate every fixed-width text slot (buttons via `make_button` / `make_multi_label_button` /
+- Enumerate every fixed-width text slot (buttons via `make_chrome_button` / `make_tile_button` / `make_multi_label_button` /
   `make_small_button`, and the keypad title row) and every key that fills one.
 - For each of the 15 locales, determine whether the string fits at its slot's width and text size.
   Font metrics make this hard to compute reliably — **prefer rendering** over arithmetic. Setting

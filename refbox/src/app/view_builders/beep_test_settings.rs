@@ -46,14 +46,14 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
     beep_test_layout: FrontDisplayLayout,
     has_led_panel: bool,
 ) -> Element<'a, Message> {
-    let sound_button = make_chrome_button(fl!("sound-settings"))
+    let sound_button = make_tile_button(fl!("sound-settings"))
         .style(light_gray_button)
         .on_press(Message::BeepTestEditOpenSound);
 
     let edit_levels_button = if has_run {
-        make_chrome_button(fl!("beep-test-edit-levels")).style(gray_button)
+        make_tile_button(fl!("beep-test-edit-levels")).style(gray_button)
     } else {
-        make_chrome_button(fl!("beep-test-edit-levels"))
+        make_tile_button(fl!("beep-test-edit-levels"))
             .style(light_gray_button)
             .on_press(Message::BeepTestEditOpenLevels)
     };
@@ -70,9 +70,9 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
     );
 
     let language_button = if has_run {
-        make_chrome_button(fl!("language")).style(gray_button)
+        make_tile_button(fl!("language")).style(gray_button)
     } else {
-        make_chrome_button(fl!("language"))
+        make_tile_button(fl!("language"))
             .style(light_gray_button)
             .on_press(Message::BeepTestEditOpenLanguage)
     };
@@ -151,9 +151,14 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
     };
 
     // 2 single tile rows (1 share each) + the preview band (2 shares) + 2 spacer
-    // rows (1 share each) = 6 Fill shares, matching the sibling config pages so
-    // each tile renders at ~button height instead of stretching to fill. The
-    // spacers absorb the gap above the footer; the footer stays pinned at the bottom.
+    // rows (1 share each) = 6 Fill shares. That keeps the tiles near button
+    // height, but it does NOT match the sibling config pages: they run 4 shares
+    // under a game-time banner and land taller (~118px vs ~94px at the default
+    // window). The
+    // tiles stretch to fill their share; it is this share arithmetic, not the
+    // tiles, that keeps them near button height — add or remove a Fill row here
+    // and every tile resizes. The spacers absorb the gap above the footer; the
+    // footer stays pinned at the bottom.
     column![
         row1,
         row2,
@@ -761,7 +766,7 @@ pub(in super::super) fn build_beep_test_buzzer_picker<'a>(
         };
         button(centered_text(s.to_string().to_uppercase()))
             .padding(PADDING)
-            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .height(Length::Fill)
             .width(Length::Fill)
             .style(style)
             .on_press(Message::BeepTestSelectBuzzer(s))
@@ -883,7 +888,7 @@ pub(in super::super) fn build_beep_test_language_picker<'a>(
         };
         button(label_widget)
             .padding(PADDING)
-            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .height(Length::Fill)
             .style(style)
             .width(Length::Fill)
             .on_press(Message::SelectLanguage(lang))

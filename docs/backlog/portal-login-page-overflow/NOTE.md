@@ -25,7 +25,7 @@ simply has more content than height.
 column![
     text(fl!("portal-login-instructions", ...)).width(Length::Fill),
     vertical_space(),
-    row![ make_button(cancel), make_button(done) ].spacing(SPACING),
+    row![ make_chrome_button(cancel), make_chrome_button(done) ].spacing(SPACING),
 ]
 ```
 

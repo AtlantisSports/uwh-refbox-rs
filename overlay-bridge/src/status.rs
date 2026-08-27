@@ -441,9 +441,18 @@ fn render_scan(scan: &ScanOutcome) -> String {
 /// value -- each of those would be a second implementation of a rule that already exists in Rust,
 /// free to drift from it silently.
 ///
-/// Polls once a second, the rate the refbox sends at while the clock runs -- faster gains nothing,
-/// slower makes the clock visibly stutter. A few hundred bytes over loopback, against the ~8 KB a
-/// whole-page refresh would cost, and unlike a refresh it cannot disturb a half-typed address.
+/// Polls four times a second. The refbox sends once a second while the clock runs, so a faster
+/// poll shows no additional updates -- but that is not what the rate buys. Polling a 1 Hz source on
+/// a 1 Hz timer leaves the phase between them arbitrary, so a change can sit unseen for anything up
+/// to a full second; at 250 ms that ceiling is a quarter second. It is a bound on lateness, not a
+/// refresh rate, which is why the earlier "faster gains nothing" reasoning here was wrong. It
+/// matters because the refbox display and a clock drawn from this data can appear in the same video
+/// frame, where two clocks a second apart read as a fault (Eric, 2026-08-28).
+///
+/// Still a few hundred bytes over loopback, against the ~8 KB a whole-page refresh would cost, and
+/// unlike a refresh it cannot disturb a half-typed address. Note this page is the operator's, not
+/// the broadcast's: vMix polls the table endpoints directly on its own interval, so this value does
+/// not govern what viewers see.
 ///
 /// A failed fetch leaves the page exactly as it was rather than blanking it: the bridge being
 /// briefly unreachable is not evidence about the refbox, and guessing otherwise is the same
@@ -466,7 +475,7 @@ const LIVE_SCRIPT: &str = r#"(function () {
       /* Leave every value where it is -- see this constant's doc. */
     }
   }
-  setInterval(tick, 1000);
+  setInterval(tick, 250);
   tick();
 })();
 "#;

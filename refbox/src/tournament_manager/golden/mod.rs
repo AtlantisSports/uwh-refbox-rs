@@ -650,6 +650,38 @@ mod tests {
         );
     }
 
+    /// The deliberate counterpart to the test above, and a guard on a ruling rather than a bug.
+    ///
+    /// With the game clock STOPPED the confirm window must NOT resolve itself: stopping the clock
+    /// is a deliberate act by the operator, and the app does not override it by ending the game
+    /// during a stoppage (tournament organiser, 2026-08-28). The goal must still be recorded in
+    /// full — that half is the fix.
+    ///
+    /// Without this test the asymmetry with the running-clock case reads as an oversight, and the
+    /// obvious "fix" — having `pause_for_confirm` force the updater awake — would pass every other
+    /// test in the suite.
+    #[test]
+    fn stopped_clock_confirm_window_waits_for_the_operator() {
+        let scenario = scenarios::all()
+            .into_iter()
+            .find(|s| s.name == "sudden_death_score_stopped_clock_waits")
+            .expect("scenario 'sudden_death_score_stopped_clock_waits' is missing");
+        let trace = run(&scenario);
+
+        assert!(
+            trace.iter().any(|line| line.contains("score=B1/W0")),
+            "the deciding goal was not recorded with the clock stopped; full trace:\n{}",
+            trace.join("\n")
+        );
+        assert!(
+            !trace
+                .iter()
+                .any(|line| line.contains("period=BetweenGames")),
+            "the game ended by itself during a deliberate clock stoppage; full trace:\n{}",
+            trace.join("\n")
+        );
+    }
+
     /// Compile-time completeness guard for `render`.
     ///
     /// This exhaustive destructure has no `..`, so adding a field to `GameSnapshot`

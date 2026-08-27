@@ -39,7 +39,7 @@ updating the three score handlers, which had held the score locally since 2024-1
 
 Three independent routes, only the first of which the window's length affects:
 
-1. **The window expires.** For sudden death the window is `minimum_break / 2`
+1. **The window expires — while the game clock is running.** For sudden death the window is `minimum_break / 2`
    (`confirm_pause_duration`, the `GamePeriod::SuddenDeath` arm) — *not* the
    `min(pre-OT break, minimum break) / 2` form, which belongs to the end of regulation. PR #2601
    (`b481ff6d`) refuses **zero** length parameters on the settings screens; it does not impose a
@@ -48,6 +48,29 @@ Three independent routes, only the first of which the window's length affects:
 2. **A dropped touchscreen tap** on CORRECT — the defect fixed in v0.5.0. The goal is lost
    identically, and no window length prevents it.
 3. **The score-edit route** loses a hand-edited deciding score the same way.
+
+### The window does not expire at all with the clock stopped — and that is deliberate
+
+Found by code review after the first draft of this spec, which wrongly treated route 1 as a single
+case. The clock updater schedules no wake-ups while the clock-running latch is false
+(`next_updater_wake` returns `None`, locked by `app::updater_wake_tests::
+stopped_clock_has_no_scheduled_wake`), and `pause_for_confirm` does not raise the latch. So a
+deciding goal scored while the operator has **stopped** the game clock opens a window that never
+resolves itself: it waits for the operator.
+
+**Ruled deliberate by the tournament organiser, 2026-08-28:** *"if the operator stops the clock
+that is an intentional action and we should not try to circumvent it."* Stopping the clock halts
+the game on purpose; the app ending the game by itself during that stoppage would override the
+operator. The window waiting is correct there.
+
+What this fix still changes for that case, and the reason it is not a gap: **the goal is recorded
+in full** — score, scorer, clock reading — so nothing is lost while the window waits, where before
+it was discarded. Only the self-resolution differs, and only where self-resolution would be wrong.
+
+Two tests lock the ruling so that a later reader who spots the asymmetry with the running-clock
+case cannot quietly "fix" it: `test_deciding_goal_with_clock_stopped_is_recorded_and_waits` in the
+engine, and golden scenario `sudden_death_score_stopped_clock_waits`, whose two-line trace asserts
+both halves — the goal recorded, and `BetweenGames` never reached.
 
 ## Rejected outright
 
@@ -206,6 +229,20 @@ Observable by the operator, in a config with sudden death enabled and a short `m
   wrong team in the first half today and the same phantom is recorded. It becomes reachable in
   sudden death, where today nothing is logged at all. Reconciling edits against the goal list is a
   separate piece of work.
+- **An INCORRECT correction that runs out of time is lost, and the game ends.** If the operator taps
+  INCORRECT and is still on the edit screen when the window expires, `Message::AutoConfirmScores`
+  returns them to the main page and the game has already ended on the recorded score. Before this
+  change sudden death merely stayed in sudden death, so they got another attempt. This is exactly how
+  every end-of-regulation confirm window already behaves, so it is consistency rather than a new class
+  of defect — and it follows from the ruling that the goal counts when it is scored. But with a 30 s
+  `minimum_break` the window is 15 s, which is tight for spotting and fixing a wrong-team tap. Worth
+  timing during the walkthrough. Found by code review.
+- **The overlay's recent-goal flag behaves inconsistently for a deciding goal.** `pause_for_confirm`
+  freezes the clock at 10 ms, so `generate_snapshot`'s staleness test drops `recent_goal` once the
+  goal's clock reading exceeds `RECENT_GOAL_TIME` (15 s). A deciding goal in the first 15 seconds of
+  sudden death raises the flag; a later one does not. Not a regression — `recent_goal` was never set
+  for a deciding goal before — but a partial miss on "treat it exactly like any other goal", and two
+  otherwise identical goals will look different on the stream. Found by code review.
 - **Killing the app during the window loses the goal.** There is no live-game persistence anywhere
   in the refbox; this does not make it worse.
 - **The window is still far too short at its floor** (half a microsecond) for an operator to

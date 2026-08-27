@@ -302,7 +302,18 @@ impl TournamentManager {
     /// # Errors
     /// Only from `pause_for_confirm`, which cannot fail in sudden death: it accepts a stopped
     /// clock and clears any active timeout. The `?` is a backstop, not an expected path.
+    ///
+    /// # Panics
+    /// Call this only in `SuddenDeath`. `pause_for_confirm`'s `clock_at_pause` match declares
+    /// every period other than `SecondHalf`, `OvertimeSecondHalf` and `SuddenDeath` unreachable,
+    /// so calling this elsewhere panics. The `debug_assert` names the requirement; it does not
+    /// make it safe.
     pub fn add_deciding_goal(&mut self, color: Color, player_num: u8, now: Instant) -> Result<()> {
+        debug_assert_eq!(
+            self.current_period,
+            GamePeriod::SuddenDeath,
+            "add_deciding_goal is only for the goal that ends sudden death"
+        );
         let clock_time = self.game_clock_time(now);
         self.pause_for_confirm(now)?;
         self.add_score_at(color, player_num, clock_time, now);
@@ -316,11 +327,19 @@ impl TournamentManager {
     ///
     /// # Errors
     /// As [`Self::add_deciding_goal`].
+    ///
+    /// # Panics
+    /// As [`Self::add_deciding_goal`]: sudden death only.
     pub fn set_deciding_scores(
         &mut self,
         scores: BlackWhiteBundle<u8>,
         now: Instant,
     ) -> Result<()> {
+        debug_assert_eq!(
+            self.current_period,
+            GamePeriod::SuddenDeath,
+            "set_deciding_scores is only for a score that ends sudden death"
+        );
         self.pause_for_confirm(now)?;
         self.set_scores(scores, now);
         Ok(())
@@ -10256,6 +10275,49 @@ mod test {
         );
     }
 
+    /// A deciding goal scored while the operator has STOPPED the game clock is still recorded in
+    /// full — that is the half of this fix that matters there.
+    ///
+    /// What deliberately does NOT happen is the window resolving itself: the clock updater
+    /// schedules no wake-ups while the clock is stopped (`next_updater_wake` returns `None`, and
+    /// `app::updater_wake_tests::stopped_clock_has_no_scheduled_wake` locks that), so the window
+    /// waits for the operator. Stopping the clock is a deliberate act by the operator and the app
+    /// does not override it by ending the game during a stoppage — a tournament-organiser ruling,
+    /// 2026-08-28, not an oversight. See the golden scenario
+    /// `sudden_death_score_stopped_clock_waits` for the same rule at trace level.
+    #[test]
+    fn test_deciding_goal_with_clock_stopped_is_recorded_and_waits() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: true,
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        let now = start + Duration::from_secs(1);
+
+        // Sudden death, tied, and the operator has NOT started the clock.
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(30));
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, start);
+        assert!(!tm.clock_is_running());
+
+        tm.add_deciding_goal(Color::Black, 7, now).unwrap();
+
+        // Recorded in full, window open, game not ended.
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+        assert_eq!(tm.current_game_stats.goals().len(), 1);
+        assert!(tm.in_score_confirm_pause());
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+
+        // The operator's confirm still ends it whenever they get to it.
+        tm.end_confirm_pause(now + Duration::from_secs(11)).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+    }
+
     /// The score-edit route into the window has the same defect and the same fix. An edit is the
     /// operator stating a score, not scoring one, so no goal is recorded for it.
     #[test]
@@ -10280,7 +10342,10 @@ mod test {
 
     // R2 (ruling 6.10 / edit 7.4): scoring or editing a deciding sudden-death goal while the
     // game clock is stopped or a timeout is active must NOT crash — it must open the sudden-death
-    // confirm window (goal held until confirm), then end the game cleanly on confirm.
+    // confirm window, then end the game cleanly on confirm. These tests drive the engine
+    // primitives directly rather than via `add_deciding_goal`, which is what the app now calls;
+    // they are kept in that form because what they guard is `pause_for_confirm` surviving a
+    // stopped clock / active timeout, and driving it directly is the sharper test of that.
     #[test]
     fn test_sd_score_confirm_with_clock_stopped_does_not_crash() {
         initialize();
@@ -10305,7 +10370,7 @@ mod test {
         tm.pause_for_confirm(now).unwrap();
         assert!(tm.in_score_confirm_pause());
 
-        // The deciding goal is committed only on confirm, then the game ends cleanly.
+        // Setting the deciding score inside the window does not end the game; confirming does.
         tm.set_scores(BlackWhiteBundle { black: 2, white: 1 }, now);
         tm.end_confirm_pause(now + Duration::from_secs(1)).unwrap();
         assert_eq!(tm.current_period, GamePeriod::BetweenGames);

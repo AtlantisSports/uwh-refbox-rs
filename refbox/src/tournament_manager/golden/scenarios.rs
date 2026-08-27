@@ -685,6 +685,25 @@ static SD_SCORE_DURING_PENALTY_SHOT_ACTIONS: &[(u64, Action)] = &[
     (19, ConfirmGameEnd),   // deciding goal → BetweenGames
 ];
 
+// D) Game-ending rugby penalty shot. Mirrors
+//    test_game_ending_rugby_penalty_shot_confirm_ends_game: the second half runs out with a
+//    rugby penalty shot still in progress (half extended, game clock at 0). A goal is scored
+//    on the shot, the operator ends the game-ending timeout (EndTimeout → end_game_ending_timeout
+//    arms the confirm pause, R6), and confirms → BetweenGames. No OT/SD, so the game ends here.
+//    Before #1675 EndTimeout armed no pause, so the confirm step's end_confirm_pause returned
+//    Err(NotPaused) and the driver's unwrap would panic.
+static GAME_ENDING_RUGBY_PENALTY_SHOT_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::SecondHalf, Duration::from_secs(5)),
+    ),
+    (0, StartClock),
+    (1, StartRugbyPenaltyShot), // 15s shot; game clock hits 0 at ~t=5 → half extended
+    (6, AddScore(Color::Black)), // goal scored on the shot → B1/W0 (decisive)
+    (8, EndTimeout), // would-end-game → end_game_ending_timeout arms the confirm pause (R6)
+    (10, ConfirmGameEnd), // confirm the score → game ends → BetweenGames
+];
+
 // E) The reported bug: a deciding SD goal is scored and then LEFT ALONE — the operator never taps
 //    CORRECT, so only the clock updater's auto-confirm resolves the window. Before the fix the
 //    goal lived in UI state, the engine still saw a tie, and end_confirm_pause's SuddenDeath arm
@@ -704,23 +723,27 @@ static SD_SCORE_AUTO_CONFIRM_ACTIONS: &[(u64, Action)] = &[
     // Deliberately no confirm action: the window must expire on its own.
 ];
 
-// D) Game-ending rugby penalty shot. Mirrors
-//    test_game_ending_rugby_penalty_shot_confirm_ends_game: the second half runs out with a
-//    rugby penalty shot still in progress (half extended, game clock at 0). A goal is scored
-//    on the shot, the operator ends the game-ending timeout (EndTimeout → end_game_ending_timeout
-//    arms the confirm pause, R6), and confirms → BetweenGames. No OT/SD, so the game ends here.
-//    Before #1675 EndTimeout armed no pause, so the confirm step's end_confirm_pause returned
-//    Err(NotPaused) and the driver's unwrap would panic.
-static GAME_ENDING_RUGBY_PENALTY_SHOT_ACTIONS: &[(u64, Action)] = &[
+// F) The deliberate counterpart to (E): the same unattended deciding goal, but with the game clock
+//    STOPPED. The goal is recorded in full, the window opens — and the window does NOT resolve
+//    itself. The clock updater schedules no wake-ups while the clock is stopped
+//    (`next_updater_wake` returns None, which this driver models via the start/stop latch), so the
+//    window waits for the operator.
+//
+//    This is a ruling, not a gap: stopping the clock is a deliberate act by the operator, and the
+//    app does not override it by ending the game during a stoppage (tournament organiser,
+//    2026-08-28). The scenario exists so that a future reader who spots the asymmetry with (E)
+//    cannot "fix" it without a trace change forcing the question.
+//
+//    Expected trace: SuddenDeath throughout, score=B1/W0 from the goal onward, conf_pause armed
+//    and never resolving. BetweenGames is never reached.
+static SD_SCORE_STOPPED_CLOCK_WAITS_ACTIONS: &[(u64, Action)] = &[
     (
         0,
-        SetupPeriod(GamePeriod::SecondHalf, Duration::from_secs(5)),
+        SetupPeriod(GamePeriod::SuddenDeath, Duration::from_secs(30)),
     ),
-    (0, StartClock),
-    (1, StartRugbyPenaltyShot), // 15s shot; game clock hits 0 at ~t=5 → half extended
-    (6, AddScore(Color::Black)), // goal scored on the shot → B1/W0 (decisive)
-    (8, EndTimeout), // would-end-game → end_game_ending_timeout arms the confirm pause (R6)
-    (10, ConfirmGameEnd), // confirm the score → game ends → BetweenGames
+    // No StartClock: the game clock stays stopped, so the latch stays false.
+    (2, ScoreSuddenDeath(Color::Black)),
+    // Deliberately no confirm action, and deliberately no auto-confirm either.
 ];
 
 /// A sleep that crossed a game boundary: play a little of game 1, score in it, then
@@ -1157,6 +1180,17 @@ pub(super) fn all() -> Vec<Scenario> {
             },
             actions: SD_SCORE_AUTO_CONFIRM_ACTIONS,
             run_secs: 35,
+        },
+        Scenario {
+            name: "sudden_death_score_stopped_clock_waits",
+            config: GameConfig {
+                overtime_allowed: false,
+                sudden_death_allowed: true,
+                minimum_break: Duration::from_secs(20),
+                ..reg_config()
+            },
+            actions: SD_SCORE_STOPPED_CLOCK_WAITS_ACTIONS,
+            run_secs: 30,
         },
         Scenario {
             name: "game_ending_rugby_penalty_shot",

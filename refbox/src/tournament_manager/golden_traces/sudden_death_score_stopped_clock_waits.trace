@@ -1,0 +1,2 @@
+period=SuddenDeath   | clock= 30s | score=B0/W0   | timeout=none         | conf_pause=none   | old?=N | pens=[]
+period=SuddenDeath   | clock=  0s | score=B1/W0   | timeout=none         | conf_pause=10s    | old?=N | pens=[]

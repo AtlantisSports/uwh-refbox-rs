@@ -64,6 +64,9 @@ impl GameStats {
 
     /// Test-only view of the recorded goals in order: (cap number, side, period, period time).
     /// Deliberately returns public types so `Event` need not become visible outside this module.
+    ///
+    /// Note on the period time: `add_goal`'s parameter is named `time_left_in_period`, but in
+    /// sudden death the clock counts UP, so what is recorded there is seconds *elapsed*.
     #[cfg(test)]
     pub(crate) fn goals(&self) -> Vec<(u8, String, GamePeriod, f32)> {
         self.events

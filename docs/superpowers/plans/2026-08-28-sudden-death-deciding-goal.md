@@ -644,6 +644,20 @@ straight back out one task later. Task 1's own verification is unaffected: its f
 written first, observed failing to compile, and now pass. Only the commit boundary moved, so
 Task 1 Step 8's commit is folded into Task 2 Step 7.
 
+**3. Task 4's code review found a spec error, not an implementation error — and it added scope.**
+The spec treated "the window expires" as one route. It is two: the window only self-resolves while
+the clock-running latch is true, so a deciding goal scored with the clock **stopped** opens a window
+that waits indefinitely. The organiser ruled that deliberate (*"if the operator stops the clock that
+is an intentional action and we should not try to circumvent it"*), so no behaviour changed, but
+three things were added beyond the plan: a spec section recording the ruling, an engine test
+(`test_deciding_goal_with_clock_stopped_is_recorded_and_waits`), and golden scenario
+`sudden_death_score_stopped_clock_waits` — the last two so a future reader who spots the asymmetry
+cannot quietly "fix" it. Two further review findings went into the spec's accepted-limitations list
+(a slow INCORRECT is lost once the window expires; the overlay's recent-goal flag is inconsistent for
+a deciding goal). Minor findings fixed in place: a missing `unwrap` justification, missing `# Panics`
+docs plus `debug_assert`s on both new operations, stale comments in the pre-existing R2 test block,
+a `goals()` doc note, and the Family-11 comment letters reordered to read A–F.
+
 **2. The lint command in Tasks 1, 2 and 3 is `just lint`, not the `--all-targets --all-features`
 form the plan wrote.** The strict form has two failures that pre-date this branch and do not fail
 CI: `items after a test module` at `refbox/src/app/view_builders/keypad_pages/player_grid.rs:116`

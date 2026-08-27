@@ -17,9 +17,9 @@ use uwh_common::{color::Color, config::Game as GameConfig, game_snapshot::GamePe
 
 use crate::tournament_manager::{
     golden::Action::{
-        AddScore, ConfirmGameEnd, ConfirmScore, EndTimeout, ResetGame, ScoreSuddenDeath,
-        SetGameClock, SetupPeriod, StartClock, StartPenalty, StartPenaltyShot, StartPlayNow,
-        StartRefTimeout, StartRugbyPenaltyShot, StartTeamTimeout, StopClock,
+        AddScore, ConfirmGameEnd, EndTimeout, ResetGame, ScoreSuddenDeath, SetGameClock,
+        SetupPeriod, StartClock, StartPenalty, StartPenaltyShot, StartPlayNow, StartRefTimeout,
+        StartRugbyPenaltyShot, StartTeamTimeout, StopClock,
     },
     penalty::PenaltyKind,
 };
@@ -257,13 +257,14 @@ static OVERTIME_FULL_ACTIONS: &[(u64, Action)] = &[
 //     Starts at OvertimeSecondHalf 5 s remaining.
 //
 //     The SD confirm-pause window = minimum_break / 2.  minimum_break is set to 20 s
-//     here so the window is 10 s — wide enough for the ScoreSuddenDeath→ConfirmScore
+//     here so the window is 10 s — wide enough for the ScoreSuddenDeath→ConfirmGameEnd
 //     gap (t=15 → t=17, 2 s) to always land inside it and exercise the manual path.
 //
 //     Expected trace:
 //       OvertimeSecondHalf count-down → PreSuddenDeath break → SuddenDeath count-up
-//       → conf_pause=Ns appears (ScoreSuddenDeath fires pause_for_confirm)
-//       → ConfirmScore applies score + ends pause → BetweenGames
+//       → score lands and conf_pause=Ns appears (ScoreSuddenDeath records the goal and
+//         opens the window)
+//       → ConfirmGameEnd ends the pause → BetweenGames
 static SUDDEN_DEATH_ACTIONS: &[(u64, Action)] = &[
     (
         0,
@@ -271,10 +272,10 @@ static SUDDEN_DEATH_ACTIONS: &[(u64, Action)] = &[
     ),
     (0, StartClock),
     // At ~t=5 we enter PreSuddenDeath (5 s break), then SuddenDeath starts (count-up).
-    // ScoreSuddenDeath at t=15: calls pause_for_confirm; score held, not yet applied.
-    // ConfirmScore at t=17: applies held score + ends pause → BetweenGames.
+    // ScoreSuddenDeath at t=15: records the goal and opens the confirm window.
+    // ConfirmGameEnd at t=17: ends the pause → BetweenGames.
     (15, ScoreSuddenDeath(Color::Black)),
-    (17, ConfirmScore(Color::Black)),
+    (17, ConfirmGameEnd),
 ];
 
 // 17. overtime_score_ends — a score during OvertimeSecondHalf breaks the tie
@@ -639,7 +640,7 @@ static MANUAL_RESET_GAME_ACTIONS: &[(u64, Action)] = &[
 
 // A) Deciding SD goal scored while the game clock is STOPPED. Mirrors
 //    test_sd_score_confirm_with_clock_stopped_does_not_crash: SuddenDeath is entered with the
-//    clock never started (stopped), the held goal is scored (pause_for_confirm on a stopped
+//    clock never started (stopped), the deciding goal is scored (pause_for_confirm on a stopped
 //    clock — the R2 fix), then confirmed → deciding goal → BetweenGames. Before #1675 the
 //    ScoreSuddenDeath step's pause_for_confirm returned Err(ClockStopped) and the driver's
 //    unwrap would panic here.
@@ -650,7 +651,7 @@ static SD_SCORE_CLOCK_STOPPED_ACTIONS: &[(u64, Action)] = &[
     ),
     // No StartClock: the game clock stays stopped (latch false).
     (2, ScoreSuddenDeath(Color::Black)), // pause_for_confirm with clock stopped (R2)
-    (4, ConfirmScore(Color::Black)),     // set_scores(B1/W0) + end_confirm_pause → game ends
+    (4, ConfirmGameEnd),                 // set_scores(B1/W0) + end_confirm_pause → game ends
 ];
 
 // B) Deciding SD goal scored DURING a referee timeout. Mirrors
@@ -667,7 +668,7 @@ static SD_SCORE_DURING_REF_TIMEOUT_ACTIONS: &[(u64, Action)] = &[
     // ~t=5 OvertimeSecondHalf ends → PreSuddenDeath (5s) → SuddenDeath starts ~t=10.
     (15, StartRefTimeout), // SD clock freezes; Ref timeout counts up
     (17, ScoreSuddenDeath(Color::Black)), // pause_for_confirm clears the ref timeout (R2)
-    (19, ConfirmScore(Color::Black)), // deciding goal → BetweenGames
+    (19, ConfirmGameEnd),  // deciding goal → BetweenGames
 ];
 
 // C) Deciding SD goal scored DURING a penalty shot. Mirrors
@@ -681,7 +682,26 @@ static SD_SCORE_DURING_PENALTY_SHOT_ACTIONS: &[(u64, Action)] = &[
     (0, StartClock),
     (15, StartPenaltyShot), // SD clock freezes; penalty shot counts up
     (17, ScoreSuddenDeath(Color::Black)), // pause_for_confirm clears the penalty shot (R2)
-    (19, ConfirmScore(Color::Black)), // deciding goal → BetweenGames
+    (19, ConfirmGameEnd),   // deciding goal → BetweenGames
+];
+
+// E) The reported bug: a deciding SD goal is scored and then LEFT ALONE — the operator never taps
+//    CORRECT, so only the clock updater's auto-confirm resolves the window. Before the fix the
+//    goal lived in UI state, the engine still saw a tie, and end_confirm_pause's SuddenDeath arm
+//    kept the period at SuddenDeath forever: score frozen at B0/W0 and no game-start signal for
+//    the next game. To reproduce that failure, revert apply_action's Action::ScoreSuddenDeath arm
+//    to a bare `tm.pause_for_confirm(now).unwrap()` and re-run.
+//
+//    minimum_break=20 s → window = 10 s. Goal at t=15, so the window auto-confirms at ~t=25.
+static SD_SCORE_AUTO_CONFIRM_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::OvertimeSecondHalf, Duration::from_secs(5)),
+    ),
+    (0, StartClock),
+    // ~t=5 OvertimeSecondHalf ends → PreSuddenDeath (5 s) → SuddenDeath starts ~t=10.
+    (15, ScoreSuddenDeath(Color::Black)),
+    // Deliberately no confirm action: the window must expire on its own.
 ];
 
 // D) Game-ending rugby penalty shot. Mirrors
@@ -858,7 +878,7 @@ pub(super) fn all() -> Vec<Scenario> {
                 ot_half_time_duration: Duration::from_secs(5),
                 pre_sudden_death_duration: Duration::from_secs(5),
                 // minimum_break=20 s → SD confirm-pause window = 20/2 = 10 s.
-                // This ensures ScoreSuddenDeath (t=15) → ConfirmScore (t=17) lands
+                // This ensures ScoreSuddenDeath (t=15) → ConfirmGameEnd (t=17) lands
                 // inside the window and exercises the manual confirm path.
                 minimum_break: Duration::from_secs(20),
                 ..reg_config()
@@ -1121,6 +1141,21 @@ pub(super) fn all() -> Vec<Scenario> {
                 ..reg_config()
             },
             actions: SD_SCORE_DURING_PENALTY_SHOT_ACTIONS,
+            run_secs: 35,
+        },
+        Scenario {
+            name: "sudden_death_score_auto_confirm",
+            config: GameConfig {
+                overtime_allowed: true,
+                sudden_death_allowed: true,
+                pre_overtime_break: Duration::from_secs(5),
+                ot_half_play_duration: Duration::from_secs(5),
+                ot_half_time_duration: Duration::from_secs(3),
+                pre_sudden_death_duration: Duration::from_secs(5),
+                minimum_break: Duration::from_secs(20),
+                ..reg_config()
+            },
+            actions: SD_SCORE_AUTO_CONFIRM_ACTIONS,
             run_secs: 35,
         },
         Scenario {

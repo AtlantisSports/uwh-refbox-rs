@@ -66,28 +66,22 @@ pub(super) enum Action {
     ///
     /// Mirrors `Message::AddNewScore` in the non-SuddenDeath path: calls
     /// `tm.add_score(color, 0, now)` directly.  Do NOT use this variant in
-    /// SuddenDeath — use [`Action::ScoreSuddenDeath`] + [`Action::ConfirmScore`] instead.
+    /// SuddenDeath — use [`Action::ScoreSuddenDeath`] + [`Action::ConfirmGameEnd`] instead.
     AddScore(Color),
-    /// Mirror the SuddenDeath score-entry in `app/mod.rs` (AddScoreComplete, SD branch):
-    ///   the held score is incremented locally, then `tm.pause_for_confirm(now)` is called.
-    ///   The engine score is NOT changed yet; the increment is conceptually held by the
-    ///   operator until `ConfirmScore` fires.
-    ///
-    /// Cross-reference: `app/mod.rs` ~line 2048–2053.
+    /// Mirror the SuddenDeath score-entry in `app/mod.rs` (`Message::AddNewScore` and
+    ///   `Message::AddScoreComplete`, SD branch): `tm.add_deciding_goal(color, 0, now)`.
+    ///   The goal is recorded in the engine straight away — score, scorer and the real
+    ///   sudden-death clock reading — behind the score-confirmation window. The window
+    ///   decides only whether the game is over, and ends it by either route.
     ScoreSuddenDeath(Color),
-    /// Mirror the operator confirming a SuddenDeath score (`Message::ScoreConfirmation { correct: true }`):
-    ///   recomputes the held score, calls `tm.set_scores(held, now)` then `tm.end_confirm_pause(now)`.
+    /// Operator confirms the score on the confirmation screen — mirrors
+    /// `Message::ScoreConfirmation { correct: true }` (app/mod.rs): `tm.set_scores` with the
+    /// engine's own current score, a no-op write now that scores are applied when they are
+    /// entered, then `tm.end_confirm_pause(now)`, which finishes the game.
     ///
-    /// Cross-reference: `app/mod.rs` ~line 2907–2911.
-    ConfirmScore(Color),
-    /// Operator confirms a game-ending score with NO pending goal to add — mirrors
-    /// `Message::ScoreConfirmation { correct: true }` (app/mod.rs ~3913) when the held
-    /// score is unchanged: `tm.set_scores(current, now)` then `tm.end_confirm_pause(now)`.
-    ///
-    /// Needed to finish a game-ending timeout's confirm pause, which the driver's tick loop
-    /// cannot auto-end because `end_game_ending_timeout` → `halt_clock` drops the start/stop
-    /// latch (so no tick fires to reach `pause_has_ended`). Distinct from [`Action::ConfirmScore`],
-    /// which *increments* the score for the sudden-death held-goal path.
+    /// Also the only way to finish a game-ending timeout's confirm pause, which the driver's
+    /// tick loop cannot auto-end because `end_game_ending_timeout` → `halt_clock` drops the
+    /// start/stop latch (so no tick fires to reach `pause_has_ended`).
     ConfirmGameEnd,
     /// Start a timed penalty for `(color, player_number, kind)`.
     StartPenalty(Color, u8, PenaltyKind),
@@ -195,14 +189,13 @@ fn tick(tm: &mut TournamentManager, now: Instant) {
 //                          scores zeroed, penalties/warnings/fouls cleared, has_reset=true.
 //   StopClock            → Message::EditTime  (stop_clock + clock_is_running check)
 //   AddScore             → Message::AddNewScore  (add_score(color, 0, now); non-SD path)
-//   ScoreSuddenDeath     → Message::AddScoreComplete SD branch (~line 2048–2053):
-//                          hold score locally, pause_for_confirm(now)
-//   ConfirmScore         → Message::ScoreConfirmation { correct: true } (~line 2907–2911):
-//                          set_scores(held, now) + end_confirm_pause(now)
-//   ConfirmGameEnd       → Message::ScoreConfirmation { correct: true } with an UNCHANGED score
-//                          (~line 3913): set_scores(current) + end_confirm_pause(now). Finishes a
-//                          game-ending timeout's confirm pause (halt_clock stopped the latch, so
-//                          the tick loop cannot auto-confirm it).
+//   ScoreSuddenDeath     → Message::AddNewScore / AddScoreComplete, SD branch:
+//                          add_deciding_goal(color, 0, now) — record the goal, then open the
+//                          score-confirmation window; the window ends the game, either route.
+//   ConfirmGameEnd       → Message::ScoreConfirmation { correct: true }: set_scores(current)
+//                          (a no-op write) + end_confirm_pause(now). Also the only way to finish
+//                          a game-ending timeout's confirm pause (halt_clock stopped the latch,
+//                          so the tick loop cannot auto-confirm it).
 //   StartPenalty         → penalty_editor.rs add_to_tm → tm.start_penalty(...)
 //   StartTeamTimeout     → Message::TeamTimeout  (start_team_timeout)
 //   StartRefTimeout      → Message::RefTimeout   (start_ref_timeout)
@@ -251,35 +244,19 @@ fn apply_action(tm: &mut TournamentManager, action: Action, now: Instant) {
         }
         Action::AddScore(color) => {
             // Mirrors Message::AddNewScore without the collect_scorer_cap_num path.
-            // Non-SuddenDeath path only — use ScoreSuddenDeath + ConfirmScore for SD goals.
+            // Non-SuddenDeath path only — use ScoreSuddenDeath + ConfirmGameEnd for SD goals.
             tm.add_score(color, 0, now);
         }
         Action::ScoreSuddenDeath(color) => {
-            // Mirrors app/mod.rs AddScoreComplete SD branch (~line 2048–2053):
-            // the new score is held locally (not yet sent to the engine); the engine
-            // is told to enter a confirmation pause so the operator can verify.
-            let mut s = tm.get_scores();
-            s[color] = s[color].saturating_add(1);
-            // NOTE: `s` is the held score — do NOT call tm.set_scores here.
-            // The held value is stored implicitly; ConfirmScore recomputes it.
-            let _ = s; // suppress unused-variable warning; ConfirmScore will recompute
-            tm.pause_for_confirm(now).unwrap();
-        }
-        Action::ConfirmScore(color) => {
-            // Mirrors app/mod.rs ScoreConfirmation { correct: true } (~line 2907–2911):
-            // recompute the held score (same increment as ScoreSuddenDeath), apply it
-            // to the engine, then end the confirmation pause.
-            let mut s = tm.get_scores();
-            s[color] = s[color].saturating_add(1);
-            tm.set_scores(s, now);
-            tm.end_confirm_pause(now).unwrap();
+            // Mirrors app/mod.rs Message::AddNewScore / Message::AddScoreComplete, SD branch:
+            // tm.add_deciding_goal(color, 0, now). The goal is recorded immediately — so the
+            // panel and the overlay show it, as they do for any other goal — behind the
+            // score-confirmation window, which then ends the game by either route.
+            tm.add_deciding_goal(color, 0, now).unwrap();
         }
         Action::ConfirmGameEnd => {
-            // Mirrors Message::ScoreConfirmation { correct: true } with an unchanged held
-            // score (app/mod.rs ~3913): the score already reflects the game-ending shot's
-            // outcome, so confirmation re-sets the same scores and ends the pause, finishing
-            // the game. (The tick loop cannot do this: end_game_ending_timeout's halt_clock
-            // stops the latch, so no tick fires to reach pause_has_ended.)
+            // Mirrors Message::ScoreConfirmation { correct: true }: the engine already holds the
+            // score, so this re-set is a no-op, and end_confirm_pause finishes the game.
             let s = tm.get_scores();
             tm.set_scores(s, now);
             tm.end_confirm_pause(now).unwrap();
@@ -635,6 +612,41 @@ mod tests {
             failures.is_empty(),
             "golden trace mismatches:\n\n{}",
             failures.join("\n\n")
+        );
+    }
+
+    /// Baseline-independent guard for the sudden-death auto-confirm bug (2026-08-28).
+    ///
+    /// `golden_traces_match_baseline` would also catch a regression here, but only against a
+    /// blessed file — and a careless `UPDATE_GOLDEN=1` re-blesses the bug along with the fix.
+    /// This test states the requirement outright: when an unattended confirmation window ends a
+    /// sudden-death game, the game must actually end, and it must end with the goal counted.
+    ///
+    /// Asserts on the FIRST `BetweenGames` state rather than the last line, because the
+    /// between-games auto-reset later zeroes the scores by design.
+    #[test]
+    fn sudden_death_goal_survives_an_unattended_confirm_window() {
+        let scenario = scenarios::all()
+            .into_iter()
+            .find(|s| s.name == "sudden_death_score_auto_confirm")
+            .expect("scenario 'sudden_death_score_auto_confirm' is missing");
+        let trace = run(&scenario);
+
+        let ended = trace
+            .iter()
+            .find(|line| line.contains("period=BetweenGames"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "an unattended confirm window never ended the game; full trace:\n{}",
+                    trace.join("\n")
+                )
+            });
+
+        assert!(
+            ended.contains("score=B1/W0"),
+            "the game ended without the deciding goal; first BetweenGames state:\n  {ended}\n\
+             full trace:\n{}",
+            trace.join("\n")
         );
     }
 

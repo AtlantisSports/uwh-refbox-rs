@@ -96,15 +96,15 @@ pub(in super::super) fn build_beep_test_page<'a>(
     //   (true,  false) is unreachable: BeepTestStart sets has_run=true
     //                    before starting the engine.
     let start_stop = if clock_running {
-        make_button(fl!("beep-test-pause"))
+        make_chrome_button(fl!("beep-test-pause"))
             .style(yellow_button)
             .on_press(Message::BeepTestStop)
     } else if has_run {
-        make_button(fl!("beep-test-resume"))
+        make_chrome_button(fl!("beep-test-resume"))
             .style(blue_button)
             .on_press(Message::BeepTestStart)
     } else {
-        make_button(fl!("beep-test-start"))
+        make_chrome_button(fl!("beep-test-start"))
             .style(green_button)
             .on_press(Message::BeepTestStart)
     };
@@ -112,14 +112,14 @@ pub(in super::super) fn build_beep_test_page<'a>(
     // Reset is disabled both before any run AND while the engine is running.
     // It is only pressable when `has_run` is true and the clock is stopped.
     let reset = if has_run && !clock_running {
-        make_button(fl!("beep-test-reset"))
+        make_chrome_button(fl!("beep-test-reset"))
             .style(red_button)
             .on_press(Message::BeepTestReset)
     } else {
-        make_button(fl!("beep-test-reset")).style(gray_button)
+        make_chrome_button(fl!("beep-test-reset")).style(gray_button)
     };
 
-    let settings = make_button(fl!("settings"))
+    let settings = make_chrome_button(fl!("settings"))
         .style(light_gray_button)
         .on_press(Message::BeepTestOpenSettings);
 

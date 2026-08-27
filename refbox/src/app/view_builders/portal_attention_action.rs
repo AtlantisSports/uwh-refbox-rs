@@ -87,15 +87,15 @@ pub(in super::super) fn build_portal_attention_action<'a>(
     } else {
         yellow_button
     };
-    let discard = make_button(discard_label)
+    let discard = make_chrome_button(discard_label)
         .on_press(Message::PortalDiscardTapped(id.clone()))
         .style(discard_style);
 
-    let retry = make_button(fl!("portal-action-force-submit"))
+    let retry = make_chrome_button(fl!("portal-action-force-submit"))
         .on_press(Message::PortalForceSubmit(id))
         .style(green_button);
 
-    let back = make_button(fl!("back"))
+    let back = make_chrome_button(fl!("back"))
         .on_press(Message::ClosePortalAttentionAction)
         .style(red_button);
 

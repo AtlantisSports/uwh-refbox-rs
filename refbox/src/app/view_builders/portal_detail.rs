@@ -92,13 +92,13 @@ pub(in super::super) fn build_portal_detail_page<'a>(
     .height(Length::Fill)
     .width(Length::FillPortion(5));
 
-    let back = make_button(fl!("back"))
+    let back = make_chrome_button(fl!("back"))
         .on_press(Message::ClosePortalDetailPage)
         .style(red_button);
 
     // Blue safe-action button, anchored bottom-right opposite BACK.
     // Grayed (no on_press) when there is nothing unsent to retry.
-    let retry_all = make_button(fl!("portal-retry-all"))
+    let retry_all = make_chrome_button(fl!("portal-retry-all"))
         .on_press_maybe((has_unsent && can_retry).then_some(Message::PortalRetryAll))
         .style(blue_button);
 

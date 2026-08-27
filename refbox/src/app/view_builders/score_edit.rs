@@ -127,11 +127,11 @@ pub(in super::super) fn build_score_edit_view<'a>(
     // must be able to commit the final score). Edit mode uses "Apply" and grays
     // out until the scores actually differ from what was shown on open.
     let confirm_btn = if is_confirmation {
-        make_button(fl!("done"))
+        make_chrome_button(fl!("done"))
             .style(green_button)
             .on_press(Message::ScoreEditComplete { canceled: false })
     } else {
-        make_button(fl!("apply"))
+        make_chrome_button(fl!("apply"))
             .style(green_button)
             .on_press_maybe(
                 score_edit_has_changes(scores, old_scores)
@@ -162,7 +162,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
         .push(vertical_space())
         .push(
             row![
-                make_button(cancel_label)
+                make_chrome_button(cancel_label)
                     .on_press_maybe(cancel_btn_msg)
                     .style(red_button),
                 horizontal_space(),

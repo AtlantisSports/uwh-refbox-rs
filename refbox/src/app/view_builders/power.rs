@@ -27,15 +27,15 @@ pub(in super::super) fn build_power_page<'a>(data: ViewData<'_, '_>) -> Element<
     );
 
     let actions = row![
-        make_button(fl!("shut-down"))
+        make_chrome_button(fl!("shut-down"))
             .style(orange_button)
             .width(Length::Fill)
             .on_press(Message::PowerAction(PowerAction::ShutDownPi)),
-        make_button(fl!("restart-pi"))
+        make_chrome_button(fl!("restart-pi"))
             .style(yellow_button)
             .width(Length::Fill)
             .on_press(Message::PowerAction(PowerAction::RestartPi)),
-        make_button(fl!("restart-refbox"))
+        make_chrome_button(fl!("restart-refbox"))
             .style(blue_button)
             .width(Length::Fill)
             .on_press(Message::PowerAction(PowerAction::RestartRefbox)),
@@ -46,7 +46,7 @@ pub(in super::super) fn build_power_page<'a>(data: ViewData<'_, '_>) -> Element<
     // Back sits bottom-left at one-third width, matching every other page's
     // Back button; the two empty thirds keep it left-aligned.
     let back_row = row![
-        make_button(fl!("back"))
+        make_chrome_button(fl!("back"))
             .style(red_button)
             .width(Length::Fill)
             .on_press(Message::ShowGameDetails),

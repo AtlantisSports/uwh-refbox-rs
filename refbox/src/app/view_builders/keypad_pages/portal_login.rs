@@ -29,11 +29,11 @@ pub(super) fn make_portal_login_page<'a>(
         text(instructions).width(Length::Fill),
         vertical_space(),
         row![
-            make_button(fl!("cancel"))
+            make_chrome_button(fl!("cancel"))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: true }),
-            make_button(if !requested {
+            make_chrome_button(if !requested {
                 fl!("done")
             } else {
                 fl!("loading")

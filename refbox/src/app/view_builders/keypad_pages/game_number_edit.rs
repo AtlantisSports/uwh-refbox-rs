@@ -11,11 +11,11 @@ pub(super) fn make_game_number_edit_page<'a>(
     column![
         vertical_space(),
         row![
-            make_button(fl!("cancel"))
+            make_chrome_button(fl!("cancel"))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: true }),
-            make_button(fl!("apply"))
+            make_chrome_button(fl!("apply"))
                 .style(green_button)
                 .width(Length::Fill)
                 .on_press_maybe(

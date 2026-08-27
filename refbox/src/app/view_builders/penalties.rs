@@ -63,11 +63,11 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            make_button(cancel_or_back_label(has_changes))
+            make_chrome_button(cancel_or_back_label(has_changes))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::PenaltyOverviewComplete { canceled: true }),
-            make_button(fl!("new"))
+            make_chrome_button(fl!("new"))
                 .style(blue_button)
                 .width(Length::Fill)
                 .on_press(Message::KeypadPage(KeypadPage::Penalty(
@@ -76,7 +76,7 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
                     default_pen_len,
                     Infraction::Unknown,
                 ))),
-            make_button(fl!("apply"))
+            make_chrome_button(fl!("apply"))
                 .style(green_button)
                 .width(Length::Fill)
                 .on_press_maybe(

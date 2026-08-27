@@ -54,11 +54,11 @@ pub(in super::super) fn build_warning_overview_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            make_button(cancel_or_back_label(has_changes))
+            make_chrome_button(cancel_or_back_label(has_changes))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::WarningOverviewComplete { canceled: true }),
-            make_button(fl!("new"))
+            make_chrome_button(fl!("new"))
                 .style(blue_button)
                 .width(Length::Fill)
                 .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
@@ -68,7 +68,7 @@ pub(in super::super) fn build_warning_overview_page<'a>(
                     team_warning: false,
                     ret_to_overview: true,
                 })),
-            make_button(fl!("apply"))
+            make_chrome_button(fl!("apply"))
                 .style(green_button)
                 .width(Length::Fill)
                 .on_press_maybe(

@@ -37,12 +37,12 @@ pub(in super::super) fn build_game_info_page<'a>(
 
     let middle_item: Element<_> = if uses_remote {
         if is_refreshing {
-            make_button(fl!("refreshing"))
+            make_chrome_button(fl!("refreshing"))
                 .style(blue_button)
                 .width(Length::Fill)
                 .into()
         } else {
-            make_button(fl!("refresh"))
+            make_chrome_button(fl!("refresh"))
                 .style(blue_button)
                 .width(Length::Fill)
                 .on_press_maybe((!token_expired).then_some(Message::RequestPortalRefresh))
@@ -88,12 +88,12 @@ pub(in super::super) fn build_game_info_page<'a>(
         ),
         table_button,
         row![
-            make_button(fl!("back"))
+            make_chrome_button(fl!("back"))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ConfigEditComplete),
             middle_item,
-            make_button(fl!("settings"))
+            make_chrome_button(fl!("settings"))
                 .style(gray_button)
                 .width(Length::Fill)
                 .on_press(Message::EditGameConfig),

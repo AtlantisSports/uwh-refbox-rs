@@ -742,6 +742,12 @@ impl RefBoxApp {
         }
 
         new_snapshot.event_id = self.current_event_id.clone();
+        // The address this refbox's own portal client is pointed at, so a consumer resolving names
+        // from a portal looks them up where refbox looks them up. `current_site` is the value the
+        // client is built from -- already accounting for the override env var, Rugby mode's
+        // separate portal, and a custom site -- so this reports rather than re-derives, and the
+        // two cannot disagree.
+        new_snapshot.portal_base_url = Some(self.current_site.base_url.clone());
 
         self.maybe_play_sound(&new_snapshot);
         if let Err(e) = self.update_sender.send_snapshot(

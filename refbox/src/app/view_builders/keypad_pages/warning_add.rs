@@ -31,7 +31,7 @@ pub(super) fn make_warning_add_page<'a>(
     };
 
     let mut exit_row = row![
-        make_button(fl!("cancel"))
+        make_chrome_button(fl!("cancel"))
             .style(red_button)
             .width(Length::Fill)
             .on_press(Message::WarningEditComplete {
@@ -44,7 +44,7 @@ pub(super) fn make_warning_add_page<'a>(
 
     if origin.is_some() {
         exit_row = exit_row.push(
-            make_button(fl!("delete"))
+            make_chrome_button(fl!("delete"))
                 .style(orange_button)
                 .width(Length::Fill)
                 .on_press(Message::WarningEditComplete {
@@ -56,7 +56,7 @@ pub(super) fn make_warning_add_page<'a>(
     }
 
     exit_row = exit_row.push(
-        make_button(fl!("done"))
+        make_chrome_button(fl!("done"))
             .style(green_button)
             .width(Length::Fill)
             .on_press_maybe(
@@ -71,7 +71,7 @@ pub(super) fn make_warning_add_page<'a>(
     );
     column![
         row![
-            make_button(fl!("dark-team-name-caps"))
+            make_chrome_button(fl!("dark-team-name-caps"))
                 .style(black_style)
                 .on_press(Message::ChangeColor(Some(GameColor::Black))),
             // Between the two teams, matching the foul page's "=" button and the
@@ -79,7 +79,7 @@ pub(super) fn make_warning_add_page<'a>(
             make_multi_label_button((fl!("team-warning-line-1"), fl!("team-warning-line-2")))
                 .on_press(Message::ToggleBoolParameter(BoolGameParameter::TeamWarning))
                 .style(team_warning_style),
-            make_button(fl!("light-team-name-caps"))
+            make_chrome_button(fl!("light-team-name-caps"))
                 .style(white_style)
                 .on_press(Message::ChangeColor(Some(GameColor::White))),
         ]

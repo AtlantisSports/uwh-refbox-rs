@@ -431,10 +431,10 @@ fn make_main_config_page<'a>(
     show_power_button: bool,
 ) -> Element<'a, Message> {
     let row_top = row![
-        make_button(fl!("game-options"))
+        make_chrome_button(fl!("game-options"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::Game)),
-        make_button(fl!("app-options"))
+        make_chrome_button(fl!("app-options"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::App)),
     ]
@@ -442,10 +442,10 @@ fn make_main_config_page<'a>(
     .height(Length::Fill);
 
     let row_bottom = row![
-        make_button(fl!("user-options"))
+        make_chrome_button(fl!("user-options"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::User)),
-        make_button(fl!("language"))
+        make_chrome_button(fl!("language"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::Language)),
     ]
@@ -453,7 +453,7 @@ fn make_main_config_page<'a>(
     .height(Length::Fill);
 
     // Icon-only blue power button opposite Back (right third), shown only on the
-    // Pi (or with --force-power-controls). Sizing mirrors make_button so it lines
+    // Pi (or with --force-power-controls). Sizing mirrors make_chrome_button so it lines
     // up with the Back button; matches the icon-button pattern in shared_elements.
     let power_slot: Element<_> = if show_power_button {
         button(
@@ -506,7 +506,7 @@ fn make_main_config_page<'a>(
 }
 
 fn make_back_button<'a>(destination: Message) -> Element<'a, Message> {
-    make_button(fl!("back"))
+    make_chrome_button(fl!("back"))
         .style(red_button)
         .on_press(destination)
         .into()
@@ -524,12 +524,12 @@ fn make_cancel_apply_footer<'a>(
     let has_changes = page_has_changes(page, edited, snapshot);
     let apply_enabled = has_changes;
 
-    let cancel = make_button(cancel_or_back_label(has_changes))
+    let cancel = make_chrome_button(cancel_or_back_label(has_changes))
         .style(red_button)
         .width(Length::Fill)
         .on_press(Message::CancelConfigPage(page));
 
-    let apply = make_button(fl!("apply"))
+    let apply = make_chrome_button(fl!("apply"))
         .style(green_button)
         .width(Length::Fill);
     let apply = if apply_enabled {
@@ -542,7 +542,7 @@ fn make_cancel_apply_footer<'a>(
         // Blue "Check Version" button opens the self-update page. Disabled
         // (no on_press → greyed) while a game is in progress so an operator
         // can't trigger a restart mid-game.
-        let check = make_button(fl!("check-version"))
+        let check = make_chrome_button(fl!("check-version"))
             .style(blue_button)
             .width(Length::Fill);
         let check = if game_in_progress {
@@ -566,10 +566,10 @@ fn make_user_config_page<'a>(
     portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
     let tiles = row![
-        make_button(fl!("display-options"))
+        make_chrome_button(fl!("display-options"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::Display)),
-        make_button(fl!("sound-options"))
+        make_chrome_button(fl!("sound-options"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::Sound)),
     ]
@@ -1093,7 +1093,7 @@ fn make_event_config_page<'a>(
         uses_remote,
     );
 
-    let cancel_btn = make_button(cancel_or_back_label(has_changes))
+    let cancel_btn = make_chrome_button(cancel_or_back_label(has_changes))
         .style(red_button)
         .width(Length::Fill)
         .on_press(Message::CancelConfigPage(ConfigPage::Game));
@@ -1105,7 +1105,7 @@ fn make_event_config_page<'a>(
         game_btn_msg,
     );
 
-    let apply_btn = make_button(fl!("apply"))
+    let apply_btn = make_chrome_button(fl!("apply"))
         .style(green_button)
         .width(Length::Fill);
     let apply_btn = if apply_enabled {
@@ -1356,7 +1356,7 @@ fn make_display_config_page<'a>(
     // The button is grayed out (no `on_press`) when a real LED panel is connected
     // (`--serial-port`); opening a sim window then would compete with the panel.
     let open_display_btn = {
-        let btn = make_button(fl!("open-new-display")).style(light_gray_button);
+        let btn = make_chrome_button(fl!("open-new-display")).style(light_gray_button);
         if has_led_panel {
             btn
         } else {
@@ -1419,7 +1419,7 @@ fn make_sound_config_page<'a>(
     // with a fixed dedicated speaker, so the button is absent there and the
     // bottom row keeps its existing empty spacer.
     #[cfg(not(target_os = "linux"))]
-    let audio_output_slot: Element<'a, Message> = make_button(fl!("update-audio-output"))
+    let audio_output_slot: Element<'a, Message> = make_chrome_button(fl!("update-audio-output"))
         .on_press(Message::UpdateAudioOutput)
         .style(light_gray_button)
         .into();
@@ -1455,7 +1455,7 @@ fn make_sound_config_page<'a>(
                     None
                 },
             ),
-            make_button(fl!("manage-remotes"))
+            make_chrome_button(fl!("manage-remotes"))
                 .on_press(Message::ChangeConfigPage(ConfigPage::Remotes(0, false)),)
                 .style(light_gray_button),
         ]
@@ -1606,14 +1606,14 @@ fn make_remote_config_page<'a>(
                             .align_x(Horizontal::Center)
                             .height(Length::Fill)
                             .width(Length::Fill),
-                        make_button(sound_text)
+                        make_chrome_button(sound_text)
                             .on_press(Message::CycleParameter(
                                 CyclingParameter::RemoteBuzzerSound(idx),
                             ))
                             .width(Length::Fixed(275.0))
                             .height(Length::Fixed(MIN_BUTTON_SIZE - (2.0 * PADDING)))
                             .style(yellow_button),
-                        make_button(fl!("delete"))
+                        make_chrome_button(fl!("delete"))
                             .on_press(Message::DeleteRemote(idx))
                             .width(Length::Fixed(130.0))
                             .height(Length::Fixed(MIN_BUTTON_SIZE - (2.0 * PADDING)))
@@ -1637,9 +1637,9 @@ fn make_remote_config_page<'a>(
         .collect();
 
     let add_btn = if listening {
-        make_button(fl!("waiting"))
+        make_chrome_button(fl!("waiting"))
     } else {
-        make_button(fl!("add")).on_press(Message::RequestRemoteId)
+        make_chrome_button(fl!("add")).on_press(Message::RequestRemoteId)
     }
     .style(orange_button);
 
@@ -1994,7 +1994,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         // blue "selected" style (a button with no on_press is drawn disabled).
         // The active segment's press is a no-op; the inactive one toggles.
         let two_halves = {
-            let b = make_button(fl!("two-halves"))
+            let b = make_chrome_button(fl!("two-halves"))
                 .width(Length::Fill)
                 .style(if single_half {
                     light_gray_button
@@ -2008,7 +2008,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
             }
         };
         let one_period = {
-            let b = make_button(fl!("one-period"))
+            let b = make_chrome_button(fl!("one-period"))
                 .width(Length::Fill)
                 .style(if single_half {
                     blue_selected_button
@@ -2090,12 +2090,12 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     col.push(vertical_space())
         .push(
             row![
-                make_button(cancel_or_back_label(has_changes))
+                make_chrome_button(cancel_or_back_label(has_changes))
                     .style(red_button)
                     .width(Length::Fill)
                     .on_press(Message::ParameterEditComplete { canceled: true }),
                 horizontal_space(),
-                make_button(fl!("apply"))
+                make_chrome_button(fl!("apply"))
                     .style(green_button)
                     .width(Length::Fill)
                     .on_press_maybe(
@@ -2162,7 +2162,7 @@ pub(in super::super) fn build_parameter_help_page<'a>(
         text(body).size(SMALL_TEXT).width(Length::Fill),
         vertical_space(),
         row![
-            make_button(fl!("back"))
+            make_chrome_button(fl!("back"))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::CloseParameterHelp),
@@ -2244,16 +2244,16 @@ fn make_buzzer_select_page<'a>(
     grid = grid.push(row![horizontal_space()].height(Length::Fill));
 
     // Footer: Cancel | TEST | Apply (Apply gated by page_has_changes).
-    let cancel = make_button(fl!("cancel"))
+    let cancel = make_chrome_button(fl!("cancel"))
         .style(red_button)
         .width(Length::Fill)
         .on_press(Message::CancelConfigPage(ConfigPage::Buzzer));
-    let test = make_button(fl!("test"))
+    let test = make_chrome_button(fl!("test"))
         .style(blue_button)
         .width(Length::Fill)
         .on_press(Message::TestBuzzer);
     let apply = {
-        let b = make_button(fl!("apply"))
+        let b = make_chrome_button(fl!("apply"))
             .style(green_button)
             .width(Length::Fill);
         if has_changes {
@@ -2336,7 +2336,7 @@ fn make_custom_site_page<'a>(
         .padding(PADDING),
     );
 
-    let cancel = make_button(fl!("cancel"))
+    let cancel = make_chrome_button(fl!("cancel"))
         .style(red_button)
         .width(Length::Fill)
         .on_press(Message::CancelConfigPage(ConfigPage::CustomSite(
@@ -2349,7 +2349,7 @@ fn make_custom_site_page<'a>(
     // they wanted sitting on screen and no control that would act on it. Applying
     // an unchanged address is idempotent: it re-validates, re-commits the same
     // value, and repoints nothing, so offering it always costs nothing.
-    let apply = make_button(fl!("apply"))
+    let apply = make_chrome_button(fl!("apply"))
         .style(green_button)
         .width(Length::Fill)
         .on_press(Message::ApplyConfigPage(ConfigPage::CustomSite(
@@ -2667,7 +2667,7 @@ pub(in super::super) fn make_updates_page<'a>(
         | UpdateUiState::Verifying
         | UpdateUiState::Installing
         | UpdateUiState::Restarting => horizontal_space().into(),
-        _ => make_button(fl!("updates-check-for-updates"))
+        _ => make_chrome_button(fl!("updates-check-for-updates"))
             .style(yellow_button)
             .width(Length::Fill)
             .on_press(Message::UpdatesCheck)
@@ -2726,7 +2726,7 @@ pub(in super::super) fn make_updates_page<'a>(
         );
     let blank_or_revert_row: Element<'a, Message> = if show_revert {
         row![
-            make_button(fl!(
+            make_chrome_button(fl!(
                 "updates-revert",
                 version = backup_version.map(|v| v.to_string()).unwrap_or_default()
             ))
@@ -2750,7 +2750,7 @@ pub(in super::super) fn make_updates_page<'a>(
     } else {
         fl!("back")
     };
-    let footer_btn = make_button(footer_label).style(red_button);
+    let footer_btn = make_chrome_button(footer_label).style(red_button);
     let footer_btn = if matches!(state, UpdateUiState::Restarting | UpdateUiState::Installing) {
         footer_btn
     } else {
@@ -2760,12 +2760,12 @@ pub(in super::super) fn make_updates_page<'a>(
     // bottom-right action: Install (when an update is available) / Revert (in the
     // revert-confirm view) / nothing otherwise. Green like Apply.
     let footer_action: Element<'a, Message> = match state {
-        UpdateUiState::UpdateAvailable => make_button(fl!("updates-install"))
+        UpdateUiState::UpdateAvailable => make_chrome_button(fl!("updates-install"))
             .style(green_button)
             .width(Length::Fill)
             .on_press(Message::UpdatesConfirmInstall)
             .into(),
-        UpdateUiState::RevertConfirm => make_button(fl!("updates-do-revert"))
+        UpdateUiState::RevertConfirm => make_chrome_button(fl!("updates-do-revert"))
             .style(green_button)
             .width(Length::Fill)
             .on_press(Message::UpdatesConfirmRevert)

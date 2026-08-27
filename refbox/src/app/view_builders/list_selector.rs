@@ -152,7 +152,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
             scroll_list,
             column![
                 vertical_space(),
-                make_button(fl!("cancel"))
+                make_chrome_button(fl!("cancel"))
                     .style(red_button)
                     .width(Length::Fill)
                     .height(Length::Fixed(MIN_BUTTON_SIZE))

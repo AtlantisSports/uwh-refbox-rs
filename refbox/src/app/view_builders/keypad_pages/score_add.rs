@@ -30,24 +30,24 @@ pub(super) fn make_score_add_page<'a>(
         // The team option sits between the two teams, matching the foul page's
         // "=" button, and the row is pinned to the top like the warnings page's.
         row![
-            make_button(fl!("dark-team-name-caps"))
+            make_chrome_button(fl!("dark-team-name-caps"))
                 .style(black_style)
                 .on_press(Message::ChangeColor(Some(GameColor::Black))),
             make_multi_label_button((fl!("team-score-line-1"), fl!("team-score-line-2")))
                 .on_press(Message::ToggleBoolParameter(BoolGameParameter::TeamScore))
                 .style(team_score_style),
-            make_button(fl!("light-team-name-caps"))
+            make_chrome_button(fl!("light-team-name-caps"))
                 .style(white_style)
                 .on_press(Message::ChangeColor(Some(GameColor::White))),
         ]
         .spacing(SPACING),
         vertical_space(),
         row![
-            make_button(fl!("cancel"))
+            make_chrome_button(fl!("cancel"))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::AddScoreComplete { canceled: true }),
-            make_button(fl!("done"))
+            make_chrome_button(fl!("done"))
                 .style(green_button)
                 .width(Length::Fill)
                 .on_press_maybe(

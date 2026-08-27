@@ -97,15 +97,15 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
         ),
         warnings_and_fouls_row.height(Length::Fill),
         row![
-            make_button(fl!("back"))
+            make_chrome_button(fl!("back"))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ConfigEditComplete),
-            make_button(fl!("edit-fouls"))
+            make_chrome_button(fl!("edit-fouls"))
                 .style(orange_button)
                 .width(Length::Fill)
                 .on_press(Message::FoulOverview),
-            make_button(fl!("edit-warnings"))
+            make_chrome_button(fl!("edit-warnings"))
                 .style(blue_button)
                 .width(Length::Fill)
                 .on_press(Message::WarningOverview),

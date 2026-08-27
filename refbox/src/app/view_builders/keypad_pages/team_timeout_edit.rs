@@ -41,11 +41,11 @@ pub(super) fn make_team_timeout_edit_page<'a>(
             .width(Length::Fill)
             .height(Length::Fixed(MIN_BUTTON_SIZE))
             .align_y(Vertical::Center),
-        make_button("0")
+        make_chrome_button("0")
             .style(zero_style)
             .width(Length::Fill)
             .on_press(zero_msg),
-        make_button("1")
+        make_chrome_button("1")
             .style(one_style)
             .width(Length::Fill)
             .on_press(one_msg),
@@ -76,10 +76,10 @@ pub(super) fn make_team_timeout_edit_page<'a>(
             Message::NoAction,
         )
     };
-    let mut half_button = make_button(fl!("half"))
+    let mut half_button = make_chrome_button(fl!("half"))
         .style(half_style)
         .width(Length::Fill);
-    let mut game_button = make_button(fl!("game"))
+    let mut game_button = make_chrome_button(fl!("game"))
         .style(game_style)
         .width(Length::Fill);
     if count_enabled {
@@ -107,7 +107,7 @@ pub(super) fn make_team_timeout_edit_page<'a>(
         } else {
             light_gray_button
         };
-        let mut b = make_button(label)
+        let mut b = make_chrome_button(label)
             .style(style)
             .width(Length::FillPortion(2));
         if count_enabled {
@@ -140,12 +140,12 @@ pub(super) fn make_team_timeout_edit_page<'a>(
         length_row,
         vertical_space(),
         row![
-            make_button(fl!("cancel"))
+            make_chrome_button(fl!("cancel"))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: true }),
             horizontal_space(),
-            make_button(fl!("apply"))
+            make_chrome_button(fl!("apply"))
                 .style(green_button)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: false }),

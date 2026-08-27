@@ -1195,7 +1195,7 @@ pub(super) fn cancel_or_back_label(has_changes: bool) -> String {
     }
 }
 
-pub(super) fn make_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
+pub(super) fn make_chrome_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     label: T,
 ) -> Button<'a, Message> {
     button(fit_text(label))

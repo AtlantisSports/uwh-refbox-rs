@@ -46,14 +46,14 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
     beep_test_layout: FrontDisplayLayout,
     has_led_panel: bool,
 ) -> Element<'a, Message> {
-    let sound_button = make_button(fl!("sound-settings"))
+    let sound_button = make_chrome_button(fl!("sound-settings"))
         .style(light_gray_button)
         .on_press(Message::BeepTestEditOpenSound);
 
     let edit_levels_button = if has_run {
-        make_button(fl!("beep-test-edit-levels")).style(gray_button)
+        make_chrome_button(fl!("beep-test-edit-levels")).style(gray_button)
     } else {
-        make_button(fl!("beep-test-edit-levels"))
+        make_chrome_button(fl!("beep-test-edit-levels"))
             .style(light_gray_button)
             .on_press(Message::BeepTestEditOpenLevels)
     };
@@ -70,9 +70,9 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
     );
 
     let language_button = if has_run {
-        make_button(fl!("language")).style(gray_button)
+        make_chrome_button(fl!("language")).style(gray_button)
     } else {
-        make_button(fl!("language"))
+        make_chrome_button(fl!("language"))
             .style(light_gray_button)
             .on_press(Message::BeepTestEditOpenLanguage)
     };
@@ -130,7 +130,7 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
         .spacing(SPACING)
         .height(Length::FillPortion(2));
 
-    let back_button = make_button(fl!("back"))
+    let back_button = make_chrome_button(fl!("back"))
         .style(red_button)
         .on_press(Message::BeepTestCloseSettings);
 
@@ -138,7 +138,7 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
     // right when the staged App Mode differs from the live mode and no test has
     // run yet; otherwise a filler keeps BACK from shifting.
     let bottom_row: Element<'a, Message> = if staged_mode != config.mode && !has_run {
-        let restart_button = make_button(fl!("restart-to-apply"))
+        let restart_button = make_chrome_button(fl!("restart-to-apply"))
             .style(blue_button)
             .on_press(Message::BeepTestRestartToApply);
         row![back_button, horizontal_space(), restart_button]
@@ -792,16 +792,16 @@ pub(in super::super) fn build_beep_test_buzzer_picker<'a>(
         .push(row![horizontal_space()].height(Length::Fill));
 
     // Footer: Cancel | TEST | Apply (Apply gated by has_changes).
-    let cancel = make_button(fl!("cancel"))
+    let cancel = make_chrome_button(fl!("cancel"))
         .style(red_button)
         .width(Length::Fill)
         .on_press(Message::BeepTestBuzzerCancel);
-    let test = make_button(fl!("test"))
+    let test = make_chrome_button(fl!("test"))
         .style(blue_button)
         .width(Length::Fill)
         .on_press(Message::BeepTestTestBuzzer);
     let apply = {
-        let b = make_button(fl!("apply"))
+        let b = make_chrome_button(fl!("apply"))
             .style(green_button)
             .width(Length::Fill);
         if has_changes {
@@ -1104,12 +1104,12 @@ fn make_beep_test_cancel_apply_footer<'a>(
     apply_message: Message,
     has_changes: bool,
 ) -> Element<'a, Message> {
-    let cancel = make_button(cancel_or_back_label(has_changes))
+    let cancel = make_chrome_button(cancel_or_back_label(has_changes))
         .style(red_button)
         .width(Length::Fill)
         .on_press(cancel_message);
 
-    let apply = make_button(fl!("apply"))
+    let apply = make_chrome_button(fl!("apply"))
         .style(green_button)
         .width(Length::Fill);
     let apply = if has_changes {

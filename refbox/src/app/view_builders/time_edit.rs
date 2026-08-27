@@ -60,12 +60,12 @@ pub(in super::super) fn build_time_edit_view<'a>(
             .align_x(Horizontal::Center),
         vertical_space(),
         row![
-            make_button(cancel_or_back_label(has_changes))
+            make_chrome_button(cancel_or_back_label(has_changes))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::TimeEditComplete { canceled: true }),
             horizontal_space(),
-            make_button(fl!("apply"))
+            make_chrome_button(fl!("apply"))
                 .style(green_button)
                 .width(Length::Fill)
                 .on_press_maybe(

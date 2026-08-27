@@ -57,7 +57,7 @@ pub(in super::super) fn build_main_view<'a>(
         .height(Length::Fill);
 
     let make_warn_button = || {
-        make_button(fl!("add-warning"))
+        make_chrome_button(fl!("add-warning"))
             .style(blue_button)
             .width(Length::Fill)
             .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
@@ -70,7 +70,7 @@ pub(in super::super) fn build_main_view<'a>(
     };
 
     let make_foul_button = || {
-        make_button(fl!("add-foul"))
+        make_chrome_button(fl!("add-foul"))
             .style(orange_button)
             .width(Length::Fill)
             .on_press(Message::KeypadPage(KeypadPage::FoulAdd {
@@ -90,23 +90,23 @@ pub(in super::super) fn build_main_view<'a>(
                 Some(TimeoutSnapshot::Black(remaining))
                 | Some(TimeoutSnapshot::White(remaining)) => {
                     if team_timeout_in_grace(game_config.team_timeout_duration, remaining) {
-                        make_button(fl!("cancel-timeout"))
+                        make_chrome_button(fl!("cancel-timeout"))
                             .style(orange_button)
                             .on_press(Message::CancelTimeout)
                     } else {
-                        make_button(fl!("end-timeout"))
+                        make_chrome_button(fl!("end-timeout"))
                             .style(red_button)
                             .on_press(Message::EndTimeout)
                     }
                 }
-                Some(TimeoutSnapshot::Ref(_)) => make_button(fl!("cancel-ref-timeout"))
+                Some(TimeoutSnapshot::Ref(_)) => make_chrome_button(fl!("cancel-ref-timeout"))
                     .style(orange_button)
                     .on_press(Message::EndTimeout),
-                Some(TimeoutSnapshot::PenaltyShot(_)) => make_button(fl!("cancel-pen-shot"))
+                Some(TimeoutSnapshot::PenaltyShot(_)) => make_chrome_button(fl!("cancel-pen-shot"))
                     .style(orange_button)
                     .on_press(Message::EndTimeout),
                 // Unreachable: this block is guarded by `snapshot.timeout.is_some()`.
-                None => make_button(fl!("end-timeout"))
+                None => make_chrome_button(fl!("end-timeout"))
                     .style(red_button)
                     .on_press(Message::EndTimeout),
             };
@@ -120,7 +120,7 @@ pub(in super::super) fn build_main_view<'a>(
             | GamePeriod::OvertimeHalfTime
             | GamePeriod::PreSuddenDeath => {
                 let mut start_warning_row = row![
-                    make_button(fl!("start-now"))
+                    make_chrome_button(fl!("start-now"))
                         .style(green_button)
                         .width(Length::Fill)
                         .on_press(Message::StartPlayNow)
@@ -212,7 +212,7 @@ pub(in super::super) fn build_main_view<'a>(
             // Game Info stays a fixed-height label bar on top; the lower area is
             // split between the alarm (left) and the warnings panel (right).
             center_col = center_col.push(
-                make_button(fl!("game-info"))
+                make_chrome_button(fl!("game-info"))
                     .style(light_gray_button)
                     .on_press(Message::ShowGameDetails),
             );

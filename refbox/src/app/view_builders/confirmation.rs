@@ -167,7 +167,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
     };
 
     let buttons = buttons.into_iter().map(|(text, style, option)| {
-        make_button(text)
+        make_chrome_button(text)
             .style(style)
             .on_press(Message::ConfirmationSelected(option))
     });
@@ -234,10 +234,10 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
     .align_x(Horizontal::Center);
 
     let options = row![
-        make_button(fl!("yes"))
+        make_chrome_button(fl!("yes"))
             .style(green_button)
             .on_press(Message::ScoreConfirmation { correct: true }),
-        make_button(fl!("no"))
+        make_chrome_button(fl!("no"))
             .style(red_button)
             .on_press(Message::ScoreConfirmation { correct: false }),
     ]

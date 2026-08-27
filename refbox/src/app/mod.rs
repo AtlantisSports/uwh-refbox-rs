@@ -1,5 +1,6 @@
 use self::infraction::InfractionDetails;
 use super::{APP_NAME, fl};
+use crate::panic_text::panic_reason;
 use crate::{
     beep_test::{cadence::TournamentManager as BeepTestManager, snapshot::BeepTestSnapshot},
     config::{Config, CustomSite, GameSource, Mode, RemoteSource},
@@ -136,7 +137,7 @@ fn updater_io_to_ui(e: &std::io::Error) -> crate::app::message::UpdateUiError {
 }
 
 pub struct RefBoxApp {
-    tm: Arc<Mutex<TournamentManager>>,
+    tm: SharedGame,
     /// Cadence engine for BeepTest mode. `Some(_)` only when
     /// `config.mode == Mode::BeepTest`; `None` in Hockey/Rugby modes.
     /// Driven by the `BeepTestTick` subscription, not by the game-clock
@@ -1128,8 +1129,7 @@ impl RefBoxApp {
         // keeping a pending repoint from reaching them. Allowing a site change
         // during a game, even behind a confirmation, means repointing on those
         // paths too, or the new source is committed and the client never moves.
-        // A contaminated lock is survivable — see `lock_game`.
-        if lock_game(&self.tm).current_period() != GamePeriod::BetweenGames {
+        if self.tm.lock().current_period() != GamePeriod::BetweenGames {
             return Some(ConfirmationKind::SiteLockedByGame(page));
         }
         if self.portal_manager.has_queued_items() {
@@ -1360,7 +1360,7 @@ impl RefBoxApp {
                     .filter(|game| game.start_time > this_game_start)
                     .min_by_key(|game| game.start_time);
 
-                let mut tm = lock_game(&self.tm);
+                let mut tm = self.tm.lock();
                 let next_game_number = if let Some(next_game) = next_game {
                     let timing = schedule.get_game_timing(&next_game.number).cloned();
                     let info = NextGameInfo {
@@ -1416,8 +1416,7 @@ impl RefBoxApp {
             // Copy everything needed out from under the lock: the recorded result's own
             // game number, its scores, and its stats JSON.
             let recorded = {
-                // A contaminated lock is survivable — see `lock_game`.
-                let tm = lock_game(&self.tm);
+                let tm = self.tm.lock();
                 tm.last_game_info()
                     .map(|info| (info.game_number.clone(), info.scores, info.stats.as_json()))
             };
@@ -1670,8 +1669,7 @@ impl RefBoxApp {
             return Some(ConfirmationKind::UwhPortalIncompleteFromApply);
         }
 
-        // A contaminated lock is survivable — see `lock_game`.
-        let mut tm = lock_game(&self.tm);
+        let mut tm = self.tm.lock();
 
         // Detect the ON→OFF portal transition.  At function entry `self.uses_remote()`
         // still holds the prior committed value, so a true→false change means the
@@ -1856,8 +1854,7 @@ impl RefBoxApp {
             ConfirmationOption::EndGameAndApply => {
                 // Safety: *FromApply confirmations are only raised while edited_settings is Some; the invariant is enforced by apply_game_options.
                 let edited = self.edited_settings.as_ref().unwrap();
-                // A contaminated lock is survivable — see `lock_game`.
-                let mut tm = lock_game(&self.tm);
+                let mut tm = self.tm.lock();
                 let now = Instant::now();
                 tm.reset_game(now);
                 if let Some(ref config) = new_config {
@@ -1892,15 +1889,14 @@ impl RefBoxApp {
                 self.page_entry_snapshot = None;
                 self.persist_config();
                 // Safety: snapshot generation only fails before the tournament manager is initialised, which happens in RefBoxApp::new().
-                let new_snapshot = lock_game(&self.tm).generate_snapshot(now).unwrap();
+                let new_snapshot = self.tm.lock().generate_snapshot(now).unwrap();
                 task = self.apply_snapshot(new_snapshot);
                 AppState::EditGameConfig(ConfigPage::Main)
             }
             ConfirmationOption::KeepGameAndApply => {
                 // Safety: *FromApply confirmations are only raised while edited_settings is Some; the invariant is enforced by apply_game_options.
                 let edited = self.edited_settings.as_ref().unwrap();
-                // A contaminated lock is survivable — see `lock_game`.
-                let mut tm = lock_game(&self.tm);
+                let mut tm = self.tm.lock();
                 tm.set_game_number(&edited.game_number);
                 // Safety: snapshot generation only fails before the tournament manager is initialised, which happens in RefBoxApp::new().
                 let new_snapshot = tm.generate_snapshot(Instant::now()).unwrap();
@@ -2059,8 +2055,7 @@ impl RefBoxApp {
                 let manual_config = self.edited_settings.as_ref().unwrap().config.clone();
                 let now = Instant::now();
                 {
-                    // A contaminated lock is survivable — see `lock_game`.
-                    let mut tm = lock_game(&self.tm);
+                    let mut tm = self.tm.lock();
                     tm.reset_game(now);
                     // `set_config` must run BEFORE `reset_to_manual_break` because
                     // `reset_to_manual_break` reads `self.config.nominal_break` to
@@ -2078,7 +2073,7 @@ impl RefBoxApp {
                 self.page_entry_snapshot = None;
                 // Safety: snapshot generation only fails before the tournament
                 // manager is initialised, which happens in `RefBoxApp::new()`.
-                let new_snapshot = lock_game(&self.tm).generate_snapshot(now).unwrap();
+                let new_snapshot = self.tm.lock().generate_snapshot(now).unwrap();
                 task = self.apply_snapshot(new_snapshot);
                 AppState::EditGameConfig(ConfigPage::Main)
             }
@@ -2094,8 +2089,7 @@ impl RefBoxApp {
                 // `apply_game_options`.
                 let manual_config = self.edited_settings.as_ref().unwrap().config.clone();
                 {
-                    // Safety: Mutex poison — same rationale as the EndGameAndApply arm.
-                    let mut tm = lock_game(&self.tm);
+                    let mut tm = self.tm.lock();
                     tm.clear_portal_next_game();
                 }
                 self.clear_portal_selections_to_manual(manual_config);
@@ -2104,12 +2098,7 @@ impl RefBoxApp {
                 self.page_entry_snapshot = None;
                 // Safety: snapshot generation only fails before the tournament
                 // manager is initialised, which happens in `RefBoxApp::new()`.
-                let new_snapshot = self
-                    .tm
-                    .lock()
-                    .unwrap()
-                    .generate_snapshot(Instant::now())
-                    .unwrap();
+                let new_snapshot = self.tm.lock().generate_snapshot(Instant::now()).unwrap();
                 task = self.apply_snapshot(new_snapshot);
                 AppState::EditGameConfig(ConfigPage::Main)
             }
@@ -2223,7 +2212,7 @@ impl RefBoxApp {
         };
 
         let edited_settings = EditableSettings {
-            config: lock_game(&self.tm).config().clone(),
+            config: self.tm.lock().config().clone(),
             game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
                 self.snapshot.next_game_number.clone()
             } else {
@@ -2391,7 +2380,7 @@ impl RefBoxApp {
         // `set_current_event_id` on every subsequent write.
         let portal_event_id: SelectedEventId = Arc::new(Mutex::new(None));
 
-        let tm = Arc::new(Mutex::new(tm));
+        let tm = SharedGame::new(tm);
 
         let has_led_panel = !serial_ports.is_empty();
 
@@ -2659,7 +2648,7 @@ impl RefBoxApp {
             Message::NewSnapshot(snapshot) => self.apply_snapshot(snapshot),
             Message::EditTime => {
                 let now = Instant::now();
-                let mut tm = lock_game(&self.tm);
+                let mut tm = self.tm.lock();
                 let was_running = tm.clock_is_running();
                 tm.stop_clock(now).unwrap();
                 let game_time = tm.game_clock_time(now).unwrap();
@@ -2709,7 +2698,7 @@ impl RefBoxApp {
             }
             Message::TimeEditComplete { canceled } => {
                 if let AppState::TimeEdit(was_running, game_time, timeout_time) = self.app_state {
-                    let mut tm = lock_game(&self.tm);
+                    let mut tm = self.tm.lock();
                     let now = Instant::now();
                     if !canceled {
                         tm.set_game_clock_time(game_time).unwrap();
@@ -2732,7 +2721,7 @@ impl RefBoxApp {
                 }
             }
             Message::StartPlayNow => {
-                let mut tm = lock_game(&self.tm);
+                let mut tm = self.tm.lock();
                 let now = Instant::now();
                 tm.start_play_now(now).unwrap();
                 let snapshot = tm.generate_snapshot(now).unwrap();
@@ -2740,7 +2729,7 @@ impl RefBoxApp {
                 self.apply_snapshot(snapshot)
             }
             Message::EditScores => {
-                let tm = lock_game(&self.tm);
+                let tm = self.tm.lock();
                 self.app_state = AppState::ScoreEdit {
                     scores: tm.get_scores(),
                     is_confirmation: false,
@@ -2762,7 +2751,7 @@ impl RefBoxApp {
                     );
                     Task::none()
                 } else {
-                    let mut tm = lock_game(&self.tm);
+                    let mut tm = self.tm.lock();
                     let now = Instant::now();
                     if tm.current_period() == GamePeriod::SuddenDeath {
                         let mut scores = tm.get_scores();
@@ -2798,7 +2787,7 @@ impl RefBoxApp {
             }
             Message::ScoreEditComplete { canceled } => {
                 let mut tasks = vec![];
-                let mut tm = lock_game(&self.tm);
+                let mut tm = self.tm.lock();
                 let mut now = Instant::now();
 
                 self.app_state = if let AppState::ScoreEdit {
@@ -2953,12 +2942,7 @@ impl RefBoxApp {
                 } else {
                     self.app_state = AppState::MainPage;
                 }
-                let snapshot = self
-                    .tm
-                    .lock()
-                    .unwrap()
-                    .generate_snapshot(Instant::now())
-                    .unwrap();
+                let snapshot = self.tm.lock().generate_snapshot(Instant::now()).unwrap();
                 let task = self.apply_snapshot(snapshot);
                 trace!("AppState changed to {:?}", self.app_state);
                 task
@@ -2980,12 +2964,7 @@ impl RefBoxApp {
                 } else {
                     self.app_state = AppState::WarningsSummaryPage;
                 }
-                let snapshot = self
-                    .tm
-                    .lock()
-                    .unwrap()
-                    .generate_snapshot(Instant::now())
-                    .unwrap();
+                let snapshot = self.tm.lock().generate_snapshot(Instant::now()).unwrap();
                 let task = self.apply_snapshot(snapshot);
                 trace!("AppState changed to {:?}", self.app_state);
                 task
@@ -3007,12 +2986,7 @@ impl RefBoxApp {
                 } else {
                     self.app_state = AppState::WarningsSummaryPage;
                 }
-                let snapshot = self
-                    .tm
-                    .lock()
-                    .unwrap()
-                    .generate_snapshot(Instant::now())
-                    .unwrap();
+                let snapshot = self.tm.lock().generate_snapshot(Instant::now()).unwrap();
                 let task = self.apply_snapshot(snapshot);
                 trace!("AppState changed to {:?}", self.app_state);
                 task
@@ -3117,7 +3091,6 @@ impl RefBoxApp {
                         } else if !ret_to_overview {
                             self.tm
                                 .lock()
-                                .unwrap()
                                 .add_warning(color, player_num, infraction, Instant::now())
                                 .unwrap();
                         } else if let Some((old_color, index)) = origin {
@@ -3172,7 +3145,6 @@ impl RefBoxApp {
                         } else if !ret_to_overview {
                             self.tm
                                 .lock()
-                                .unwrap()
                                 .add_foul(color, player_num, infraction, Instant::now())
                                 .unwrap();
                         } else if let Some((old_color, index)) = origin {
@@ -3249,8 +3221,7 @@ impl RefBoxApp {
                         // linking then. Same rule as the site-change guard:
                         // a game in progress, not merely a running clock,
                         // because the between-games clock always runs.
-                        // A contaminated lock is survivable — see `lock_game`.
-                        if lock_game(&self.tm).current_period() != GamePeriod::BetweenGames {
+                        if self.tm.lock().current_period() != GamePeriod::BetweenGames {
                             self.app_state =
                                 AppState::ConfirmationPage(ConfirmationKind::LinkLockedByGame);
                             trace!("AppState changed to {:?}", self.app_state);
@@ -3363,7 +3334,7 @@ impl RefBoxApp {
                     if let AppState::KeypadPage(KeypadPage::AddScore { color, .. }, player) =
                         self.app_state
                     {
-                        let mut tm = lock_game(&self.tm);
+                        let mut tm = self.tm.lock();
                         let now = Instant::now();
 
                         let app_state = if tm.current_period() == GamePeriod::SuddenDeath {
@@ -4820,7 +4791,7 @@ impl RefBoxApp {
                     self.app_state = AppState::ConfirmScores(self.snapshot.scores);
                     trace!("AppState changed to {:?}", self.app_state);
                 } else {
-                    let mut tm = lock_game(&self.tm);
+                    let mut tm = self.tm.lock();
                     let now = Instant::now();
                     // Safe: end_confirm_pause's only Err is NotPaused, which can't occur here —
                     // Message::ConfirmScores is only dispatched while a confirm-pause is active.
@@ -4837,7 +4808,7 @@ impl RefBoxApp {
                 self.app_state = if let AppState::ConfirmScores(scores) = self.app_state {
                     if correct {
                         let now = Instant::now();
-                        let mut tm = lock_game(&self.tm);
+                        let mut tm = self.tm.lock();
 
                         tm.set_scores(scores, now);
                         // Safe: end_confirm_pause's only Err is NotPaused, which can't occur here —
@@ -4868,7 +4839,7 @@ impl RefBoxApp {
                 task
             }
             Message::TeamTimeout(color, switch) => {
-                let mut tm = lock_game(&self.tm);
+                let mut tm = self.tm.lock();
                 let now = Instant::now();
                 if switch {
                     tm.switch_to_team_timeout(color).unwrap();
@@ -4883,7 +4854,7 @@ impl RefBoxApp {
                 self.apply_snapshot(snapshot)
             }
             Message::RefTimeout(switch) => {
-                let mut tm = lock_game(&self.tm);
+                let mut tm = self.tm.lock();
                 let now = Instant::now();
                 if switch {
                     tm.switch_to_ref_timeout(now).unwrap();
@@ -4898,7 +4869,7 @@ impl RefBoxApp {
                 self.apply_snapshot(snapshot)
             }
             Message::PenaltyShot(switch) => {
-                let mut tm = lock_game(&self.tm);
+                let mut tm = self.tm.lock();
                 let now = Instant::now();
                 if switch {
                     if self.config.mode == Mode::Rugby {
@@ -4919,7 +4890,7 @@ impl RefBoxApp {
                 self.apply_snapshot(snapshot)
             }
             Message::EndTimeout => {
-                let mut tm = lock_game(&self.tm);
+                let mut tm = self.tm.lock();
                 let now = Instant::now();
                 let would_end = tm.timeout_end_would_end_game(now).unwrap();
                 if would_end {
@@ -4947,7 +4918,7 @@ impl RefBoxApp {
                 task
             }
             Message::CancelTimeout => {
-                let mut tm = lock_game(&self.tm);
+                let mut tm = self.tm.lock();
                 let now = Instant::now();
                 // The Cancel button is only rendered for an active team timeout
                 // inside its grace window, so this call is valid by construction.
@@ -5082,7 +5053,7 @@ impl RefBoxApp {
                             if *id == event_id {
                                 self.schedule = Some(schedule);
                                 if self.edited_settings.is_none() {
-                                    let mut tm = lock_game(&self.tm);
+                                    let mut tm = self.tm.lock();
                                     if tm.current_period() == GamePeriod::BetweenGames {
                                         // On a startup link restore, re-select the
                                         // remembered game; otherwise pick the default
@@ -5229,16 +5200,25 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::StartClock => {
-                lock_game(&self.tm).start_clock(Instant::now());
+                self.tm.lock().start_clock(Instant::now());
                 Task::none()
             }
             Message::StopClock => {
-                lock_game(&self.tm).stop_clock(Instant::now()).unwrap();
+                self.tm.lock().stop_clock(Instant::now()).unwrap();
                 Task::none()
             }
             Message::TimeUpdaterStarted(tx) => {
-                let tm = self.tm.clone();
-                tx.blocking_send(tm).unwrap();
+                // The updater's end of this handshake was hardened; this end is the same
+                // handshake and runs on the UI thread, where a crash kills the process
+                // outright and no lock recovery can help. If the updater has already gone
+                // away there is nothing to hand the game state to, and saying so beats
+                // taking the app down.
+                if tx.blocking_send(self.tm.clone()).is_err() {
+                    error!(
+                        "Clock updater went away before it could be given the game state; \
+                         the game clock will not advance"
+                    );
+                }
                 Task::none()
             }
             Message::AlarmPressed => {
@@ -5368,7 +5348,7 @@ impl RefBoxApp {
                 ) {
                     return Task::none();
                 }
-                let mut tm = lock_game(&self.tm);
+                let mut tm = self.tm.lock();
                 let now = Instant::now();
                 if tm.revive_team_timeout(color).is_err() {
                     // State moved on during the hold (e.g. half ended); nothing to do.
@@ -5506,7 +5486,7 @@ impl RefBoxApp {
                 let current_language =
                     Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
                 let edited_settings = EditableSettings {
-                    config: lock_game(&self.tm).config().clone(),
+                    config: self.tm.lock().config().clone(),
                     game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
                         self.snapshot.next_game_number.clone()
                     } else {
@@ -5557,7 +5537,7 @@ impl RefBoxApp {
                 let current_language =
                     Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
                 let edited_settings = EditableSettings {
-                    config: lock_game(&self.tm).config().clone(),
+                    config: self.tm.lock().config().clone(),
                     game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
                         self.snapshot.next_game_number.clone()
                     } else {
@@ -5647,7 +5627,7 @@ impl RefBoxApp {
                 let current_language =
                     Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
                 let edited_settings = EditableSettings {
-                    config: lock_game(&self.tm).config().clone(),
+                    config: self.tm.lock().config().clone(),
                     game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
                         self.snapshot.next_game_number.clone()
                     } else {
@@ -5745,7 +5725,7 @@ impl RefBoxApp {
                 let current_language =
                     Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
                 let edited_settings = EditableSettings {
-                    config: lock_game(&self.tm).config().clone(),
+                    config: self.tm.lock().config().clone(),
                     game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
                         self.snapshot.next_game_number.clone()
                     } else {
@@ -5980,7 +5960,7 @@ impl RefBoxApp {
             snapshot: &self.snapshot,
             mode: self.config.mode,
             source: self.source,
-            clock_running: lock_game(&self.tm).clock_is_running(),
+            clock_running: self.tm.lock().clock_is_running(),
             teams: active_event_id.and_then(|id| {
                 self.events
                     .as_ref()
@@ -6012,7 +5992,6 @@ impl RefBoxApp {
                 let new_config = if self.snapshot.current_period == GamePeriod::BetweenGames {
                     self.tm
                         .lock()
-                        .unwrap()
                         .next_game_info()
                         .as_ref()
                         .and_then(|info| Some(info.timing.as_ref()?.clone().into()))
@@ -6026,7 +6005,7 @@ impl RefBoxApp {
                     &self.config.game
                 };
                 let behind_schedule = if self.config.show_behind_schedule_time {
-                    lock_game(&self.tm).behind_schedule_shown(Instant::now())
+                    self.tm.lock().behind_schedule_shown(Instant::now())
                 } else {
                     std::time::Duration::ZERO
                 };
@@ -6041,7 +6020,6 @@ impl RefBoxApp {
                     behind_schedule,
                     self.tm
                         .lock()
-                        .unwrap()
                         .last_game_info()
                         .map(|i| (i.game_number.clone(), i.scores)),
                 )
@@ -6095,7 +6073,6 @@ impl RefBoxApp {
                 self.schedule.as_ref(),
                 self.tm
                     .lock()
-                    .unwrap()
                     .last_game_info()
                     .map(|i| (i.game_number.clone(), i.scores)),
             ),
@@ -6896,17 +6873,81 @@ fn updater_retry_delay(consecutive_failures: u32) -> Duration {
         .min(UPDATER_RETRY_MAX)
 }
 
-/// Read the human-readable reason out of a caught panic.
+/// Least time between full failure reports from the clock updater.
 ///
-/// `panic!("...")` produces either a `&'static str` or a `String` depending on whether
-/// the message was formatted; anything else has no text to show.
-fn panic_reason(payload: &(dyn std::any::Any + Send)) -> String {
-    if let Some(message) = payload.downcast_ref::<&'static str>() {
-        (*message).to_string()
-    } else if let Some(message) = payload.downcast_ref::<String>() {
-        message.clone()
-    } else {
-        "panic with an unrecognised payload".to_string()
+/// Only *repeat* reports are held back by this. The first failure of a run is always
+/// reported immediately, and a held-back failure is never lost — the next report says
+/// how many there were.
+const UPDATER_REPORT_INTERVAL: Duration = Duration::from_secs(60);
+
+/// How long after a failure a further failure still counts as the same fault.
+///
+/// This is why the back-off works on the fault this change exists to survive. That fault
+/// *alternates* — a zero-length period fails at each period change and succeeds in
+/// between — so a counter reset by any single success treats every failure as the first
+/// one, never backs off, and logs at full rate forever. Elapsed time since the last
+/// failure is the honest measure of "is this still the same problem", so that is what is
+/// used, and success is not an input at all.
+const UPDATER_FAULT_RUN_WINDOW: Duration = Duration::from_secs(60);
+
+/// What the updater should do about a failure it has just recorded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FailureAction {
+    /// How long to wait before ticking again.
+    retry_after: Duration,
+    /// Whether to write a full report, and how many failures went unreported since the
+    /// last one. `None` means this failure was counted but not reported.
+    report: Option<u32>,
+}
+
+/// The clock updater's failure policy: how fast to retry, and how often to report.
+///
+/// Extracted from the loop so it can be tested. Every previous attempt at this logic was
+/// reasoned rather than verified, and each one was wrong in a new way — the retry rule,
+/// the back-off reset and the log gating each had to be fixed after review.
+#[derive(Debug, Default)]
+struct UpdaterFailures {
+    /// Failures in the current run, used only to size the back-off.
+    consecutive: u32,
+    last_failure: Option<Instant>,
+    last_report: Option<Instant>,
+    /// Failures counted since the last full report.
+    unreported: u32,
+}
+
+impl UpdaterFailures {
+    /// Record a failure at `now` and decide what to do about it.
+    fn record(&mut self, now: Instant) -> FailureAction {
+        let same_run = self
+            .last_failure
+            .is_some_and(|last| now.duration_since(last) < UPDATER_FAULT_RUN_WINDOW);
+        self.consecutive = if same_run {
+            self.consecutive.saturating_add(1)
+        } else {
+            // A new fault: report it in full straight away rather than holding it back
+            // behind the previous fault's interval.
+            self.last_report = None;
+            0
+        };
+        self.last_failure = Some(now);
+
+        let due = self
+            .last_report
+            .is_none_or(|last| now.duration_since(last) >= UPDATER_REPORT_INTERVAL);
+        let report = if due {
+            self.last_report = Some(now);
+            let held_back = self.unreported;
+            self.unreported = 0;
+            Some(held_back)
+        } else {
+            self.unreported = self.unreported.saturating_add(1);
+            None
+        };
+
+        FailureAction {
+            retry_after: updater_retry_delay(self.consecutive),
+            report,
+        }
     }
 }
 
@@ -6944,6 +6985,87 @@ mod updater_wake_tests {
         assert_eq!(updater_retry_delay(4), UPDATER_RETRY_MAX);
         assert_eq!(updater_retry_delay(50), UPDATER_RETRY_MAX);
         assert_eq!(updater_retry_delay(u32::MAX), UPDATER_RETRY_MAX);
+    }
+
+    #[test]
+    fn first_failure_is_reported_at_once_with_nothing_held_back() {
+        let mut failures = UpdaterFailures::default();
+        let now = Instant::now();
+        let action = failures.record(now);
+        assert_eq!(action.report, Some(0));
+        assert_eq!(action.retry_after, UPDATER_RETRY_BASE);
+    }
+
+    #[test]
+    fn repeat_failures_are_held_back_and_counted_until_the_interval_passes() {
+        let mut failures = UpdaterFailures::default();
+        let start = Instant::now();
+        assert_eq!(failures.record(start).report, Some(0));
+
+        // Three more inside the interval: counted, not reported.
+        for i in 1..=3 {
+            let action = failures.record(start + Duration::from_secs(i));
+            assert_eq!(action.report, None, "failure {i} should be held back");
+        }
+
+        // Once the interval passes, the next report accounts for all three.
+        let action = failures.record(start + UPDATER_REPORT_INTERVAL);
+        assert_eq!(action.report, Some(3));
+
+        // And the count starts again.
+        assert_eq!(
+            failures
+                .record(start + UPDATER_REPORT_INTERVAL + Duration::from_secs(1))
+                .report,
+            None
+        );
+    }
+
+    /// The whole reason this policy exists. The zero-length-period fault fails at each
+    /// period change and SUCCEEDS in between, so any rule that resets on success treats
+    /// every failure as the first one: no back-off, and a full report every time.
+    #[test]
+    fn an_alternating_fault_still_backs_off() {
+        let mut failures = UpdaterFailures::default();
+        let start = Instant::now();
+
+        // Ten failures a second apart, with successful ticks in the gaps that the policy
+        // never hears about — because success is deliberately not an input.
+        let mut last = UPDATER_RETRY_BASE;
+        for i in 0..10 {
+            last = failures.record(start + Duration::from_secs(i)).retry_after;
+        }
+
+        assert_eq!(
+            last, UPDATER_RETRY_MAX,
+            "an alternating fault must reach the retry ceiling, not sit at the base"
+        );
+    }
+
+    #[test]
+    fn a_failure_long_after_the_last_one_is_a_fresh_fault() {
+        let mut failures = UpdaterFailures::default();
+        let start = Instant::now();
+        for i in 0..5 {
+            failures.record(start + Duration::from_secs(i));
+        }
+
+        // Well past the run window: a new problem, not a continuation of the old one.
+        let action = failures.record(start + UPDATER_FAULT_RUN_WINDOW + Duration::from_secs(10));
+        assert_eq!(
+            action.retry_after, UPDATER_RETRY_BASE,
+            "a fresh fault must retry promptly rather than inherit the old back-off"
+        );
+        // Reported at once (not held behind the old fault's interval), and still
+        // accounting for the four that were counted but never reported. No failure is
+        // silently dropped, even across a fault boundary — the wording is "since the
+        // last report", which stays true regardless of which fault they belonged to.
+        assert_eq!(
+            action.report,
+            Some(4),
+            "a fresh fault must be reported at once, and must not discard the unreported \
+             failures that came before it"
+        );
     }
 
     #[test]
@@ -7003,89 +7125,94 @@ fn time_updater() -> impl Stream<Item = Message> {
             error!("Clock updater never received the game state; updater stopping");
             return;
         };
-        let mut clock_running_receiver = lock_game(&tm).get_start_stop_rx();
+        let mut clock_running_receiver = tm.lock().get_start_stop_rx();
         let mut next_time = Some(Instant::now());
-        let mut consecutive_failures = 0u32;
+        let mut failures = UpdaterFailures::default();
 
         loop {
-            let mut clock_running = true;
-            if let Some(next_time) = next_time {
-                if next_time > Instant::now() {
-                    match timeout_at(next_time, clock_running_receiver.changed()).await {
+            if let Some(wake_at) = next_time {
+                if wake_at > Instant::now() {
+                    match timeout_at(wake_at, clock_running_receiver.changed()).await {
                         Err(_) => {}
                         Ok(Err(_)) => continue,
-                        Ok(Ok(())) => {
-                            clock_running = *clock_running_receiver.borrow();
-                            debug!("Received clock running message: {clock_running}");
-                        }
+                        Ok(Ok(())) => {}
                     };
                 } else {
-                    match clock_running_receiver.has_changed() {
-                        Ok(true) => {
-                            clock_running = *clock_running_receiver.borrow();
-                            debug!("Received clock running message: {clock_running}");
-                        }
-                        Ok(false) => {}
-                        Err(_) => {
-                            continue;
-                        }
-                    };
+                    if clock_running_receiver.has_changed().is_err() {
+                        continue;
+                    }
                 }
             } else {
                 debug!("Awaiting a new clock running message");
-                match clock_running_receiver.changed().await {
-                    Err(_) => continue,
-                    Ok(()) => {
-                        clock_running = *clock_running_receiver.borrow();
-                        debug!("Received clock running message: {clock_running}");
-                    }
-                };
+                if clock_running_receiver.changed().await.is_err() {
+                    continue;
+                }
             };
+
+            // Read the latch rather than assuming. Waking on the timer used to mean
+            // "assume the clock is still running", which is only true while `next_time`
+            // is set exclusively for a running clock — an invariant the failure path
+            // cannot honour, because a tick that fails as the clock stops still has to
+            // retry or the screen, LED panel and overlay keep a stale running value.
+            // The watch channel always holds the current value, so ask it.
+            let clock_running = *clock_running_receiver.borrow();
+            debug!("Clock running: {clock_running}");
 
             // One guarded call. Both a returned failure and an engine panic land here,
             // so there is a single place where a bad tick is handled — and no place
             // where the updater can force-unwrap the engine.
             let tick = catch_unwind(AssertUnwindSafe(|| {
-                let mut tm_ = lock_game(&tm);
+                let mut tm_ = tm.lock();
                 let now = Instant::now();
                 let (kind, snapshot) = tm_.updater_tick(now)?;
                 let next = next_updater_wake(clock_running, tm_.next_update_time(now), now);
                 Ok::<_, TournamentManagerError>((kind, snapshot, next))
             }));
 
+            // One failure path, not two. A returned error and a caught panic differ only
+            // in how the reason reads; every decision after that — how long to wait,
+            // whether to report, what to count — is identical, and keeping two copies of
+            // it meant a fix applied to one arm and not the other.
             let (kind, snapshot, next) = match tick {
                 Ok(Ok(values)) => values,
-                Ok(Err(e)) => {
-                    let delay = updater_retry_delay(consecutive_failures);
-                    if consecutive_failures == 0 {
-                        // Full state on the first failure of a run. Repeats would print
-                        // the same state, so later lines carry the reason only — the
-                        // information is captured, not reduced.
-                        error!(
-                            "Clock updater tick failed: {e}. Retrying in {delay:?}. State: {:#?}",
-                            lock_game(&tm)
-                        );
-                    } else {
-                        error!("Clock updater tick failed again: {e}. Retrying in {delay:?}");
+                failed => {
+                    let reason = match failed {
+                        Ok(Err(e)) => format!("failed: {e}"),
+                        Err(payload) => format!("panicked: {}", panic_reason(&*payload)),
+                        Ok(Ok(_)) => unreachable!("handled by the arm above"),
+                    };
+                    let now = Instant::now();
+                    let action = failures.record(now);
+                    match action.report {
+                        Some(held_back) => {
+                            let also = if held_back == 0 {
+                                String::new()
+                            } else {
+                                format!(" ({held_back} further failures since the last report)")
+                            };
+                            // The state is read just after the tick released the lock, so
+                            // it is the state moments after the failure rather than at the
+                            // failing statement — close enough to diagnose, and honest
+                            // about which it is.
+                            error!(
+                                "Clock updater tick {reason}{also}. Retrying in {:?}. \
+                                 Game state just after the failure: {:#?}",
+                                action.retry_after,
+                                tm.lock()
+                            );
+                        }
+                        None => trace!("Clock updater tick {reason} (report held back)"),
                     }
-                    consecutive_failures = consecutive_failures.saturating_add(1);
-                    next_time = Some(Instant::now() + delay);
-                    continue;
-                }
-                Err(payload) => {
-                    let delay = updater_retry_delay(consecutive_failures);
-                    error!(
-                        "Clock updater tick panicked: {}. Retrying in {delay:?}. The panic \
-                         itself, with its backtrace, is recorded above by the panic logger.",
-                        panic_reason(&*payload)
-                    );
-                    consecutive_failures = consecutive_failures.saturating_add(1);
-                    next_time = Some(Instant::now() + delay);
+                    next_time = Some(now + action.retry_after);
                     continue;
                 }
             };
 
-            consecutive_failures = 0;
+            // Deliberately NOT reset on success. The fault this survives alternates —
+            // fail at a period change, succeed in between — so clearing the policy here
+            // would make every failure look like the first one again, which is the exact
+            // defect this redesign exists to remove. `UpdaterFailures` ages itself out
+            // via `UPDATER_FAULT_RUN_WINDOW` instead.
             next_time = next;
 
             let msg_type = match kind {

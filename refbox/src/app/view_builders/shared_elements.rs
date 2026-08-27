@@ -2,7 +2,7 @@ use super::fit_text::{fit_text, fit_text_lines};
 use super::*;
 use crate::app::RevivePhase;
 use crate::portal_manager::{HealthState, PortalIndicatorState};
-use crate::tournament_manager::lock_game;
+use crate::tournament_manager::SharedGame;
 use enum_iterator::all;
 use iced::{
     Alignment, Background, Border, Length, Theme,
@@ -16,11 +16,7 @@ use iced::{
 use iced_core::border::Radius;
 use iced_core::text::IntoFragment;
 use matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
-use std::{
-    fmt::Write,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{fmt::Write, time::Duration};
 use uwh_common::{
     color::Color as GameColor,
     game_snapshot::{
@@ -200,11 +196,11 @@ pub(in super::super) fn team_timeout_in_grace(
 
 pub(in super::super) fn build_timeout_ribbon<'a>(
     snapshot: &GameSnapshot,
-    tm: &Arc<Mutex<TournamentManager>>,
+    tm: &SharedGame,
     mode: Mode,
     revive_hold: Option<(GameColor, RevivePhase)>,
 ) -> Row<'a, Message> {
-    let tm = lock_game(tm);
+    let tm = tm.lock();
     let black_phase = match revive_hold {
         Some((GameColor::Black, p)) => Some(p),
         _ => None,

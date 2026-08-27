@@ -2,6 +2,7 @@ use super::fit_text::{fit_text, fit_text_lines};
 use super::*;
 use crate::app::RevivePhase;
 use crate::portal_manager::{HealthState, PortalIndicatorState};
+use crate::tournament_manager::lock_game;
 use enum_iterator::all;
 use iced::{
     Alignment, Background, Border, Length, Theme,
@@ -203,7 +204,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
     mode: Mode,
     revive_hold: Option<(GameColor, RevivePhase)>,
 ) -> Row<'a, Message> {
-    let tm = tm.lock().unwrap();
+    let tm = lock_game(tm);
     let black_phase = match revive_hold {
         Some((GameColor::Black, p)) => Some(p),
         _ => None,

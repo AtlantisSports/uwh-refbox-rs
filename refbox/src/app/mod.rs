@@ -22,6 +22,7 @@ use log::*;
 use std::{
     cmp::min,
     collections::{BTreeMap, BTreeSet},
+    panic::{AssertUnwindSafe, catch_unwind},
     process::Child,
     sync::{
         Arc, Mutex,
@@ -1127,8 +1128,8 @@ impl RefBoxApp {
         // keeping a pending repoint from reaching them. Allowing a site change
         // during a game, even behind a confirmation, means repointing on those
         // paths too, or the new source is committed and the client never moves.
-        // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
-        if self.tm.lock().unwrap().current_period() != GamePeriod::BetweenGames {
+        // A contaminated lock is survivable — see `lock_game`.
+        if lock_game(&self.tm).current_period() != GamePeriod::BetweenGames {
             return Some(ConfirmationKind::SiteLockedByGame(page));
         }
         if self.portal_manager.has_queued_items() {
@@ -1359,7 +1360,7 @@ impl RefBoxApp {
                     .filter(|game| game.start_time > this_game_start)
                     .min_by_key(|game| game.start_time);
 
-                let mut tm = self.tm.lock().unwrap();
+                let mut tm = lock_game(&self.tm);
                 let next_game_number = if let Some(next_game) = next_game {
                     let timing = schedule.get_game_timing(&next_game.number).cloned();
                     let info = NextGameInfo {
@@ -1415,8 +1416,8 @@ impl RefBoxApp {
             // Copy everything needed out from under the lock: the recorded result's own
             // game number, its scores, and its stats JSON.
             let recorded = {
-                // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
-                let tm = self.tm.lock().unwrap();
+                // A contaminated lock is survivable — see `lock_game`.
+                let tm = lock_game(&self.tm);
                 tm.last_game_info()
                     .map(|info| (info.game_number.clone(), info.scores, info.stats.as_json()))
             };
@@ -1669,8 +1670,8 @@ impl RefBoxApp {
             return Some(ConfirmationKind::UwhPortalIncompleteFromApply);
         }
 
-        // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
-        let mut tm = self.tm.lock().unwrap();
+        // A contaminated lock is survivable — see `lock_game`.
+        let mut tm = lock_game(&self.tm);
 
         // Detect the ON→OFF portal transition.  At function entry `self.uses_remote()`
         // still holds the prior committed value, so a true→false change means the
@@ -1855,8 +1856,8 @@ impl RefBoxApp {
             ConfirmationOption::EndGameAndApply => {
                 // Safety: *FromApply confirmations are only raised while edited_settings is Some; the invariant is enforced by apply_game_options.
                 let edited = self.edited_settings.as_ref().unwrap();
-                // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
-                let mut tm = self.tm.lock().unwrap();
+                // A contaminated lock is survivable — see `lock_game`.
+                let mut tm = lock_game(&self.tm);
                 let now = Instant::now();
                 tm.reset_game(now);
                 if let Some(ref config) = new_config {
@@ -1891,15 +1892,15 @@ impl RefBoxApp {
                 self.page_entry_snapshot = None;
                 self.persist_config();
                 // Safety: snapshot generation only fails before the tournament manager is initialised, which happens in RefBoxApp::new().
-                let new_snapshot = self.tm.lock().unwrap().generate_snapshot(now).unwrap();
+                let new_snapshot = lock_game(&self.tm).generate_snapshot(now).unwrap();
                 task = self.apply_snapshot(new_snapshot);
                 AppState::EditGameConfig(ConfigPage::Main)
             }
             ConfirmationOption::KeepGameAndApply => {
                 // Safety: *FromApply confirmations are only raised while edited_settings is Some; the invariant is enforced by apply_game_options.
                 let edited = self.edited_settings.as_ref().unwrap();
-                // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
-                let mut tm = self.tm.lock().unwrap();
+                // A contaminated lock is survivable — see `lock_game`.
+                let mut tm = lock_game(&self.tm);
                 tm.set_game_number(&edited.game_number);
                 // Safety: snapshot generation only fails before the tournament manager is initialised, which happens in RefBoxApp::new().
                 let new_snapshot = tm.generate_snapshot(Instant::now()).unwrap();
@@ -2058,10 +2059,8 @@ impl RefBoxApp {
                 let manual_config = self.edited_settings.as_ref().unwrap().config.clone();
                 let now = Instant::now();
                 {
-                    // Safety: Mutex poison only occurs if another thread already
-                    // panicked; the refbox treats that as fatal (matches the 20+
-                    // identical sites in this file).
-                    let mut tm = self.tm.lock().unwrap();
+                    // A contaminated lock is survivable — see `lock_game`.
+                    let mut tm = lock_game(&self.tm);
                     tm.reset_game(now);
                     // `set_config` must run BEFORE `reset_to_manual_break` because
                     // `reset_to_manual_break` reads `self.config.nominal_break` to
@@ -2079,7 +2078,7 @@ impl RefBoxApp {
                 self.page_entry_snapshot = None;
                 // Safety: snapshot generation only fails before the tournament
                 // manager is initialised, which happens in `RefBoxApp::new()`.
-                let new_snapshot = self.tm.lock().unwrap().generate_snapshot(now).unwrap();
+                let new_snapshot = lock_game(&self.tm).generate_snapshot(now).unwrap();
                 task = self.apply_snapshot(new_snapshot);
                 AppState::EditGameConfig(ConfigPage::Main)
             }
@@ -2096,7 +2095,7 @@ impl RefBoxApp {
                 let manual_config = self.edited_settings.as_ref().unwrap().config.clone();
                 {
                     // Safety: Mutex poison — same rationale as the EndGameAndApply arm.
-                    let mut tm = self.tm.lock().unwrap();
+                    let mut tm = lock_game(&self.tm);
                     tm.clear_portal_next_game();
                 }
                 self.clear_portal_selections_to_manual(manual_config);
@@ -2224,7 +2223,7 @@ impl RefBoxApp {
         };
 
         let edited_settings = EditableSettings {
-            config: self.tm.lock().unwrap().config().clone(),
+            config: lock_game(&self.tm).config().clone(),
             game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
                 self.snapshot.next_game_number.clone()
             } else {
@@ -2660,7 +2659,7 @@ impl RefBoxApp {
             Message::NewSnapshot(snapshot) => self.apply_snapshot(snapshot),
             Message::EditTime => {
                 let now = Instant::now();
-                let mut tm = self.tm.lock().unwrap();
+                let mut tm = lock_game(&self.tm);
                 let was_running = tm.clock_is_running();
                 tm.stop_clock(now).unwrap();
                 let game_time = tm.game_clock_time(now).unwrap();
@@ -2710,7 +2709,7 @@ impl RefBoxApp {
             }
             Message::TimeEditComplete { canceled } => {
                 if let AppState::TimeEdit(was_running, game_time, timeout_time) = self.app_state {
-                    let mut tm = self.tm.lock().unwrap();
+                    let mut tm = lock_game(&self.tm);
                     let now = Instant::now();
                     if !canceled {
                         tm.set_game_clock_time(game_time).unwrap();
@@ -2733,7 +2732,7 @@ impl RefBoxApp {
                 }
             }
             Message::StartPlayNow => {
-                let mut tm = self.tm.lock().unwrap();
+                let mut tm = lock_game(&self.tm);
                 let now = Instant::now();
                 tm.start_play_now(now).unwrap();
                 let snapshot = tm.generate_snapshot(now).unwrap();
@@ -2741,7 +2740,7 @@ impl RefBoxApp {
                 self.apply_snapshot(snapshot)
             }
             Message::EditScores => {
-                let tm = self.tm.lock().unwrap();
+                let tm = lock_game(&self.tm);
                 self.app_state = AppState::ScoreEdit {
                     scores: tm.get_scores(),
                     is_confirmation: false,
@@ -2763,7 +2762,7 @@ impl RefBoxApp {
                     );
                     Task::none()
                 } else {
-                    let mut tm = self.tm.lock().unwrap();
+                    let mut tm = lock_game(&self.tm);
                     let now = Instant::now();
                     if tm.current_period() == GamePeriod::SuddenDeath {
                         let mut scores = tm.get_scores();
@@ -2799,7 +2798,7 @@ impl RefBoxApp {
             }
             Message::ScoreEditComplete { canceled } => {
                 let mut tasks = vec![];
-                let mut tm = self.tm.lock().unwrap();
+                let mut tm = lock_game(&self.tm);
                 let mut now = Instant::now();
 
                 self.app_state = if let AppState::ScoreEdit {
@@ -3250,8 +3249,8 @@ impl RefBoxApp {
                         // linking then. Same rule as the site-change guard:
                         // a game in progress, not merely a running clock,
                         // because the between-games clock always runs.
-                        // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
-                        if self.tm.lock().unwrap().current_period() != GamePeriod::BetweenGames {
+                        // A contaminated lock is survivable — see `lock_game`.
+                        if lock_game(&self.tm).current_period() != GamePeriod::BetweenGames {
                             self.app_state =
                                 AppState::ConfirmationPage(ConfirmationKind::LinkLockedByGame);
                             trace!("AppState changed to {:?}", self.app_state);
@@ -3364,7 +3363,7 @@ impl RefBoxApp {
                     if let AppState::KeypadPage(KeypadPage::AddScore { color, .. }, player) =
                         self.app_state
                     {
-                        let mut tm = self.tm.lock().unwrap();
+                        let mut tm = lock_game(&self.tm);
                         let now = Instant::now();
 
                         let app_state = if tm.current_period() == GamePeriod::SuddenDeath {
@@ -4821,7 +4820,7 @@ impl RefBoxApp {
                     self.app_state = AppState::ConfirmScores(self.snapshot.scores);
                     trace!("AppState changed to {:?}", self.app_state);
                 } else {
-                    let mut tm = self.tm.lock().unwrap();
+                    let mut tm = lock_game(&self.tm);
                     let now = Instant::now();
                     // Safe: end_confirm_pause's only Err is NotPaused, which can't occur here —
                     // Message::ConfirmScores is only dispatched while a confirm-pause is active.
@@ -4838,7 +4837,7 @@ impl RefBoxApp {
                 self.app_state = if let AppState::ConfirmScores(scores) = self.app_state {
                     if correct {
                         let now = Instant::now();
-                        let mut tm = self.tm.lock().unwrap();
+                        let mut tm = lock_game(&self.tm);
 
                         tm.set_scores(scores, now);
                         // Safe: end_confirm_pause's only Err is NotPaused, which can't occur here —
@@ -4869,7 +4868,7 @@ impl RefBoxApp {
                 task
             }
             Message::TeamTimeout(color, switch) => {
-                let mut tm = self.tm.lock().unwrap();
+                let mut tm = lock_game(&self.tm);
                 let now = Instant::now();
                 if switch {
                     tm.switch_to_team_timeout(color).unwrap();
@@ -4884,7 +4883,7 @@ impl RefBoxApp {
                 self.apply_snapshot(snapshot)
             }
             Message::RefTimeout(switch) => {
-                let mut tm = self.tm.lock().unwrap();
+                let mut tm = lock_game(&self.tm);
                 let now = Instant::now();
                 if switch {
                     tm.switch_to_ref_timeout(now).unwrap();
@@ -4899,7 +4898,7 @@ impl RefBoxApp {
                 self.apply_snapshot(snapshot)
             }
             Message::PenaltyShot(switch) => {
-                let mut tm = self.tm.lock().unwrap();
+                let mut tm = lock_game(&self.tm);
                 let now = Instant::now();
                 if switch {
                     if self.config.mode == Mode::Rugby {
@@ -4920,7 +4919,7 @@ impl RefBoxApp {
                 self.apply_snapshot(snapshot)
             }
             Message::EndTimeout => {
-                let mut tm = self.tm.lock().unwrap();
+                let mut tm = lock_game(&self.tm);
                 let now = Instant::now();
                 let would_end = tm.timeout_end_would_end_game(now).unwrap();
                 if would_end {
@@ -4948,7 +4947,7 @@ impl RefBoxApp {
                 task
             }
             Message::CancelTimeout => {
-                let mut tm = self.tm.lock().unwrap();
+                let mut tm = lock_game(&self.tm);
                 let now = Instant::now();
                 // The Cancel button is only rendered for an active team timeout
                 // inside its grace window, so this call is valid by construction.
@@ -5083,7 +5082,7 @@ impl RefBoxApp {
                             if *id == event_id {
                                 self.schedule = Some(schedule);
                                 if self.edited_settings.is_none() {
-                                    let mut tm = self.tm.lock().unwrap();
+                                    let mut tm = lock_game(&self.tm);
                                     if tm.current_period() == GamePeriod::BetweenGames {
                                         // On a startup link restore, re-select the
                                         // remembered game; otherwise pick the default
@@ -5230,11 +5229,11 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::StartClock => {
-                self.tm.lock().unwrap().start_clock(Instant::now());
+                lock_game(&self.tm).start_clock(Instant::now());
                 Task::none()
             }
             Message::StopClock => {
-                self.tm.lock().unwrap().stop_clock(Instant::now()).unwrap();
+                lock_game(&self.tm).stop_clock(Instant::now()).unwrap();
                 Task::none()
             }
             Message::TimeUpdaterStarted(tx) => {
@@ -5369,7 +5368,7 @@ impl RefBoxApp {
                 ) {
                     return Task::none();
                 }
-                let mut tm = self.tm.lock().unwrap();
+                let mut tm = lock_game(&self.tm);
                 let now = Instant::now();
                 if tm.revive_team_timeout(color).is_err() {
                     // State moved on during the hold (e.g. half ended); nothing to do.
@@ -5507,7 +5506,7 @@ impl RefBoxApp {
                 let current_language =
                     Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
                 let edited_settings = EditableSettings {
-                    config: self.tm.lock().unwrap().config().clone(),
+                    config: lock_game(&self.tm).config().clone(),
                     game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
                         self.snapshot.next_game_number.clone()
                     } else {
@@ -5558,7 +5557,7 @@ impl RefBoxApp {
                 let current_language =
                     Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
                 let edited_settings = EditableSettings {
-                    config: self.tm.lock().unwrap().config().clone(),
+                    config: lock_game(&self.tm).config().clone(),
                     game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
                         self.snapshot.next_game_number.clone()
                     } else {
@@ -5648,7 +5647,7 @@ impl RefBoxApp {
                 let current_language =
                     Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
                 let edited_settings = EditableSettings {
-                    config: self.tm.lock().unwrap().config().clone(),
+                    config: lock_game(&self.tm).config().clone(),
                     game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
                         self.snapshot.next_game_number.clone()
                     } else {
@@ -5746,7 +5745,7 @@ impl RefBoxApp {
                 let current_language =
                     Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
                 let edited_settings = EditableSettings {
-                    config: self.tm.lock().unwrap().config().clone(),
+                    config: lock_game(&self.tm).config().clone(),
                     game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
                         self.snapshot.next_game_number.clone()
                     } else {
@@ -5981,7 +5980,7 @@ impl RefBoxApp {
             snapshot: &self.snapshot,
             mode: self.config.mode,
             source: self.source,
-            clock_running: self.tm.lock().unwrap().clock_is_running(),
+            clock_running: lock_game(&self.tm).clock_is_running(),
             teams: active_event_id.and_then(|id| {
                 self.events
                     .as_ref()
@@ -6027,7 +6026,7 @@ impl RefBoxApp {
                     &self.config.game
                 };
                 let behind_schedule = if self.config.show_behind_schedule_time {
-                    self.tm.lock().unwrap().behind_schedule_shown(Instant::now())
+                    lock_game(&self.tm).behind_schedule_shown(Instant::now())
                 } else {
                     std::time::Duration::ZERO
                 };
@@ -6879,6 +6878,38 @@ fn font_family_id(lang: Language) -> u8 {
 /// Re-polling soon lets the state machine advance; it must never panic.
 const UPDATER_NO_NEXT_TIME_FALLBACK: Duration = Duration::from_millis(100);
 
+/// First delay before the clock updater retries a tick that failed.
+const UPDATER_RETRY_BASE: Duration = Duration::from_millis(100);
+
+/// Ceiling on the retry delay. A persistent fault therefore re-polls at most once a
+/// second, which bounds how often it can write to the log without ever silencing it.
+const UPDATER_RETRY_MAX: Duration = Duration::from_secs(1);
+
+/// Delay before the clock updater retries after a failed tick: doubles per consecutive
+/// failure from [`UPDATER_RETRY_BASE`], capped at [`UPDATER_RETRY_MAX`].
+fn updater_retry_delay(consecutive_failures: u32) -> Duration {
+    // 16 doublings of 100ms already far exceeds the cap; clamping the shift keeps the
+    // multiply in range for any failure count.
+    let shift = consecutive_failures.min(16);
+    UPDATER_RETRY_BASE
+        .saturating_mul(1u32 << shift)
+        .min(UPDATER_RETRY_MAX)
+}
+
+/// Read the human-readable reason out of a caught panic.
+///
+/// `panic!("...")` produces either a `&'static str` or a `String` depending on whether
+/// the message was formatted; anything else has no text to show.
+fn panic_reason(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&'static str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "panic with an unrecognised payload".to_string()
+    }
+}
+
 /// Decide when [`time_updater`] should next wake.
 ///
 /// - Clock stopped: `None` — await the next clock-running change.
@@ -6899,6 +6930,36 @@ fn next_updater_wake(
 #[cfg(test)]
 mod updater_wake_tests {
     use super::*;
+
+    #[test]
+    fn retry_delay_starts_at_the_base_and_doubles() {
+        assert_eq!(updater_retry_delay(0), UPDATER_RETRY_BASE);
+        assert_eq!(updater_retry_delay(1), Duration::from_millis(200));
+        assert_eq!(updater_retry_delay(2), Duration::from_millis(400));
+        assert_eq!(updater_retry_delay(3), Duration::from_millis(800));
+    }
+
+    #[test]
+    fn retry_delay_is_capped_so_a_stuck_fault_cannot_flood_the_log() {
+        assert_eq!(updater_retry_delay(4), UPDATER_RETRY_MAX);
+        assert_eq!(updater_retry_delay(50), UPDATER_RETRY_MAX);
+        assert_eq!(updater_retry_delay(u32::MAX), UPDATER_RETRY_MAX);
+    }
+
+    #[test]
+    fn panic_reason_reads_both_payload_shapes() {
+        let from_str: Box<dyn std::any::Any + Send> = Box::new("No snapshot");
+        assert_eq!(panic_reason(&*from_str), "No snapshot");
+
+        let from_string: Box<dyn std::any::Any + Send> = Box::new(String::from("boom"));
+        assert_eq!(panic_reason(&*from_string), "boom");
+
+        let from_other: Box<dyn std::any::Any + Send> = Box::new(7u8);
+        assert_eq!(
+            panic_reason(&*from_other),
+            "panic with an unrecognised payload"
+        );
+    }
 
     #[test]
     fn stopped_clock_has_no_scheduled_wake() {
@@ -6933,11 +6994,18 @@ fn time_updater() -> impl Stream<Item = Message> {
     iced::stream::channel(100, async |mut msg_tx| {
         let (tx, mut rx) = mpsc::channel(1);
 
-        msg_tx.try_send(Message::TimeUpdaterStarted(tx)).unwrap();
+        if msg_tx.try_send(Message::TimeUpdaterStarted(tx)).is_err() {
+            error!("Clock updater could not register with the app; updater stopping");
+            return;
+        }
 
-        let tm = rx.recv().await.unwrap();
-        let mut clock_running_receiver = tm.lock().unwrap().get_start_stop_rx();
+        let Some(tm) = rx.recv().await else {
+            error!("Clock updater never received the game state; updater stopping");
+            return;
+        };
+        let mut clock_running_receiver = lock_game(&tm).get_start_stop_rx();
         let mut next_time = Some(Instant::now());
+        let mut consecutive_failures = 0u32;
 
         loop {
             let mut clock_running = true;
@@ -6974,46 +7042,62 @@ fn time_updater() -> impl Stream<Item = Message> {
                 };
             };
 
-            let (msg_type, snapshot) = {
-                let mut tm_ = tm.lock().unwrap();
+            // One guarded call. Both a returned failure and an engine panic land here,
+            // so there is a single place where a bad tick is handled — and no place
+            // where the updater can force-unwrap the engine.
+            let tick = catch_unwind(AssertUnwindSafe(|| {
+                let mut tm_ = lock_game(&tm);
                 let now = Instant::now();
+                let (kind, snapshot) = tm_.updater_tick(now)?;
+                let next = next_updater_wake(clock_running, tm_.next_update_time(now), now);
+                Ok::<_, TournamentManagerError>((kind, snapshot, next))
+            }));
 
-                let msg_type = if tm_.could_end_game(now).unwrap() {
-                    tm_.pause_for_confirm(now).unwrap();
-                    Message::ConfirmScores
-                } else if tm_.pause_has_ended(now) {
-                    tm_.end_confirm_pause(now).unwrap();
-                    Message::AutoConfirmScores
-                } else {
-                    tm_.update(now).unwrap();
-                    Message::NewSnapshot
-                };
-
-                let mut i = 0;
-                let snapshot = loop {
-                    if i > 4 {
+            let (kind, snapshot, next) = match tick {
+                Ok(Ok(values)) => values,
+                Ok(Err(e)) => {
+                    let delay = updater_retry_delay(consecutive_failures);
+                    if consecutive_failures == 0 {
+                        // Full state on the first failure of a run. Repeats would print
+                        // the same state, so later lines carry the reason only — the
+                        // information is captured, not reduced.
                         error!(
-                            "Failed to generate snapshot after 5 attempts. State: {:#?}",
-                            tm_
+                            "Clock updater tick failed: {e}. Retrying in {delay:?}. State: {:#?}",
+                            lock_game(&tm)
                         );
-                        panic!("No snapshot");
+                    } else {
+                        error!("Clock updater tick failed again: {e}. Retrying in {delay:?}");
                     }
-                    match tm_.generate_snapshot(now) {
-                        Some(val) => break val,
-                        None => {
-                            warn!("Failed to generate snapshot. Updating and trying again");
-                            tm_.update(now).unwrap();
-                            i += 1;
-                        }
-                    }
-                };
-
-                next_time = next_updater_wake(clock_running, tm_.next_update_time(now), now);
-
-                (msg_type, snapshot)
+                    consecutive_failures = consecutive_failures.saturating_add(1);
+                    next_time = Some(Instant::now() + delay);
+                    continue;
+                }
+                Err(payload) => {
+                    let delay = updater_retry_delay(consecutive_failures);
+                    error!(
+                        "Clock updater tick panicked: {}. Retrying in {delay:?}. The panic \
+                         itself, with its backtrace, is recorded above by the panic logger.",
+                        panic_reason(&*payload)
+                    );
+                    consecutive_failures = consecutive_failures.saturating_add(1);
+                    next_time = Some(Instant::now() + delay);
+                    continue;
+                }
             };
 
-            msg_tx.send(msg_type(snapshot)).await.unwrap();
+            consecutive_failures = 0;
+            next_time = next;
+
+            let msg_type = match kind {
+                TickKind::ConfirmScores => Message::ConfirmScores,
+                TickKind::AutoConfirmScores => Message::AutoConfirmScores,
+                TickKind::NewSnapshot => Message::NewSnapshot,
+            };
+
+            if msg_tx.send(msg_type(snapshot)).await.is_err() {
+                debug!("App is no longer listening; clock updater stopping");
+                break;
+            }
         }
     })
 }

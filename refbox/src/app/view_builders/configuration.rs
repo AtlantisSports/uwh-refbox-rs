@@ -1,3 +1,4 @@
+use super::fit_text::fit_text;
 use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
 use crate::app::PageEntrySnapshot;
 use crate::app::languages::Language;
@@ -852,14 +853,15 @@ fn make_event_config_page<'a>(
 
         // These two fill row 1's second and third cells, beside Manual Games. The
         // active one is marked with the existing selected-button style rather
-        // than a new treatment.
+        // than a new treatment. The labels are `fit_text`, as the tiles beside
+        // them are: Italian's PERSONALIZZATO is one 14-character word with
+        // nowhere to wrap, so shrinking it is the only way to show it whole.
+        // (Not every tile on this page is one yet -- the ACCESS TOKEN row
+        // below is still a plain `text`.) The width this row leaves the label,
+        // and the size Italian settles at inside it, are pinned by
+        // `the_italian_source_label_shrinks_but_stays_clear_of_the_floor`.
         let portal_source_btn = button(
-            text(fl!("source-portal", portal = portal_name_for_mode(mode)))
-                .size(MEDIUM_TEXT)
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Center)
-                .width(Length::Fill)
-                .height(Length::Fill),
+            fit_text(fl!("source-portal", portal = portal_name_for_mode(mode))).size(MEDIUM_TEXT),
         )
         .width(Length::Fill)
         .height(Length::Fill)
@@ -870,22 +872,15 @@ fn make_event_config_page<'a>(
         })
         .on_press(Message::SelectGameSource(GameSource::Portal));
 
-        let custom_source_btn = button(
-            text(fl!("source-custom"))
-                .size(MEDIUM_TEXT)
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Center)
-                .width(Length::Fill)
-                .height(Length::Fill),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(if settings.source == GameSource::Custom {
-            light_gray_selected_button
-        } else {
-            light_gray_button
-        })
-        .on_press(Message::SelectGameSource(GameSource::Custom));
+        let custom_source_btn = button(fit_text(fl!("source-custom")).size(MEDIUM_TEXT))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(if settings.source == GameSource::Custom {
+                light_gray_selected_button
+            } else {
+                light_gray_button
+            })
+            .on_press(Message::SelectGameSource(GameSource::Custom));
 
         col = col
             .push(

@@ -1009,4 +1009,57 @@ mod tests {
         let measure = |line: &str| line.chars().count() as f32;
         assert_eq!(best_split(measure, "VERWARNUNG"), None);
     }
+
+    /// Roboto Medium's real advance for PERSONALIZZATO, summed from `hmtx`:
+    /// 17384/2048 em. Specific to this one string, unlike `digit_ruler`, because
+    /// uppercase Latin letters do not share an advance the way digits do.
+    fn personalizzato_ruler(line: &str, size: f32) -> f32 {
+        assert_eq!(
+            line, "PERSONALIZZATO",
+            "ruler is valid for this string only"
+        );
+        size * 17384.0 / 2048.0
+    }
+
+    #[test]
+    fn the_italian_source_label_shrinks_but_stays_clear_of_the_floor() {
+        use crate::app::theme::{MEDIUM_TEXT, PADDING, SPACING};
+        use crate::config::Hardware;
+
+        // The Game Options source tiles. Italian's `source-custom` is
+        // PERSONALIZZATO: fourteen letters, one word, no space and no CJK
+        // break, so it can neither wrap nor be split -- it can only shrink.
+        // Drawing those tiles with a `fit_text` rests entirely on it landing
+        // clear of the floor once shrunk, because at the floor it is clipped
+        // again and nothing fails until someone runs the app in Italian.
+
+        // What the tile actually gives the label on the default 945px window:
+        // the page's own padding, then three equal cells with two gaps between
+        // them, then iced's DEFAULT_PADDING of 10 either side inside the button.
+        // Read from the real default rather than restated, so that changing the
+        // shipped window size is caught here instead of silently drifting.
+        let window_width = Hardware::default().screen_x as f32;
+        const BUTTON_PADDING_X: f32 = 10.0;
+        let cell = (window_width - 2.0 * PADDING - 2.0 * SPACING) / 3.0;
+        let budget = cell - 2.0 * BUTTON_PADDING_X;
+
+        let ladder = size_ladder(MEDIUM_TEXT, MIN_FIT_TEXT);
+        let (_, size) = fit_layout(
+            personalizzato_ruler,
+            budget,
+            &ladder,
+            &one("PERSONALIZZATO"),
+        );
+
+        // 322.6px at MEDIUM_TEXT against a 284.3px tile, so it has to shrink --
+        // and it lands on 33px, a comfortable 14px above the 19px floor where
+        // clipping would begin again. Asserted exactly so that a later change to
+        // PADDING, SPACING, MEDIUM_TEXT, MIN_FIT_TEXT or the shipped window size
+        // has to come and look at this number rather than quietly pushing the
+        // label back toward the floor.
+        assert_eq!(size, 33.0);
+        // Not merely "a size came back": `fit_layout` falls back to the floor
+        // when nothing fits, so this is what distinguishes a fit from a give-up.
+        assert!(personalizzato_ruler("PERSONALIZZATO", size) <= budget);
+    }
 }

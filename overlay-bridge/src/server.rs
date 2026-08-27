@@ -330,6 +330,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/nextgame", get(get_next_game))
         .route("/status.json", get(get_status))
         .route("/", get(get_status_page))
+        .route("/page.json", get(get_page_json))
         .route("/refbox", post(post_refbox))
         .route("/scan", post(post_scan))
         .with_state(state)
@@ -391,7 +392,23 @@ async fn get_status(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<Str
 /// vMix addresses `status::render_page` lists) into a [`status::PageData`] and delegating the
 /// actual rendering to that pure function.
 async fn get_status_page(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Html<String> {
-    let display = current_display(&state);
+    Html(status::render_page(&page_data(&state, &headers)))
+}
+
+/// `GET /page.json` -- the strings the status page displays, for its own live update. **Not a vMix
+/// table**: it is the page talking to its own server, and no title binds to it. It exists so the
+/// browser never has to work out a display string for itself -- see [`status::live_fields`].
+async fn get_page_json(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Json<BTreeMap<String, String>> {
+    Json(status::live_fields(&page_data(&state, &headers)))
+}
+
+/// Everything the status page needs, gathered once. Shared by the page and its live update so the
+/// two can never be built from different reads of the live state.
+fn page_data(state: &Arc<AppState>, headers: &HeaderMap) -> status::PageData {
+    let display = current_display(state);
 
     let base_url = headers
         .get(header::HOST)
@@ -405,25 +422,19 @@ async fn get_status_page(State(state): State<Arc<AppState>>, headers: HeaderMap)
     // operator's only diagnostic tool.
     let scorebug_row = tables::scorebug(
         &display,
-        names_for_game(&state, display.snapshot.game_number()).as_ref(),
-        is_connected(&state),
+        names_for_game(state, display.snapshot.game_number()).as_ref(),
+        is_connected(state),
     )
     .into_iter()
     .next()
     .unwrap_or_default();
     let served = |column: &str| scorebug_row.get(column).cloned().unwrap_or_default();
 
-    let data = status::PageData {
+    status::PageData {
         // ONE read of both the connection flag and its duration -- see
         // `feed::ConnectionStatus`'s doc for why this must never be two separate calls.
         status: state.connection.snapshot(),
         keepalive_active: state.connection.keepalive_active(),
-        event_id: display
-            .snapshot
-            .event_id
-            .as_ref()
-            .map(ToString::to_string)
-            .unwrap_or_default(),
         game_number: display.snapshot.game_number().clone(),
         // Read straight out of the row `/scorebug` serves, rather than derived from the snapshot
         // a second time. Two consequences, both wanted: the page cannot show a score the
@@ -442,9 +453,7 @@ async fn get_status_page(State(state): State<Arc<AppState>>, headers: HeaderMap)
         refbox_address: address,
         notice: read_lock(&state.notice).clone(),
         scan: read_lock(&state.last_scan).clone(),
-    };
-
-    Html(status::render_page(&data))
+    }
 }
 
 /// What a state-changing route answers with, once it is allowed to run: a redirect back to
@@ -1767,7 +1776,7 @@ mod tests {
              of silence with the connection still alive"
         );
         assert!(
-            !page.contains("class=\"duration\""),
+            page.contains("id=\"v-down\" hidden"),
             "the operator status page must never show a down-duration while still connected, \
              no matter how long the silence"
         );
@@ -2137,25 +2146,28 @@ mod tests {
             .await
             .expect("GET / body should be readable");
 
-        for (label, column) in [("Period:", "period"), ("Time:", "clock")] {
+        for (label, id, column) in [
+            ("Period:", "v-period", "period"),
+            ("Time:", "v-time", "clock"),
+        ] {
             let value = served(column);
             assert!(
                 !value.is_empty(),
                 "{column} should not be blank while connected -- the test proves nothing if it is"
             );
-            let expected = format!("<tr><th>{label}</th><td>{value}</td></tr>");
+            let expected = format!("<tr><th>{label}</th><td id=\"{id}\">{value}</td></tr>");
             assert!(
                 page.contains(&expected),
                 "the page must show the served {column}; expected {expected:?} in:\n{page}"
             );
         }
 
-        for (label, team, score) in [
-            ("White Team:", "whiteTeam", "whiteScore"),
-            ("Black Team:", "blackTeam", "blackScore"),
+        for (label, id, team, score) in [
+            ("White Team:", "v-white", "whiteTeam", "whiteScore"),
+            ("Black Team:", "v-black", "blackTeam", "blackScore"),
         ] {
             let expected = format!(
-                "<tr><th>{label}</th><td>{} | {}</td></tr>",
+                "<tr><th>{label}</th><td id=\"{id}\">{} | {}</td></tr>",
                 served(team),
                 served(score)
             );
@@ -2481,7 +2493,7 @@ mod tests {
             .await
             .expect("GET / body should be readable");
         assert!(
-            page.contains("<tr><th>Game:</th><td>(none known yet)</td></tr>"),
+            page.contains("<tr><th>Game:</th><td id=\"v-game\">(none known yet)</td></tr>"),
             "the status page must not still be naming the previous refbox's game, got:\n{page}"
         );
 

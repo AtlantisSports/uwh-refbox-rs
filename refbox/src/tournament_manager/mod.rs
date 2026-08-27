@@ -2,6 +2,10 @@ use log::*;
 use std::{
     cmp::{max, min},
     convert::TryInto,
+    sync::{
+        Mutex, MutexGuard,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use thiserror::Error;
 use time::OffsetDateTime;
@@ -31,6 +35,47 @@ use crate::penalty_editor::IterHelp;
 
 const MAX_TIME_VAL: Duration = Duration::from_secs(MAX_LONG_STRINGABLE_SECS as u64);
 const RECENT_GOAL_TIME: Duration = Duration::from_secs(15);
+
+/// How many times the tick will try to build a snapshot before giving up.
+/// Matches the app's historical 5-attempt loop.
+const SNAPSHOT_ATTEMPTS: u32 = 5;
+
+/// What one background clock tick did, so the caller can pick the matching app message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TickKind {
+    /// The game reached its end and a score-confirmation pause was armed.
+    ConfirmScores,
+    /// A score-confirmation pause elapsed and was closed automatically.
+    AutoConfirmScores,
+    /// An ordinary clock advance.
+    NewSnapshot,
+}
+
+/// Reported once per run when a contaminated lock is first recovered.
+static POISON_REPORTED: AtomicBool = AtomicBool::new(false);
+
+/// Lock the shared game state, surviving a lock left contaminated by an earlier panic.
+///
+/// `std::sync::Mutex` marks itself poisoned when a thread panics while holding it, and
+/// every later `lock().unwrap()` then panics too — which is how one recoverable fault in
+/// the background clock updater used to kill the whole application. A contaminated lock
+/// still holds the last state, so we take it and carry on.
+///
+/// This does not hide anything: the panic that caused the contamination was already
+/// written to the log by `log_panics`, and the updater logs its own failures in full.
+/// Reporting once per run keeps a redraw loop from repeating the same line every frame.
+pub(crate) fn lock_game(tm: &Mutex<TournamentManager>) -> MutexGuard<'_, TournamentManager> {
+    tm.lock().unwrap_or_else(|contaminated| {
+        if !POISON_REPORTED.swap(true, Ordering::Relaxed) {
+            error!(
+                "Recovered a contaminated game-state lock: an earlier operation panicked \
+                 while holding it. See the panic recorded earlier in this log for the cause. \
+                 Continuing with the last known state; this notice is logged once per run."
+            );
+        }
+        contaminated.into_inner()
+    })
+}
 
 #[derive(Debug)]
 pub struct TournamentManager {
@@ -1465,6 +1510,49 @@ impl TournamentManager {
         Ok(())
     }
 
+    /// One background tick of the game clock, as driven by the app's `time_updater`.
+    ///
+    /// This is the single seam between the clock updater and the engine. The updater
+    /// makes exactly this one call, so there is nowhere for it to force-unwrap an
+    /// engine failure — the shape prevents the mistake rather than patching each
+    /// instance of it. Every step that can fail returns its error.
+    ///
+    /// Behaviour on a healthy game is identical to the sequence this replaces.
+    pub(super) fn updater_tick(&mut self, now: Instant) -> Result<(TickKind, GameSnapshot)> {
+        let kind = if self.could_end_game(now)? {
+            self.pause_for_confirm(now)?;
+            TickKind::ConfirmScores
+        } else if self.pause_has_ended(now) {
+            self.end_confirm_pause(now)?;
+            TickKind::AutoConfirmScores
+        } else {
+            self.update(now)?;
+            TickKind::NewSnapshot
+        };
+
+        let mut attempts = 1;
+        let snapshot = loop {
+            match self.generate_snapshot(now) {
+                Some(snapshot) => break snapshot,
+                None if attempts >= SNAPSHOT_ATTEMPTS => {
+                    error!(
+                        "Failed to generate snapshot after {SNAPSHOT_ATTEMPTS} attempts. State: {self:#?}"
+                    );
+                    return Err(TournamentManagerError::SnapshotUnavailable(
+                        SNAPSHOT_ATTEMPTS,
+                    ));
+                }
+                None => {
+                    warn!("Failed to generate snapshot. Updating and trying again");
+                    self.update(now)?;
+                    attempts += 1;
+                }
+            }
+        };
+
+        Ok((kind, snapshot))
+    }
+
     fn end_first_half(&mut self, now: Instant) {
         if self.config.single_half {
             if self.scores.are_not_equal()
@@ -2594,6 +2682,8 @@ pub enum TournamentManagerError {
     PausingDuringTimeout,
     #[error("The clock is already stopped")]
     ClockStopped,
+    #[error("Could not build a game snapshot after {0} attempts")]
+    SnapshotUnavailable(u32),
 }
 
 pub type Result<T> = std::result::Result<T, TournamentManagerError>;
@@ -2639,6 +2729,119 @@ mod test {
         INIT.call_once(|| {
             env_logger::init();
         });
+    }
+
+    /// NOTE: this test deliberately panics in a helper thread. The panic message it
+    /// prints in the test output is expected, not a failure.
+    ///
+    /// A `std::sync::Mutex` marks itself contaminated when a thread panics while
+    /// holding it, and every later `lock().unwrap()` then panics too. That is how a
+    /// single recoverable fault in the clock updater used to kill the whole app.
+    #[test]
+    fn lock_game_survives_a_contaminated_lock() {
+        use std::sync::{Arc, Mutex};
+
+        let tm = Arc::new(Mutex::new(TournamentManager::new(GameConfig::default())));
+
+        let contaminate = Arc::clone(&tm);
+        let handle = std::thread::spawn(move || {
+            let _guard = contaminate.lock().unwrap();
+            panic!("simulated crash while holding the game state");
+        });
+        assert!(
+            handle.join().is_err(),
+            "the helper thread must have panicked"
+        );
+        assert!(tm.is_poisoned(), "the lock must now be contaminated");
+
+        // The whole point of this task: this line must not panic.
+        let guard = lock_game(&tm);
+        assert_eq!(guard.current_period(), GamePeriod::BetweenGames);
+    }
+
+    /// A tick that cannot complete must REPORT the failure, never crash. Before this
+    /// change the same sequence force-unwrapped inside `time_updater`, which panicked
+    /// while holding the shared lock and took the whole application down.
+    ///
+    /// A zero-length half is the configuration that did it in the field three times.
+    #[test]
+    fn updater_tick_reports_failure_instead_of_panicking() {
+        let config = GameConfig {
+            half_play_duration: Duration::ZERO,
+            half_time_duration: Duration::from_secs(4),
+            pre_overtime_break: Duration::from_secs(3),
+            ot_half_play_duration: Duration::from_secs(4),
+            ot_half_time_duration: Duration::from_secs(2),
+            pre_sudden_death_duration: Duration::from_secs(2),
+            minimum_break: Duration::from_secs(5),
+            nominal_break: Duration::from_secs(6),
+            post_game_duration: Duration::from_secs(3),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_play_now(start).unwrap();
+
+        // Drive the tick the way the real updater does: wake at the engine's own
+        // next-update instant, not on a fixed cadence. This matters — stepping time
+        // in even 100ms jumps walks straight past the degenerate transitions and
+        // never reproduces the fault. The assertion is that we get here at all;
+        // on the old code path this sequence panicked.
+        let mut now = start;
+        let mut saw_failure = false;
+        for _ in 0..2000 {
+            match tm.updater_tick(now) {
+                Ok(_) => {}
+                Err(e) => {
+                    saw_failure = true;
+                    // Any reported failure is a pass; the point is that it is
+                    // reported rather than crashed on.
+                    assert!(
+                        matches!(
+                            e,
+                            TMErr::InvalidNowValue
+                                | TMErr::SnapshotUnavailable(_)
+                                | TMErr::PenaltyError(_)
+                        ),
+                        "unexpected failure kind: {e:?}"
+                    );
+                    break;
+                }
+            }
+            if !*tm.get_start_stop_rx().borrow() {
+                break;
+            }
+            let next = tm
+                .next_update_time(now)
+                .unwrap_or(now + Duration::from_millis(100));
+            now = max(next, now) + Duration::from_micros(250);
+            if now.duration_since(start) > Duration::from_secs(90) {
+                break;
+            }
+        }
+        assert!(
+            saw_failure,
+            "expected the zero-length-half config to report a tick failure"
+        );
+    }
+
+    /// A normally-configured game must tick exactly as it does today: the ordinary
+    /// path reports `NewSnapshot` and hands back a usable snapshot.
+    #[test]
+    fn updater_tick_normal_game_is_unchanged() {
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let start = Instant::now();
+        tm.start_play_now(start).unwrap();
+
+        let (kind, snapshot) = tm
+            .updater_tick(start + Duration::from_secs(1))
+            .expect("a normal game must tick without failing");
+
+        assert!(matches!(kind, TickKind::NewSnapshot));
+        assert_eq!(snapshot.current_period, GamePeriod::FirstHalf);
     }
 
     #[test]

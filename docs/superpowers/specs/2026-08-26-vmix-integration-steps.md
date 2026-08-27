@@ -162,6 +162,15 @@ itself carries. If nothing is known yet about the next game — or a game genuin
 start time assigned — every column in this row is an empty string, never `"None"` or a
 placeholder.
 
+**[verified 2026-08-28, live run] During `Between Games` this table is entirely blank, by design.**
+`GameSnapshot::next_game_number()` returns nothing in that period, because the feed's own
+`next_game_number` field is already standing in for the *current* game — see the "Which game is
+'next'" section of `overlay-bridge/src/server.rs`'s module doc. The game about to start is the one
+`/scorebug` is already naming. This is existing `uwh-common` behaviour the bridge deliberately
+defers to rather than re-deciding, so it is not a defect — but an operator binding a "coming up
+next" lower-third should know that the table is empty during exactly the stretch between games, and
+should bind that graphic to `/scorebug` instead.
+
 **Every value is a string,** including numbers. **[assumed, but no longer just assumed for us]** —
 the bridge always serves strings; whether vMix would also accept native JSON numbers is still an
 open question for the live run, but is a preference at most, not something the bridge needs to
@@ -208,6 +217,15 @@ vMix window, click **Add**, and type the web address:
 ```
 http://localhost:8099/scorebug
 ```
+
+**[verified 2026-08-28, live run] `localhost` is the right word to type, even though the bridge
+runs in WSL and vMix runs on Windows.** Fetching `http://localhost:8099/scorebug` from Windows
+(PowerShell, `Invoke-WebRequest`) returned HTTP 200 with live data while the bridge was serving from
+WSL. This re-confirms the design doc's §8.1 measurement on the current machine. The bridge binds
+every interface (`0.0.0.0`, `overlay-bridge/src/main.rs`), so it is also reachable at this machine's
+WSL address — `http://172.17.110.180:8099/scorebug` — but that address changes when WSL restarts,
+so prefer `localhost`. Port 8099 is the bridge's built-in default (`config::DEFAULT_PORT`) and is
+deliberately not 8088, which is vMix's own web controller.
 
 **[verified]** The setup screen offers exactly three settings:
 
@@ -268,6 +286,22 @@ renaming one silently breaks every title built against it.
 
 **Consequence for the operator:** naming title fields to match our column names exactly makes
 mapping automatic. Otherwise set Column explicitly rather than trusting positional fallback.
+
+**[verified 2026-08-28, live run] The positional fallback is worse than it looks here, because the
+served column order is alphabetical — not the order the examples above are written in.** Rows are
+`BTreeMap`s (`overlay-bridge/src/tables.rs`), chosen deliberately so a table's columns always
+serialize in the same order rather than a random one. That stability is the point, but it means
+alphabetical order is the published order. For `/scorebug` the columns actually arrive as:
+
+```
+blackFouls, blackScore, blackTeam, blackWarnings, clock, clockSeconds, connected,
+equalFouls, period, timeout, timeoutClock, timeoutClockSeconds, whiteFouls, whiteScore,
+whiteTeam, whiteWarnings
+```
+
+So a title field falling back to position 1 gets `blackFouls`, not `blackTeam` — a plausible-looking
+number in a team-name slot. **Always set Column explicitly.** Do not read the example JSON above as
+a column order; it is written in reading order for humans, and the wire order is the list here.
 
 ### G2 — "Row: Selected" is a trap, and it forces fixed-size tables
 

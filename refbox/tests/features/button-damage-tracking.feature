@@ -1,6 +1,7 @@
 Feature: Button-text damage-tracking workaround
   # Unit 8 audit — Feature 4 of 4. Every button helper in the app
-  # (make_button, make_smaller_button, make_small_button, make_multi_label_button,
+  # (make_button — since renamed make_chrome_button — make_smaller_button,
+  # make_small_button, make_multi_label_button,
   # and the period-text container inside make_game_time_button) was rewritten to
   # wrap a width(Shrink) text widget inside a centering container. This is the
   # iced-0.13 damage-tracking workaround for old glyph pixels bleeding through

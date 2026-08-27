@@ -431,10 +431,10 @@ fn make_main_config_page<'a>(
     show_power_button: bool,
 ) -> Element<'a, Message> {
     let row_top = row![
-        make_chrome_button(fl!("game-options"))
+        make_tile_button(fl!("game-options"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::Game)),
-        make_chrome_button(fl!("app-options"))
+        make_tile_button(fl!("app-options"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::App)),
     ]
@@ -442,10 +442,10 @@ fn make_main_config_page<'a>(
     .height(Length::Fill);
 
     let row_bottom = row![
-        make_chrome_button(fl!("user-options"))
+        make_tile_button(fl!("user-options"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::User)),
-        make_chrome_button(fl!("language"))
+        make_tile_button(fl!("language"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::Language)),
     ]
@@ -453,8 +453,9 @@ fn make_main_config_page<'a>(
     .height(Length::Fill);
 
     // Icon-only blue power button opposite Back (right third), shown only on the
-    // Pi (or with --force-power-controls). Sizing mirrors make_chrome_button so it lines
-    // up with the Back button; matches the icon-button pattern in shared_elements.
+    // Pi (or with --force-power-controls). Sizing mirrors make_chrome_button so
+    // it lines up with the Back button; matches the icon-button pattern in
+    // shared_elements.
     let power_slot: Element<_> = if show_power_button {
         button(
             container(
@@ -566,10 +567,10 @@ fn make_user_config_page<'a>(
     portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
     let tiles = row![
-        make_chrome_button(fl!("display-options"))
+        make_tile_button(fl!("display-options"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::Display)),
-        make_chrome_button(fl!("sound-options"))
+        make_tile_button(fl!("sound-options"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::Sound)),
     ]
@@ -748,8 +749,10 @@ fn make_event_config_page<'a>(
     .height(Length::Fill);
 
     if uses_remote {
-        // Portal mode ON: row 1 = UWH Portal + 2 blanks; rows 2–4 = full-width
-        // Event / Token / Court single-button rows.
+        // Portal mode ON: row 1 = Manual Games + the portal button (labelled for
+        // the current mode — UWH, UWR) + Custom; rows 2–4 are full-width
+        // single-button rows — Event (or Custom Site, under CUSTOM), then Token,
+        // then Court.
         let event_label = if let Some(events) = events {
             if let Some(event_id) = current_event_id {
                 match events.get(event_id) {
@@ -847,9 +850,9 @@ fn make_event_config_page<'a>(
         .style(light_gray_button)
         .on_press_maybe(auth_state_message);
 
-        // Row 1's second and third cells are blank in remote mode, so the two
-        // source buttons cost no layout change. The active one is marked with
-        // the existing selected-button style rather than a new treatment.
+        // These two fill row 1's second and third cells, beside Manual Games. The
+        // active one is marked with the existing selected-button style rather
+        // than a new treatment.
         let portal_source_btn = button(
             text(fl!("source-portal", portal = portal_name_for_mode(mode)))
                 .size(MEDIUM_TEXT)
@@ -910,16 +913,16 @@ fn make_event_config_page<'a>(
                     shown,
                     Some(Message::ChangeConfigPage(ConfigPage::CustomSite(false))),
                 )
-                .height(Length::Fill)
             } else {
                 make_value_button(fl!("event"), event_label, (true, true), event_btn_msg)
-                    .height(Length::Fill)
             })
             .push(auth_state_button)
-            .push(
-                make_value_button(fl!("court"), pool_label, (true, true), pool_btn_msg)
-                    .height(Length::Fill),
-            );
+            .push(make_value_button(
+                fl!("court"),
+                pool_label,
+                (true, true),
+                pool_btn_msg,
+            ));
     } else {
         // Portal mode OFF: 4 data rows × 3 cells each.
         col = col
@@ -1098,7 +1101,10 @@ fn make_event_config_page<'a>(
         .width(Length::Fill)
         .on_press(Message::CancelConfigPage(ConfigPage::Game));
 
-    let game_picker_btn = make_value_button(
+    // Footer furniture, not a tile. A filling child here would not collapse — it
+    // would make the whole Cancel/Apply row claim a share of the page and grow,
+    // at the body's expense.
+    let game_picker_btn = make_value_chrome_button(
         fl!("game-select"),
         game_label,
         (false, game_large_text),
@@ -1288,9 +1294,11 @@ fn make_display_config_page<'a>(
         .center_y(Length::Fill)
         .style(black_container);
 
+    // No `align_y` here: the row centres this node now, so it would be dead — and
+    // a centre-anchored paragraph is the iced 0.13 stale-pixel pattern the button
+    // helpers were rewritten to avoid.
     let center = text(fl!("starting-sides"))
         .size(MEDIUM_TEXT)
-        .align_y(Vertical::Center)
         .align_x(Horizontal::Center)
         .width(Length::FillPortion(3));
 
@@ -1298,14 +1306,18 @@ fn make_display_config_page<'a>(
     // of view we need to reverse the direction
     let sides = if *white_on_right {
         // White to Ref's left
-        row![white, center, black].padding(PADDING)
+        row![white, center, black]
+            .align_y(Alignment::Center)
+            .padding(PADDING)
     } else {
         // White to Ref's right
-        row![black, center, white].padding(PADDING)
+        row![black, center, white]
+            .align_y(Alignment::Center)
+            .padding(PADDING)
     };
 
     let sides_btn = button(sides.width(Length::Fill).height(Length::Fill))
-        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .height(Length::Fill)
         .width(Length::Fill)
         .padding(0)
         .style(light_gray_button)
@@ -1342,7 +1354,10 @@ fn make_display_config_page<'a>(
         },
     );
 
-    let brightness_btn = make_value_button(
+    // Stays fixed to match OPEN NEW DISPLAY directly above it. (The band around
+    // them sets its own height, so nothing here can claim page height either
+    // way — the sibling is the whole reason.)
+    let brightness_btn = make_value_chrome_button(
         fl!("player-display-brightness"),
         fl!("brightness", brightness = brightness.to_string()),
         (false, true),
@@ -1419,7 +1434,7 @@ fn make_sound_config_page<'a>(
     // with a fixed dedicated speaker, so the button is absent there and the
     // bottom row keeps its existing empty spacer.
     #[cfg(not(target_os = "linux"))]
-    let audio_output_slot: Element<'a, Message> = make_chrome_button(fl!("update-audio-output"))
+    let audio_output_slot: Element<'a, Message> = make_tile_button(fl!("update-audio-output"))
         .on_press(Message::UpdateAudioOutput)
         .style(light_gray_button)
         .into();
@@ -1455,7 +1470,7 @@ fn make_sound_config_page<'a>(
                     None
                 },
             ),
-            make_chrome_button(fl!("manage-remotes"))
+            make_tile_button(fl!("manage-remotes"))
                 .on_press(Message::ChangeConfigPage(ConfigPage::Remotes(0, false)),)
                 .style(light_gray_button),
         ]
@@ -2203,7 +2218,7 @@ fn make_buzzer_select_page<'a>(
         };
         button(centered_text(s.to_string().to_uppercase()))
             .padding(PADDING)
-            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .height(Length::Fill)
             .width(Length::Fill)
             .style(style)
             .on_press(Message::SelectBuzzer(s))
@@ -2419,7 +2434,7 @@ fn make_language_select_page<'a>(
         };
         button(label_widget)
             .padding(PADDING)
-            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .height(Length::Fill)
             .style(style)
             .width(Length::Fill)
             .on_press(Message::SelectLanguage(lang))
@@ -2654,7 +2669,11 @@ pub(in super::super) fn make_updates_page<'a>(
     );
 
     // 2. Current version (left half) + primary action button (right half)
-    let version_element: Element<'a, Message> = make_value_button(
+    // The Updates page is a column of one-off actions, not content tiles: every
+    // button on it is furniture, so they all stay chrome and keep their size.
+    // (Their labels still shift down a few pixels, like every value button —
+    // see the row comment in `make_value_button`.)
+    let version_element: Element<'a, Message> = make_value_chrome_button(
         fl!("updates-current-version"),
         env!("CARGO_PKG_VERSION"),
         (false, true),

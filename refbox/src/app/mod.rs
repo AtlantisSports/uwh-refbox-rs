@@ -4829,8 +4829,12 @@ impl RefBoxApp {
                         let now = Instant::now();
 
                         let app_state = if tm.current_period() == GamePeriod::SuddenDeath {
-                            // Safe: see Message::AddNewScore — pause_for_confirm cannot fail in
-                            // sudden death, and the period check above guarantees we are in it.
+                            // Two unwraps, both safe. `try_into`: the keypad caps its value at
+                            // `max_val()` = 99, so it always fits a u8 — same expression as the
+                            // non-sudden-death line below. `add_deciding_goal`: its only Err comes
+                            // from pause_for_confirm, which cannot fail in sudden death (it accepts
+                            // a stopped clock and clears any active timeout), and the period check
+                            // above guarantees we are in it.
                             tm.add_deciding_goal(color, player.try_into().unwrap(), now)
                                 .unwrap();
                             AppState::ConfirmScores(tm.get_scores())

@@ -4220,12 +4220,16 @@ impl RefBoxApp {
                     let mut tm = self.tm.lock();
                     let now = Instant::now();
                     if tm.current_period() == GamePeriod::SuddenDeath {
-                        let mut scores = tm.get_scores();
-                        scores[color] = scores[color].saturating_add(1);
-
-                        tm.pause_for_confirm(now).unwrap();
+                        // Safe: add_deciding_goal's only Err comes from pause_for_confirm, which
+                        // cannot fail in sudden death — it accepts a stopped clock and clears any
+                        // active timeout. The period check above guarantees we are in it.
+                        tm.add_deciding_goal(color, 0, now).unwrap();
+                        let scores = tm.get_scores();
+                        let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
+                        std::mem::drop(tm);
+                        let task = self.apply_snapshot(snapshot);
                         self.app_state = AppState::ConfirmScores(scores);
-                        Task::none()
+                        task
                     } else {
                         tm.add_score(color, 0, now);
                         let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
@@ -4282,7 +4286,9 @@ impl RefBoxApp {
                         if tm.current_period() == GamePeriod::SuddenDeath
                             && (scores.black != scores.white)
                         {
-                            tm.pause_for_confirm(now).unwrap();
+                            // Safe: see Message::AddNewScore — pause_for_confirm cannot fail in
+                            // sudden death, and the period check above guarantees we are in it.
+                            tm.set_deciding_scores(scores, now).unwrap();
                             AppState::ConfirmScores(scores)
                         } else {
                             tm.set_scores(scores, now);
@@ -4823,11 +4829,11 @@ impl RefBoxApp {
                         let now = Instant::now();
 
                         let app_state = if tm.current_period() == GamePeriod::SuddenDeath {
-                            let mut scores = tm.get_scores();
-                            scores[color] = scores[color].saturating_add(1);
-
-                            tm.pause_for_confirm(now).unwrap();
-                            AppState::ConfirmScores(scores)
+                            // Safe: see Message::AddNewScore — pause_for_confirm cannot fail in
+                            // sudden death, and the period check above guarantees we are in it.
+                            tm.add_deciding_goal(color, player.try_into().unwrap(), now)
+                                .unwrap();
+                            AppState::ConfirmScores(tm.get_scores())
                         } else {
                             tm.add_score(color, player.try_into().unwrap(), now);
                             AppState::MainPage

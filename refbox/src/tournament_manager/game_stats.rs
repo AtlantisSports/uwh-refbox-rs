@@ -62,6 +62,25 @@ impl GameStats {
         self.events.push(event);
     }
 
+    /// Test-only view of the recorded goals in order: (cap number, side, period, period time).
+    /// Deliberately returns public types so `Event` need not become visible outside this module.
+    #[cfg(test)]
+    pub(crate) fn goals(&self) -> Vec<(u8, String, GamePeriod, f32)> {
+        self.events
+            .iter()
+            .filter_map(|e| match e {
+                Event::Goal {
+                    player_cap_number,
+                    side,
+                    game_period,
+                    period_time,
+                    ..
+                } => Some((*player_cap_number, side.clone(), *game_period, *period_time)),
+                _ => None,
+            })
+            .collect()
+    }
+
     pub(crate) fn add_penalty(&mut self, penalty: &Penalty, color: Color) {
         let event = Event::Penalty {
             player_cap_number: penalty.player_number,

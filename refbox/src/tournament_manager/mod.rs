@@ -258,23 +258,72 @@ impl TournamentManager {
     }
 
     pub fn add_score(&mut self, color: Color, player_num: u8, now: Instant) {
+        let clock_time = self.game_clock_time(now);
+        self.add_score_at(color, player_num, clock_time, now);
+    }
+
+    /// Record a goal whose period-clock reading was captured earlier.
+    ///
+    /// `add_deciding_goal` must read the clock BEFORE it opens the score-confirmation window,
+    /// because `pause_for_confirm` freezes `clock_state` at 10 ms; recording the goal afterwards
+    /// would stamp it 0.01 s into sudden death instead of its real reading.
+    fn add_score_at(
+        &mut self,
+        color: Color,
+        player_num: u8,
+        clock_time: Option<Duration>,
+        now: Instant,
+    ) {
         info!(
             "{} Score by {color} player #{player_num}",
             self.status_string(now)
         );
-        self.current_game_stats.add_goal(
-            self.current_period,
-            self.game_clock_time(now),
-            color,
-            player_num,
-            now,
-        );
-        self.recent_goal = self
-            .game_clock_time(now)
-            .map(|time| (color, player_num, self.current_period, time));
+        self.current_game_stats
+            .add_goal(self.current_period, clock_time, color, player_num, now);
+        self.recent_goal = clock_time.map(|time| (color, player_num, self.current_period, time));
         let mut scores = self.scores;
         scores[color] += 1;
         self.set_scores(scores, now);
+    }
+
+    /// Record the goal that ends sudden death, behind the score-confirmation window.
+    ///
+    /// **The order of the two steps is load-bearing.** `set_scores` ends the game immediately for
+    /// an untied sudden-death score unless a confirm pause is already armed, which moves the
+    /// period to `BetweenGames`; `pause_for_confirm` would then reach its
+    /// `GamePeriod::BetweenGames => unreachable!()` arm and panic while the game-state lock is
+    /// held, taking the app down on the operator's next touch. Arming the window first makes the
+    /// goal safe to record and leaves the window intact, so the game ends when the window
+    /// resolves — whether the operator confirms it or it simply expires.
+    ///
+    /// `pause_for_confirm` does not change `current_period`, so the goal is still recorded
+    /// against `SuddenDeath`.
+    ///
+    /// # Errors
+    /// Only from `pause_for_confirm`, which cannot fail in sudden death: it accepts a stopped
+    /// clock and clears any active timeout. The `?` is a backstop, not an expected path.
+    pub fn add_deciding_goal(&mut self, color: Color, player_num: u8, now: Instant) -> Result<()> {
+        let clock_time = self.game_clock_time(now);
+        self.pause_for_confirm(now)?;
+        self.add_score_at(color, player_num, clock_time, now);
+        Ok(())
+    }
+
+    /// Apply an edited score that ends sudden death, behind the score-confirmation window.
+    ///
+    /// Same load-bearing order as [`Self::add_deciding_goal`], for the same reason. No goal is
+    /// recorded: an edit is the operator stating a score, not scoring one.
+    ///
+    /// # Errors
+    /// As [`Self::add_deciding_goal`].
+    pub fn set_deciding_scores(
+        &mut self,
+        scores: BlackWhiteBundle<u8>,
+        now: Instant,
+    ) -> Result<()> {
+        self.pause_for_confirm(now)?;
+        self.set_scores(scores, now);
+        Ok(())
     }
 
     pub fn get_scores(&self) -> BlackWhiteBundle<u8> {
@@ -10118,6 +10167,115 @@ mod test {
 
         assert!(!tm.in_score_confirm_pause());
         assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    // ── Deciding sudden-death goal (2026-08-28) ───────────────────────────────
+    // A goal that ends sudden death must reach the engine when it is SCORED, not when the
+    // operator confirms it. Before this fix the three score handlers in app/mod.rs held the
+    // new score in UI state; the background clock task that resolves the confirmation window
+    // cannot see UI state, so a window that expired untouched discarded the goal and
+    // end_confirm_pause's SuddenDeath arm kept the period at SuddenDeath forever.
+
+    /// Shared setup: sudden death, tied 1-1, clock counting up from 30 s, window = 10 s.
+    fn sd_tied_at_30s() -> (TournamentManager, Instant, Instant) {
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: true,
+            minimum_break: Duration::from_secs(20), // → confirm window = 20/2 = 10 s
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        let now = start + Duration::from_secs(1);
+
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(30));
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, start);
+        tm.start_game_clock(start);
+
+        (tm, start, now)
+    }
+
+    #[test]
+    fn test_deciding_goal_is_recorded_without_ending_the_game() {
+        initialize();
+        let (mut tm, _start, now) = sd_tied_at_30s();
+
+        tm.add_deciding_goal(Color::Black, 7, now).unwrap();
+
+        // The score reaches the engine straight away and the window is open...
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+        assert!(tm.in_score_confirm_pause());
+        // ...but the game has NOT ended. Ending it is the window's job, either route.
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+    }
+
+    /// The reported bug. The operator scores the deciding goal and never taps CORRECT; only the
+    /// clock updater's `end_confirm_pause` runs. That must end the game exactly as CORRECT does.
+    #[test]
+    fn test_deciding_goal_ends_game_when_window_expires_untouched() {
+        initialize();
+        let (mut tm, _start, now) = sd_tied_at_30s();
+
+        tm.add_deciding_goal(Color::Black, 7, now).unwrap();
+
+        let before_end = now + Duration::from_secs(9);
+        let after_end = now + Duration::from_secs(11);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        // No operator input at all.
+        tm.end_confirm_pause(after_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+        assert!(!tm.in_score_confirm_pause());
+    }
+
+    /// Guards the "read the clock BEFORE arming the window" half of `add_deciding_goal`:
+    /// `pause_for_confirm` freezes `clock_state` at 10 ms, so recording the goal afterwards
+    /// would stamp it 0.01 s into sudden death instead of its real reading.
+    #[test]
+    fn test_deciding_goal_records_scorer_and_real_clock_reading() {
+        initialize();
+        let (mut tm, _start, now) = sd_tied_at_30s();
+
+        // The sudden-death clock was 30 s and has run 1 s, so the goal is 31 s into sudden death.
+        tm.add_deciding_goal(Color::Black, 7, now).unwrap();
+
+        let goals = tm.current_game_stats.goals();
+        assert_eq!(goals.len(), 1, "the deciding goal was not recorded");
+        let (cap_number, side, period, period_time) = &goals[0];
+        assert_eq!(*cap_number, 7, "the scorer's cap number was dropped");
+        assert_eq!(side.as_str(), "dark");
+        assert_eq!(*period, GamePeriod::SuddenDeath);
+        assert!(
+            (*period_time - 31.0).abs() < 0.001,
+            "expected the real sudden-death reading of 31 s, got {period_time} \
+             (0.01 means the frozen confirm-window clock was recorded)"
+        );
+    }
+
+    /// The score-edit route into the window has the same defect and the same fix. An edit is the
+    /// operator stating a score, not scoring one, so no goal is recorded for it.
+    #[test]
+    fn test_deciding_score_edit_is_recorded_without_ending_the_game() {
+        initialize();
+        let (mut tm, _start, now) = sd_tied_at_30s();
+
+        tm.set_deciding_scores(BlackWhiteBundle { black: 3, white: 1 }, now)
+            .unwrap();
+
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 3, white: 1 });
+        assert!(tm.in_score_confirm_pause());
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        assert!(
+            tm.current_game_stats.goals().is_empty(),
+            "an edited score must not fabricate a goal"
+        );
+
+        tm.end_confirm_pause(now + Duration::from_secs(11)).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
     }
 
     // R2 (ruling 6.10 / edit 7.4): scoring or editing a deciding sudden-death goal while the

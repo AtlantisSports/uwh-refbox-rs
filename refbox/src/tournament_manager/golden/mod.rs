@@ -117,20 +117,17 @@ pub(super) struct Scenario {
 
 // ─── Driver internals ─────────────────────────────────────────────────────────
 
-/// Attempt to generate a snapshot; if the engine is momentarily unable to produce one
-/// (e.g. it needs an `update` pass first), retry up to 4 times.
+/// Build a snapshot, retrying through `update()` if the engine cannot produce one yet.
 ///
-/// This mirrors the retry loop in `app/mod.rs` around line 4186:
-/// ```text
-/// let mut i = 0;
-/// let snapshot = loop {
-///     if i > 4 { panic!("No snapshot"); }
-///     match tm_.generate_snapshot(now) {
-///         Some(val) => break val,
-///         None => { tm_.update(now).unwrap(); i += 1; }
-///     }
-/// };
-/// ```
+/// The shipping path is `TournamentManager::updater_tick`, which returns
+/// `SnapshotUnavailable` after 5 attempts rather than panicking. This harness keeps its
+/// own copy and its own assertion because routing golden through `updater_tick` would
+/// build a snapshot on every tick, and `generate_snapshot` mutates the engine — that is a
+/// baseline change, not a refactor.
+///
+/// The two are NOT identical and are not meant to be: `updater_tick` makes 5 snapshot
+/// attempts with 4 interleaved `update()` calls, this makes 5 with 5. Panicking here is
+/// correct — an exhausted retry in a golden trace is a broken test, not a runtime fault.
 fn snapshot_with_retry(tm: &mut TournamentManager, now: Instant) -> GameSnapshot {
     let mut i = 0;
     loop {
@@ -148,16 +145,16 @@ fn snapshot_with_retry(tm: &mut TournamentManager, now: Instant) -> GameSnapshot
     }
 }
 
-/// One tick of the game loop, mirroring the per-frame tick in `app/mod.rs` (≈ lines 4174-4183):
-/// ```text
-/// if tm_.could_end_game(now).unwrap() {
-///     tm_.pause_for_confirm(now).unwrap();
-/// } else if tm_.pause_has_ended(now) {
-///     tm_.end_confirm_pause(now).unwrap();
-/// } else {
-///     tm_.update(now).unwrap();
-/// }
-/// ```
+/// One tick of the game loop, mirroring the transition decision the app makes.
+///
+/// That decision now lives in [`TournamentManager::updater_tick`], which is the single
+/// seam the clock updater calls. This harness deliberately does NOT call it: `updater_tick`
+/// also builds a snapshot on every tick, and `generate_snapshot` mutates the engine (it
+/// clears the recent-goal marker once the marker ages out), so routing golden through it
+/// would shift the stored baselines. Unifying the two is worthwhile but is a change to the
+/// baselines, not a refactor, and belongs on its own branch.
+///
+/// Keep this decision in step with `updater_tick` by hand until then.
 /// Unlike the spike this function does NOT call or return `next_update_time`.
 fn tick(tm: &mut TournamentManager, now: Instant) {
     if tm.could_end_game(now).unwrap() {
@@ -410,9 +407,10 @@ fn render(snap: &GameSnapshot) -> String {
 ///
 /// # Clock-latch faithfulness
 ///
-/// This driver mirrors the real `time_updater` loop in `app/mod.rs` (~line 4132):
+/// This driver mirrors the real `time_updater` loop in `app/mod.rs`, which reads the latch
+/// once up front via `SharedGame::lock` and then follows it:
 ///   ```text
-///   let mut clock_running_receiver = tm.lock().unwrap().get_start_stop_rx();
+///   let mut clock_running_receiver = tm.lock().get_start_stop_rx();
 ///   ```
 /// The latch is read fresh after every action (actions may flip it) and at every tick
 /// boundary. The engine is the sole authority on whether the tick loop fires — there is

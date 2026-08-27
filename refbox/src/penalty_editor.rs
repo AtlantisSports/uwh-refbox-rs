@@ -1,5 +1,5 @@
 use crate::tournament_manager::{
-    TournamentManager, TournamentManagerError,
+    SharedGame, TournamentManager, TournamentManagerError,
     infraction::InfractionDetails,
     penalty::{Penalty, PenaltyKind, PenaltyTimePrintable},
 };
@@ -7,7 +7,6 @@ use std::{
     fmt::Debug,
     mem,
     ops::{Index, IndexMut},
-    sync::{Arc, Mutex, MutexGuard},
 };
 use thiserror::Error;
 use tokio::time::Instant;
@@ -156,7 +155,7 @@ impl<T: Editable<C>, C: ColorIndex> Default for EditableItem<T, C> {
 #[derive(Debug)]
 pub struct ListEditor<T: Editable<C>, C: ColorIndex> {
     items: C::Structure<Vec<EditableItem<T, C>>>,
-    tm: Arc<Mutex<TournamentManager>>,
+    tm: SharedGame,
     session_started: bool,
 }
 
@@ -178,7 +177,7 @@ where
     <C as ColorIndex>::Structure<Vec<T::PrintableSummary>>:
         FromIterator<(C, Vec<T::PrintableSummary>)>,
 {
-    pub fn new(tm: Arc<Mutex<TournamentManager>>) -> Self {
+    pub fn new(tm: SharedGame) -> Self {
         Self {
             items: Default::default(),
             tm,
@@ -190,7 +189,7 @@ where
         if self.session_started {
             return Err(PenaltyEditorError::ExistingSession);
         }
-        let tm = self.tm.lock()?;
+        let tm = self.tm.lock();
         let items = T::get_items_from_tm(&tm);
 
         let init = |color: C, vec: &Vec<T>| {
@@ -316,7 +315,7 @@ where
         if !self.session_started {
             return Err(PenaltyEditorError::NotInSession);
         }
-        let tm = self.tm.lock()?;
+        let tm = self.tm.lock();
         Ok(self
             .items
             .iter()
@@ -359,7 +358,7 @@ where
 
         modified_pens.sort_by_key(|a| a.0.index);
 
-        let mut tm = self.tm.lock()?;
+        let mut tm = self.tm.lock();
 
         for (origin, pen, new_color, action) in modified_pens.into_iter().rev() {
             match action {
@@ -773,8 +772,6 @@ pub enum FormatHint {
 
 #[derive(Debug, PartialEq, Eq, Error)]
 pub enum PenaltyEditorError {
-    #[error("The Mutex was poisoned")]
-    MutexPoisoned,
     #[error("There is already a session in progress")]
     ExistingSession,
     #[error("There is no session in progress")]
@@ -785,12 +782,6 @@ pub enum PenaltyEditorError {
     ListTooLong(String),
     #[error(transparent)]
     TMError(#[from] TournamentManagerError),
-}
-
-impl From<std::sync::PoisonError<MutexGuard<'_, TournamentManager>>> for PenaltyEditorError {
-    fn from(_: std::sync::PoisonError<MutexGuard<TournamentManager>>) -> Self {
-        PenaltyEditorError::MutexPoisoned
-    }
 }
 
 pub type Result<T> = std::result::Result<T, PenaltyEditorError>;
@@ -846,7 +837,7 @@ mod test {
         let mut tm = TournamentManager::new(config);
         tm.start_play_now(now).unwrap();
 
-        let tm = Arc::new(Mutex::new(tm));
+        let tm = SharedGame::new(tm);
         let mut pen_edit = ListEditor::<Penalty, Color>::new(tm.clone());
 
         let b_pen = Penalty {
@@ -911,7 +902,7 @@ mod test {
 
         pen_edit.apply_changes(apply_time).unwrap();
         assert_eq!(
-            tm.lock().unwrap().get_penalties(),
+            tm.lock().get_penalties(),
             &BlackWhiteBundle {
                 black: vec![b_pen],
                 white: vec![w_pen],
@@ -985,7 +976,7 @@ mod test {
         )
         .unwrap();
 
-        let tm = Arc::new(Mutex::new(tm));
+        let tm = SharedGame::new(tm);
         let mut pen_edit = ListEditor::new(tm.clone());
 
         assert_eq!(
@@ -1120,7 +1111,7 @@ mod test {
         now += Duration::from_secs(20);
         pen_edit.apply_changes(now).unwrap();
         assert_eq!(
-            tm.lock().unwrap().get_penalties(),
+            tm.lock().get_penalties(),
             &BlackWhiteBundle {
                 black: vec![],
                 white: vec![],
@@ -1259,7 +1250,7 @@ mod test {
         )
         .unwrap();
 
-        let tm = Arc::new(Mutex::new(tm));
+        let tm = SharedGame::new(tm);
         let mut pen_edit = ListEditor::new(tm.clone());
 
         assert_eq!(
@@ -1471,7 +1462,7 @@ mod test {
         now += Duration::from_secs(20);
         pen_edit.apply_changes(now).unwrap();
         assert_eq!(
-            tm.lock().unwrap().get_penalties(),
+            tm.lock().get_penalties(),
             &BlackWhiteBundle {
                 black: vec![b_pen_0_ed, w_pen_1_ed],
                 white: vec![w_pen_0_ed, b_pen_1_ed],
@@ -1491,7 +1482,7 @@ mod test {
         let mut tm = TournamentManager::new(config);
         tm.start_play_now(now).unwrap();
 
-        let tm = Arc::new(Mutex::new(tm));
+        let tm = SharedGame::new(tm);
         let mut warn_edit = ListEditor::<InfractionDetails, Color>::new(tm.clone());
 
         let b_warn = InfractionDetails {
@@ -1542,7 +1533,7 @@ mod test {
 
         warn_edit.apply_changes(apply_time).unwrap();
         assert_eq!(
-            tm.lock().unwrap().get_warnings(),
+            tm.lock().get_warnings(),
             &BlackWhiteBundle {
                 black: vec![b_warn],
                 white: vec![w_warn],
@@ -1610,7 +1601,7 @@ mod test {
         )
         .unwrap();
 
-        let tm = Arc::new(Mutex::new(tm));
+        let tm = SharedGame::new(tm);
         let mut warn_edit = ListEditor::new(tm.clone());
 
         assert_eq!(
@@ -1734,7 +1725,7 @@ mod test {
         warn_edit.apply_changes(now).unwrap();
 
         assert_eq!(
-            tm.lock().unwrap().get_warnings(),
+            tm.lock().get_warnings(),
             &BlackWhiteBundle {
                 black: vec![],
                 white: vec![],
@@ -1862,7 +1853,7 @@ mod test {
         )
         .unwrap();
 
-        let tm = Arc::new(Mutex::new(tm));
+        let tm = SharedGame::new(tm);
         let mut warn_edit = ListEditor::new(tm.clone());
 
         assert_eq!(
@@ -2064,7 +2055,7 @@ mod test {
         now += Duration::from_secs(20);
         warn_edit.apply_changes(now).unwrap();
         assert_eq!(
-            tm.lock().unwrap().get_warnings(),
+            tm.lock().get_warnings(),
             &BlackWhiteBundle {
                 black: vec![b_warn_0_ed.clone(), w_warn_1_ed.clone()],
                 white: vec![w_warn_0_ed.clone(), b_warn_1_ed.clone()],
@@ -2087,7 +2078,7 @@ mod test {
         now += Duration::from_secs(20);
         warn_edit.apply_changes(now).unwrap();
         assert_eq!(
-            tm.lock().unwrap().get_warnings(),
+            tm.lock().get_warnings(),
             &BlackWhiteBundle {
                 black: vec![
                     b_warn_0_ed.clone(),
@@ -2127,7 +2118,7 @@ mod test {
         let mut tm = TournamentManager::new(config);
         tm.start_play_now(now).unwrap();
 
-        let tm = Arc::new(Mutex::new(tm));
+        let tm = SharedGame::new(tm);
         let mut foul_edit = ListEditor::<InfractionDetails, Option<Color>>::new(tm.clone());
 
         let b_foul = InfractionDetails {
@@ -2208,7 +2199,7 @@ mod test {
 
         foul_edit.apply_changes(apply_time).unwrap();
         assert_eq!(
-            tm.lock().unwrap().get_fouls(),
+            tm.lock().get_fouls(),
             &OptColorBundle {
                 black: vec![b_foul],
                 equal: vec![e_foul],
@@ -2295,7 +2286,7 @@ mod test {
         )
         .unwrap();
 
-        let tm = Arc::new(Mutex::new(tm));
+        let tm = SharedGame::new(tm);
         let mut foul_edit = ListEditor::new(tm.clone());
 
         assert_eq!(
@@ -2475,7 +2466,7 @@ mod test {
         foul_edit.apply_changes(now).unwrap();
 
         assert_eq!(
-            tm.lock().unwrap().get_fouls(),
+            tm.lock().get_fouls(),
             &OptColorBundle {
                 black: vec![],
                 equal: vec![],
@@ -2614,7 +2605,7 @@ mod test {
         )
         .unwrap();
 
-        let tm = Arc::new(Mutex::new(tm));
+        let tm = SharedGame::new(tm);
         let mut foul_edit = ListEditor::new(tm.clone());
 
         assert_eq!(
@@ -2900,7 +2891,7 @@ mod test {
         foul_edit.apply_changes(now).unwrap();
 
         assert_eq!(
-            tm.lock().unwrap().get_fouls(),
+            tm.lock().get_fouls(),
             &OptColorBundle {
                 black: vec![b_foul_0_ed.clone(), w_foul_1_ed.clone()],
                 equal: vec![e_foul_0_ed.clone(), b_foul_1_ed.clone()],
@@ -2928,7 +2919,7 @@ mod test {
         foul_edit.apply_changes(now).unwrap();
 
         assert_eq!(
-            tm.lock().unwrap().get_fouls(),
+            tm.lock().get_fouls(),
             &OptColorBundle {
                 black: vec![
                     b_foul_0_ed.clone(),

@@ -3,7 +3,7 @@ use std::{
     cmp::{max, min},
     convert::TryInto,
     sync::{
-        Mutex, MutexGuard,
+        Arc, Mutex, MutexGuard,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -54,27 +54,71 @@ pub(crate) enum TickKind {
 /// Reported once per run when a contaminated lock is first recovered.
 static POISON_REPORTED: AtomicBool = AtomicBool::new(false);
 
-/// Lock the shared game state, surviving a lock left contaminated by an earlier panic.
+/// The shared game state.
 ///
-/// `std::sync::Mutex` marks itself poisoned when a thread panics while holding it, and
-/// every later `lock().unwrap()` then panics too — which is how one recoverable fault in
-/// the background clock updater used to kill the whole application. A contaminated lock
-/// still holds the last state, so we take it and carry on.
+/// The only way in is [`SharedGame::lock`], which survives a lock left contaminated by
+/// an earlier panic. `std::sync::Mutex` marks itself poisoned when a thread panics while
+/// holding it, and every later `lock().unwrap()` then panics too — which is how one
+/// recoverable fault in the background clock updater used to kill the whole application.
 ///
-/// This does not hide anything: the panic that caused the contamination was already
-/// written to the log by `log_panics`, and the updater logs its own failures in full.
-/// Reporting once per run keeps a redraw loop from repeating the same line every frame.
-pub(crate) fn lock_game(tm: &Mutex<TournamentManager>) -> MutexGuard<'_, TournamentManager> {
-    tm.lock().unwrap_or_else(|contaminated| {
-        if !POISON_REPORTED.swap(true, Ordering::Relaxed) {
-            error!(
-                "Recovered a contaminated game-state lock: an earlier operation panicked \
-                 while holding it. See the panic recorded earlier in this log for the cause. \
-                 Continuing with the last known state; this notice is logged once per run."
-            );
+/// This is a newtype rather than a helper function on purpose. A helper still leaves
+/// `self.tm.lock().unwrap()` available to anyone who does not know to avoid it, and a
+/// first attempt at this fix did exactly that: it converted 39 call sites by text and
+/// silently missed five more that spanned three lines, three of them on the redraw path
+/// the crash actually travelled. Here the inner `Mutex` is unreachable and `lock`
+/// returns the guard directly, so the dangerous form does not compile — the mistake is
+/// unrepresentable rather than merely discouraged.
+#[derive(Debug, Clone)]
+pub struct SharedGame(Arc<Mutex<TournamentManager>>);
+
+impl SharedGame {
+    pub fn new(tm: TournamentManager) -> Self {
+        Self(Arc::new(Mutex::new(tm)))
+    }
+
+    /// Borrow the game state, recovering a contaminated lock rather than panicking.
+    ///
+    /// This hides nothing: the panic that caused the contamination was already written
+    /// to the log by `log_panics`, and the clock updater logs its own failures in full.
+    /// Reporting once per run keeps a redraw loop from repeating the same line every
+    /// frame.
+    pub fn lock(&self) -> MutexGuard<'_, TournamentManager> {
+        match self.0.lock() {
+            Ok(guard) => {
+                // Once a recovered contamination is behind us, arm the report again so a
+                // LATER, unrelated tear is reported too. Without this the flag latches on
+                // the first one and every subsequent tear is silent, while the one message
+                // in the log points the reader at the wrong panic.
+                POISON_REPORTED.store(false, Ordering::Relaxed);
+                guard
+            }
+            Err(contaminated) => {
+                if !POISON_REPORTED.swap(true, Ordering::Relaxed) {
+                    error!(
+                        "Recovered a contaminated game-state lock: an earlier operation \
+                         panicked while holding it. See the panic recorded earlier in this log \
+                         for the cause. Continuing with the last known state."
+                    );
+                }
+                // Clear the poison so the next tear is distinguishable from this one.
+                // Nothing else consults the flag; recovery is this type's whole job.
+                self.0.clear_poison();
+                contaminated.into_inner()
+            }
         }
-        contaminated.into_inner()
-    })
+    }
+
+    /// Whether the lock is currently contaminated. Test-only.
+    #[cfg(test)]
+    pub fn is_poisoned(&self) -> bool {
+        self.0.is_poisoned()
+    }
+
+    /// Take a raw handle for a thread that must contaminate the lock. Test-only.
+    #[cfg(test)]
+    pub fn raw_for_test(&self) -> Arc<Mutex<TournamentManager>> {
+        Arc::clone(&self.0)
+    }
 }
 
 #[derive(Debug)]
@@ -1518,6 +1562,26 @@ impl TournamentManager {
     /// instance of it. Every step that can fail returns its error.
     ///
     /// Behaviour on a healthy game is identical to the sequence this replaces.
+    ///
+    /// KNOWN LIMITATION — a failed tick emits no snapshot, and some app behaviour is
+    /// edge-triggered on snapshots, so that beat is dropped rather than delayed:
+    ///
+    /// - **The end-of-period horn and the countdown beeps.** `maybe_play_sound` fires only
+    ///   on the one snapshot where `secs_in_period` reaches zero. If the tick that would
+    ///   have produced it fails, the retry reports the next period with a full clock and
+    ///   that edge never arrives — no horn, and nothing on screen saying a beat was lost.
+    ///   This is the case a zero-length half actually hits.
+    /// - **The score-confirmation prompt.** If a transition succeeds and the snapshot then
+    ///   fails, the `TickKind` is lost with the error, so an end-of-game `ConfirmScores`
+    ///   prompt could be skipped in favour of the later automatic confirmation. Very close
+    ///   to unreachable: `pause_for_confirm` always leaves the clock `Stopped`, and a
+    ///   `Stopped` clock always yields a clock time, so it needs a simultaneous
+    ///   penalty-snapshot error.
+    ///
+    /// Both are recorded rather than engineered around: the behaviour they replace on
+    /// these paths was an outright crash, and carrying a pending outcome across retries
+    /// adds state to the very path that must stay simple. Revisit if a missed horn is
+    /// judged worse than a dropped application.
     pub(super) fn updater_tick(&mut self, now: Instant) -> Result<(TickKind, GameSnapshot)> {
         let kind = if self.could_end_game(now)? {
             self.pause_for_confirm(now)?;
@@ -1535,9 +1599,9 @@ impl TournamentManager {
             match self.generate_snapshot(now) {
                 Some(snapshot) => break snapshot,
                 None if attempts >= SNAPSHOT_ATTEMPTS => {
-                    error!(
-                        "Failed to generate snapshot after {SNAPSHOT_ATTEMPTS} attempts. State: {self:#?}"
-                    );
+                    // The caller logs the engine state, time-gated. Dumping it here too
+                    // printed the same multi-page state twice for a single failure.
+                    error!("Failed to generate snapshot after {SNAPSHOT_ATTEMPTS} attempts");
                     return Err(TournamentManagerError::SnapshotUnavailable(
                         SNAPSHOT_ATTEMPTS,
                     ));
@@ -2741,12 +2805,10 @@ mod test {
     /// holding it, and every later `lock().unwrap()` then panics too. That is how a
     /// single recoverable fault in the clock updater used to kill the whole app.
     #[test]
-    fn lock_game_survives_a_contaminated_lock() {
-        use std::sync::{Arc, Mutex};
+    fn shared_game_survives_a_contaminated_lock() {
+        let game = SharedGame::new(TournamentManager::new(GameConfig::default()));
 
-        let tm = Arc::new(Mutex::new(TournamentManager::new(GameConfig::default())));
-
-        let contaminate = Arc::clone(&tm);
+        let contaminate = game.raw_for_test();
         let handle = std::thread::spawn(move || {
             let _guard = contaminate.lock().unwrap();
             panic!("simulated crash while holding the game state");
@@ -2755,11 +2817,10 @@ mod test {
             handle.join().is_err(),
             "the helper thread must have panicked"
         );
-        assert!(tm.is_poisoned(), "the lock must now be contaminated");
+        assert!(game.is_poisoned(), "the lock must now be contaminated");
 
-        // The whole point of this task: this line must not panic.
-        let guard = lock_game(&tm);
-        assert_eq!(guard.current_period(), GamePeriod::BetweenGames);
+        // The whole point of this type: this line must not panic.
+        assert_eq!(game.lock().current_period(), GamePeriod::BetweenGames);
     }
 
     /// A tick that cannot complete must REPORT the failure, never crash. Before this

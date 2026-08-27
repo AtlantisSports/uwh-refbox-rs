@@ -1,8 +1,18 @@
 //! Regression sweep for degenerate period lengths.
 //!
-//! Drives the SHIPPING tick (`TournamentManager::updater_tick`) — not a copy of it —
-//! across every combination of zeroed length parameter, so this test cannot drift away
-//! from what the app actually runs.
+//! Drives the SHIPPING tick (`TournamentManager::updater_tick`) — not a copy of it — so
+//! this test cannot drift away from what the app actually runs.
+//!
+//! COVERAGE, stated precisely: every combination of the **seven period-length**
+//! parameters in [`FIELDS`]. It does NOT vary `team_timeout_duration`,
+//! `penalty_shot_duration`, `post_game_duration`, `nominal_break` or `game_block`, and it
+//! never enters a timeout state — so the timeout arms of `next_update_time` and the
+//! rugby-penalty-shot arm of `could_end_game` are not exercised here. A green run means
+//! "no zero-length *period* crashes the tick", not "nothing crashes the tick".
+//!
+//! It also advances simulated time by a fixed floor each iteration, which the real
+//! updater does not do, so it cannot reproduce a busy-spin on a next-update instant that
+//! is persistently in the past.
 //!
 //! History: a zero-length period crashed the refbox in the field three times
 //! (2026-06-25, 2026-06-27, 2026-07-13). The crash was a force-unwrap in the clock
@@ -16,9 +26,12 @@ use std::panic::{self, AssertUnwindSafe};
 const TIMER_FLOOR: Duration = Duration::from_micros(250);
 const ITERATION_CAP: u32 = 40_000;
 
-/// Mirrors `UPDATER_NO_NEXT_TIME_FALLBACK` in `refbox/src/app/mod.rs`, which is private
-/// to that module. Kept in step with it by hand; if the app's value changes, change this.
-const NO_NEXT_TIME_FALLBACK: Duration = Duration::from_millis(100);
+use crate::panic_text::panic_reason;
+
+/// This driver's own stepping cadence when the engine offers no next-update instant.
+/// It mirrors the app's fallback in spirit but is deliberately the harness's constant,
+/// not a copy of the shipping one — this is a simulation clock, not the real cadence.
+const DRIVER_FALLBACK_STEP: Duration = Duration::from_millis(100);
 
 /// What driving one config produced.
 #[derive(Debug, PartialEq, Eq)]
@@ -51,37 +64,26 @@ fn base_config() -> GameConfig {
     }
 }
 
-const FIELDS: [&str; 7] = [
-    "half_play",
-    "half_time",
-    "pre_ot_break",
-    "ot_half_play",
-    "ot_half_time",
-    "pre_sd_break",
-    "min_break",
+/// Each period-length parameter, paired with the setter that zeroes it. Name and setter
+/// live in ONE table on purpose: they used to be separate — a name list and a hand-written
+/// chain of bit tests — so adding a parameter would have labelled it in the report while
+/// never actually applying it, and the extra configs would have run as silent duplicates.
+#[allow(clippy::type_complexity)]
+const FIELDS: [(&str, fn(&mut GameConfig, Duration)); 7] = [
+    ("half_play", |c, d| c.half_play_duration = d),
+    ("half_time", |c, d| c.half_time_duration = d),
+    ("pre_ot_break", |c, d| c.pre_overtime_break = d),
+    ("ot_half_play", |c, d| c.ot_half_play_duration = d),
+    ("ot_half_time", |c, d| c.ot_half_time_duration = d),
+    ("pre_sd_break", |c, d| c.pre_sudden_death_duration = d),
+    ("min_break", |c, d| c.minimum_break = d),
 ];
 
 fn apply_zeroes(cfg: &mut GameConfig, mask: usize, zero: Duration) {
-    if mask & 1 != 0 {
-        cfg.half_play_duration = zero;
-    }
-    if mask & 2 != 0 {
-        cfg.half_time_duration = zero;
-    }
-    if mask & 4 != 0 {
-        cfg.pre_overtime_break = zero;
-    }
-    if mask & 8 != 0 {
-        cfg.ot_half_play_duration = zero;
-    }
-    if mask & 16 != 0 {
-        cfg.ot_half_time_duration = zero;
-    }
-    if mask & 32 != 0 {
-        cfg.pre_sudden_death_duration = zero;
-    }
-    if mask & 64 != 0 {
-        cfg.minimum_break = zero;
+    for (i, (_, set)) in FIELDS.iter().enumerate() {
+        if mask & (1 << i) != 0 {
+            set(cfg, zero);
+        }
     }
 }
 
@@ -90,7 +92,7 @@ fn mask_name(mask: usize) -> String {
         .iter()
         .enumerate()
         .filter(|(i, _)| mask & (1 << i) != 0)
-        .map(|(_, f)| *f)
+        .map(|(_, (name, _))| *name)
         .collect();
     if names.is_empty() {
         "none".to_string()
@@ -128,7 +130,7 @@ fn drive(config: GameConfig, decided: bool, secs: u64) -> Outcome {
             }
             let next = tm
                 .next_update_time(now)
-                .unwrap_or(now + NO_NEXT_TIME_FALLBACK);
+                .unwrap_or(now + DRIVER_FALLBACK_STEP);
             now = max(next, now) + TIMER_FLOOR;
         }
 
@@ -140,16 +142,7 @@ fn drive(config: GameConfig, decided: bool, secs: u64) -> Outcome {
 
     match caught {
         Ok(outcome) => outcome,
-        Err(payload) => {
-            let message = if let Some(s) = payload.downcast_ref::<&str>() {
-                (*s).to_string()
-            } else if let Some(s) = payload.downcast_ref::<String>() {
-                s.clone()
-            } else {
-                "unknown panic".to_string()
-            };
-            Outcome::Crashed(message)
-        }
+        Err(payload) => Outcome::Crashed(panic_reason(&*payload)),
     }
 }
 
@@ -176,7 +169,18 @@ fn no_degenerate_config_crashes_the_tick() {
                     if decided { "decided" } else { "tied" },
                     mask_name(mask)
                 );
-                match drive(cfg, decided, 90) {
+                let outcome = drive(cfg, decided, 90);
+                // mask 0 is the untouched base_config: a healthy game. Without this the
+                // whole sweep passes on "nothing crashed", so an engine regression that
+                // made EVERY config fail every tick would still be reported green.
+                if mask == 0 {
+                    assert_eq!(
+                        outcome,
+                        Outcome::Clean,
+                        "the healthy baseline config must tick cleanly ({label})"
+                    );
+                }
+                match outcome {
                     Outcome::Clean => {}
                     Outcome::Reported { reason, period } => reported
                         .entry(format!("{reason} (left in {period:?})"))
@@ -203,6 +207,22 @@ fn no_degenerate_config_crashes_the_tick() {
         }
     }
 
+    // Pin WHICH parameters may make a tick fail. Without this the sweep only says
+    // "nothing crashed", so an engine regression that made a third parameter start
+    // failing — or made every config fail forever — would still report green.
+    let unexpected: Vec<&String> = reported
+        .values()
+        .flatten()
+        .filter(|label| !label.contains("half_play"))
+        .collect();
+    assert!(
+        unexpected.is_empty(),
+        "only zeroing half_play or ot_half_play may make a tick fail, but {} other \
+         config(s) did:\n{:#?}",
+        unexpected.len(),
+        unexpected
+    );
+
     assert!(
         crashed.is_empty(),
         "the tick crashed on {} config(s):\n{}",
@@ -223,14 +243,22 @@ fn no_degenerate_config_crashes_the_tick() {
 fn zero_half_length_survives() {
     let mut cfg = base_config();
     cfg.half_play_duration = Duration::ZERO;
-    assert!(!matches!(drive(cfg, false, 90), Outcome::Crashed(_)));
+    // Reported, not Crashed and not NoProgress. `!matches!(.., Crashed(_))` alone would
+    // also pass on a driver that never settled, which is not survival.
+    assert!(matches!(
+        drive(cfg, false, 90),
+        Outcome::Clean | Outcome::Reported { .. }
+    ));
 }
 
 #[test]
 fn zero_overtime_half_length_survives() {
     let mut cfg = base_config();
     cfg.ot_half_play_duration = Duration::ZERO;
-    assert!(!matches!(drive(cfg, false, 90), Outcome::Crashed(_)));
+    assert!(matches!(
+        drive(cfg, false, 90),
+        Outcome::Clean | Outcome::Reported { .. }
+    ));
 }
 
 /// Kept for future investigation: prints the period-by-period path a single
@@ -317,7 +345,7 @@ fn measure_what_a_failed_cull_leaves_behind() {
             }
             let next = tm
                 .next_update_time(now)
-                .unwrap_or(now + NO_NEXT_TIME_FALLBACK);
+                .unwrap_or(now + DRIVER_FALLBACK_STEP);
             now = max(next, now) + TIMER_FLOOR;
         }
         (
@@ -340,12 +368,29 @@ fn measure_what_a_failed_cull_leaves_behind() {
 
     // The only things asserted are what matter: neither run may crash, and the
     // degenerate one must be the one that reports a failure.
+    // Without this the loop's other two exits — the deadline, or the clock latch going
+    // off — let the measurement pass while describing a state nobody meant to measure.
+    assert_eq!(
+        healthy_period,
+        GamePeriod::OvertimeFirstHalf,
+        "the healthy run must actually reach the culling transition being measured"
+    );
+    assert_eq!(
+        degenerate_period,
+        GamePeriod::OvertimeFirstHalf,
+        "the degenerate run must actually reach the culling transition being measured"
+    );
     assert!(
         !healthy_failed,
         "a healthy config must not report a tick failure"
     );
+    // If the underlying zero-length-period defect is ever fixed in the engine, this
+    // assertion fires even though behaviour improved. That is intended: it forces
+    // whoever fixes it to revisit this measurement rather than leave it silently
+    // asserting a world that no longer exists. Update the expectation; do not delete it.
     assert!(
         degenerate_failed,
-        "the zero-length overtime half must report a tick failure"
+        "the zero-length overtime half no longer reports a tick failure — if the engine \
+         defect was fixed, update this measurement instead of removing it"
     );
 }

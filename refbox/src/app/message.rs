@@ -3,9 +3,8 @@ use crate::{
     config::{BeepTestPreset, GameSource},
     portal_manager::{ItemId, PortalEvent},
     sound_controller::{BuzzerSound, RemoteId},
-    tournament_manager::{TournamentManager, penalty::PenaltyKind},
+    tournament_manager::{SharedGame, penalty::PenaltyKind},
 };
-use std::sync::{Arc, Mutex};
 use tokio::{sync::mpsc::Sender, time::Duration};
 use uwh_common::{
     color::Color as GameColor,
@@ -317,7 +316,7 @@ pub enum Message {
     TimeoutReviveReleased(GameColor),
     /// The 3-second revive hold elapsed for the given team (token guards stale timers).
     TimeoutReviveHoldElapsed(u64, GameColor),
-    TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
+    TimeUpdaterStarted(Sender<SharedGame>),
     OpenUpdatesPage,
     UpdatesCheck,
     UpdatesConfirmInstall,

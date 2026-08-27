@@ -1,5 +1,5 @@
 //! Persists the bridge's own settings -- the refbox address it last connected to, the bridge's
-//! own HTTP port, and the two operator settings side-of-pool and court (design spec §5.2) --
+//! own HTTP port --
 //! across runs, so an operator does not have to retype the same command-line flags every time the
 //! bridge starts.
 //!
@@ -56,8 +56,13 @@ pub const DEFAULT_PORT: u16 = 8099;
 /// in-band "unset" sentinel: `Settings::default()` (every field `None`) is what a missing or
 /// corrupt settings file resolves to (see the module doc), and `None` is what [`resolve`] treats
 /// as "nothing stored yet, fall through to the built-in default" -- there is no other way to
-/// represent "not set" for, say, `court`, if it were a bare `String`, without also using empty
-/// string as a real value.
+/// represent "not set" for, say, a port, without also using some in-band sentinel value.
+///
+/// Older settings files still carry `white_on_right` and `court`, removed with the operator
+/// settings section (see `docs/superpowers/specs/2026-08-27-bridge-operator-page-design.md`).
+/// They deserialize harmlessly: this struct does not use `serde(deny_unknown_fields)`, so an
+/// unknown key is ignored rather than failing the load and silently resetting someone's
+/// remembered refbox address.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Settings {
     /// Hostname or IP address of the refbox last connected to.
@@ -66,13 +71,6 @@ pub struct Settings {
     pub refbox_port: Option<u16>,
     /// The bridge's own HTTP server port.
     pub port: Option<u16>,
-    /// Whether the white team is drawn on the physical right of the pool -- the "side of pool"
-    /// operator setting the refbox feed cannot supply (design spec §5.2).
-    pub white_on_right: Option<bool>,
-    /// The court label -- the other operator setting the feed cannot supply (design spec §5.2).
-    /// Free text (e.g. `"2"`, `"Pool A"`) rather than a number: venues name courts differently,
-    /// and nothing in this crate parses it as anything but a label to display.
-    pub court: Option<String>,
 }
 
 /// Resolves one setting under the bridge's standing precedence rule (see the module doc): an
@@ -90,8 +88,6 @@ pub struct Overrides {
     pub refbox_host: Option<String>,
     pub refbox_port: Option<u16>,
     pub port: Option<u16>,
-    pub white_on_right: Option<bool>,
-    pub court: Option<String>,
 }
 
 /// Every setting the running bridge needs, already resolved -- **one value per setting, with no
@@ -106,8 +102,8 @@ pub struct Overrides {
 /// with no optional fields makes that impossible: a setting can be wrong, but it can no longer be
 /// *absent*, and [`resolve_all`] is the single place any of them is decided.
 ///
-/// [`Default`] is the bridge's built-in configuration (`127.0.0.1:8000`, HTTP on 8099, white on
-/// the left, no court, nothing remembered anywhere) -- genuinely what a first-ever run with no
+/// [`Default`] is the bridge's built-in configuration (`127.0.0.1:8000`, HTTP on 8099, nothing
+/// remembered anywhere) -- genuinely what a first-ever run with no
 /// flags and no settings file uses, which is also what makes it the honest starting point for a
 /// test that cares about only one field.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,8 +113,6 @@ pub struct Resolved {
     pub refbox: RefboxAddress,
     /// The bridge's own HTTP port, for vMix and the status page.
     pub port: u16,
-    pub white_on_right: bool,
-    pub court: String,
     /// Where to remember a refbox chosen at runtime, or `None` if the settings file's location
     /// could not be worked out (a choice then still applies for this run -- the status page says
     /// plainly that it will not be remembered).
@@ -130,8 +124,6 @@ impl Default for Resolved {
         Self {
             refbox: RefboxAddress::new(DEFAULT_REFBOX_HOST, DEFAULT_REFBOX_PORT),
             port: DEFAULT_PORT,
-            white_on_right: false,
-            court: String::new(),
             settings_path: None,
         }
     }
@@ -145,8 +137,6 @@ impl Resolved {
             refbox_host: Some(self.refbox.host.clone()),
             refbox_port: Some(self.refbox.port),
             port: Some(self.port),
-            white_on_right: Some(self.white_on_right),
-            court: Some(self.court.clone()),
         }
     }
 }
@@ -177,12 +167,6 @@ pub fn resolve_all(
             ),
         ),
         port: resolve(overrides.port, stored.port, defaults.port),
-        white_on_right: resolve(
-            overrides.white_on_right,
-            stored.white_on_right,
-            defaults.white_on_right,
-        ),
-        court: resolve(overrides.court, stored.court, defaults.court),
         settings_path,
     }
 }
@@ -264,7 +248,7 @@ fn store_at(path: &Path, settings: &Settings) {
 /// settings file at `path`, leaving every other setting exactly as it is.
 ///
 /// Read-modify-write rather than writing a whole [`Settings`] built from what the running process
-/// happens to know: the bridge's own HTTP port, side of pool and court all live in the same file,
+/// happens to know: the bridge's own HTTP port and refbox address live in the same file,
 /// and writing the file from a partial picture would silently clear whichever of them the caller
 /// did not have to hand. The read is the file's current contents, so the only field this can ever
 /// change is the address.
@@ -336,14 +320,42 @@ mod tests {
     }
 
     #[test]
+    fn a_settings_file_written_before_the_operator_settings_were_removed_still_loads() {
+        // Every bridge that has already run has `white_on_right` and `court` in its settings
+        // file. Both fields are gone now, so loading one exercises serde's unknown-key handling.
+        // If that ever became an error -- adding `serde(deny_unknown_fields)`, say -- the load
+        // would fail, `load_from` would fall back to defaults, and the operator would silently
+        // lose their remembered refbox address on the next start. That is the failure this
+        // guards, and it is invisible without the test: nothing else reads an old file.
+        let file = TempSettingsFile::new();
+        std::fs::write(
+            &file.0,
+            "refbox_host = \"192.168.1.50\"\n\
+             refbox_port = 8123\n\
+             port = 9001\n\
+             white_on_right = true\n\
+             court = \"Pool A\"\n",
+        )
+        .expect("writing an old-format settings file should succeed");
+
+        let loaded = load_from(&file.0);
+
+        assert_eq!(
+            loaded.refbox_host.as_deref(),
+            Some("192.168.1.50"),
+            "the remembered refbox must survive keys this version no longer knows"
+        );
+        assert_eq!(loaded.refbox_port, Some(8123));
+        assert_eq!(loaded.port, Some(9001));
+    }
+
+    #[test]
     fn settings_round_trip_through_save_and_load() {
         let file = TempSettingsFile::new();
         let settings = Settings {
             refbox_host: Some("192.168.1.50".to_string()),
             refbox_port: Some(9000),
             port: Some(9001),
-            white_on_right: Some(true),
-            court: Some("Pool A".to_string()),
         };
 
         confy::store_path(&file.0, &settings)
@@ -422,15 +434,13 @@ mod tests {
     #[test]
     fn remembering_an_address_leaves_every_other_setting_alone() {
         // The read-modify-write is the whole reason this function exists rather than a `store` of
-        // a freshly-built `Settings`: the HTTP port, side of pool and court are set elsewhere and
-        // must survive a change of refbox. Without the read, this test finds them cleared.
+        // a freshly-built `Settings`: the HTTP port is set elsewhere and must survive a change
+        // of refbox. Without the read, this test finds it cleared.
         let file = TempSettingsFile::new();
         let before = Settings {
             refbox_host: Some("127.0.0.1".to_string()),
             refbox_port: Some(8000),
             port: Some(9001),
-            white_on_right: Some(true),
-            court: Some("Pool A".to_string()),
         };
         confy::store_path(&file.0, &before).expect("writing the starting settings should succeed");
 
@@ -438,8 +448,6 @@ mod tests {
 
         let after = load_from(&file.0);
         assert_eq!(after.port, before.port);
-        assert_eq!(after.white_on_right, before.white_on_right);
-        assert_eq!(after.court, before.court);
         assert_eq!(after.refbox_host.as_deref(), Some("192.168.1.50"));
     }
 
@@ -474,26 +482,21 @@ mod tests {
         // them together, in one call, the way `main` makes it.
         let overrides = Overrides {
             refbox_host: Some("192.168.1.50".to_string()),
-            court: Some("Pool B".to_string()),
             ..Overrides::default()
         };
         let stored = Settings {
             refbox_host: Some("10.0.0.9".to_string()),
             refbox_port: Some(8123),
             port: Some(9001),
-            white_on_right: Some(true),
-            court: Some("Pool A".to_string()),
         };
 
         let resolved = resolve_all(overrides, stored, Some(PathBuf::from("/tmp/settings.toml")));
 
         // Typed this run: wins.
         assert_eq!(resolved.refbox.host, "192.168.1.50");
-        assert_eq!(resolved.court, "Pool B");
         // Not typed, but stored: the stored value wins over the built-in default.
         assert_eq!(resolved.refbox.port, 8123);
         assert_eq!(resolved.port, 9001);
-        assert!(resolved.white_on_right);
         assert_eq!(
             resolved.settings_path,
             Some(PathBuf::from("/tmp/settings.toml"))
@@ -518,8 +521,6 @@ mod tests {
         let resolved = Resolved {
             refbox: RefboxAddress::new("192.168.1.50", 8123),
             port: 9001,
-            white_on_right: true,
-            court: "Pool B".to_string(),
             settings_path: None,
         };
 

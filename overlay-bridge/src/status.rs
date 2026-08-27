@@ -137,12 +137,19 @@ pub struct PageData {
     /// The current event id, or empty if none is known yet.
     pub event_id: String,
     pub game_number: String,
+    /// The four live game values shown in the game box, and the period and clock beside them.
+    /// **Taken from the same `/scorebug` row vMix polls, never derived separately** -- see the
+    /// module doc. That is what makes it impossible for this page to show a score the broadcast
+    /// is not getting, and it is also why these blank themselves when the refbox is lost: the
+    /// table blanks, so the page blanks with it.
     pub period: String,
+    pub clock: String,
+    pub white_team: String,
+    pub white_score: String,
+    pub black_team: String,
+    pub black_score: String,
     /// The refbox currently chosen -- what the supervisor is connected to, or trying to reach.
     pub refbox_address: RefboxAddress,
-    pub white_on_right: bool,
-    /// The court label operator setting, or empty if not set.
-    pub court: String,
     /// The scheme, host and port the viewer's own browser used to reach this page (from the
     /// request's `Host` header) -- used to build the vMix addresses so they are always exactly
     /// what worked to load the page itself, rather than a guessed interface address on a
@@ -177,7 +184,7 @@ const VMIX_ROUTES: [&str; 6] = [
 pub fn render_page(data: &PageData) -> String {
     let (indicator_class, indicator_label) = match data.status.connection {
         Connection::Connected => ("live", "Connected"),
-        Connection::NeverConnected => ("down", "Never connected to a refbox yet"),
+        Connection::NeverConnected => ("down", "Never connected"),
         Connection::Disconnected => ("down", "Disconnected"),
     };
 
@@ -210,16 +217,25 @@ pub fn render_page(data: &PageData) -> String {
     } else {
         escape_html(&data.game_number)
     };
-    let court_text = if data.court.is_empty() {
-        "(not set)".to_string()
-    } else {
-        escape_html(&data.court)
-    };
-    let side_text = if data.white_on_right {
-        "White on right"
-    } else {
-        "White on left"
-    };
+    // The two long explanations the page used to carry as paragraphs. They live in `title`
+    // attributes now, so they must be escaped as attribute values -- `escape_html` covers the
+    // quote characters that would otherwise end the attribute early and let the rest of the
+    // sentence become markup. The settings path is interpolated, never hard-coded: it is
+    // different on every machine, and naming someone else's file would send an operator hunting
+    // for a path they do not have.
+    let scan_hint = escape_html(
+        "Searching checks every address on that network and takes a few seconds. It only reports \
+         something as a refbox if it answers with a game, so anything else listening on the same \
+         port is ignored. The first search may raise a firewall prompt on Windows; if searching \
+         is blocked here, type the refbox's address instead.",
+    );
+    let settings_hint = escape_html(&format!(
+        "The refbox address and the bridge's own port can also be set with a command-line flag \
+         (--refbox-host, --refbox-port, --port) and are remembered automatically for next time. \
+         The refbox address is the only one this page can change; to fix a mistyped port, edit \
+         or delete the settings file: {}",
+        data.settings_file
+    ));
 
     let notice_html = data
         .notice
@@ -254,51 +270,45 @@ pub fn render_page(data: &PageData) -> String {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>overlay-bridge status</title>
+<title>Atlantis Sports Overlay Bridge</title>
 <style>
 {style}
 </style>
 </head>
 <body>
-<h1>overlay-bridge</h1>
+<h1>Atlantis Sports Overlay Bridge</h1>
 <p class="status-line"><span class="indicator {indicator_class}"></span>{indicator_label}</p>
-{duration_html}{keepalive_html}<h2>Current game</h2>
+{duration_html}{keepalive_html}<p class="event-name">Event Name: {event_text}</p>
+<h2>Current game</h2>
+<div class="game-box">
 <table>
-<tr><th>Event</th><td>{event_text}</td></tr>
-<tr><th>Game</th><td>{game_text}</td></tr>
-<tr><th>Period</th><td>{period}</td></tr>
+<tr><th>Game:</th><td>{game_text}</td></tr>
+<tr><th>Period:</th><td>{period}</td></tr>
+<tr><th>Time:</th><td>{clock}</td></tr>
+<tr><th>White Team:</th><td>{white_team} | {white_score}</td></tr>
+<tr><th>Black Team:</th><td>{black_team} | {black_score}</td></tr>
 </table>
-<h2>Refbox connection</h2>
+</div>
+<h2>Refbox connection <span class="help" tabindex="0" aria-label="{settings_hint}"
+ data-tip="{settings_hint}">?</span></h2>
 <table>
 <tr><th>Address</th><td>{refbox_address}</td></tr>
 </table>
 {notice_html}<form class="chooser" method="post" action="/refbox">
-<label for="address">Read a different refbox:</label>
+<label for="address">Use a different refbox:</label>
 <input id="address" name="address" size="22" placeholder="192.168.1.50" autocomplete="off">
 <button type="submit">Use this refbox</button>
 </form>
 <form class="chooser" method="post" action="/scan">
-<label for="network">Or look for refboxes on</label>
+<label for="network">Or search for refboxes on:</label>
 <input id="network" name="network" size="16" value="{scan_network}" placeholder="192.168.1.5"
  autocomplete="off">
-<label for="scan-port">port</label>
+<label for="scan-port">port:</label>
 <input id="scan-port" name="port" size="6" value="{refbox_port}" autocomplete="off">
-<button type="submit">Search the network</button>
+<button type="submit">Search</button>
+<span class="help" tabindex="0" aria-label="{scan_hint}" data-tip="{scan_hint}">?</span>
 </form>
-<p class="hint">Searching checks every address on that network and takes a few seconds. It only
-reports something as a refbox if it answers with a game, so anything else listening on the same
-port is ignored. The first search may raise a firewall prompt on Windows; if searching is blocked
-here, type the refbox's address instead.</p>
-{scan_html}<h2>Operator settings</h2>
-<table>
-<tr><th>Side of pool</th><td>{side_text}</td></tr>
-<tr><th>Court</th><td>{court_text}</td></tr>
-</table>
-<p class="hint">Every value above can also be set with a command-line flag
-(<code>--refbox-host</code>, <code>--refbox-port</code>, <code>--port</code>,
-<code>--white-on-right</code>, <code>--court</code>) and is remembered automatically for next
-time. The refbox address is the only one this page can change; to fix a mistyped one of the
-others, edit or delete the settings file: <code>{settings_file}</code></p>
+{scan_html}
 <h2>Addresses for vMix</h2>
 <ul>
 {vmix_addresses}</ul>
@@ -313,14 +323,18 @@ others, edit or delete the settings file: <code>{settings_file}</code></p>
         event_text = event_text,
         game_text = game_text,
         period = escape_html(&data.period),
+        clock = escape_html(&data.clock),
+        white_team = escape_html(&data.white_team),
+        white_score = escape_html(&data.white_score),
+        black_team = escape_html(&data.black_team),
+        black_score = escape_html(&data.black_score),
         refbox_address = escape_html(&data.refbox_address.to_string()),
         refbox_port = data.refbox_address.port,
         scan_network = escape_html(&data.scan_network),
         notice_html = notice_html,
         scan_html = scan_html,
-        side_text = side_text,
-        court_text = court_text,
-        settings_file = escape_html(&data.settings_file),
+        scan_hint = scan_hint,
+        settings_hint = settings_hint,
         vmix_addresses = vmix_addresses,
     )
 }
@@ -379,14 +393,65 @@ h2 { font-size: 1.05rem; margin-bottom: 0.25rem; }
 .duration { color: #cf222e; margin: 0 0 1rem; }
 .warning { color: #9a6700; font-weight: bold; }
 .hint { font-size: 0.9rem; opacity: 0.8; max-width: 36rem; }
+/* The marker is drawn, not typed: a ring around a question mark, sized in `em` so it tracks
+   whatever text it sits beside. No image file and no icon font -- the page stays one
+   self-contained document, and `currentColor` keeps it correct in both light and dark. */
+.help {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.15em; height: 1.15em; border-radius: 50%;
+  border: 1px solid currentColor; font-size: 0.85rem; line-height: 1;
+  cursor: help; margin-left: 0.4rem; vertical-align: middle;
+  user-select: none;
+}
+/* Deliberately NOT `opacity` on the marker, however much lighter it would look. `opacity` applies
+   to an element's whole subtree, pseudo-elements included, so a faded marker also faded the
+   tooltip hanging off it -- including its background, which then showed the page through it.
+   A child cannot opt out of an ancestor's opacity, so the marker is muted by colour instead. */
+.help { color: color-mix(in srgb, currentColor 65%, transparent); }
+/* The bubble is positioned against the block the marker sits in -- the heading or the form --
+   rather than against the marker itself. Both blocks span the content column, so `left: 0` with
+   `max-width: 100%` means the tooltip can never start left of the text nor run past its right
+   edge, whatever the window size. Anchoring to the marker instead is what lets a bubble beside a
+   control near the edge bleed off the side of the window. */
+h2, form.chooser { position: relative; }
+/* Raising the *block* while the marker is hovered or focused, not just the bubble. Positioned
+   elements with `z-index: auto` paint in document order, so a bubble hanging off the heading was
+   painted under the table and forms that follow it however high its own `z-index` was -- the
+   z-index only orders it within the block it belongs to. Lifting the block itself is what puts
+   the bubble over everything below it. */
+h2:hover, h2:focus-within, form.chooser:hover, form.chooser:focus-within { z-index: 5; }
+.help::after {
+  content: attr(data-tip);
+  position: absolute; left: 0; top: 100%; z-index: 10;
+  width: max-content; max-width: 100%;
+  font-size: 0.85rem; font-weight: normal; line-height: 1.35; opacity: 0;
+  padding: 0.5rem 0.7rem; border-radius: 0.25rem;
+  border: 1px solid CanvasText; background: Canvas; color: CanvasText;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  visibility: hidden;
+}
+.help:hover::after, .help:focus::after { opacity: 1; visibility: visible; }
 .notice { padding: 0.5rem 0.75rem; border-radius: 0.25rem; max-width: 36rem; }
 .notice.done { background: rgba(26, 127, 55, 0.15); border-left: 0.25rem solid #1a7f37; }
 .notice.problem { background: rgba(207, 34, 46, 0.12); border-left: 0.25rem solid #cf222e; }
-.chooser { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: baseline; margin: 0.5rem 0; }
+/* One control per row, and the whole row must fit the text column: the scan row is the long one
+   (label, address, port label, port, button, marker) and it wraps its button onto a second line
+   if the inputs are left to size themselves from their `size` attributes. Widths are set here so
+   the row fits, rather than by trimming `size`, which also controls how much text can be typed. */
+.chooser { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0.5rem 0; }
 .chooser input { font: inherit; padding: 0.2rem 0.35rem; }
+#address { width: 12rem; }
+#network { width: 8.5rem; }
+#scan-port { width: 4rem; }
 .chooser button, .found button { font: inherit; padding: 0.2rem 0.75rem; cursor: pointer; }
 table.found td { padding-right: 1rem; vertical-align: baseline; }
 table { border-collapse: collapse; margin: 0.25rem 0 1.25rem; }
+.event-name { margin: 0.75rem 0 0.35rem; }
+.game-box {
+  border: 1px solid currentColor; border-radius: 0.25rem; padding: 0.35rem 0.9rem;
+  max-width: 24rem; margin-bottom: 1.25rem;
+}
+.game-box table { margin: 0; }
 th, td { padding: 0.15rem 0.75rem 0.15rem 0; text-align: left; font-weight: normal; }
 th { opacity: 0.7; }
 code { background: rgba(127, 127, 127, 0.15); padding: 0.1em 0.35em; border-radius: 0.25em; }
@@ -408,7 +473,7 @@ fn format_duration(d: std::time::Duration) -> String {
 }
 
 /// Minimal HTML escaping for the handful of strings this page interpolates that are not
-/// guaranteed to be free of `< > & " '` -- an operator-typed court label, a refbox-reported event
+/// guaranteed to be free of `< > & " '` -- a portal-supplied team name, a refbox-reported event
 /// id or game number, and (most importantly) the incoming request's own `Host` header, which is
 /// attacker-controlled input on a bridge this project deliberately serves with no password
 /// (design spec §6, "anyone on the network can read it"). Not a general-purpose HTML sanitiser --
@@ -446,9 +511,12 @@ mod tests {
             event_id: String::new(),
             game_number: String::new(),
             period: String::new(),
+            clock: String::new(),
+            white_team: String::new(),
+            white_score: String::new(),
+            black_team: String::new(),
+            black_score: String::new(),
             refbox_address: RefboxAddress::new("127.0.0.1", 8000),
-            white_on_right: false,
-            court: String::new(),
             base_url: Some("http://192.168.1.5:8099".to_string()),
             settings_file: "/home/operator/.config/overlay-bridge/default-config.toml".to_string(),
             scan_network: "192.168.1.5".to_string(),
@@ -587,17 +655,102 @@ mod tests {
     }
 
     #[test]
-    fn operator_settings_and_refbox_address_are_shown() {
+    fn the_refbox_controls_use_the_agreed_wording() {
+        // Exact markup, not just the words: `port:` on its own would match `--refbox-port,` in a
+        // tooltip, and a test that passed on that would not be checking the label at all.
+        let html = render_page(&base_data());
+        for expected in [
+            "<label for=\"address\">Use a different refbox:</label>",
+            "<button type=\"submit\">Use this refbox</button>",
+            "<label for=\"network\">Or search for refboxes on:</label>",
+            "<label for=\"scan-port\">port:</label>",
+            "<button type=\"submit\">Search</button>",
+        ] {
+            assert!(html.contains(expected), "expected {expected:?} in:\n{html}");
+        }
+    }
+
+    #[test]
+    fn the_two_long_explanations_are_tooltips_rather_than_paragraphs() {
+        // Both blocks of guidance now hang off a `(?)` marker instead of sitting on the page.
+        // Asserted on the `title=` attribute specifically, not just on the words being present
+        // somewhere: rendering the same sentences as a visible paragraph would satisfy a naive
+        // "page contains the text" check while being exactly what this change removed.
+        let html = render_page(&base_data());
+
+        assert!(
+            html.contains("The first search may raise a firewall prompt on Windows"),
+            "the scan guidance must still be reachable"
+        );
+        assert!(
+            !html.contains("<p class=\"hint\">"),
+            "neither explanation should remain a standalone paragraph"
+        );
+
+        let tooltips: Vec<&str> = html
+            .match_indices("data-tip=\"")
+            .map(|(i, _)| &html[i..])
+            .collect();
+        assert_eq!(
+            tooltips.len(),
+            2,
+            "exactly two tooltips: one by Search, one by Refbox connection"
+        );
+        assert!(
+            html.contains("--refbox-host"),
+            "the flag names must survive the move into a tooltip"
+        );
+        assert!(
+            html.contains(&format!("{}", base_data().settings_file)),
+            "the settings file path must still be the operator's own, not a hard-coded one"
+        );
+    }
+
+    #[test]
+    fn the_game_box_renders_completely_when_nothing_is_known() {
+        // A bridge that has never reached a refbox blanks every game value, so the box is empty
+        // far more often than it is full -- it is what the operator sees while they are still
+        // setting up. Every label must still be there: an empty box that has lost its rows reads
+        // as a broken page rather than as "no game yet".
+        let html = render_page(&base_data());
+
+        assert!(html.contains("Event Name:"));
+        for label in ["Game:", "Period:", "Time:", "White Team:", "Black Team:"] {
+            assert!(
+                html.contains(&format!("<th>{label}</th>")),
+                "{label} must still be labelled when its value is blank"
+            );
+        }
+    }
+
+    #[test]
+    fn the_chosen_refbox_address_is_shown() {
         let data = PageData {
-            white_on_right: true,
-            court: "Pool A".to_string(),
             refbox_address: RefboxAddress::new("192.168.1.50", 8000),
             ..base_data()
         };
         let html = render_page(&data);
-        assert!(html.contains("White on right"));
-        assert!(html.contains("Pool A"));
         assert!(html.contains("192.168.1.50:8000"));
+    }
+
+    #[test]
+    fn the_removed_operator_settings_section_is_gone() {
+        // Side of pool and court are gone (2026-08-27 operator-page design). Asserted rather than
+        // left to the eye: the side-of-pool row was the only thing on the page that hinted the
+        // bridge was rearranging the two teams, so if the section survived a merge it would go on
+        // promising a behaviour that no longer exists.
+        let html = render_page(&base_data());
+        for absent in [
+            "Operator settings",
+            "Side of pool",
+            "White on left",
+            "White on right",
+        ] {
+            assert!(
+                !html.contains(absent),
+                "{absent} should no longer appear on the page"
+            );
+        }
     }
 
     /// Review floor item (Important 3, reduced to its minimum): the page must not be a dead end
@@ -606,13 +759,7 @@ mod tests {
     #[test]
     fn the_page_names_the_flags_and_settings_file_so_it_is_not_a_dead_end() {
         let html = render_page(&base_data());
-        for flag in [
-            "--refbox-host",
-            "--refbox-port",
-            "--port",
-            "--white-on-right",
-            "--court",
-        ] {
+        for flag in ["--refbox-host", "--refbox-port", "--port"] {
             assert!(html.contains(flag), "missing flag hint {flag} in:\n{html}");
         }
         assert!(
@@ -675,9 +822,11 @@ mod tests {
         let html = render_page(&base_data());
         assert!(html.contains("takes a few seconds"));
         assert!(html.contains("firewall"));
-        // Unescaped here, unlike the notice text in `server`'s own test of the same sentence:
-        // this one is the page's own fixed wording, not something interpolated into it.
-        assert!(html.contains("type the refbox's address instead"));
+        // Escaped, because this sentence now lives in a `title=` attribute rather than in the
+        // page body -- the apostrophe in "refbox's" becomes `&#39;`. Asserting the escaped form
+        // is the point: an apostrophe reaching an attribute raw is how a quote character ends
+        // the attribute early and turns the rest of the sentence into markup.
+        assert!(html.contains("type the refbox&#39;s address instead"));
     }
 
     #[test]

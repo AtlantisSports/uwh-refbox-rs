@@ -133,9 +133,6 @@ pub struct AppState {
     /// outer `RwLock`) so [`refresh_once`] can clone a handle out and drop the lock before making
     /// any network call -- no lock guard in this module is ever held across an `.await`.
     directory: RwLock<Option<Arc<Directory>>>,
-    /// The operator's side-of-pool setting (`--white-on-right`, persisted by `config` since
-    /// Task 7), fixed for the life of the process.
-    white_on_right: bool,
     /// The bridge's connection to the refbox right now, and (since Task 7) when it last dropped --
     /// see [`Connection`] and [`crate::feed::ConnectionStatus`]. The only writer is
     /// [`crate::feed::Supervisor::run`], via the handle [`AppState::connection_handle`] hands out;
@@ -151,9 +148,6 @@ pub struct AppState {
     /// makes it changeable, and a second copy of a value that changes is exactly the kind of
     /// two-sources bug this crate has already had once (see [`ConnectionStatus`]'s doc).
     target: FeedTarget,
-    /// The court label operator setting (design spec §5.2, persisted by `config` since Task 7) --
-    /// display-only, unlike the address above.
-    court: String,
     /// Where to write a refbox address the operator chooses while the bridge is running, so the
     /// next run comes back to the same refbox. `None` means "nowhere": the settings file's
     /// location could not be worked out (see [`config::settings_path`]), or -- in this crate's own
@@ -204,10 +198,8 @@ impl AppState {
         Self {
             live: RwLock::new(LiveState::new(GameSnapshot::default(), Instant::now())),
             directory: RwLock::new(None),
-            white_on_right: settings.white_on_right,
             connection: ConnectionState::new(),
             target: FeedTarget::new(settings.refbox),
-            court: settings.court,
             settings_path: settings.settings_path,
             last_scan: RwLock::new(None),
             notice: RwLock::new(None),
@@ -349,7 +341,6 @@ async fn get_scorebug(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<S
     Json(tables::scorebug(
         &display,
         names.as_ref(),
-        state.white_on_right,
         is_connected(&state),
     ))
 }
@@ -408,6 +399,20 @@ async fn get_status_page(State(state): State<Arc<AppState>>, headers: HeaderMap)
         .map(|host| format!("http://{host}"));
 
     let address = state.target.current();
+    // The one row `/scorebug` would answer with at this instant. `scorebug` is documented and
+    // tested to return exactly one row; `unwrap_or_default` rather than an index or an `expect`
+    // keeps a hypothetical empty result rendering a blank page instead of panicking on the
+    // operator's only diagnostic tool.
+    let scorebug_row = tables::scorebug(
+        &display,
+        names_for_game(&state, display.snapshot.game_number()).as_ref(),
+        is_connected(&state),
+    )
+    .into_iter()
+    .next()
+    .unwrap_or_default();
+    let served = |column: &str| scorebug_row.get(column).cloned().unwrap_or_default();
+
     let data = status::PageData {
         // ONE read of both the connection flag and its duration -- see
         // `feed::ConnectionStatus`'s doc for why this must never be two separate calls.
@@ -420,9 +425,17 @@ async fn get_status_page(State(state): State<Arc<AppState>>, headers: HeaderMap)
             .map(ToString::to_string)
             .unwrap_or_default(),
         game_number: display.snapshot.game_number().clone(),
-        period: display.snapshot.current_period.to_string(),
-        white_on_right: state.white_on_right,
-        court: state.court.clone(),
+        // Read straight out of the row `/scorebug` serves, rather than derived from the snapshot
+        // a second time. Two consequences, both wanted: the page cannot show a score the
+        // broadcast is not getting, and when the refbox is lost these blank themselves, because
+        // the table blanks (see `tables`' module doc). Deriving them here instead would have left
+        // the page confidently displaying a period and a clock while vMix received neither.
+        period: served("period"),
+        clock: served("clock"),
+        white_team: served("whiteTeam"),
+        white_score: served("whiteScore"),
+        black_team: served("blackTeam"),
+        black_score: served("blackScore"),
         base_url,
         settings_file: config::settings_location(),
         scan_network: discovery::suggested_scan_network(&address),
@@ -2095,6 +2108,68 @@ mod tests {
     /// (the real refbox behaviour discovery depends on, `refbox/src/app/update_sender.rs:606-630`)
     /// and then holds the connection open, saying nothing further, exactly as a refbox with a
     /// stopped clock does.
+    #[tokio::test]
+    async fn the_status_page_shows_exactly_what_the_scorebug_serves() {
+        // The correctness constraint of the 2026-08-27 operator-page design. The page's game box
+        // and the `/scorebug` table vMix polls must be the same numbers, because an operator uses
+        // the page to decide whether the broadcast is right. A page that derived its own values
+        // could reassure someone that the score was fine while vMix was serving something else --
+        // and it would look correct in every screenshot.
+        //
+        // Expected strings are built FROM the served row rather than written out, so this cannot
+        // pass by both sides happening to match a hard-coded literal.
+        let (refbox_addr, _refbox) =
+            fake_refbox(game(GamePeriod::SecondHalf, 263, 9, 3, "12")).await;
+        let (state, addr, tasks) = bridge_reading(refbox_addr).await;
+        wait_for_scores(&state, 9, 3).await;
+
+        let scorebug = get_json(addr, "/scorebug").await;
+        let row = &scorebug[0];
+        let served = |column: &str| {
+            row[column]
+                .as_str()
+                .unwrap_or_else(|| panic!("/scorebug should serve {column}"))
+                .to_string()
+        };
+        let page = get_response(addr, "/")
+            .await
+            .text()
+            .await
+            .expect("GET / body should be readable");
+
+        for (label, column) in [("Period:", "period"), ("Time:", "clock")] {
+            let value = served(column);
+            assert!(
+                !value.is_empty(),
+                "{column} should not be blank while connected -- the test proves nothing if it is"
+            );
+            let expected = format!("<tr><th>{label}</th><td>{value}</td></tr>");
+            assert!(
+                page.contains(&expected),
+                "the page must show the served {column}; expected {expected:?} in:\n{page}"
+            );
+        }
+
+        for (label, team, score) in [
+            ("White Team:", "whiteTeam", "whiteScore"),
+            ("Black Team:", "blackTeam", "blackScore"),
+        ] {
+            let expected = format!(
+                "<tr><th>{label}</th><td>{} | {}</td></tr>",
+                served(team),
+                served(score)
+            );
+            assert!(
+                page.contains(&expected),
+                "the page must show the served team and score; expected {expected:?} in:\n{page}"
+            );
+        }
+
+        for task in tasks {
+            task.abort();
+        }
+    }
+
     async fn fake_refbox(snapshot: GameSnapshot) -> (SocketAddr, tokio::task::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
@@ -2406,7 +2481,7 @@ mod tests {
             .await
             .expect("GET / body should be readable");
         assert!(
-            page.contains("<tr><th>Game</th><td>(none known yet)</td></tr>"),
+            page.contains("<tr><th>Game:</th><td>(none known yet)</td></tr>"),
             "the status page must not still be naming the previous refbox's game, got:\n{page}"
         );
 

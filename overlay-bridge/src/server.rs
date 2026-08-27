@@ -1836,6 +1836,17 @@ mod tests {
         // Still connected but nothing sent yet -- `/scorebug` should already read `connected` and
         // blank values (the seeded startup default), same as the never-connected case above.
         // This isn't the main point of the test, just establishing the starting condition.
+        //
+        // The listener goes first, and that ordering is the whole reason this test is stable.
+        // The supervisor publishes `Connected` the instant a TCP handshake completes, and the
+        // operating system completes handshakes into a bound listener's backlog on its own --
+        // no `accept()` call needed. So a listener left bound here would take the supervisor's
+        // retry one `RECONNECT_DELAY` later and flip `connected` back to `true`, giving the
+        // assertions below a one-second wall-clock budget to beat. They lose it whenever the
+        // machine is busy: under the full suite this test failed on every run. Closing the
+        // listener first makes that retry be refused instead, so the bridge stays disconnected
+        // for as long as these assertions need rather than for one second.
+        drop(listener);
         drop(first_connection); // a clean close -- EOF, not a hang
         wait_for_connection(&state, Connection::Disconnected).await;
 
@@ -1845,8 +1856,13 @@ mod tests {
         assert_eq!(row["blackScore"].as_str(), Some(""));
         assert_eq!(row["clockSeconds"].as_str(), Some(""));
 
-        // The supervisor keeps retrying (`feed::RECONNECT_DELAY`) -- accept its next attempt and
-        // send a real snapshot over it.
+        // Put a refbox back on the same address for the recovery half. The supervisor is still
+        // retrying that address every `RECONNECT_DELAY`, so it finds this listener on its own --
+        // rebinding is what ends the refusals above, and the generous timeout covers the up-to-
+        // one-second wait for the next retry.
+        let listener = TcpListener::bind(refbox_addr)
+            .await
+            .expect("rebind the refbox address for the reconnection half");
         let (mut second_connection, _) =
             tokio::time::timeout(Duration::from_secs(5), listener.accept())
                 .await

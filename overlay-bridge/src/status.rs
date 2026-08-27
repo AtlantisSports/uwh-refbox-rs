@@ -184,8 +184,12 @@ const VMIX_ROUTES: [&str; 6] = [
 pub fn render_page(data: &PageData) -> String {
     let (indicator_class, indicator_label) = match data.status.connection {
         Connection::Connected => ("live", "Connected"),
-        Connection::NeverConnected => ("down", "Never connected"),
-        Connection::Disconnected => ("down", "Disconnected"),
+        // Both not-connected states read the same. The bridge keeps them apart internally --
+        // only a link that once existed has a duration worth showing, which is what the
+        // "Down for ..." line below depends on -- but the operator is not asked to care: in
+        // either case nothing is feeding the overlay, and in either case the fix is the refbox
+        // picker further down the page.
+        Connection::NeverConnected | Connection::Disconnected => ("down", "Not Connected"),
     };
 
     let duration_html = data
@@ -532,7 +536,9 @@ mod tests {
         let html = render_page(&base_data());
         assert!(html.contains("indicator down"));
         assert!(!html.contains("class=\"duration\""));
-        assert!(html.to_lowercase().contains("never connected"));
+        // No "Down for ..." line here, and that is the point of this test: a bridge that has
+        // never reached a refbox has no last-contact time to report, however the state is worded.
+        assert!(html.contains("Not Connected"));
     }
 
     #[test]
@@ -652,6 +658,42 @@ mod tests {
         let html = render_page(&data);
         assert!(!html.contains("<script>"));
         assert!(html.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn both_not_connected_states_read_the_same_to_the_operator() {
+        // The bridge keeps "never reached one" and "reached one, then lost it" apart internally,
+        // because only the second has a duration worth showing. The operator is not asked to care
+        // about that distinction: either way the overlay is not being fed, and either way the fix
+        // is to pick a refbox below. Two red states with different names invited a volunteer to
+        // work out which one they were looking at before doing the identical thing about it.
+        for connection in [Connection::NeverConnected, Connection::Disconnected] {
+            let html = render_page(&PageData {
+                status: ConnectionStatus {
+                    connection,
+                    disconnected_for: None,
+                },
+                ..base_data()
+            });
+            assert!(
+                html.contains("Not Connected"),
+                "{connection:?} should read as Not Connected, got:\n{html}"
+            );
+            assert!(
+                !html.contains("Never connected"),
+                "{connection:?} should not use the old wording"
+            );
+        }
+
+        let html = render_page(&PageData {
+            status: ConnectionStatus {
+                connection: Connection::Connected,
+                disconnected_for: None,
+            },
+            ..base_data()
+        });
+        assert!(html.contains("Connected"));
+        assert!(!html.contains("Not Connected"));
     }
 
     #[test]

@@ -20,6 +20,7 @@ use std::{cmp::Ordering, str::FromStr};
 use std::{net::IpAddr, path::PathBuf};
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot};
 
+mod feed;
 mod flag;
 mod load_images;
 mod network;

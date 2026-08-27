@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{sync::OnceLock, time::Duration};
 use time::{OffsetDateTime, format_description::BorrowedFormatItem, macros::format_description};
-use tokio::{io::AsyncReadExt, net::TcpStream};
+use tokio::net::TcpStream;
 use uwh_common::{
     color::Color,
     game_snapshot::GameSnapshot,
     uwhportal::schedule::{EventId, GameNumber, TeamId},
 };
 
-use crate::AppConfig;
+use crate::{AppConfig, feed::FeedReader};
 
 const START_TIME_FORMAT: &[BorrowedFormatItem<'static>] = format_description!("[hour]:[minute]");
 
@@ -469,10 +469,9 @@ pub async fn networking_thread(
     let (logos_tx, mut logos_rx) = tokio::sync::mpsc::unbounded_channel::<EventLogos>();
 
     tokio::spawn(async move {
-        let mut buff = vec![0u8; 1024];
         loop {
             info!("Connecting to refbox at {refbox_ip}:{refbox_port}");
-            let mut stream = loop {
+            let stream = loop {
                 match TcpStream::connect((refbox_ip, refbox_port)).await {
                     Ok(stream) => {
                         info!("Connected to refbox at {refbox_ip}:{refbox_port}");
@@ -485,27 +484,30 @@ pub async fn networking_thread(
             };
             info!("Connected to refbox at {refbox_ip}:{refbox_port}, waiting for snapshots...");
 
+            // A new reader per connection: bytes left buffered part-way through a line when a
+            // connection dies must never be prepended to the next connection's first line.
+            let mut reader = FeedReader::new(stream);
+
             loop {
-                let read_bytes = match stream.read(&mut buff).await {
-                    Ok(0) => {
+                match reader.next_line().await {
+                    Ok(Some(line)) => match serde_json::de::from_slice::<GameSnapshot>(&line) {
+                        Ok(snapshot) => {
+                            debug!("Got snapshot from refbox!");
+                            snapshot_tx.send(snapshot).unwrap_or_else(|e| {
+                                error!("Frontend could not receive snapshot!: {e}")
+                            });
+                        }
+                        Err(e) => {
+                            warn!("Corrupted snapshot discarded! Error: {e}");
+                        }
+                    },
+                    Ok(None) => {
                         error!("Connection to refbox lost! Attempting to reconnect!");
                         break;
                     }
-                    Ok(bytes) => bytes,
                     Err(e) => {
                         error!("Error reading from refbox: {e}");
                         break;
-                    }
-                };
-                match serde_json::de::from_slice::<GameSnapshot>(&buff[..read_bytes]) {
-                    Ok(snapshot) => {
-                        debug!("Got snapshot from refbox!");
-                        snapshot_tx.send(snapshot.clone()).unwrap_or_else(|e| {
-                            error!("Frontend could not receive snapshot!: {e}")
-                        });
-                    }
-                    Err(e) => {
-                        warn!("Corrupted snapshot discarded! Error: {e}");
                     }
                 }
             }

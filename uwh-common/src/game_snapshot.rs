@@ -51,6 +51,16 @@ pub struct GameSnapshot {
     pub game_number: GameNumber,
     pub next_game_number: GameNumber,
     pub event_id: Option<EventId>,
+    /// The `base_url` of the uwhportal client the refbox that sent this snapshot is using: the
+    /// official Portal (honouring `UWH_PORTAL_URL_OVERRIDE`), the UWR portal in Rugby mode, or a
+    /// hand-typed custom site. `None` from a refbox too old to report it, and on snapshots
+    /// synthesized outside a game (the beep test), where no portal call exists to describe.
+    ///
+    /// A consumer that resolves names from a portal must use this and not an address of its own.
+    /// Event ids are not unique across portal environments -- `1889-B` is one tournament on the
+    /// development portal and a different one on production -- so the same id looked up on the
+    /// wrong portal returns real names for the wrong event, with no error anywhere.
+    pub portal_base_url: Option<String>,
     pub recent_goal: Option<(Color, u8)>,
     pub next_period_len_secs: Option<u32>,
     pub conf_pause_time: Option<u32>,
@@ -1102,5 +1112,44 @@ mod test {
         test_state(&mut state)?;
 
         Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn a_snapshot_line_without_a_portal_address_deserializes_as_absent() {
+        // The older-refbox case: a refbox built before this field existed sends a line with no
+        // such key. It must arrive absent -- never substituted with a plausible default, which
+        // would be the production portal and would silently reintroduce the wrong-tournament bug.
+        // Built by removing the key from a real serialization rather than hand-typing JSON, so
+        // this cannot drift out of step with the struct.
+        let mut value = serde_json::to_value(GameSnapshot::default()).expect("serialize");
+        value
+            .as_object_mut()
+            .expect("a snapshot serializes as a JSON object")
+            .remove("portal_base_url")
+            .expect("the key should have been there to remove");
+
+        let snapshot: GameSnapshot =
+            serde_json::from_value(value).expect("a line predating the field must still parse");
+
+        assert_eq!(snapshot.portal_base_url, None);
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn a_snapshot_line_with_an_unknown_extra_field_still_deserializes() {
+        // The other direction: an older consumer (a v0.5.0 stream overlay) reading a newer
+        // refbox. Guards against anyone adding `serde(deny_unknown_fields)` later, which would
+        // turn every future field addition into a hard break for deployed software.
+        let mut value = serde_json::to_value(GameSnapshot::default()).expect("serialize");
+        value
+            .as_object_mut()
+            .expect("a snapshot serializes as a JSON object")
+            .insert("a_field_from_a_future_refbox".to_string(), 1.into());
+
+        let snapshot: GameSnapshot =
+            serde_json::from_value(value).expect("an unknown field must be ignored, not fatal");
+
+        assert_eq!(snapshot, GameSnapshot::default());
     }
 }

@@ -131,7 +131,7 @@ Run `just` alone to see all available commands.
 | `.claude/rules/workspace.md` | Which crates to touch for what |
 | `.claude/rules/rust.md` | Rust patterns, no_std, iced, clippy |
 | `.claude/rules/embedded.md` | wireless-remote special handling |
-| `.claude/rules/pr-review.md` | PR checklist + non-programmer review |
+| `.claude/rules/pr-review.md` | The three pre-PR checks + PR checklist + non-programmer review |
 | `.claude/rules/plan-execution.md` | Lean vs. heavy process; when to use which |
 
 ---

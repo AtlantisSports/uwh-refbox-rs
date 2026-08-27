@@ -117,9 +117,25 @@ gap cannot throw away a cached event's names (`overlay-bridge/src/server.rs:901-
 bolt a second condition beside it, the directory becomes identified by the **pair** it is built
 from:
 
-- Remember the last known *real* address the same way the event id is already remembered: an
-  absent value on the wire never overwrites it. Not a new safeguard -- the same one, applied to
-  both halves of one identity instead of to one half of it.
+- Remember the two halves of the identity **jointly**, and only from a snapshot that reported
+  both. A gap in either half then leaves the whole remembered pair standing -- which is what the
+  behaviour table requires for a momentary absence of *either* value.
+
+  **This corrects an earlier version of this bullet**, which said to remember the address "the same
+  way the event id is already remembered" -- that is, independently, under its own `is_some()`
+  guard. The final review showed that independent halves can be married into a pair that was never
+  reported together, reproducing the original incident: the bridge holds (dev, `1889-B`); the
+  operator relaunches refbox against production, which without the override also wipes
+  `portal_link.json`, so refbox comes up with no event selected; refbox stamps the address
+  unconditionally (`refbox/src/app/mod.rs:748`), so its first snapshot is (production, *no event*);
+  the address half updates alone; and `events/1889-B` is then fetched from production.
+  `AppState::forget_game` does not save us -- it has exactly one call site, an operator *switching*
+  refbox (`overlay-bridge/src/server.rs:638`), not a refbox restart, and nothing clears the
+  remembered values on a disconnect. The same shape arrives from Manual-mode startup and from a
+  Hockey/Rugby mode switch, both of which clear the event id while an address is still reported.
+  Worse: neither this spec's own acceptance walkthrough nor any test written from it could tell the
+  two rules apart, because step 2 relaunches against production with the *same* event id -- which
+  is what the mixed pair produces anyway.
 - `Directory` already holds the address and event it was built from, so it is its own record of
   that pair. Rebuild when the remembered pair is fully known and differs from the running
   directory's own. That single comparison covers the first address arriving, the address changing
@@ -139,9 +155,23 @@ from:
 
 Verified, not assumed:
 
-- **New refbox, older consumer** (a v0.5.0 stream overlay reading a newer refbox): safe. Nothing in
-  `uwh-common` uses `serde(deny_unknown_fields)`, so an unrecognised field is ignored. The overlay
-  deserializes the feed at `overlay/src/network.rs:500`.
+- **New refbox, older consumer** (a v0.5.0 stream overlay reading a newer refbox): safe *against
+  unknown fields*. Nothing in `uwh-common` uses `serde(deny_unknown_fields)`, so an unrecognised key
+  is ignored -- verified against the shipped v0.5.0 tag, not only against current source. The
+  overlay deserializes the feed at `overlay/src/network.rs:500`.
+
+  **But the mechanism that actually threatens that consumer is size, not field names, and this
+  change spends part of the remaining margin.** The deployed Pi overlay reads into a fixed
+  1024-byte buffer with no newline framing, and per this repo's own
+  `docs/backlog/overlay-feed-reader-defects/NOTE.md` (defect 2), a line over 1024 bytes does not
+  cost one dropped update -- the reader misaligns and stops for the rest of the game. This field
+  adds ~46 bytes to *every* line (50 for the dev host, more for a long custom site). Against the
+  repo's own 7-entry capture (793 bytes), headroom falls from ~231 bytes to ~181: roughly four more
+  recorded fouls/warnings entries, down to roughly three. Nothing breaks today, because that note
+  also records that fouls and warnings have not yet been used in earnest. What it does mean is that
+  the note's own conclusion -- fix the reader before that rollout, not after -- has less slack than
+  when it was written. Whether the reader fix now moves ahead of the fouls/warnings work is Eric's
+  call, recorded here rather than silently absorbed.
 - **Older refbox, new bridge**: safe, and blank rather than wrong. A missing field reaches serde's
   `missing_field`, whose deserializer implements only `deserialize_option` and returns `visit_none`
   (`serde-1.0.228/src/private/de.rs:24-49`; 1.0.228 is the version this workspace resolves in
@@ -168,10 +198,11 @@ compiler reports -- the point is that it is mechanical and exhaustively found, n
 | Never connected to a refbox | No address, no event: fetches nothing, names blank |
 | Connected, refbox reports address + event | Fetches from that address for that event |
 | Connected, refbox too old to report an address | Fetches nothing, names blank (not production) |
-| refbox reports a different address | Cache rebuilt against the new address |
-| refbox reports a different event | Cache rebuilt (unchanged from today) |
+| refbox reports a different address **together with an event** | Cache rebuilt for that whole pair |
+| refbox reports a different event **together with an address** | Cache rebuilt for that whole pair |
+| refbox reports a new address with **no** event (a restart before an event is chosen) | Cache KEPT. The new address is never married to the previously remembered event — that is the incident vector, see §4.3 |
 | refbox momentarily reports no event | Cache kept (unchanged from today) |
-| refbox momentarily reports no address | Cache kept -- the same rule, both halves |
+| refbox momentarily reports no address | Cache kept — one joint rule covers both halves |
 | refbox enters beep-test mode | Not a scenario: no overlay or bridge is used during a beep test |
 | Operator points the bridge at a different refbox | Remembered event forgotten; the new refbox's first snapshot re-establishes the pair |
 | refbox goes quiet (stopped clock, dropout) | Last known address and names hold |
@@ -188,10 +219,15 @@ before" and is recorded here as such.
 
 Writable unit tests, all of them regression guards for something above:
 
-- `update_sender`: a snapshot carrying an address is serialized into the JSON line the feed sends.
-  This guards the wire path itself -- that the field reaches the socket rather than merely existing
-  in memory. The existing test module already asserts encoded JSON
-  (`refbox/src/app/update_sender.rs:806` onward).
+- `update_sender`: the full-snapshot test carries a populated address, so the JSON path's length
+  accounting is exercised with a real string rather than a `null`
+  (`refbox/src/app/update_sender.rs:806` onward). **Corrected after the final review:** this test
+  does NOT guard the field's presence on the wire, as an earlier version of this section claimed.
+  It builds its expectation with the same `serde_json::to_string` call the code under test uses, so
+  it is invariant to *which* fields serialize and would still pass with `#[serde(skip)]` on the
+  field. The real wire-presence guard is the missing-key test in
+  `uwh-common/src/game_snapshot.rs`, which removes the key from a genuine serialization and asserts
+  it comes back absent.
 - The compatibility pair: a snapshot line **without** the field deserializes with the address
   absent; a line carrying an unknown extra field still deserializes.
 - The bridge: no address reported means no portal request is made at all -- specifically not one to

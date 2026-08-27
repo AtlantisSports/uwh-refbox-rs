@@ -198,8 +198,20 @@ against what a game can actually produce before it is fixed.
 renaming one silently breaks every title built against it. Names are chosen once and then treated
 as published.
 
-**Two settings the feed cannot supply:** which team is on which side of the pool, and the court,
-if it cannot be derived. Set once per session, not per game.
+**SUPERSEDED 2026-08-27** (see `2026-08-27-bridge-operator-page-design.md`). This section
+originally called for two operator settings the feed cannot supply — which team is on which side
+of the pool, and the court. **Both are gone.**
+
+*Side of pool* was the only place the bridge reordered what the refbox sent, and it did so
+invisibly: a wrong remembered value mirrored the graphic with nothing on screen to explain why.
+Which team is drawn on which side is now decided in the vMix title, where the camera angle is
+actually known. The `leftTeam`/`leftScore`/`rightTeam`/`rightScore` columns went with it.
+
+*Court* never reached anything. The `court` vMix reads in `/nextgame` is resolved from the
+portal's schedule, not from the setting of the same name, which only ever displayed itself.
+
+The bridge therefore has no per-session operator settings at all — only the refbox address and
+its own HTTP port.
 
 Exact shapes, the vMix setup steps and the gotchas behind these two rules are in the companion
 document `2026-08-26-vmix-integration-steps.md`.

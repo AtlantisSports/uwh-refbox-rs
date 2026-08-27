@@ -28,9 +28,9 @@ vMix "supports JSON data that is stored as an object array"; each element become
 tested (`overlay-bridge/src/tables.rs`), not the sketch this document started as. Three
 differences from the original sketch, made deliberately during implementation and recorded here:
 
-- `/scorebug` gained `leftTeam`/`leftScore`/`rightTeam`/`rightScore` alongside the `black*`/
-  `white*` columns, and `blackFouls`/`whiteFouls`/`blackWarnings`/`whiteWarnings`. See its example
-  below for why.
+- `/scorebug` gained `blackFouls`/`whiteFouls`/`blackWarnings`/`whiteWarnings`. See its example
+  below for why. (It briefly also carried `leftTeam`/`leftScore`/`rightTeam`/`rightScore`; those
+  were removed with the side-of-pool setting on 2026-08-27 — see below.)
 - `/penalties`, `/fouls` and `/warnings` gained a `timeSeconds` column next to `time` (penalties
   only — fouls and warnings have no duration to report) — every duration-shaped value is served
   both display-ready and as plain seconds, and the original example only showed the display-ready
@@ -71,10 +71,6 @@ actually sent, or nothing at all. Two consequences for what is served, both addi
     "timeout": "",
     "timeoutClock": "",
     "timeoutClockSeconds": "",
-    "leftTeam": "CANADA",
-    "leftScore": "2",
-    "rightTeam": "AUSTRALIA",
-    "rightScore": "3",
     "blackFouls": "4",
     "whiteFouls": "2",
     "blackWarnings": "1",
@@ -86,12 +82,14 @@ actually sent, or nothing at all. Two consequences for what is served, both addi
 ```
 
 `blackTeam`/`whiteTeam`/`blackScore`/`whiteScore` never change meaning — a team's kit colour is
-fixed for the whole game. `leftTeam`/`leftScore`/`rightTeam`/`rightScore` carry the *same* two
-teams, reordered by the operator's side-of-pool setting (whichever physical side the camera has
-white on) — the example above has white on the left, i.e. `white_on_right = false`. Bind to
-black/white if a title only ever needs to say "the black team"; bind to left/right if the title's
-physical position on screen needs to match the physical side of the pool, however the venue is
-set up. `blackFouls`/`whiteFouls`/`blackWarnings`/`whiteWarnings`/`equalFouls` are the *true*
+fixed for the whole game, so these are the columns a title binds to.
+
+**There is deliberately no `leftTeam`/`rightTeam` pair.** An earlier version served one, reordered
+by a side-of-pool setting on the bridge. Both were removed on 2026-08-27: the bridge cannot know
+which side of the pool a camera sees, so a column naming a side had to guess, and would have been
+silently wrong whenever the guess was — under a name asserting otherwise. **Which team is drawn on
+which side of the screen is decided in the vMix title**, where the camera angle is actually known:
+bind the left-hand text field to whichever of `blackTeam`/`whiteTeam` that venue has on the left. `blackFouls`/`whiteFouls`/`blackWarnings`/`whiteWarnings`/`equalFouls` are the *true*
 totals recorded — independent of how many rows `/fouls` and `/warnings` themselves carry (see
 those tables' entries below), so a title can show a running count even when the row-carrying
 table has been truncated. `equalFouls` counts a both-at-fault foul, which is never also counted

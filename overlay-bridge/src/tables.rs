@@ -19,11 +19,11 @@
 //! built against it (see that document's gotcha G1). Two things about the shapes below were added
 //! deliberately, beyond what that document first sketched, and are recorded there too:
 //!
-//! - `/scorebug` carries `leftTeam`/`leftScore`/`rightTeam`/`rightScore` alongside the existing
-//!   `black*`/`white*` columns, so an operator whose camera has the two teams reversed from their
-//!   kit colours (the "side of pool" setting -- see [`scorebug`]'s doc) can bind to a column that
-//!   is never the wrong team, without displacing the black/white columns anyone else already
-//!   bound to.
+//! - `/scorebug` names the two teams only by their kit colours -- `blackTeam`/`whiteTeam` and
+//!   their scores. There is deliberately no `leftTeam`/`rightTeam` pair: the bridge cannot know
+//!   which side of the pool a camera sees, so which team is drawn on which side of the graphic
+//!   is decided in the vMix title, where that is known. A column naming a side would have to
+//!   guess, and would be silently wrong whenever the guess was.
 //! - `/scorebug` also carries `blackFouls`/`whiteFouls`/`blackWarnings`/`whiteWarnings`/
 //!   `equalFouls`: the true, untruncated total recorded for each team (plus the independent
 //!   both-at-fault count), so a title can show a running count even though the `/fouls` and
@@ -181,18 +181,11 @@ pub type Rosters = BlackWhiteBundle<Roster>;
 /// `None` if nothing has been resolved yet, in which case both name columns are empty rather than
 /// a placeholder.
 ///
-/// `white_on_right` is the operator's side-of-pool setting: whether the white team is drawn on the
-/// physical right (matching the refbox's own `white_on_right` hardware setting,
-/// `refbox/src/app/update_sender.rs:536-545`, which the live feed itself never carries). It only
-/// affects `leftTeam`/`leftScore`/`rightTeam`/`rightScore` -- `blackTeam`/`whiteTeam`/`blackScore`/
-/// `whiteScore` are unaffected, since a team's kit colour never changes mid-game.
-///
 /// `connected` is passed straight through to [`finish_table`] -- see that function's doc and the
 /// module doc's "The `connected` column" section.
 pub fn scorebug(
     display: &Display,
     names: Option<&TeamNames>,
-    white_on_right: bool,
     connected: bool,
 ) -> Vec<BTreeMap<String, String>> {
     let snapshot = &display.snapshot;
@@ -208,22 +201,6 @@ pub fn scorebug(
             Some(u32::from(timeout_seconds(timeout))),
         ),
         None => (String::new(), None),
-    };
-
-    let (left_team, left_score, right_team, right_score) = if white_on_right {
-        (
-            black_team.clone(),
-            black_score.clone(),
-            white_team.clone(),
-            white_score.clone(),
-        )
-    } else {
-        (
-            white_team.clone(),
-            white_score.clone(),
-            black_team.clone(),
-            black_score.clone(),
-        )
     };
 
     let mut row = BTreeMap::new();
@@ -248,10 +225,6 @@ pub fn scorebug(
             .map(|secs| secs.to_string())
             .unwrap_or_default(),
     );
-    row.insert("leftTeam".to_string(), left_team);
-    row.insert("leftScore".to_string(), left_score);
-    row.insert("rightTeam".to_string(), right_team);
-    row.insert("rightScore".to_string(), right_score);
     row.insert(
         "blackFouls".to_string(),
         snapshot.fouls.black.len().to_string(),
@@ -652,16 +625,45 @@ mod tests {
     // ---------------------------------------------------------------- scorebug
 
     #[test]
+    fn scorebug_publishes_no_left_or_right_columns() {
+        // The column *set* is the contract vMix binds to -- it matches Data Source columns by
+        // name -- so its shape is asserted explicitly rather than left implied by the tests that
+        // check individual values.
+        //
+        // `leftTeam`/`rightTeam` are gone with the side-of-pool setting. Keeping them would have
+        // meant a column promising a physical side the bridge no longer knows anything about:
+        // permanently equal to `whiteTeam`/`blackTeam`, and silently wrong the day a camera sees
+        // black on the left. Which side each team is drawn on is now the vMix title's business.
+        let display = display_with(base_snapshot());
+        let rows = scorebug(&display, None, true);
+        let row = row0(&rows);
+
+        for absent in ["leftTeam", "leftScore", "rightTeam", "rightScore"] {
+            assert!(
+                !row.contains_key(absent),
+                "{absent} must not be served: it would duplicate a white/black column while \
+                 claiming a side of the pool the bridge cannot know"
+            );
+        }
+        for present in ["whiteTeam", "whiteScore", "blackTeam", "blackScore"] {
+            assert!(
+                row.contains_key(present),
+                "{present} is what a title binds to instead, and must still be served"
+            );
+        }
+    }
+
+    #[test]
     fn scorebug_is_always_exactly_one_row() {
         let display = display_with(base_snapshot());
-        let rows = scorebug(&display, None, false, true);
+        let rows = scorebug(&display, None, true);
         assert_eq!(rows.len(), 1);
     }
 
     #[test]
     fn scorebug_renders_scores_clock_and_period_as_bare_strings() {
         let display = display_with(base_snapshot());
-        let rows = scorebug(&display, None, false, true);
+        let rows = scorebug(&display, None, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "blackScore"), "3");
@@ -674,7 +676,7 @@ mod tests {
     #[test]
     fn scorebug_with_no_names_resolved_yields_empty_team_columns_not_a_placeholder() {
         let display = display_with(base_snapshot());
-        let rows = scorebug(&display, None, false, true);
+        let rows = scorebug(&display, None, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "blackTeam"), "");
@@ -685,7 +687,7 @@ mod tests {
     fn scorebug_takes_team_names_from_the_portal_directory_dark_and_light_fields() {
         let display = display_with(base_snapshot());
         let team_names = names(Some("AUSTRALIA"), Some("CANADA"), None, None);
-        let rows = scorebug(&display, Some(&team_names), false, true);
+        let rows = scorebug(&display, Some(&team_names), true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "blackTeam"), "AUSTRALIA");
@@ -695,7 +697,7 @@ mod tests {
     #[test]
     fn scorebug_with_no_active_timeout_leaves_timeout_columns_empty() {
         let display = display_with(base_snapshot());
-        let rows = scorebug(&display, None, false, true);
+        let rows = scorebug(&display, None, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "timeout"), "");
@@ -709,7 +711,7 @@ mod tests {
             timeout: Some(TimeoutSnapshot::White(75)),
             ..base_snapshot()
         });
-        let rows = scorebug(&display, None, false, true);
+        let rows = scorebug(&display, None, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "timeout"), "White Timeout");
@@ -726,30 +728,10 @@ mod tests {
             timeout: Some(TimeoutSnapshot::PenaltyShot(20)),
             ..base_snapshot()
         });
-        let rows = scorebug(&display, None, false, true);
+        let rows = scorebug(&display, None, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "timeout"), "Penalty Shot");
-    }
-
-    #[test]
-    fn swapping_the_side_of_pool_setting_swaps_which_team_is_in_the_left_hand_columns() {
-        let display = display_with(base_snapshot());
-        let team_names = names(Some("AUSTRALIA"), Some("CANADA"), None, None);
-
-        let white_on_right = scorebug(&display, Some(&team_names), true, true);
-        let row = row0(&white_on_right);
-        assert_eq!(get(row, "leftTeam"), "AUSTRALIA");
-        assert_eq!(get(row, "leftScore"), "3");
-        assert_eq!(get(row, "rightTeam"), "CANADA");
-        assert_eq!(get(row, "rightScore"), "2");
-
-        let white_on_left = scorebug(&display, Some(&team_names), false, true);
-        let row = row0(&white_on_left);
-        assert_eq!(get(row, "leftTeam"), "CANADA");
-        assert_eq!(get(row, "leftScore"), "2");
-        assert_eq!(get(row, "rightTeam"), "AUSTRALIA");
-        assert_eq!(get(row, "rightScore"), "3");
     }
 
     #[test]
@@ -772,7 +754,7 @@ mod tests {
 
         // The count on /scorebug must be the true 120, not the 100 the /fouls table itself caps
         // out at.
-        let scorebug_rows = scorebug(&display, None, false, true);
+        let scorebug_rows = scorebug(&display, None, true);
         assert_eq!(get(row0(&scorebug_rows), "blackFouls"), "120");
 
         let rosters = Rosters::default();
@@ -805,7 +787,7 @@ mod tests {
             ..base_snapshot()
         };
         let display = display_with(snapshot);
-        let rows = scorebug(&display, None, false, true);
+        let rows = scorebug(&display, None, true);
         let row = row0(&rows);
 
         assert_eq!(get(row, "equalFouls"), "120");
@@ -818,7 +800,7 @@ mod tests {
     #[test]
     fn every_scorebug_row_carries_connected_true_when_connected() {
         let display = display_with(base_snapshot());
-        let rows = scorebug(&display, None, false, true);
+        let rows = scorebug(&display, None, true);
         assert_eq!(get(row0(&rows), "connected"), "true");
     }
 
@@ -826,7 +808,7 @@ mod tests {
     fn scorebug_blanks_every_value_but_connected_when_disconnected() {
         let display = display_with(base_snapshot());
         let team_names = names(Some("AUSTRALIA"), Some("CANADA"), None, None);
-        let rows = scorebug(&display, Some(&team_names), false, false);
+        let rows = scorebug(&display, Some(&team_names), false);
         let row = row0(&rows);
 
         assert_eq!(get(row, "connected"), "false");

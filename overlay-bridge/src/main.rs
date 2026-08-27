@@ -37,19 +37,6 @@ struct Cli {
     /// setting when passed; otherwise the last value used is remembered, falling back to 8099.
     #[clap(long)]
     port: Option<u16>,
-
-    /// Whether the white team is drawn on the physical right of the pool. The refbox's own feed
-    /// does not carry this -- it is a camera/venue setting, chosen once per session (design spec
-    /// §5.2). Bare `--white-on-right` means true; `--white-on-right=false` explicitly overrides a
-    /// saved `true` back to false. Absent entirely, the saved value is remembered, falling back
-    /// to false.
-    #[clap(long, num_args = 0..=1, default_missing_value = "true")]
-    white_on_right: Option<bool>,
-
-    /// The court label -- the other setting the refbox feed cannot supply (design spec §5.2).
-    /// Same precedence as the settings above; falls back to empty (not set) if nothing is saved.
-    #[clap(long)]
-    court: Option<String>,
 }
 
 impl Cli {
@@ -61,8 +48,6 @@ impl Cli {
             refbox_host: self.refbox_host.clone(),
             refbox_port: self.refbox_port,
             port: self.port,
-            white_on_right: self.white_on_right,
-            court: self.court.clone(),
         }
     }
 }
@@ -126,6 +111,22 @@ mod tests {
     // each test below so both halves of the precedence rule stay covered together.
 
     #[test]
+    fn the_removed_side_of_pool_and_court_flags_are_rejected() {
+        // Both settings are gone (see the 2026-08-27 operator-page design). Asserted rather than
+        // assumed because clap accepting an unknown flag silently would be worse than rejecting
+        // it: an operator who kept `--white-on-right` in a shortcut would see the flag apparently
+        // work while the graphic ignored it.
+        assert!(
+            Cli::try_parse_from(["overlay-bridge", "--white-on-right"]).is_err(),
+            "--white-on-right was removed; which side each team is drawn on is now set in vMix"
+        );
+        assert!(
+            Cli::try_parse_from(["overlay-bridge", "--court", "Pool A"]).is_err(),
+            "--court was removed; the court vMix reads comes from the portal's schedule"
+        );
+    }
+
+    #[test]
     fn the_http_port_is_not_set_by_default_but_resolves_to_8099_never_8088() {
         let cli = Cli::try_parse_from(["overlay-bridge"]).expect("no required args");
         assert_eq!(cli.port, None);
@@ -137,30 +138,6 @@ mod tests {
         let cli = Cli::try_parse_from(["overlay-bridge", "--port", "9001"])
             .expect("--port should be accepted");
         assert_eq!(cli.port, Some(9001));
-    }
-
-    #[test]
-    fn white_on_right_is_not_set_by_default_but_resolves_to_false() {
-        let cli = Cli::try_parse_from(["overlay-bridge"]).expect("no required args");
-        assert_eq!(cli.white_on_right, None);
-        assert!(!config::resolve(cli.white_on_right, None, false));
-    }
-
-    #[test]
-    fn white_on_right_flag_alone_sets_it_true() {
-        let cli = Cli::try_parse_from(["overlay-bridge", "--white-on-right"])
-            .expect("--white-on-right should be accepted");
-        assert_eq!(cli.white_on_right, Some(true));
-    }
-
-    #[test]
-    fn white_on_right_flag_accepts_an_explicit_false_to_override_a_saved_true() {
-        // Without this, an operator whose saved setting is `true` from a previous session would
-        // have no way to pass `false` this run -- a bare boolean flag can only ever *set* true by
-        // being present, never explicitly clear a stored value back to false.
-        let cli = Cli::try_parse_from(["overlay-bridge", "--white-on-right=false"])
-            .expect("--white-on-right=false should be accepted");
-        assert_eq!(cli.white_on_right, Some(false));
     }
 
     #[test]
@@ -179,16 +156,6 @@ mod tests {
         assert_eq!(
             config::resolve(cli.refbox_port, None, config::DEFAULT_REFBOX_PORT),
             8000
-        );
-    }
-
-    #[test]
-    fn court_is_not_set_by_default_but_resolves_to_empty() {
-        let cli = Cli::try_parse_from(["overlay-bridge"]).expect("no required args");
-        assert_eq!(cli.court, None);
-        assert_eq!(
-            config::resolve(cli.court, None, String::new()),
-            String::new()
         );
     }
 
@@ -228,9 +195,6 @@ mod tests {
             "8123",
             "--port",
             "9001",
-            "--white-on-right",
-            "--court",
-            "Pool B",
         ])
         .expect("every flag should be accepted");
 
@@ -239,8 +203,6 @@ mod tests {
         assert_eq!(settings.refbox.host, "192.168.1.50");
         assert_eq!(settings.refbox.port, 8123);
         assert_eq!(settings.port, 9001);
-        assert!(settings.white_on_right);
-        assert_eq!(settings.court, "Pool B");
     }
 
     #[test]

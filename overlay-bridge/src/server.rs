@@ -182,16 +182,21 @@ pub struct AppState {
 #[derive(Debug, Default)]
 struct LastSeen {
     event_id: Option<EventId>,
-    /// The last address the feed actually reported. Remembered under the same rule as `event_id`:
-    /// an absent value on the wire never overwrites it.
+    /// The last address the feed actually reported. This and `event_id` are **one value in two
+    /// fields**: they are only ever written together, and only from a snapshot that reported both
+    /// (see `consume_snapshots`). A snapshot missing either half writes neither, so the pair here
+    /// is always a pair some one refbox actually reported -- never one half of one refbox's report
+    /// beside the other half of another's.
     portal_base_url: Option<String>,
     game_number: Option<GameNumber>,
 }
 
 impl LastSeen {
-    /// The pair a [`Directory`] is built from, once both halves are known. `None` while either is
-    /// still unknown -- and while it is `None` nothing is fetched, because there is no address to
-    /// fetch from and inventing one is what served the wrong tournament's names.
+    /// The pair a [`Directory`] is built from, once a snapshot has reported both halves. `None`
+    /// until one has -- and while it is `None` nothing is fetched, because there is no address to
+    /// fetch from and inventing one is what served the wrong tournament's names. Because the two
+    /// fields are only ever written together (see `portal_base_url`'s doc), what this returns is
+    /// always a pair one refbox reported as a pair, not a combination assembled here.
     fn identity(&self) -> Option<(String, EventId)> {
         Some((self.portal_base_url.clone()?, self.event_id.clone()?))
     }
@@ -903,18 +908,27 @@ pub async fn consume_snapshots(
 
         write_lock(&state.live).apply(snapshot, now);
 
-        // Remember only what was actually reported. A `None` on the wire is a gap in reporting --
-        // a snapshot arriving before the refbox has attached an event, or one synthesized outside
-        // a game -- and must never overwrite a known value: if it did, the very next snapshot
-        // carrying that same value back would look new, rebuilding the directory and throwing away
-        // every team name and roster cached for something nothing has actually left.
+        // Remember only a whole pair that was actually reported, and remember its two halves
+        // **together**. A `None` on either half is a gap in reporting -- a snapshot arriving
+        // before the refbox has attached an event, or one synthesized outside a game -- and leaves
+        // the whole remembered pair standing, so the next snapshot carrying that value back does
+        // not look like news and discard every team name and roster cached for something nothing
+        // has actually left.
+        //
+        // Moving the halves independently is what made this wrong before: a refbox stopped on one
+        // portal and relaunched against another comes up with an address but no event chosen, so
+        // the new address would have been remembered beside the *previous* portal's event id --
+        // a pair no refbox ever reported -- and that event would then have been fetched from the
+        // new portal. Event ids are not unique across portals, so that returns real names for a
+        // different tournament with no error anywhere: the incident this whole change exists to
+        // prevent. A refbox new enough to report either half always reports both, so nothing
+        // legitimate is lost by requiring them together; one too old to report the address
+        // reports neither, and nothing is ever fetched.
         let (identity, game_changed) = {
             let mut last_seen = write_lock(&state.last_seen);
-            if event_id.is_some() {
-                last_seen.event_id = event_id;
-            }
-            if portal_base_url.is_some() {
-                last_seen.portal_base_url = portal_base_url;
+            if let (Some(event_id), Some(portal_base_url)) = (event_id, portal_base_url) {
+                last_seen.event_id = Some(event_id);
+                last_seen.portal_base_url = Some(portal_base_url);
             }
             let game_changed = last_seen.game_number.as_ref() != Some(&game_number);
             last_seen.game_number = Some(game_number);
@@ -923,9 +937,10 @@ pub async fn consume_snapshots(
 
         // One comparison, against the running directory's own record of what it was built from.
         // This covers the first address arriving, the address changing and the event changing; and
-        // because it reads the remembered pair rather than the raw wire values, it cannot fire on
-        // a gap. Until both halves are known there is no directory at all -- names stay blank
-        // rather than being looked up somewhere plausible.
+        // because it reads the remembered pair -- which only ever moves as a whole, and only from
+        // a snapshot that reported both halves -- rather than the raw wire values, it cannot fire
+        // on a gap in either half. Until a whole pair has been reported there is no directory at
+        // all -- names stay blank rather than being looked up somewhere plausible.
         let rebuilt = match identity {
             Some((base_url, id)) => {
                 let matches_current = read_lock(&state.directory)
@@ -1591,7 +1606,11 @@ mod tests {
         // runs. A fixed sleep would let this test pass even if the snapshot were never consumed at
         // all -- `read_lock(&state.directory).is_none()` holds trivially either way in that case.
         // See `a_momentary_missing_event_id_does_not_rebuild_the_directory_for_the_same_event`'s
-        // comment further down for the same trap in the sibling shape.
+        // comment further down for the same trap in the sibling shape. That the directory decision
+        // has also already run once the score is visible depends on `#[tokio::test]`'s default
+        // current-thread runtime, under which `consume_snapshots` has no `.await` between applying
+        // the snapshot to the live state and deciding on the directory: adding
+        // `flavor = "multi_thread"` here would silently reopen the vacuous pass this wait closes.
         tx.send(from_chosen_refbox(
             &state,
             GameSnapshot {
@@ -1699,7 +1718,11 @@ mod tests {
         // consumed at all -- the directory would look unchanged for the same reason either way.
         // See the near-identical trap called out in
         // `a_momentary_missing_event_id_does_not_rebuild_the_directory_for_the_same_event`'s
-        // comment further down.
+        // comment further down. That the directory decision has also already run once the score is
+        // visible depends on `#[tokio::test]`'s default current-thread runtime, under which
+        // `consume_snapshots` has no `.await` between applying the snapshot to the live state and
+        // deciding on the directory: adding `flavor = "multi_thread"` here would silently reopen
+        // the vacuous pass this wait closes.
         tx.send(from_chosen_refbox(
             &state,
             GameSnapshot {
@@ -1792,6 +1815,163 @@ mod tests {
             Arc::ptr_eq(&directory_before, &directory_after),
             "a momentary missing event id must not rebuild the directory (and so discard every \
              cached team name and roster) for what is still the same event"
+        );
+
+        consumer.abort();
+    }
+
+    /// The two halves of the portal identity are only ever remembered together, so the pair the
+    /// directory is built from is always a pair some one refbox actually reported. This is the
+    /// incident of 2026-08-26 arriving by a second route: an operator stops a refbox that was on
+    /// the development portal and relaunches it against production, where it comes up with no
+    /// event selected yet (launching without `UWH_PORTAL_URL_OVERRIDE` also wipes the saved
+    /// portal link). Nothing has switched refboxes, so `AppState::forget_game` does not fire and
+    /// the remembered event survives. Its first snapshot therefore reports production's address
+    /// and no event -- and remembering those two halves independently would have combined
+    /// production's address with the development portal's event id into a pair that had never
+    /// been reported together, then fetched that event from production: real player names for a
+    /// different tournament, with no error anywhere. Manual-mode startup and a Hockey/Rugby mode
+    /// switch produce the same shape.
+    ///
+    /// A distinguishing score, waited for by `wait_for_scores` rather than a fixed sleep: with
+    /// both snapshots carrying the same score, `Arc::ptr_eq` below would hold trivially even if
+    /// the second snapshot were never consumed at all. That the rebuild decision has also already
+    /// run by then depends on `#[tokio::test]`'s default current-thread runtime, under which
+    /// `consume_snapshots` has no `.await` between applying the snapshot to the live state and
+    /// deciding on the directory; adding `flavor = "multi_thread"` here would reopen exactly the
+    /// vacuous pass this wait closes.
+    #[tokio::test]
+    async fn a_new_address_with_no_event_id_does_not_repoint_the_remembered_event() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let (tx, rx) = mpsc::unbounded_channel();
+        let refresh_notify = Arc::new(Notify::new());
+        let consumer = tokio::spawn(consume_snapshots(
+            Arc::clone(&state),
+            rx,
+            Client::new(),
+            refresh_notify,
+        ));
+
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                event_id: Some(EventId::from_partial("1889-B")),
+                portal_base_url: Some("https://api.dev.uwhportal.com".to_string()),
+                game_number: "1".to_string(),
+                scores: BlackWhiteBundle { black: 1, white: 0 },
+                ..Default::default()
+            },
+        ))
+        .expect("channel should accept the first snapshot");
+        wait_for_scores(&state, 1, 0).await;
+        let before = read_lock(&state.directory)
+            .clone()
+            .expect("a directory should exist once both halves are known");
+        assert_eq!(
+            before.identity().0,
+            "https://api.dev.uwhportal.com",
+            "test setup: the directory should have been built for the address just reported"
+        );
+
+        // The relaunched refbox: production's address, no event chosen yet.
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                event_id: None,
+                portal_base_url: Some("https://api.uwhportal.com".to_string()),
+                game_number: "1".to_string(),
+                scores: BlackWhiteBundle { black: 2, white: 0 },
+                ..Default::default()
+            },
+        ))
+        .expect("channel should accept the relaunched refbox's snapshot");
+        wait_for_scores(&state, 2, 0).await;
+
+        let after = read_lock(&state.directory)
+            .clone()
+            .expect("the directory must survive a snapshot that reported no event");
+        assert!(
+            Arc::ptr_eq(&before, &after),
+            "an address reported without an event id must not be paired with an event id \
+             remembered from a different refbox -- that pair was never reported together, and \
+             looking the old event up on the new portal is the wrong-tournament incident itself"
+        );
+        assert_eq!(
+            after.identity().0,
+            "https://api.dev.uwhportal.com",
+            "the directory must still be the one built for the address that was reported \
+             alongside this event id"
+        );
+
+        consumer.abort();
+    }
+
+    /// The mirror of the case above, and the reason the rule is stated as "both halves or
+    /// neither" rather than as a special case for a missing event id: an event id reported with no
+    /// address must not be paired with an address remembered from a different refbox either. A gap
+    /// in either half leaves the whole remembered pair standing, which is what the spec's
+    /// behaviour table requires -- the cache is kept, and nothing is fetched from a portal that
+    /// was never reported alongside this event.
+    ///
+    /// The same distinguishing-score wait, for the same two reasons, as the case above: see its
+    /// comment (including the dependency on the default current-thread test runtime).
+    #[tokio::test]
+    async fn a_new_event_id_with_no_address_does_not_repoint_the_remembered_address() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let (tx, rx) = mpsc::unbounded_channel();
+        let refresh_notify = Arc::new(Notify::new());
+        let consumer = tokio::spawn(consume_snapshots(
+            Arc::clone(&state),
+            rx,
+            Client::new(),
+            refresh_notify,
+        ));
+
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                event_id: Some(EventId::from_partial("event-a")),
+                portal_base_url: Some("https://api.dev.uwhportal.com".to_string()),
+                game_number: "1".to_string(),
+                scores: BlackWhiteBundle { black: 1, white: 0 },
+                ..Default::default()
+            },
+        ))
+        .expect("channel should accept the first snapshot");
+        wait_for_scores(&state, 1, 0).await;
+        let before = read_lock(&state.directory)
+            .clone()
+            .expect("a directory should exist once both halves are known");
+
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                event_id: Some(EventId::from_partial("event-b")),
+                portal_base_url: None,
+                game_number: "1".to_string(),
+                scores: BlackWhiteBundle { black: 2, white: 0 },
+                ..Default::default()
+            },
+        ))
+        .expect("channel should accept the snapshot with no address");
+        wait_for_scores(&state, 2, 0).await;
+
+        let after = read_lock(&state.directory)
+            .clone()
+            .expect("the directory must survive a snapshot that reported no address");
+        assert!(
+            Arc::ptr_eq(&before, &after),
+            "an event id reported without an address must not be looked up on an address \
+             remembered from a different refbox"
+        );
+        assert_eq!(
+            *after.identity().1,
+            EventId::from_partial("event-a"),
+            "the directory must still be the one built for the pair that was actually reported"
         );
 
         consumer.abort();
@@ -3136,6 +3316,13 @@ mod tests {
 
         // Now switch to a refbox on another court -- which happens to number its games the same
         // way, and reports no event id of its own.
+        //
+        // It reports the *same portal address* as the first refbox, on purpose: reporting no
+        // address would be reason enough on its own to build no directory, so the blank names
+        // below would be over-determined and the test would no longer isolate the
+        // event-forgetting it exists to cover. With the address present and its portal still
+        // answering, the only thing missing is the event -- forgotten along with the refbox that
+        // reported it.
         let (second_addr, second) = fake_refbox(game(GamePeriod::FirstHalf, 500, 0, 0, "10")).await;
         let notice = choose_refbox(&state, &second_addr.to_string()).await;
         assert!(notice.done, "{}", notice.text);
@@ -3148,6 +3335,7 @@ mod tests {
                 scores: BlackWhiteBundle { black: 4, white: 4 },
                 game_number: "10".to_string(),
                 event_id: None,
+                portal_base_url: Some(format!("http://{portal_addr}")),
                 ..Default::default()
             },
         })

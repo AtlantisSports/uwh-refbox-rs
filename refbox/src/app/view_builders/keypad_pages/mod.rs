@@ -126,9 +126,7 @@ pub(in super::super) fn build_keypad_page<'a>(
             // panel is the same box whichever child it holds, and DONE/CANCEL
             // cannot shift sideways when a page shows a grid for one team and
             // the pad for the other.
-            .width(Length::Fixed(
-                3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING + 2.0 * PADDING
-            ))
+            .width(Length::Fixed(PANEL_ROW_WIDTH + 2.0 * PADDING))
             // The player pages get a full-height panel so grid and pad can both
             // bottom-justify against it (and, in Rugby, so the grid's rows can
             // share it). The pad-only pages stay content-sized, exactly as they
@@ -224,6 +222,12 @@ impl PanelRole {
     }
 }
 
+/// The panel's title row: three keypad buttons wide, plus the two gaps between
+/// them. The panel's own box is this and its padding; the row's label and value
+/// divide it between them. One definition, because `fit_text`'s tests assert on
+/// this geometry too and a second copy would go stale silently.
+pub(in super::super) const PANEL_ROW_WIDTH: f32 = 3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING;
+
 /// The title row's value when no individual player is named. Deliberately a
 /// glyph rather than a translated word — see `panel_value`.
 const NO_PLAYER_VALUE: &str = "-";
@@ -247,6 +251,18 @@ fn panel_value(role: PanelRole, player_num: u32) -> String {
     } else {
         player_num.to_string()
     }
+}
+
+/// The longest value the title row can ever be asked to show on this page.
+///
+/// The value's box is reserved for this rather than fitted to what is on screen,
+/// so the digits keep one size and one position from the first keystroke to the
+/// last. `max_val` is what the keypad clamps entry to, so its digits are the
+/// most the row can ever hold; every bundled font gives all ten digits the same
+/// advance, so only how many there are matters, not which. `NO_PLAYER_VALUE` is
+/// one narrow character and cannot exceed it.
+fn widest_panel_value(page: &KeypadPage) -> String {
+    page.max_val().to_string()
 }
 
 fn panel_role(page: &KeypadPage) -> PanelRole {
@@ -296,21 +312,54 @@ fn make_panel_label<'a>(
     player_num: u32,
 ) -> Element<'a, Message> {
     row![
-        // Label and value each get a guaranteed share of the fixed 283px width.
-        // Letting either take what it wants first starves the other, and this row
-        // is one line tall (`MEDIUM_TEXT * 1.2`), so an overflowing plain `text()`
-        // wraps and is then clipped -- shrinking is the only thing that helps.
+        // The value takes the width the *longest* value this page can hold needs
+        // and the label takes what is left. iced lays `Shrink` children out
+        // before filling ones, so the value has first claim however it is
+        // ordered here -- and because that claim is fixed by `shared_with`
+        // rather than by the digits currently on screen, neither box moves as
+        // the operator types. A rigid share each looked fairer but was not: two
+        // fifths of the 283px row is 113px, which a six-digit portal login code
+        // overflows at `MEDIUM_TEXT`, so the code shrank on its sixth keystroke
+        // while most of the label's three fifths sat empty beside it.
+        //
+        // Both halves are `fit_text` because the row has no spare height to give
+        // a third line: it is about 75px, two lines of the default 29px text at
+        // iced's 1.3 line height, and `player_grid.rs` sizes its rows against
+        // that budget. The row's own height is `Shrink`, so a plain `text()`
+        // wrapping onto a third line would not be trimmed -- it would make the
+        // row taller and push the number pad off the bottom of a panel that
+        // already fills 463px of its 465px. Shrinking is the only thing that
+        // helps.
+        //
+        // The row is spaced so the label cannot end flush against the digits.
+        // Without it the two boxes abut, and a label that needs all of its own
+        // box -- Indonesian "PERTANDINGAN:" and Malay "PERLAWANAN:" both do --
+        // ends within a couple of pixels of the value, which reads as one
+        // run-together string.
         fit_text(page.text())
             .align_x(Horizontal::Left)
-            .width(Length::FillPortion(3))
+            .width(Length::Fill)
             .height(Length::Shrink),
         fit_text(panel_value(role, player_num))
             .size(MEDIUM_TEXT)
+            .shared_with(vec![widest_panel_value(page)])
             .align_x(Horizontal::Right)
-            .width(Length::FillPortion(2))
+            .width(Length::Shrink)
             .height(Length::Shrink),
     ]
-    .width(Length::Fixed(3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING))
+    .spacing(SPACING)
+    // Anchored to the bottom, not the top. The two halves are deliberately
+    // different sizes -- the value is `MEDIUM_TEXT`, the label the app default
+    // -- and the taller line box carries proportionally more empty space above
+    // its glyphs, so anchoring both at the top left their baselines about 9px
+    // apart and the label looking as though it floated. Bottom-anchored the
+    // difference is just the two descents, under 3px in every bundled font, and
+    // on the pages whose label is two lines the value now lands beside the
+    // *last* one, so "PLAYER / NUMBER:" reads as one phrase with its number.
+    // iced 0.13 has no baseline alignment in a row, so this is as close as it
+    // gets without hardcoding each font's ascent.
+    .align_y(Vertical::Bottom)
+    .width(Length::Fixed(PANEL_ROW_WIDTH))
     .into()
 }
 
@@ -510,6 +559,79 @@ mod tests {
 
         for (page, expected) in cases {
             assert_eq!(panel_role(page), *expected, "wrong role for {page:?}");
+        }
+    }
+
+    /// The value's box is reserved for `widest_panel_value`, so nothing a page
+    /// can actually show may be longer than that. If it could, the digits would
+    /// shrink on the keystroke that overflowed the box -- the very thing the
+    /// reservation exists to prevent. Character counts stand in for widths here
+    /// because every bundled font gives all ten digits the same advance, and the
+    /// only non-digit the row shows is the narrower `NO_PLAYER_VALUE`.
+    ///
+    /// The bound is `max_val`, which is what the keypad clamps *entry* to — and
+    /// what makes this list safe to hand-maintain: `max_val` matches the page
+    /// enum exhaustively, so a new variant is a compile error there and its
+    /// reservation follows automatically.
+    ///
+    /// A page can still be *opened* on a value above the cap: `next_game_number`
+    /// increments without one, so a manual game number of 9999 becomes "10000"
+    /// and seeds the GameNumber keypad with five digits against four digits of
+    /// reserved room. `fit_text` contains that by shrinking the digits into the
+    /// room reserved rather than widening the box, so the label keeps its share
+    /// either way; clamping the seed instead would silently renumber the
+    /// operator's game. `TeamTimeouts` is absent because its page does not use
+    /// this row.
+    #[test]
+    fn nothing_a_page_can_show_is_longer_than_the_value_width_reserved_for_it() {
+        let pages = [
+            KeypadPage::AddScore {
+                color: GameColor::Black,
+                team_score: false,
+            },
+            KeypadPage::AddScore {
+                color: GameColor::Black,
+                team_score: true,
+            },
+            KeypadPage::Penalty(
+                None,
+                GameColor::White,
+                PenaltyKind::OneMinute,
+                Infraction::Unknown,
+            ),
+            KeypadPage::FoulAdd {
+                origin: None,
+                color: Some(GameColor::Black),
+                infraction: Infraction::Unknown,
+                ret_to_overview: false,
+            },
+            KeypadPage::WarningAdd {
+                origin: None,
+                color: GameColor::White,
+                infraction: Infraction::Unknown,
+                team_warning: true,
+                ret_to_overview: false,
+            },
+            KeypadPage::GameNumber,
+            KeypadPage::PortalLogin(0, false),
+        ];
+
+        for page in pages {
+            let reserved = widest_panel_value(&page);
+            assert!(
+                reserved.chars().all(|character| character.is_ascii_digit()),
+                "reserved value {reserved:?} is not digits for {page:?}"
+            );
+            let role = panel_role(&page);
+            // Lengths grow with the value, so the cap is the case to check; 0
+            // covers the no-player glyph and 1 a single digit.
+            for value in [0, 1, page.max_val()] {
+                let shown = panel_value(role, value);
+                assert!(
+                    shown.chars().count() <= reserved.chars().count(),
+                    "{page:?} can show {shown:?}, wider than the reserved {reserved:?}"
+                );
+            }
         }
     }
 

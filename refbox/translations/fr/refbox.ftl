@@ -171,7 +171,7 @@ pre-sd-break = PAUSE PRÉ M/S
 pre-sd-len = La durée de la pause entre la période de match précédente et la mort subite
 language = LANGUE
 ### Check
-portal-login-code = Code de connexion
+portal-login-code = CODE
 ### Check
 portal-login-instructions = Veuillez aller sur le Portail { $portal } >> Gestion des Événements >> Gestion des Arbitres, cliquer sur le bouton + pour ajouter une nouvelle Refbox, et entrer cet ID Refbox :
     { $id }

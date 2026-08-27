@@ -208,6 +208,42 @@ fn shared_start(
         .unwrap_or(candidates.len().saturating_sub(1))
 }
 
+/// Width of the widest string this label must be able to hold at `size`, or
+/// `0.0` where none were named.
+///
+/// This is what a `Shrink` box claims over and above the text it is drawing. A
+/// box that asks only for its current text moves every time that text changes,
+/// and drags whatever shares the row with it: the keypad's entered value would
+/// take width back from its own label one digit at a time, and the label would
+/// re-fit itself on every keystroke. Claiming the widest value the label may
+/// ever show keeps both boxes still.
+///
+/// Each string is measured as it would be drawn in `max_width`, which is what
+/// `fit_layout` decides too: one line where one line fits, otherwise split with
+/// its wider half governing. Reserving the split width of a string that will be
+/// drawn whole under-reserves, and the box grows the moment the text becomes
+/// that value; reserving the whole width of one that will be drawn wrapped
+/// claims room it never occupies, and can leave a filling sibling nothing.
+fn shared_width(
+    measure: impl Fn(&str, f32) -> f32,
+    size: f32,
+    shared: &[String],
+    wrap: bool,
+    max_width: f32,
+) -> f32 {
+    let drawn = |line: &str| -> f32 {
+        let whole = measure(line, size);
+        if !wrap || whole <= max_width {
+            return whole;
+        }
+        best_split(|part| measure(part, size), line)
+            .map(|(first, second)| measure(&first, size).max(measure(&second, size)))
+            .unwrap_or(whole)
+    };
+
+    shared.iter().map(|line| drawn(line)).fold(0.0f32, f32::max)
+}
+
 /// Sizes to try, largest first: whole pixels from `max_size` down to `min_size`.
 fn size_ladder(max_size: f32, min_size: f32) -> Vec<f32> {
     let min = min_size.round().max(1.0) as i32;
@@ -302,6 +338,11 @@ impl<Theme> FitText<'_, Theme> {
     /// label and timeout label live in separate columns of equal width, and
     /// without this the short one renders at full size next to a shrunken long
     /// one, so the two stop looking like a pair. The longest string governs.
+    ///
+    /// A `Shrink` box additionally claims the width of the widest of them, so it
+    /// does not resize as its own text changes — see `shared_width`. For a
+    /// `Fill` or `Fixed` box, which cannot use an intrinsic width, this is size
+    /// agreement and nothing more.
     pub(super) fn shared_with(mut self, shared: Vec<String>) -> Self {
         self.shared = shared;
         self
@@ -365,6 +406,12 @@ struct State<P: Paragraph> {
     /// The chosen arrangement, after any wrapping.
     lines: Vec<String>,
     chosen: f32,
+    /// Width of the widest shared string at the largest size they all fit,
+    /// which a `Shrink` box claims even when the text being drawn is narrower.
+    /// Deliberately *not* measured at `chosen`: a value that outgrew its
+    /// reservation is drawn smaller than the reservation was taken at, and the
+    /// box must not follow it. `0.0` where no shared strings were named.
+    reserved: f32,
     key: Option<CacheKey>,
 }
 
@@ -376,6 +423,19 @@ struct CacheKey {
     shared: Vec<String>,
     available_width: f32,
     max_size: f32,
+    /// Whether the shared strings are being reserved room, which only a
+    /// `Shrink` box can use. Part of the key so a caller that changes its width
+    /// re-measures instead of keeping an answer taken under the other rule.
+    reserve: bool,
+    /// Whether a line may be re-wrapped, which decides both the arrangement and
+    /// how much room the shared strings claim. `shared_elements` flips this
+    /// between frames, so an unkeyed answer could outlive the rule it was taken
+    /// under.
+    wrap: bool,
+    /// The ladder's floor. It sets where the search stops, and so also the size
+    /// `reserved` is measured at once nothing larger fits. Keyed for the same
+    /// reason as `wrap`.
+    min_size: f32,
 }
 
 impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for FitText<'_, Theme>
@@ -391,6 +451,7 @@ where
             paragraphs: Vec::new(),
             lines: Vec::new(),
             chosen: MIN_FIT_TEXT,
+            reserved: 0.0,
             key: None,
         })
     }
@@ -418,6 +479,15 @@ where
             shared: self.shared.clone(),
             available_width: available.width,
             max_size,
+            // `limits.resolve` ignores the intrinsic width of a `Fill` or
+            // `Fixed` box, so reserving room for a string it is not drawing
+            // would be measured and then thrown away -- wasted work on every
+            // cache miss, and the banner's clock misses once a second on the
+            // Pi. It also keeps `shared_with` meaning only what it has always
+            // meant for those callers: agree on a size.
+            reserve: self.width == Length::Shrink,
+            wrap: self.wrap,
+            min_size: self.min_size,
         };
 
         if state.key.as_ref() != Some(&key) {
@@ -453,14 +523,55 @@ where
             let ladder = size_ladder(max_size, self.min_size);
             let start = shared_start(measure, available.width, &ladder, &key.shared, self.wrap);
 
-            let (index, size) = fit_layout(measure, available.width, &ladder[start..], &line_sets);
+            // Room to hold every value this label may be asked to show, taken
+            // at the size they all fit rather than at the size finally chosen,
+            // so it does not move when the drawn text does.
+            let reserving = key.reserve && !key.shared.is_empty();
+            let reserved = if reserving {
+                // Clamped here rather than left to `limits.resolve`: a claim
+                // wider than the space would otherwise become the ceiling the
+                // text is fitted to, and the text would be sized for a box it
+                // is never granted -- clipped instead of shrunk.
+                shared_width(
+                    measure,
+                    ladder[start],
+                    &key.shared,
+                    key.wrap,
+                    available.width,
+                )
+                .min(available.width)
+            } else {
+                0.0
+            };
+
+            // A reserving box is `reserved` wide whatever it holds, so the text
+            // is fitted to that and not to the whole space. A value that
+            // outgrows what its caller declared then shrinks, rather than
+            // widening the box and taking the width from whatever shares the
+            // row: the GameNumber keypad reserves four digits, `next_game_number`
+            // increments without a cap, and a label robbed of that width can
+            // shrink past its floor and clip.
+            //
+            // Note what this trades. Inside the range a caller declares, its
+            // text never changes size -- the whole point. Outside it, the text
+            // shrinks on the keystroke that crosses the boundary, which on the
+            // GameNumber page means a manual 9999 rolling to "10000" is drawn
+            // smaller than "1000" was. That is a worse jump than the old rigid
+            // split gave (five digits fitted its 113px share), and it is still
+            // the better trade: a shrunken number is legible, a clipped label is
+            // not, and the fix for the real defect is a cap that matches what
+            // the app can generate.
+            let fit_width = if reserving { reserved } else { available.width };
+            let (index, size) = fit_layout(measure, fit_width, &ladder[start..], &line_sets);
 
             state.lines = line_sets.swap_remove(index);
             state.chosen = size;
+            state.reserved = reserved;
             state.key = Some(key);
         }
 
         let size = state.chosen;
+        let reserved = state.reserved;
         let align = self.align;
         let line_height = LineHeight::default().to_absolute(Pixels(size)).0;
 
@@ -498,8 +609,14 @@ where
             .map(|paragraph| paragraph.min_bounds().width)
             .collect();
         let block_height = line_height * lines.len() as f32;
-        // Intrinsic width is the widest line, which is what `Shrink` asks for.
-        let block_width = line_widths.iter().copied().fold(0.0f32, f32::max);
+        // Intrinsic width is the widest line, which is what `Shrink` asks for --
+        // or the widest value this label must be able to hold, where it named
+        // some, so that the box stays put as the value changes.
+        let block_width = line_widths
+            .iter()
+            .copied()
+            .fold(0.0f32, f32::max)
+            .max(reserved);
         let bounds = limits.resolve(
             self.width,
             self.height,
@@ -585,6 +702,16 @@ mod tests {
     /// measurement needs a renderer; the decision logic does not.
     fn ruler(line: &str, size: f32) -> f32 {
         line.chars().count() as f32 * size * 0.5
+    }
+
+    /// Digits at Roboto Medium's real advance, 1164/2048 em, so a test about the
+    /// keypad's own geometry asserts on the true margins rather than on an
+    /// artefact of `ruler`'s half-em guess. Every one of the three bundled faces
+    /// gives all ten digits a single advance, but not the same one: the CJK
+    /// subset's is 5% wider (614/1024 em), so Roboto is the tighter case for
+    /// "does the old share overflow" and the smaller reservation for the rest.
+    fn digit_ruler(line: &str, size: f32) -> f32 {
+        line.chars().count() as f32 * size * (1164.0 / 2048.0)
     }
 
     fn one(line: &str) -> Vec<Vec<String>> {
@@ -771,6 +898,110 @@ mod tests {
         // stays unsplittable and shrinks instead.
         let measure = |line: &str| line.chars().count() as f32;
         assert_eq!(best_split(measure, "HALBZEIT"), None);
+    }
+
+    #[test]
+    fn a_reserved_value_claims_its_width_whatever_is_being_shown() {
+        // The keypad's entered value: its box must be the width of the longest
+        // value the page can hold, not of the digits typed so far. A box that
+        // tracked the digits would hand width back to the label between
+        // keystrokes, and the label would re-fit itself every time.
+        let shared = vec!["999999".to_string()];
+        assert_eq!(shared_width(ruler, 38.0, &shared, false, 283.0), 114.0);
+        // Nothing named, nothing claimed: every other caller is unaffected.
+        assert_eq!(shared_width(ruler, 38.0, &[], false, 283.0), 0.0);
+        // The widest governs, as it does for the size.
+        let pair = vec!["9".to_string(), "999999".to_string()];
+        assert_eq!(shared_width(ruler, 38.0, &pair, false, 283.0), 114.0);
+    }
+
+    #[test]
+    fn a_wrapping_label_reserves_the_room_it_would_actually_be_drawn_in() {
+        // "AB CD EF" is 8 characters on one line, 5 in the wider half once
+        // wrapped. `fit_layout` draws the fewest lines that fit, so which of the
+        // two the box must hold depends on the room there is -- and reserving
+        // the other one moves the box as soon as the text becomes that value.
+        let shared = vec!["AB CD EF".to_string()];
+        // Room for one line: one line is what will be drawn, so that is what is
+        // claimed. Reserving the split width here would under-reserve by 30.
+        assert_eq!(shared_width(ruler, 20.0, &shared, true, 100.0), 80.0);
+        // Not room for one line: it will be drawn wrapped, and only the wider
+        // half has to fit.
+        assert_eq!(shared_width(ruler, 20.0, &shared, true, 60.0), 50.0);
+        // A label that may not wrap holds its whole line either way.
+        assert_eq!(shared_width(ruler, 20.0, &shared, false, 60.0), 80.0);
+        // The keypad's digits have nowhere to break, so none of this reaches
+        // them: `best_split` finds no gap and the whole width stands.
+        let digits = vec!["999999".to_string()];
+        assert_eq!(shared_width(ruler, 20.0, &digits, true, 40.0), 60.0);
+    }
+
+    #[test]
+    fn a_value_outgrowing_its_reserved_room_shrinks_instead_of_widening_the_box() {
+        use crate::app::theme::MEDIUM_TEXT;
+
+        // The GameNumber keypad reserves four digits, but `next_game_number`
+        // increments without a cap: a manual 9999 becomes "10000" and the page
+        // opens on five. Fitted to its reserved room those digits shrink. Fitted
+        // to the whole row they would keep full size and the box would widen by
+        // a digit, taking that width from the label -- and Indonesian "NOMOR /
+        // PERTANDINGAN:" cannot give any up, so it would shrink past its floor
+        // and clip.
+        let reserved = shared_width(
+            digit_ruler,
+            MEDIUM_TEXT,
+            &["9999".to_string()],
+            false,
+            f32::INFINITY,
+        );
+        let (_, size) = fit_layout(
+            digit_ruler,
+            reserved,
+            &size_ladder(MEDIUM_TEXT, MIN_FIT_TEXT),
+            &one("10000"),
+        );
+        assert!(
+            size < MEDIUM_TEXT,
+            "five digits should shrink into four digits of reserved room"
+        );
+        assert!(digit_ruler("10000", size) <= reserved);
+    }
+
+    #[test]
+    fn a_fixed_share_of_the_keypad_row_was_too_narrow_for_the_longest_code() {
+        use crate::app::theme::{MEDIUM_TEXT, SPACING};
+        use crate::app::view_builders::keypad_pages::PANEL_ROW_WIDTH;
+
+        // Two fifths of the keypad's title row went to the value. A six-digit
+        // portal login code -- the longest that field accepts -- does not fit
+        // that at `MEDIUM_TEXT`, so it shrank on the sixth keystroke: 130px of
+        // digits into a 113px box.
+        let ladder = size_ladder(MEDIUM_TEXT, MIN_FIT_TEXT);
+        let row = PANEL_ROW_WIDTH;
+        let code = "9".repeat(6);
+        let old_share = row * 2.0 / 5.0;
+        // The boundary the bug sat on: five digits fitted that share, six did
+        // not, so the size changed on the sixth keystroke and nowhere else.
+        assert!(fit_layout(digit_ruler, old_share, &ladder, &one("99999")).1 == MEDIUM_TEXT);
+        assert!(fit_layout(digit_ruler, old_share, &ladder, &one(&code)).1 < MEDIUM_TEXT);
+        // What is reserved instead is exactly the room those six digits need --
+        // no more, so the label keeps the rest, and no less, so they never
+        // shrink. Both halves of that have to hold: a reservation that drifted
+        // either way would pass a "does it fit" check alone.
+        let reserved = shared_width(
+            digit_ruler,
+            MEDIUM_TEXT,
+            std::slice::from_ref(&code),
+            false,
+            f32::INFINITY,
+        );
+        assert_eq!(reserved, digit_ruler(&code, MEDIUM_TEXT));
+        assert!(
+            reserved > old_share,
+            "the reservation must exceed the old share"
+        );
+        // And it leaves the label the larger half of the row.
+        assert!(row - SPACING - reserved > reserved * 0.9);
     }
 
     #[test]

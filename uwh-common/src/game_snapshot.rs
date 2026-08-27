@@ -51,10 +51,13 @@ pub struct GameSnapshot {
     pub game_number: GameNumber,
     pub next_game_number: GameNumber,
     pub event_id: Option<EventId>,
-    /// The `base_url` of the uwhportal client the refbox that sent this snapshot is using: the
+    /// The address the portal client of the refbox that sent this snapshot is built from: the
     /// official Portal (honouring `UWH_PORTAL_URL_OVERRIDE`), the UWR portal in Rugby mode, or a
-    /// hand-typed custom site. `None` from a refbox too old to report it, and on snapshots
-    /// synthesized outside a game (the beep test), where no portal call exists to describe.
+    /// hand-typed custom site. Reported whether or not that refbox is actually calling it -- in
+    /// Manual mode the client is built and sits idle, and in degraded mode there is no live client
+    /// at all -- so this says where this refbox's portal lookups do or would go, not that any is
+    /// happening. `None` from a refbox too old to report it, and on snapshots synthesized outside
+    /// a game (the beep test), which carry no portal address at all.
     ///
     /// A consumer that resolves names from a portal must use this and not an address of its own.
     /// Event ids are not unique across portal environments -- `1889-B` is one tournament on the

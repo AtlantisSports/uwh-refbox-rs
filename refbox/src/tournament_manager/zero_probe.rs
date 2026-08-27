@@ -138,7 +138,7 @@ fn drive(config: GameConfig, decided: bool, secs: u64) -> Outcome {
                     first_failure = Some((e.to_string(), tm.current_period));
                 }
             }
-            if !*tm.get_start_stop_rx().borrow() {
+            if !*running.borrow() {
                 break;
             }
             let next = tm

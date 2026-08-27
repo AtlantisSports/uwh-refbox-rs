@@ -2797,7 +2797,15 @@ impl RefBoxApp {
                 {
                     if is_confirmation {
                         tm.set_scores(scores, now);
-                        tm.end_confirm_pause(now).unwrap();
+                        if let Err(e) = tm.end_confirm_pause(now) {
+                            // The background updater can end this pause first. If its tick
+                            // ended the pause but then failed to build a snapshot, the
+                            // message that would have closed this page was lost with the
+                            // error, so the page is still up while the engine has moved on.
+                            // Acting on a pause that is already over gives the operator the
+                            // outcome they asked for, so carry on rather than crash.
+                            debug!("Confirm pause had already ended: {e}");
+                        }
                         tm.start_clock(now);
 
                         // Update `tm` after game ends to get into Between Games
@@ -4793,9 +4801,11 @@ impl RefBoxApp {
                 } else {
                     let mut tm = self.tm.lock();
                     let now = Instant::now();
-                    // Safe: end_confirm_pause's only Err is NotPaused, which can't occur here —
-                    // Message::ConfirmScores is only dispatched while a confirm-pause is active.
-                    tm.end_confirm_pause(now).unwrap();
+                    if let Err(e) = tm.end_confirm_pause(now) {
+                        // See `Message::ScoreConfirmation`: the updater can have ended this
+                        // pause already, leaving the page up. Not a crash.
+                        debug!("Confirm pause had already ended: {e}");
+                    }
                     tm.start_clock(now);
                     tm.update(now + Duration::from_millis(2)).unwrap(); // Need to update after game ends
                     self.app_state = AppState::MainPage;
@@ -4811,9 +4821,15 @@ impl RefBoxApp {
                         let mut tm = self.tm.lock();
 
                         tm.set_scores(scores, now);
-                        // Safe: end_confirm_pause's only Err is NotPaused, which can't occur here —
-                        // Message::ScoreConfirmation is only dispatched while a confirm-pause is active.
-                        tm.end_confirm_pause(now).unwrap();
+                        if let Err(e) = tm.end_confirm_pause(now) {
+                            // The background updater can end this pause first. If its tick
+                            // ended the pause but then failed to build a snapshot, the
+                            // message that would have closed this page was lost with the
+                            // error, so the page is still up while the engine has moved on.
+                            // Acting on a pause that is already over gives the operator the
+                            // outcome they asked for, so carry on rather than crash.
+                            debug!("Confirm pause had already ended: {e}");
+                        }
                         AppState::MainPage
                     } else {
                         AppState::ScoreEdit {

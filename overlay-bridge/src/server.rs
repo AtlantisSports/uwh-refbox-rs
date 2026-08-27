@@ -1586,6 +1586,12 @@ mod tests {
             refresh_notify,
         ));
 
+        // A non-default score, waited for by `wait_for_scores` rather than a fixed sleep: that is
+        // what proves the consumer actually processed this snapshot before the assertion below
+        // runs. A fixed sleep would let this test pass even if the snapshot were never consumed at
+        // all -- `read_lock(&state.directory).is_none()` holds trivially either way in that case.
+        // See `a_momentary_missing_event_id_does_not_rebuild_the_directory_for_the_same_event`'s
+        // comment further down for the same trap in the sibling shape.
         tx.send(from_chosen_refbox(
             &state,
             GameSnapshot {
@@ -1593,11 +1599,12 @@ mod tests {
                 event_id: Some(EventId::from_partial("1889-B")),
                 portal_base_url: None,
                 game_number: "1".to_string(),
+                scores: BlackWhiteBundle { black: 1, white: 0 },
                 ..Default::default()
             },
         ))
         .expect("channel should accept the snapshot");
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        wait_for_scores(&state, 1, 0).await;
 
         assert!(
             read_lock(&state.directory).is_none(),
@@ -1686,15 +1693,23 @@ mod tests {
             .clone()
             .expect("a directory should exist after the first snapshot");
 
+        // A distinguishing score, waited for by `wait_for_scores` rather than a fixed sleep: with
+        // `before` and this snapshot carrying the same (default) score, a fixed sleep would let
+        // `Arc::ptr_eq(&before, &after)` below hold trivially even if this gap snapshot were never
+        // consumed at all -- the directory would look unchanged for the same reason either way.
+        // See the near-identical trap called out in
+        // `a_momentary_missing_event_id_does_not_rebuild_the_directory_for_the_same_event`'s
+        // comment further down.
         tx.send(from_chosen_refbox(
             &state,
             GameSnapshot {
                 portal_base_url: None,
+                scores: BlackWhiteBundle { black: 1, white: 0 },
                 ..with_address.clone()
             },
         ))
         .expect("channel should accept the gap snapshot");
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        wait_for_scores(&state, 1, 0).await;
         let after = read_lock(&state.directory)
             .clone()
             .expect("the directory must survive a snapshot that reported no address");
@@ -2230,11 +2245,23 @@ mod tests {
             "a live connection must never carry a disconnected-for duration"
         );
 
-        // 3. Disconnected: drop the connection. No extra wait beyond the connection state
-        // transition itself is needed for the duration to be measurable -- `ConnectionState`
-        // records the drop instant in the same update as the state change (Task 7 review,
-        // Important 1: this used to require a background poller's catch-up window, which is
-        // exactly the two-source race that was fixed).
+        // 3. Disconnected: drop the connection, and the listener with it. Dropping only
+        // `accepted` leaves `listener` still bound, and the supervisor's own retry (after
+        // `RECONNECT_DELAY`) then completes a fresh handshake straight into that listener's
+        // backlog -- no explicit `accept()` call needed for the kernel to do that -- silently
+        // reconnecting the bridge. Under full-suite load this test's own statements can be
+        // scheduled far enough apart for that retry to land before the assertions below run,
+        // flipping the state back to "Live" out from under them: this is what made the test flaky
+        // (reported failing once in a full-suite run, `disconnected[0]["contact"]` reading
+        // `Some("Live")`, while passing 3/3 in isolation). Dropping `listener` first closes that
+        // door: any reconnect attempt is refused at the OS level instead of quietly succeeding,
+        // so the state can only go on being `Disconnected`. Nothing after this point uses
+        // `listener` again. No extra wait beyond the connection state transition itself is needed
+        // for the duration to be measurable -- `ConnectionState` records the drop instant in the
+        // same update as the state change (Task 7 review, Important 1: this used to require a
+        // background poller's catch-up window, which is exactly the two-source race that was
+        // fixed).
+        drop(listener);
         drop(accepted);
         wait_for_connection(&state, Connection::Disconnected).await;
 

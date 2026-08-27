@@ -59,6 +59,10 @@ pub struct GameSnapshot {
     /// happening. `None` from a refbox too old to report it, and on snapshots synthesized outside
     /// a game (the beep test), which carry no portal address at all.
     ///
+    /// Any `user:password@` credentials are stripped before sending, so this is the address the
+    /// operator configured but not necessarily byte-identical to what they typed -- the feed is
+    /// unauthenticated, and a password on it would be readable by anyone on the same network.
+    ///
     /// A consumer that resolves names from a portal must use this and not an address of its own.
     /// Event ids are not unique across portal environments -- `1889-B` is one tournament on the
     /// development portal and a different one on production -- so the same id looked up on the

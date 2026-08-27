@@ -119,6 +119,38 @@ pub fn parse_custom_site(input: &str) -> Result<ParsedSite, CustomSiteError> {
     })
 }
 
+/// Remove any `user:password@` credentials from the authority of a base URL.
+///
+/// The refbox reports its portal address on the JSON feed (`update_sender`), which is bound to
+/// all interfaces with no authentication -- anyone on the pool LAN can read it. `parse_custom_site`
+/// deliberately stores the authority exactly as the operator typed it, so an address entered with
+/// embedded credentials would otherwise put the password on the wire.
+///
+/// This strips at the point of reporting rather than at the point of entry: refusing credentials
+/// when they are typed would change how an existing feature behaves, which is a separate decision.
+/// Only the authority is examined -- an `@` later in the path is a legal character and is kept.
+pub fn strip_credentials(base_url: &str) -> String {
+    let Some(scheme_end) = base_url.find("://") else {
+        return base_url.to_string();
+    };
+    let authority_start = scheme_end + "://".len();
+    let authority_len = base_url[authority_start..]
+        .find('/')
+        .unwrap_or(base_url.len() - authority_start);
+    let authority = &base_url[authority_start..authority_start + authority_len];
+
+    // Split on the LAST `@`, as URL parsing does: an `@` inside the password is part of the
+    // credentials, not the start of the host.
+    match authority.rsplit_once('@') {
+        None => base_url.to_string(),
+        Some((_credentials, host)) => format!(
+            "{}{host}{}",
+            &base_url[..authority_start],
+            &base_url[authority_start + authority_len..]
+        ),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -277,5 +309,76 @@ mod test {
         let parsed = parse_custom_site("https://api/api/1234-A").unwrap();
         assert_eq!(parsed.base_url, "https://api");
         assert_eq!(parsed.event_id.partial(), "1234-A");
+    }
+
+    // ---- Credential stripping ----
+    //
+    // The base URL is reported on the refbox's unauthenticated JSON feed, so anything the
+    // operator typed into it reaches every client on the pool LAN.
+
+    #[test]
+    fn an_ordinary_address_is_left_exactly_as_it_was() {
+        assert_eq!(
+            strip_credentials("https://scoreboard.local:8099"),
+            "https://scoreboard.local:8099"
+        );
+    }
+
+    #[test]
+    fn a_username_and_password_are_removed_from_the_authority() {
+        assert_eq!(
+            strip_credentials("https://scorekeeper:hunter2@scoreboard.local:8099"),
+            "https://scoreboard.local:8099"
+        );
+    }
+
+    #[test]
+    fn a_bare_username_with_no_password_is_removed_too() {
+        assert_eq!(
+            strip_credentials("https://scorekeeper@scoreboard.local"),
+            "https://scoreboard.local"
+        );
+    }
+
+    /// The load-bearing case: `@` is legal in a path and must survive. Stripping on the first
+    /// `@` found anywhere in the string would eat the host as well.
+    #[test]
+    fn an_at_sign_in_the_path_is_not_treated_as_credentials() {
+        assert_eq!(
+            strip_credentials("https://scoreboard.local/team@pool"),
+            "https://scoreboard.local/team@pool"
+        );
+    }
+
+    /// Both at once: only the authority's userinfo goes.
+    #[test]
+    fn credentials_go_but_a_later_at_sign_in_the_path_stays() {
+        assert_eq!(
+            strip_credentials("https://user:pw@scoreboard.local/team@pool"),
+            "https://scoreboard.local/team@pool"
+        );
+    }
+
+    #[test]
+    fn http_is_handled_the_same_as_https() {
+        assert_eq!(
+            strip_credentials("http://user:pw@scoreboard.local:8099"),
+            "http://scoreboard.local:8099"
+        );
+    }
+
+    /// A password containing an `@` splits on the last one, as URL parsing does.
+    #[test]
+    fn the_last_at_sign_in_the_authority_is_the_delimiter() {
+        assert_eq!(
+            strip_credentials("https://user:p@ss@scoreboard.local"),
+            "https://scoreboard.local"
+        );
+    }
+
+    /// Nothing that is not an address should panic or be mangled.
+    #[test]
+    fn a_string_with_no_scheme_is_returned_untouched() {
+        assert_eq!(strip_credentials("not-an-address"), "not-an-address");
     }
 }

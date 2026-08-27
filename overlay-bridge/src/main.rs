@@ -27,11 +27,6 @@ struct Cli {
     #[clap(long)]
     refbox_port: Option<u16>,
 
-    /// URL of the uwhportal instance to resolve team names and rosters from. No credentials are
-    /// ever sent -- see `portal`'s module doc.
-    #[clap(long, default_value = "https://api.uwhportal.com")]
-    portal_url: String,
-
     /// Port the bridge's own HTTP server listens on, for vMix and any other poller. Not 8088 --
     /// that is vMix's own web controller and would collide on the same PC. Overrides the saved
     /// setting when passed; otherwise the last value used is remembered, falling back to 8099.
@@ -67,7 +62,7 @@ async fn main() {
     let port = settings.port;
     // Assembling the running bridge is `server::start`'s job, not this file's: it is wiring worth
     // testing, and this file cannot be tested (Task 8 review, Important 3).
-    let bridge = server::start(settings, cli.portal_url.clone());
+    let bridge = server::start(settings);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = match tokio::net::TcpListener::bind(addr).await {
@@ -123,6 +118,15 @@ mod tests {
         assert!(
             Cli::try_parse_from(["overlay-bridge", "--court", "Pool A"]).is_err(),
             "--court was removed; the court vMix reads comes from the portal's schedule"
+        );
+        assert!(
+            Cli::try_parse_from([
+                "overlay-bridge",
+                "--portal-url",
+                "https://api.uwhportal.com"
+            ])
+            .is_err(),
+            "--portal-url was removed; the bridge reads the portal address from refbox's feed"
         );
     }
 
@@ -203,11 +207,5 @@ mod tests {
         assert_eq!(settings.refbox.host, "192.168.1.50");
         assert_eq!(settings.refbox.port, 8123);
         assert_eq!(settings.port, 9001);
-    }
-
-    #[test]
-    fn the_portal_url_defaults_to_the_production_portal() {
-        let cli = Cli::try_parse_from(["overlay-bridge"]).expect("no required args");
-        assert_eq!(cli.portal_url, "https://api.uwhportal.com");
     }
 }

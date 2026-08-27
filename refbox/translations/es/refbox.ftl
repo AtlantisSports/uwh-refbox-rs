@@ -178,7 +178,7 @@ pre-sd-break = DESCANSO PREVIO
 pre-sd-len = La duración del descanso entre el período de juego precedente y la muerte súbita
 language = IDIOMA
 ### Check
-portal-login-code = Código de inicio de sesión
+portal-login-code = CÓDIGO
 ### Check
 portal-login-instructions = Por favor, vaya a { $portal } Portal >> Gestión de Eventos >> Gestión de Árbitros, haga clic en el botón + para añadir un nuevo Refbox, e introduzca este ID de Refbox:
     { $id }

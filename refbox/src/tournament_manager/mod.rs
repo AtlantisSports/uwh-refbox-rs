@@ -2716,6 +2716,9 @@ fn print_p_num_foul(num: Option<u8>) -> String {
 mod golden;
 
 #[cfg(test)]
+mod zero_probe;
+
+#[cfg(test)]
 mod test {
     use super::TournamentManagerError as TMErr;
     use super::*;

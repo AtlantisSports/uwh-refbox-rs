@@ -92,11 +92,22 @@ Logos are wanted later. The heading should be built so one can sit beside it wit
 
 The coloured dot stays. One label changes:
 
-| Connection state | Now | Becomes |
+**REVISED 2026-08-27**, after reviewing the states together: the page shows **two**, not three.
+
+| Internal state | Dot | Page says |
 |---|---|---|
-| Connected | `Connected` | unchanged |
-| Disconnected | `Disconnected` | unchanged |
-| Never connected | `Never connected to a refbox yet` | `Never connected` |
+| Connected | green | `Connected` |
+| Disconnected | red | `Not Connected` |
+| Never connected | red | `Not Connected` |
+
+The `Connection` enum keeps all three variants — only a link that once existed has a duration
+worth reporting, which the `Down for ...` line depends on. The operator is not asked to care:
+either way nothing is feeding the overlay, and either way the fix is the refbox picker below.
+
+A third state, `Connection Refused`, was considered and dropped. It would have been genuinely more
+actionable — nothing listening at that address means a wrong address or a stopped refbox — but the
+bridge does not currently record *why* a connect failed, so showing it would have meant asserting a
+cause it does not know, or new plumbing through `feed.rs` to learn one. Simplicity won.
 
 The `Down for 2m 15s` line and the keepalive warning are unchanged. No test asserts the old
 string.

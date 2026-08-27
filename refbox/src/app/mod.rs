@@ -751,9 +751,9 @@ impl RefBoxApp {
         // Credentials are stripped first: this feed is unauthenticated and bound to every
         // interface, and a custom site is stored exactly as the operator typed it, so a URL
         // entered as `https://user:password@host/...` would otherwise broadcast the password to
-        // everyone on the pool LAN.
-        new_snapshot.portal_base_url =
-            Some(custom_site::strip_credentials(&self.current_site.base_url));
+        // everyone on the pool LAN. An address that will not parse reports `None` rather than a
+        // guess -- see `strip_credentials`.
+        new_snapshot.portal_base_url = custom_site::strip_credentials(&self.current_site.base_url);
 
         self.maybe_play_sound(&new_snapshot);
         if let Err(e) = self.update_sender.send_snapshot(

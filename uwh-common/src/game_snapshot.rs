@@ -52,12 +52,16 @@ pub struct GameSnapshot {
     pub next_game_number: GameNumber,
     pub event_id: Option<EventId>,
     /// The address the portal client of the refbox that sent this snapshot is built from: the
-    /// official Portal (honouring `UWH_PORTAL_URL_OVERRIDE`), the UWR portal in Rugby mode, or a
-    /// hand-typed custom site. Reported whether or not that refbox is actually calling it -- in
-    /// Manual mode the client is built and sits idle, and in degraded mode there is no live client
-    /// at all -- so this says where this refbox's portal lookups do or would go, not that any is
-    /// happening. `None` from a refbox too old to report it, and on snapshots synthesized outside
-    /// a game (the beep test), which carry no portal address at all.
+    /// official Portal (honouring `UWH_PORTAL_URL_OVERRIDE`), the UWR portal in Rugby mode
+    /// (honouring `UWR_PORTAL_URL_OVERRIDE` -- each mode has its own), or a hand-typed custom
+    /// site. Reported whether or not that refbox is actually calling it -- in Manual mode the
+    /// client is built and sits idle, and in degraded mode there is no live client at all -- so
+    /// this says where this refbox's portal lookups do or would go, not that any is happening.
+    ///
+    /// `None` from a refbox too old to report it; on snapshots synthesized outside a game (the
+    /// beep test), which carry no portal address at all; and when the configured address will not
+    /// parse, where reporting an unreachable address as authoritative would be worse than
+    /// reporting nothing.
     ///
     /// Any `user:password@` credentials are stripped before sending, so this is the address the
     /// operator configured but not necessarily byte-identical to what they typed -- the feed is

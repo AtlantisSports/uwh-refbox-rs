@@ -58,6 +58,8 @@ pub enum CustomSiteError {
     EventIdTooShort,
 }
 
+use reqwest::Url;
+
 const API_SEGMENT: &str = "/api/";
 
 /// The shape the address had before it was shortened. Still accepted, so that an
@@ -119,36 +121,39 @@ pub fn parse_custom_site(input: &str) -> Result<ParsedSite, CustomSiteError> {
     })
 }
 
-/// Remove any `user:password@` credentials from the authority of a base URL.
+/// The address to report for a site, with any `user:password@` credentials removed, or `None`
+/// when it cannot be parsed.
 ///
-/// The refbox reports its portal address on the JSON feed (`update_sender`), which is bound to
-/// all interfaces with no authentication -- anyone on the pool LAN can read it. `parse_custom_site`
+/// The refbox reports its portal address on the JSON feed (`update_sender`), which binds to every
+/// interface with no authentication -- anyone on the pool LAN can read it. `parse_custom_site`
 /// deliberately stores the authority exactly as the operator typed it, so an address entered with
 /// embedded credentials would otherwise put the password on the wire.
 ///
-/// This strips at the point of reporting rather than at the point of entry: refusing credentials
-/// when they are typed would change how an existing feature behaves, which is a separate decision.
-/// Only the authority is examined -- an `@` later in the path is a legal character and is kept.
-pub fn strip_credentials(base_url: &str) -> String {
-    let Some(scheme_end) = base_url.find("://") else {
-        return base_url.to_string();
-    };
-    let authority_start = scheme_end + "://".len();
-    let authority_len = base_url[authority_start..]
-        .find('/')
-        .unwrap_or(base_url.len() - authority_start);
-    let authority = &base_url[authority_start..authority_start + authority_len];
+/// Stripping happens at the point of reporting rather than the point of entry: refusing
+/// credentials when they are typed would change how an existing feature behaves, and is a
+/// separate decision.
+///
+/// Parsing is delegated to the `url` crate that `reqwest` itself uses, rather than scanning for
+/// `@` by hand. A hand-rolled version ended the authority at `/` alone, so it read
+/// `https://host?q=a@b` as having the host `b` and reported a different machine than the one
+/// refbox actually calls -- the silent misdirection this module exists to prevent. Sharing the
+/// HTTP client's own parser means the reported host cannot disagree with the host requests go to.
+///
+/// `None` rather than a guess when the address will not parse: `https://user@` has no host at
+/// all, and an unreachable address presented as authoritative is worse than no address.
+pub fn strip_credentials(base_url: &str) -> Option<String> {
+    let mut url = Url::parse(base_url).ok()?;
 
-    // Split on the LAST `@`, as URL parsing does: an `@` inside the password is part of the
-    // credentials, not the start of the host.
-    match authority.rsplit_once('@') {
-        None => base_url.to_string(),
-        Some((_credentials, host)) => format!(
-            "{}{host}{}",
-            &base_url[..authority_start],
-            &base_url[authority_start + authority_len..]
-        ),
+    if url.username().is_empty() && url.password().is_none() {
+        // Nothing to remove. Return the original verbatim rather than the parser's normalised
+        // form, so the overwhelmingly common case is not reshaped -- `Url` would append a
+        // trailing slash that `parse_custom_site` deliberately trims.
+        return Some(base_url.to_string());
     }
+
+    url.set_username("").ok()?;
+    url.set_password(None).ok()?;
+    Some(url.as_str().trim_end_matches('/').to_string())
 }
 
 #[cfg(test)]
@@ -319,51 +324,89 @@ mod test {
     #[test]
     fn an_ordinary_address_is_left_exactly_as_it_was() {
         assert_eq!(
-            strip_credentials("https://scoreboard.local:8099"),
-            "https://scoreboard.local:8099"
+            strip_credentials("https://scoreboard.local:8099").as_deref(),
+            Some("https://scoreboard.local:8099")
+        );
+    }
+
+    #[test]
+    fn a_path_prefix_survives_unchanged() {
+        assert_eq!(
+            strip_credentials("https://club.example/scoreboard").as_deref(),
+            Some("https://club.example/scoreboard")
         );
     }
 
     #[test]
     fn a_username_and_password_are_removed_from_the_authority() {
         assert_eq!(
-            strip_credentials("https://scorekeeper:hunter2@scoreboard.local:8099"),
-            "https://scoreboard.local:8099"
+            strip_credentials("https://scorekeeper:hunter2@scoreboard.local:8099").as_deref(),
+            Some("https://scoreboard.local:8099")
         );
     }
 
     #[test]
     fn a_bare_username_with_no_password_is_removed_too() {
         assert_eq!(
-            strip_credentials("https://scorekeeper@scoreboard.local"),
-            "https://scoreboard.local"
+            strip_credentials("https://scorekeeper@scoreboard.local").as_deref(),
+            Some("https://scoreboard.local")
         );
     }
 
-    /// The load-bearing case: `@` is legal in a path and must survive. Stripping on the first
-    /// `@` found anywhere in the string would eat the host as well.
     #[test]
-    fn an_at_sign_in_the_path_is_not_treated_as_credentials() {
+    fn credentials_are_removed_but_a_path_prefix_is_kept() {
         assert_eq!(
-            strip_credentials("https://scoreboard.local/team@pool"),
-            "https://scoreboard.local/team@pool"
-        );
-    }
-
-    /// Both at once: only the authority's userinfo goes.
-    #[test]
-    fn credentials_go_but_a_later_at_sign_in_the_path_stays() {
-        assert_eq!(
-            strip_credentials("https://user:pw@scoreboard.local/team@pool"),
-            "https://scoreboard.local/team@pool"
+            strip_credentials("https://user:pw@club.example/scoreboard").as_deref(),
+            Some("https://club.example/scoreboard")
         );
     }
 
     #[test]
     fn http_is_handled_the_same_as_https() {
         assert_eq!(
-            strip_credentials("http://user:pw@scoreboard.local:8099"),
-            "http://scoreboard.local:8099"
+            strip_credentials("http://user:pw@scoreboard.local:8099").as_deref(),
+            Some("http://scoreboard.local:8099")
+        );
+    }
+
+    // ---- The host must never change ----
+    //
+    // These are the cases a hand-rolled parser got wrong: it ended the authority at `/` only, so
+    // an `@` after a `?`, `#` or `\` made it discard the real host and report a different one.
+    // Reporting the wrong host is worse than reporting credentials -- it is the silent
+    // misdirection this whole module exists to prevent.
+
+    #[test]
+    fn a_query_string_containing_an_at_sign_does_not_change_the_host() {
+        assert_eq!(
+            strip_credentials("https://scoreboard.local?q=a@b").as_deref(),
+            Some("https://scoreboard.local?q=a@b")
+        );
+    }
+
+    #[test]
+    fn a_fragment_containing_an_at_sign_does_not_change_the_host() {
+        assert_eq!(
+            strip_credentials("https://scoreboard.local#f@g").as_deref(),
+            Some("https://scoreboard.local#f@g")
+        );
+    }
+
+    #[test]
+    fn a_path_containing_an_at_sign_does_not_change_the_host() {
+        assert_eq!(
+            strip_credentials("https://scoreboard.local/team@pool").as_deref(),
+            Some("https://scoreboard.local/team@pool")
+        );
+    }
+
+    /// A backslash ends the authority too, per WHATWG -- which is why the host here is
+    /// `scoreboard.local` and not `pool`.
+    #[test]
+    fn a_backslash_before_an_at_sign_does_not_change_the_host() {
+        assert_eq!(
+            strip_credentials(r"https://scoreboard.local\team@pool").as_deref(),
+            Some(r"https://scoreboard.local\team@pool")
         );
     }
 
@@ -371,14 +414,22 @@ mod test {
     #[test]
     fn the_last_at_sign_in_the_authority_is_the_delimiter() {
         assert_eq!(
-            strip_credentials("https://user:p@ss@scoreboard.local"),
-            "https://scoreboard.local"
+            strip_credentials("https://user:p%40ss@scoreboard.local").as_deref(),
+            Some("https://scoreboard.local")
         );
     }
 
-    /// Nothing that is not an address should panic or be mangled.
+    // ---- Nothing is invented ----
+
+    /// An authority that is only userinfo leaves no host to report. Reporting `https://` -- an
+    /// address no request can reach -- would be a plausible-looking lie, so report nothing.
     #[test]
-    fn a_string_with_no_scheme_is_returned_untouched() {
-        assert_eq!(strip_credentials("not-an-address"), "not-an-address");
+    fn an_address_with_credentials_but_no_host_reports_nothing() {
+        assert_eq!(strip_credentials("https://user@"), None);
+    }
+
+    #[test]
+    fn a_string_that_is_not_an_address_at_all_reports_nothing() {
+        assert_eq!(strip_credentials("not-an-address"), None);
     }
 }

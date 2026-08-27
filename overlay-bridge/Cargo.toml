@@ -34,7 +34,7 @@ socket2 = { version = "0.6", features = ["all"] }
 # it as the `HH:MM` the overlay itself displays.
 time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-human-readable"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"], default-features = false }
-uwh-common = { version = "0.4", path = "../uwh-common" }
+uwh-common = { version = "0.5", path = "../uwh-common" }
 
 [dev-dependencies]
 # "io-util" (AsyncWriteExt, for tests that act as the refbox side of a socket) and "test-util"

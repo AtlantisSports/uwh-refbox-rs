@@ -209,6 +209,28 @@ stopped. Only on an actual disconnection does the clock (and everything else) bl
 
 ## Setting it up in vMix
 
+### 0. Let the bridge through Windows Firewall
+
+**[verified 2026-08-28, by a parallel effort on this machine]** Windows Firewall silently created
+an inbound **Block** rule for a newly built networked program on its first run — **twice, for two
+different programs, with no visible prompt either time**. The program simply becomes unreachable
+from other machines, with nothing on screen to say why. The design doc's §9.3 anticipated this as a
+risk; it has now been seen, so it is a setup step rather than a warning.
+
+Check it, rather than assuming a prompt appeared:
+
+```powershell
+Get-NetFirewallRule -Direction Inbound | Where-Object { $_.DisplayName -like "*overlay-bridge*" }
+```
+
+If a rule exists with `Action: Block`, remove it or set it to Allow for the private network.
+
+**Why this passes every test and then fails at a venue:** vMix polling the bridge on the same PC
+goes over `localhost`, which the firewall does not touch — so a single-PC setup works perfectly
+with a Block rule in place. It only bites when something reaches the bridge **from another
+machine**: a second PC running vMix, the status page opened from a laptop, or the bridge's
+refbox discovery scan. That is exactly the configuration nobody exercises before showtime.
+
 ### 1. Add the data source
 
 **[verified]** Open the **Data Sources Manager** from the menu in the bottom right of the main

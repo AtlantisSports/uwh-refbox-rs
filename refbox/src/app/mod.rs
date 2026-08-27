@@ -747,7 +747,13 @@ impl RefBoxApp {
         // client is built from -- already accounting for the override env var, Rugby mode's
         // separate portal, and a custom site -- so this reports rather than re-derives, and the
         // two cannot disagree.
-        new_snapshot.portal_base_url = Some(self.current_site.base_url.clone());
+        //
+        // Credentials are stripped first: this feed is unauthenticated and bound to every
+        // interface, and a custom site is stored exactly as the operator typed it, so a URL
+        // entered as `https://user:password@host/...` would otherwise broadcast the password to
+        // everyone on the pool LAN.
+        new_snapshot.portal_base_url =
+            Some(custom_site::strip_credentials(&self.current_site.base_url));
 
         self.maybe_play_sound(&new_snapshot);
         if let Err(e) = self.update_sender.send_snapshot(

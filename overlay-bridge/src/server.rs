@@ -177,12 +177,24 @@ pub struct AppState {
     scanning: tokio::sync::Mutex<()>,
 }
 
-/// The last event and game `consume_snapshots` saw, so it can tell a change from a repeat. See
-/// [`AppState::last_seen`].
+/// The last event, portal address and game `consume_snapshots` saw, so it can tell a change from a
+/// repeat. See [`AppState::last_seen`].
 #[derive(Debug, Default)]
 struct LastSeen {
     event_id: Option<EventId>,
+    /// The last address the feed actually reported. Remembered under the same rule as `event_id`:
+    /// an absent value on the wire never overwrites it.
+    portal_base_url: Option<String>,
     game_number: Option<GameNumber>,
+}
+
+impl LastSeen {
+    /// The pair a [`Directory`] is built from, once both halves are known. `None` while either is
+    /// still unknown -- and while it is `None` nothing is fetched, because there is no address to
+    /// fetch from and inventing one is what served the wrong tournament's names.
+    fn identity(&self) -> Option<(String, EventId)> {
+        Some((self.portal_base_url.clone()?, self.event_id.clone()?))
+    }
 }
 
 impl AppState {
@@ -285,7 +297,7 @@ impl Drop for Bridge {
 /// line silently substituted a built-in default for every configured address. With the assembly in
 /// one testable function and [`config::Resolved`] leaving no setting optional, that shape of bug
 /// has nowhere left to hide.
-pub fn start(settings: config::Resolved, portal_url: String) -> Bridge {
+pub fn start(settings: config::Resolved) -> Bridge {
     let state = Arc::new(AppState::new(settings));
 
     let (tx, rx) = mpsc::unbounded_channel();
@@ -303,7 +315,6 @@ pub fn start(settings: config::Resolved, portal_url: String) -> Bridge {
         Arc::clone(&state),
         rx,
         Client::new(),
-        portal_url,
         Arc::clone(&refresh_notify),
     ));
     let refresher = tokio::spawn(refresh_portal_loop(
@@ -868,7 +879,6 @@ pub async fn consume_snapshots(
     state: Arc<AppState>,
     mut snapshots: mpsc::UnboundedReceiver<FeedMessage>,
     client: Client,
-    portal_url: String,
     refresh_notify: Arc<Notify>,
 ) {
     while let Some(message) = snapshots.recv().await {
@@ -888,46 +898,52 @@ pub async fn consume_snapshots(
 
         let now = Instant::now();
         let event_id = snapshot.event_id.clone();
+        let portal_base_url = snapshot.portal_base_url.clone();
         let game_number = snapshot.game_number().clone();
 
         write_lock(&state.live).apply(snapshot, now);
 
-        // `Some` only when the feed just reported a *different* known event id -- `None` both
-        // when the event id is unknown (`None` on the wire) and when it is unchanged. Read from
-        // `state`, not from a local, so that choosing a different refbox can clear it -- see
-        // `AppState::forget_game`.
-        let new_event = {
-            let last_seen = read_lock(&state.last_seen);
-            event_id
-                .clone()
-                .filter(|id| last_seen.event_id.as_ref() != Some(id))
-        };
-        if let Some(id) = &new_event {
-            *write_lock(&state.directory) = Some(Arc::new(Directory::new(
-                client.clone(),
-                portal_url.clone(),
-                id.clone(),
-            )));
-        }
-
-        {
+        // Remember only what was actually reported. A `None` on the wire is a gap in reporting --
+        // a snapshot arriving before the refbox has attached an event, or one synthesized outside
+        // a game -- and must never overwrite a known value: if it did, the very next snapshot
+        // carrying that same value back would look new, rebuilding the directory and throwing away
+        // every team name and roster cached for something nothing has actually left.
+        let (identity, game_changed) = {
             let mut last_seen = write_lock(&state.last_seen);
-            let game_changed = last_seen.game_number.as_ref() != Some(&game_number);
-            if new_event.is_some() || game_changed {
-                refresh_notify.notify_one();
-            }
-
-            // Only remember a *real* event id. A momentary `None` on the wire (a snapshot arriving
-            // before the refbox has attached an event, or some other transient gap) must not be
-            // allowed to overwrite the last known real one -- if it did, the very next snapshot
-            // carrying that same real id back would look "new" again (since `event_id` would
-            // have been cleared to `None`), triggering a needless `Directory` rebuild that throws
-            // away every team name and roster already cached for an event nothing has actually
-            // left.
             if event_id.is_some() {
                 last_seen.event_id = event_id;
             }
+            if portal_base_url.is_some() {
+                last_seen.portal_base_url = portal_base_url;
+            }
+            let game_changed = last_seen.game_number.as_ref() != Some(&game_number);
             last_seen.game_number = Some(game_number);
+            (last_seen.identity(), game_changed)
+        };
+
+        // One comparison, against the running directory's own record of what it was built from.
+        // This covers the first address arriving, the address changing and the event changing; and
+        // because it reads the remembered pair rather than the raw wire values, it cannot fire on
+        // a gap. Until both halves are known there is no directory at all -- names stay blank
+        // rather than being looked up somewhere plausible.
+        let rebuilt = match identity {
+            Some((base_url, id)) => {
+                let matches_current = read_lock(&state.directory)
+                    .as_ref()
+                    .is_some_and(|directory| directory.identity() == (base_url.as_str(), &id));
+                if matches_current {
+                    false
+                } else {
+                    *write_lock(&state.directory) =
+                        Some(Arc::new(Directory::new(client.clone(), base_url, id)));
+                    true
+                }
+            }
+            None => false,
+        };
+
+        if rebuilt || game_changed {
+            refresh_notify.notify_one();
         }
     }
 }
@@ -1412,7 +1428,6 @@ mod tests {
             Arc::clone(&state),
             rx,
             Client::new(),
-            format!("http://{portal_addr}"),
             Arc::clone(&refresh_notify),
         ));
         let loop_handle = tokio::spawn(refresh_portal_loop(
@@ -1428,6 +1443,7 @@ mod tests {
                 scores: BlackWhiteBundle { black: 5, white: 2 },
                 game_number: "1".to_string(),
                 event_id: Some(event),
+                portal_base_url: Some(format!("http://{portal_addr}")),
                 ..Default::default()
             },
         ))
@@ -1468,7 +1484,6 @@ mod tests {
             Arc::clone(&state),
             rx,
             Client::new(),
-            "http://portal.invalid".to_string(),
             refresh_notify,
         ));
 
@@ -1477,6 +1492,7 @@ mod tests {
             GameSnapshot {
                 current_period: GamePeriod::FirstHalf,
                 event_id: Some(EventId::from_partial("event-a")),
+                portal_base_url: Some("https://api.dev.uwhportal.com".to_string()),
                 game_number: "1".to_string(),
                 ..Default::default()
             },
@@ -1492,6 +1508,7 @@ mod tests {
             GameSnapshot {
                 current_period: GamePeriod::FirstHalf,
                 event_id: Some(EventId::from_partial("event-b")),
+                portal_base_url: Some("https://api.dev.uwhportal.com".to_string()),
                 game_number: "1".to_string(),
                 ..Default::default()
             },
@@ -1510,6 +1527,187 @@ mod tests {
         consumer.abort();
     }
 
+    /// The address the feed reports is the one the directory is built for. This is the incident of
+    /// 2026-08-26 as a regression guard: refbox on the development portal, the bridge previously
+    /// on its own production default, the same event id resolving on both.
+    ///
+    /// Asserting on the directory's identity rather than on an outgoing HTTP request is
+    /// deliberate and sufficient: `portal.rs`'s own tests already prove a `Directory` fetches
+    /// from the address it was built with (`refresh_schedule` formats its URL from
+    /// `self.portal_url`, and those tests drive it against a local listener). The two compose to
+    /// "the request goes where the feed said", without standing up a mock portal here.
+    #[tokio::test]
+    async fn the_directory_is_built_for_the_address_the_feed_reports() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let (tx, rx) = mpsc::unbounded_channel();
+        let refresh_notify = Arc::new(Notify::new());
+        let consumer = tokio::spawn(consume_snapshots(
+            Arc::clone(&state),
+            rx,
+            Client::new(),
+            refresh_notify,
+        ));
+
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                event_id: Some(EventId::from_partial("1889-B")),
+                portal_base_url: Some("https://api.dev.uwhportal.com".to_string()),
+                game_number: "1".to_string(),
+                ..Default::default()
+            },
+        ))
+        .expect("channel should accept the snapshot");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let directory = read_lock(&state.directory)
+            .clone()
+            .expect("a directory should exist once both halves are known");
+        let (base_url, event_id) = directory.identity();
+        assert_eq!(base_url, "https://api.dev.uwhportal.com");
+        assert_eq!(*event_id, EventId::from_partial("1889-B"));
+
+        consumer.abort();
+    }
+
+    /// Without an address there is nowhere legitimate to look, so nothing is looked up. The
+    /// failure this forbids is falling back to production, which is what produced real names for
+    /// the wrong tournament.
+    #[tokio::test]
+    async fn an_event_with_no_address_builds_no_directory_at_all() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let (tx, rx) = mpsc::unbounded_channel();
+        let refresh_notify = Arc::new(Notify::new());
+        let consumer = tokio::spawn(consume_snapshots(
+            Arc::clone(&state),
+            rx,
+            Client::new(),
+            refresh_notify,
+        ));
+
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                event_id: Some(EventId::from_partial("1889-B")),
+                portal_base_url: None,
+                game_number: "1".to_string(),
+                ..Default::default()
+            },
+        ))
+        .expect("channel should accept the snapshot");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        assert!(
+            read_lock(&state.directory).is_none(),
+            "with no address reported the bridge must fetch nothing, not guess a portal"
+        );
+
+        consumer.abort();
+    }
+
+    /// Same event, different portal: a different tournament, so the cache must not survive.
+    #[tokio::test]
+    async fn the_same_event_on_a_different_address_replaces_the_directory() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let (tx, rx) = mpsc::unbounded_channel();
+        let refresh_notify = Arc::new(Notify::new());
+        let consumer = tokio::spawn(consume_snapshots(
+            Arc::clone(&state),
+            rx,
+            Client::new(),
+            refresh_notify,
+        ));
+
+        let snapshot_at = |address: &str| GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            event_id: Some(EventId::from_partial("1889-B")),
+            portal_base_url: Some(address.to_string()),
+            game_number: "1".to_string(),
+            ..Default::default()
+        };
+
+        tx.send(from_chosen_refbox(
+            &state,
+            snapshot_at("https://api.dev.uwhportal.com"),
+        ))
+        .expect("channel should accept the first snapshot");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let first = read_lock(&state.directory)
+            .clone()
+            .expect("a directory should exist after the first snapshot");
+
+        tx.send(from_chosen_refbox(
+            &state,
+            snapshot_at("https://api.uwhportal.com"),
+        ))
+        .expect("channel should accept the second snapshot");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let second = read_lock(&state.directory)
+            .clone()
+            .expect("a directory should still exist after the second snapshot");
+
+        assert!(
+            !Arc::ptr_eq(&first, &second),
+            "the same event id on a different portal is a different tournament -- the cached \
+             names must not carry over"
+        );
+        assert_eq!(second.identity().0, "https://api.uwhportal.com");
+
+        consumer.abort();
+    }
+
+    /// The other half of the rule the event id already has: an absent value is a gap in reporting,
+    /// never news. If it rebuilt, every cached team name would be thrown away for nothing.
+    #[tokio::test]
+    async fn a_momentary_missing_address_does_not_rebuild_the_directory() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let (tx, rx) = mpsc::unbounded_channel();
+        let refresh_notify = Arc::new(Notify::new());
+        let consumer = tokio::spawn(consume_snapshots(
+            Arc::clone(&state),
+            rx,
+            Client::new(),
+            refresh_notify,
+        ));
+
+        let with_address = GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            event_id: Some(EventId::from_partial("1889-B")),
+            portal_base_url: Some("https://api.dev.uwhportal.com".to_string()),
+            game_number: "1".to_string(),
+            ..Default::default()
+        };
+        tx.send(from_chosen_refbox(&state, with_address.clone()))
+            .expect("channel should accept the first snapshot");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let before = read_lock(&state.directory)
+            .clone()
+            .expect("a directory should exist after the first snapshot");
+
+        tx.send(from_chosen_refbox(
+            &state,
+            GameSnapshot {
+                portal_base_url: None,
+                ..with_address.clone()
+            },
+        ))
+        .expect("channel should accept the gap snapshot");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let after = read_lock(&state.directory)
+            .clone()
+            .expect("the directory must survive a snapshot that reported no address");
+
+        assert!(
+            Arc::ptr_eq(&before, &after),
+            "an absent address must not overwrite the remembered one, or the next snapshot \
+             carrying it back would look like news and discard every cached name"
+        );
+
+        consumer.abort();
+    }
+
     #[tokio::test]
     async fn a_momentary_missing_event_id_does_not_rebuild_the_directory_for_the_same_event() {
         let state = Arc::new(AppState::new(config::Resolved::default()));
@@ -1519,7 +1717,6 @@ mod tests {
             Arc::clone(&state),
             rx,
             Client::new(),
-            "http://portal.invalid".to_string(),
             refresh_notify,
         ));
 
@@ -1533,6 +1730,7 @@ mod tests {
             &state,
             GameSnapshot {
                 event_id: Some(event.clone()),
+                portal_base_url: Some("https://api.dev.uwhportal.com".to_string()),
                 game_number: "1".to_string(),
                 scores: BlackWhiteBundle { black: 1, white: 0 },
                 ..Default::default()
@@ -1562,6 +1760,7 @@ mod tests {
             &state,
             GameSnapshot {
                 event_id: Some(event),
+                portal_base_url: Some("https://api.dev.uwhportal.com".to_string()),
                 game_number: "1".to_string(),
                 scores: BlackWhiteBundle { black: 3, white: 0 },
                 ..Default::default()
@@ -1592,7 +1791,6 @@ mod tests {
             Arc::clone(&state),
             rx,
             Client::new(),
-            "http://portal.invalid".to_string(),
             Arc::clone(&refresh_notify),
         ));
 
@@ -1700,7 +1898,6 @@ mod tests {
             Arc::clone(&state),
             rx,
             Client::new(),
-            "http://portal.invalid".to_string(),
             refresh_notify,
         ));
 
@@ -1843,7 +2040,6 @@ mod tests {
             Arc::clone(&state),
             rx,
             Client::new(),
-            "http://portal.invalid".to_string(),
             refresh_notify,
         ));
 
@@ -2263,7 +2459,6 @@ mod tests {
             Arc::clone(&state),
             rx,
             Client::new(),
-            "http://portal.invalid".to_string(),
             Arc::new(Notify::new()),
         ));
         let addr = spawn_test_server(Arc::clone(&state)).await;
@@ -2647,7 +2842,6 @@ mod tests {
             Arc::clone(&state),
             rx,
             Client::new(),
-            "http://portal.invalid".to_string(),
             Arc::new(Notify::new()),
         ));
 
@@ -2815,13 +3009,10 @@ mod tests {
         // copying itself impossible to forget.
         let (refbox_addr, refbox) = fake_refbox(game(GamePeriod::SecondHalf, 44, 9, 3, "15")).await;
 
-        let bridge = start(
-            config::Resolved {
-                refbox: RefboxAddress::from(refbox_addr),
-                ..Default::default()
-            },
-            "http://portal.invalid".to_string(),
-        );
+        let bridge = start(config::Resolved {
+            refbox: RefboxAddress::from(refbox_addr),
+            ..Default::default()
+        });
 
         wait_for_scores(&bridge.state, 9, 3).await;
         let addr = spawn_test_server(Arc::clone(&bridge.state)).await;
@@ -2888,7 +3079,6 @@ mod tests {
             Arc::clone(&state),
             rx,
             Client::new(),
-            format!("http://{portal_addr}"),
             Arc::new(Notify::new()),
         ));
 
@@ -2901,6 +3091,7 @@ mod tests {
                 scores: BlackWhiteBundle { black: 2, white: 1 },
                 game_number: "10".to_string(),
                 event_id: Some(EventId::from_partial("event-a")),
+                portal_base_url: Some(format!("http://{portal_addr}")),
                 ..Default::default()
             },
         ))
@@ -2969,7 +3160,6 @@ mod tests {
             Arc::clone(&state),
             rx,
             Client::new(),
-            "http://portal.invalid".to_string(),
             Arc::new(Notify::new()),
         ));
 
@@ -2981,6 +3171,7 @@ mod tests {
             },
             game_number: "10".to_string(),
             event_id: Some(EventId::from_partial("event-a")),
+            portal_base_url: Some("https://api.dev.uwhportal.com".to_string()),
             ..Default::default()
         };
 

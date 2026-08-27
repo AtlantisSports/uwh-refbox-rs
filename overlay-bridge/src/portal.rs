@@ -246,6 +246,12 @@ impl Directory {
             white: entry.light_team.clone(),
         })
     }
+
+    /// The pair this directory was built from. It is its own record of that pair, so nothing has
+    /// to track "what did we build the current one for" alongside it and keep the two in step.
+    pub fn identity(&self) -> (&str, &EventId) {
+        (&self.portal_url, &self.event_id)
+    }
 }
 
 /// Sends `request` and returns its body as text, or `None` on any failure: the request couldn't

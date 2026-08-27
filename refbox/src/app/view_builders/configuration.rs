@@ -11,7 +11,7 @@ use iced::{
     Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
     widget::{
-        Image, Row, button, column, container, horizontal_space, image, row, svg, svg::Svg, text,
+        Image, button, column, container, horizontal_space, image, row, svg, svg::Svg, text,
         text_input, vertical_space,
     },
 };
@@ -2204,24 +2204,6 @@ fn make_buzzer_select_page<'a>(
     let selected = settings.sound.buzzer_sound;
     let has_changes = page_has_changes(ConfigPage::Buzzer, settings, page_entry_snapshot);
 
-    // Build each sound cell: blue when selected, gray otherwise.
-    let cell = |s: BuzzerSound| -> Element<'a, Message> {
-        let style = if s == selected {
-            blue_selected_button
-        } else {
-            light_gray_button
-        };
-        button(centered_text(s.to_string().to_uppercase()))
-            .padding(PADDING)
-            .height(Length::Fill)
-            .width(Length::Fill)
-            .style(style)
-            .on_press(Message::SelectBuzzer(s))
-            .into()
-    };
-
-    // 12 sounds laid out in 3 rows of 4, mirroring the Language page's
-    // row-per-row grid structure. BuzzerSound::ALL is always exactly 12 elements.
     let mut grid = column![make_game_time_button(
         snapshot,
         false,
@@ -2234,23 +2216,17 @@ fn make_buzzer_select_page<'a>(
     .spacing(SPACING)
     .height(Length::Fill);
 
-    for chunk in BuzzerSound::ALL.chunks(4) {
-        let mut r = Row::new().spacing(SPACING).height(Length::Fill);
-        for &s in chunk {
-            r = r.push(cell(s));
-        }
-        // Pad any short final chunk with spacers (chunks(4) on 12 items is always
-        // exactly 3 full rows, but this keeps the layout robust).
-        for _ in chunk.len()..4 {
-            r = r.push(horizontal_space());
-        }
+    // 12 sounds laid out in 3 rows of 4, mirroring the Language page's
+    // row-per-row grid structure. Shared with the beep-test buzzer picker so the
+    // two cannot drift apart; only the message differs.
+    for r in make_buzzer_grid_rows(selected, Message::SelectBuzzer) {
         grid = grid.push(r);
     }
 
     // One trailing filler row for vertical balance above the footer. This page
     // carries the "next game" ribbon across the top (the beep-test buzzer picker
     // does not), so a single filler here gives the same balance that picker gets
-    // from its two filler rows.
+    // from its three filler rows.
     grid = grid.push(row![horizontal_space()].height(Length::Fill));
 
     // Footer: Cancel | TEST | Apply (Apply gated by page_has_changes).
@@ -2381,91 +2357,20 @@ fn make_language_select_page<'a>(
     let original = settings.original_language.unwrap_or(Language::English);
     let apply_enabled = page_has_changes(ConfigPage::Language, settings, page_entry_snapshot);
 
-    let cjk_font = iced_core::Font {
-        family: iced_core::font::Family::Name("WenQuanYi Zen Hei"),
-        weight: iced_core::font::Weight::Normal,
-        stretch: iced_core::font::Stretch::Normal,
-        style: iced_core::font::Style::Normal,
-    };
-
-    let thai_font = iced_core::Font {
-        family: iced_core::font::Family::Name("Noto Sans Thai"),
-        weight: iced_core::font::Weight::Normal,
-        stretch: iced_core::font::Stretch::Normal,
-        style: iced_core::font::Style::Normal,
-    };
-
-    let latin_font = iced_core::Font {
-        family: iced_core::font::Family::Name("Roboto"),
-        weight: iced_core::font::Weight::Medium,
-        stretch: iced_core::font::Stretch::Normal,
-        style: iced_core::font::Style::Normal,
-    };
-
     // Font to apply to Cancel/Apply/Restart text so they render in the target language's script
     // regardless of the app's current default font. Without an explicit Latin arm, Turkish text
     // like "İPTAL" or "BAŞLAT" renders as tofu when the app is currently in a CJK/Thai locale.
     let selected_font: Option<iced_core::Font> = match selected {
-        Language::Korean | Language::Japanese | Language::Mandarin => Some(cjk_font),
-        Language::Thai => Some(thai_font),
-        _ => Some(latin_font),
+        Language::Korean | Language::Japanese | Language::Mandarin => Some(CJK_FONT),
+        Language::Thai => Some(THAI_FONT),
+        _ => Some(LATIN_FONT),
     };
 
     // A restart is needed when switching between Latin and CJK font families.
     let needs_restart = font_family_id(original) != font_family_id(selected);
 
-    let lang_btn = |lang: Language,
-                    label: &'static str,
-                    font: Option<iced_core::Font>|
-     -> Element<'a, Message> {
-        let style = if lang == selected {
-            blue_selected_button
-        } else {
-            light_gray_button
-        };
-        let label_widget = {
-            let t = centered_text(label);
-            if let Some(f) = font { t.font(f) } else { t }
-        };
-        button(label_widget)
-            .padding(PADDING)
-            .height(Length::Fill)
-            .style(style)
-            .width(Length::Fill)
-            .on_press(Message::SelectLanguage(lang))
-            .into()
-    };
+    let [lang_row_1, lang_row_2, lang_row_3, lang_row_4] = make_language_grid_rows(selected);
 
-    // Button variant for unverified translations: shows native name plus a small
-    // "(UNVERIFIED)" note in that language's own script. The note text is hardcoded
-    // in each target language, not routed through fl!, because fl! always renders
-    // in the operator's current locale — but each button must label itself.
-    let lang_btn_note = |lang: Language,
-                         main: NameLines<&'static str>,
-                         note: &'static str,
-                         font: Option<iced_core::Font>|
-     -> Element<'a, Message> {
-        let style = if lang == selected {
-            blue_selected_button
-        } else {
-            light_gray_button
-        };
-        make_lang_button_with_note(main, note, font)
-            .style(style)
-            .width(Length::Fill)
-            .on_press(Message::SelectLanguage(lang))
-            .into()
-    };
-
-    // Languages sorted alphabetically by romanized native name:
-    // Bahasa Indonesia(B), Bahasa Melayu(B), Deutsch(D), English(E),
-    // Español(E), Filipino(F), Français(F), Hangugeo/한국어(H), Italiano(I),
-    // Nederlands(N), Nihongo/日本語(N), Português(P), Thai/ภาษาไทย(T),
-    // Türkçe(T), Zhōngwén/中文(Z)
-    //
-    // English, Spanish, and French are considered verified. Every other language
-    // gets a small "(UNVERIFIED)" note in its own language, signalling to operators
-    // that a native speaker has not yet reviewed the translation.
     column![
         make_game_time_button(
             snapshot,
@@ -2476,98 +2381,10 @@ fn make_language_select_page<'a>(
             portal_indicator,
             None
         ),
-        row![
-            lang_btn_note(
-                Language::Indonesian,
-                NameLines::OneLineSmall("BAHASA INDONESIA"),
-                "(BELUM DIVERIFIKASI)",
-                Some(latin_font),
-            ),
-            lang_btn_note(
-                Language::Malay,
-                NameLines::OneLineSmall("BAHASA MELAYU"),
-                "(BELUM DISAHKAN)",
-                Some(latin_font),
-            ),
-            lang_btn_note(
-                Language::German,
-                NameLines::OneLine("DEUTSCH"),
-                "(NICHT VERIFIZIERT)",
-                Some(latin_font),
-            ),
-            lang_btn(Language::English, "ENGLISH", None),
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
-        row![
-            lang_btn(Language::Spanish, "ESPAÑOL", None),
-            lang_btn_note(
-                Language::Tagalog,
-                NameLines::OneLine("FILIPINO"),
-                "(HINDI PA NA-VERIFY)",
-                Some(latin_font),
-            ),
-            lang_btn(Language::French, "FRANÇAIS", None),
-            lang_btn_note(
-                Language::Korean,
-                NameLines::OneLine("한국어"),
-                "(검증되지 않음)",
-                Some(cjk_font),
-            ),
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
-        row![
-            lang_btn_note(
-                Language::Italian,
-                NameLines::OneLine("ITALIANO"),
-                "(NON VERIFICATO)",
-                Some(latin_font),
-            ),
-            lang_btn_note(
-                Language::Dutch,
-                NameLines::OneLine("NEDERLANDS"),
-                "(NIET GEVERIFIEERD)",
-                Some(latin_font),
-            ),
-            lang_btn_note(
-                Language::Japanese,
-                NameLines::OneLine("日本語"),
-                "(未検証)",
-                Some(cjk_font),
-            ),
-            lang_btn_note(
-                Language::Portuguese,
-                NameLines::OneLine("PORTUGUÊS"),
-                "(NÃO VERIFICADO)",
-                Some(latin_font),
-            ),
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
-        row![
-            lang_btn_note(
-                Language::Thai,
-                NameLines::OneLine("ภาษาไทย"),
-                "(ยังไม่ได้ตรวจสอบ)",
-                Some(thai_font),
-            ),
-            lang_btn_note(
-                Language::Turkish,
-                NameLines::OneLine("TÜRKÇE"),
-                "(DOĞRULANMAMIŞ)",
-                Some(latin_font),
-            ),
-            lang_btn_note(
-                Language::Mandarin,
-                NameLines::OneLine("中文"),
-                "(未验证)",
-                Some(cjk_font),
-            ),
-            horizontal_space(),
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
+        lang_row_1,
+        lang_row_2,
+        lang_row_3,
+        lang_row_4,
         {
             // Use align_x(Left) + width(Shrink) + outer container centering for all
             // dynamic text in these buttons. This ensures iced's damage tracking

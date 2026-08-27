@@ -1262,7 +1262,35 @@ pub(super) fn make_multi_label_button<'a, Message: 'a + Clone, T: IntoFragment<'
         .width(Length::Fill)
 }
 
-pub(super) enum NameLines<T> {
+/// The three faces the language picker draws in. Each tile draws in its own
+/// language's script while the Cancel/Apply footer below draws in the
+/// *selected* language's, so the two must resolve from the same three faces —
+/// hence one definition here rather than one set per picker.
+///
+/// Written out in full rather than via `Font::with_name` because `LATIN_FONT`
+/// needs `Weight::Medium`, which that constructor does not give it.
+pub(super) const CJK_FONT: iced_core::Font = iced_core::Font {
+    family: iced_core::font::Family::Name("WenQuanYi Zen Hei"),
+    weight: iced_core::font::Weight::Normal,
+    stretch: iced_core::font::Stretch::Normal,
+    style: iced_core::font::Style::Normal,
+};
+
+pub(super) const THAI_FONT: iced_core::Font = iced_core::Font {
+    family: iced_core::font::Family::Name("Noto Sans Thai"),
+    weight: iced_core::font::Weight::Normal,
+    stretch: iced_core::font::Stretch::Normal,
+    style: iced_core::font::Style::Normal,
+};
+
+pub(super) const LATIN_FONT: iced_core::Font = iced_core::Font {
+    family: iced_core::font::Family::Name("Roboto"),
+    weight: iced_core::font::Weight::Medium,
+    stretch: iced_core::font::Stretch::Normal,
+    style: iced_core::font::Style::Normal,
+};
+
+enum NameLines<T> {
     /// Name at the app-default text size. Used for short names like "TÜRKÇE".
     OneLine(T),
     /// Name at SMALL_TEXT. Used for long names like "BAHASA INDONESIA" that don't
@@ -1270,12 +1298,32 @@ pub(super) enum NameLines<T> {
     OneLineSmall(T),
 }
 
+/// A plain language tile: the native name, centred, in that language's script.
+///
+/// The sibling of [`make_lang_button_with_note`]. The two shapes sit next to
+/// each other in the same row of the picker, so they are defined next to each
+/// other here and neither takes a height — that is what keeps them in step.
+/// Callers add the style and the message.
+fn make_lang_button<'a, Message: 'a + Clone>(
+    label: &'static str,
+    font: Option<iced_core::Font>,
+) -> Button<'a, Message> {
+    let label_widget = {
+        let t = centered_text(label);
+        if let Some(f) = font { t.font(f) } else { t }
+    };
+    button(label_widget)
+        .padding(PADDING)
+        .height(Length::Fill)
+        .width(Length::Fill)
+}
+
 /// A language tile with a small note beneath the name. Fills its row, and must
-/// stay in step with the plain `lang_btn` closures in `configuration.rs` and
-/// `beep_test_settings.rs`: the two shapes sit side by side in the same row, so
-/// changing the height of one without the other is the MANUAL GAMES defect
-/// again.
-pub(super) fn make_lang_button_with_note<'a, Message, T>(
+/// stay in step with [`make_lang_button`], the plain shape that sits beside it
+/// in the same row: changing the height of one without the other is the MANUAL
+/// GAMES defect again. Both are private and both are built by
+/// [`make_language_grid_rows`], which is what makes that possible to check.
+fn make_lang_button_with_note<'a, Message, T>(
     main: NameLines<T>,
     note: T,
     font: Option<iced_core::Font>,
@@ -1312,6 +1360,238 @@ where
         .width(Length::Fill)
 }
 
+/// The 15 language tiles as four rows, shared by both language pickers.
+///
+/// Both pickers send `Message::SelectLanguage`; what differs between them is
+/// only what surrounds the grid — the ribbon, filler rows and footer that each
+/// page adds for itself. So this returns the rows, not the page, and each page's
+/// own comment owns its layout.
+///
+/// Returned as exactly four rows because the grid is hand-written, not
+/// generated: a sixteenth language needs a considered place in the alphabetical
+/// order, not an automatic append.
+pub(super) fn make_language_grid_rows<'a>(selected: Language) -> [Element<'a, Message>; 4] {
+    let lang_btn = |lang: Language,
+                    label: &'static str,
+                    font: Option<iced_core::Font>|
+     -> Element<'a, Message> {
+        let style = if lang == selected {
+            blue_selected_button
+        } else {
+            light_gray_button
+        };
+        make_lang_button(label, font)
+            .style(style)
+            .on_press(Message::SelectLanguage(lang))
+            .into()
+    };
+
+    // Button variant for unverified translations: shows native name plus a small
+    // "(UNVERIFIED)" note in that language's own script. The note text is hardcoded
+    // in each target language, not routed through fl!, because fl! always renders
+    // in the operator's current locale — but each button must label itself.
+    let lang_btn_note = |lang: Language,
+                         main: NameLines<&'static str>,
+                         note: &'static str,
+                         font: Option<iced_core::Font>|
+     -> Element<'a, Message> {
+        let style = if lang == selected {
+            blue_selected_button
+        } else {
+            light_gray_button
+        };
+        make_lang_button_with_note(main, note, font)
+            .style(style)
+            .on_press(Message::SelectLanguage(lang))
+            .into()
+    };
+
+    // Languages sorted alphabetically by romanized native name:
+    // Bahasa Indonesia(B), Bahasa Melayu(B), Deutsch(D), English(E),
+    // Español(E), Filipino(F), Français(F), Hangugeo/한국어(H), Italiano(I),
+    // Nederlands(N), Nihongo/日本語(N), Português(P), Thai/ภาษาไทย(T),
+    // Türkçe(T), Zhōngwén/中文(Z)
+    //
+    // English, Spanish, and French are considered verified. Every other language
+    // gets a small "(UNVERIFIED)" note in its own language, signalling to operators
+    // that a native speaker has not yet reviewed the translation.
+    [
+        row![
+            lang_btn_note(
+                Language::Indonesian,
+                NameLines::OneLineSmall("BAHASA INDONESIA"),
+                "(BELUM DIVERIFIKASI)",
+                Some(LATIN_FONT),
+            ),
+            lang_btn_note(
+                Language::Malay,
+                NameLines::OneLineSmall("BAHASA MELAYU"),
+                "(BELUM DISAHKAN)",
+                Some(LATIN_FONT),
+            ),
+            lang_btn_note(
+                Language::German,
+                NameLines::OneLine("DEUTSCH"),
+                "(NICHT VERIFIZIERT)",
+                Some(LATIN_FONT),
+            ),
+            lang_btn(Language::English, "ENGLISH", None),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .into(),
+        row![
+            lang_btn(Language::Spanish, "ESPAÑOL", None),
+            lang_btn_note(
+                Language::Tagalog,
+                NameLines::OneLine("FILIPINO"),
+                "(HINDI PA NA-VERIFY)",
+                Some(LATIN_FONT),
+            ),
+            lang_btn(Language::French, "FRANÇAIS", None),
+            lang_btn_note(
+                Language::Korean,
+                NameLines::OneLine("한국어"),
+                "(검증되지 않음)",
+                Some(CJK_FONT),
+            ),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .into(),
+        row![
+            lang_btn_note(
+                Language::Italian,
+                NameLines::OneLine("ITALIANO"),
+                "(NON VERIFICATO)",
+                Some(LATIN_FONT),
+            ),
+            lang_btn_note(
+                Language::Dutch,
+                NameLines::OneLine("NEDERLANDS"),
+                "(NIET GEVERIFIEERD)",
+                Some(LATIN_FONT),
+            ),
+            lang_btn_note(
+                Language::Japanese,
+                NameLines::OneLine("日本語"),
+                "(未検証)",
+                Some(CJK_FONT),
+            ),
+            lang_btn_note(
+                Language::Portuguese,
+                NameLines::OneLine("PORTUGUÊS"),
+                "(NÃO VERIFICADO)",
+                Some(LATIN_FONT),
+            ),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .into(),
+        row![
+            lang_btn_note(
+                Language::Thai,
+                NameLines::OneLine("ภาษาไทย"),
+                "(ยังไม่ได้ตรวจสอบ)",
+                Some(THAI_FONT),
+            ),
+            lang_btn_note(
+                Language::Turkish,
+                NameLines::OneLine("TÜRKÇE"),
+                "(DOĞRULANMAMIŞ)",
+                Some(LATIN_FONT),
+            ),
+            lang_btn_note(
+                Language::Mandarin,
+                NameLines::OneLine("中文"),
+                "(未验证)",
+                Some(CJK_FONT),
+            ),
+            horizontal_space(),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .into(),
+    ]
+}
+
+/// The 12 buzzer sounds as three rows of four, shared by both buzzer pickers.
+///
+/// `on_select` is the message each cell sends: the Sound settings page passes
+/// `Message::SelectBuzzer`, the beep-test picker passes
+/// `Message::BeepTestSelectBuzzer`. The two pickers are deliberately separate
+/// pages sending separate messages — only the cells are shared.
+///
+/// Height is not a parameter, for the reason given on [`make_tile_button`].
+/// Callers place these rows in their own column and add their own filler rows
+/// and footer, which is all that differs between the two pages.
+///
+/// **Adding a 13th `BuzzerSound` changes both pages' layout.** `chunks(4)` over
+/// `BuzzerSound::ALL` yields three rows today, and each caller picks its number
+/// of filler rows to balance against exactly three; a fourth row would unbalance
+/// both without any build failure. This returns a `Vec` rather than the
+/// `[Element; 3]` that would make it a compile error, because the row count is
+/// derived from a slice and a fixed-size conversion would need a fallible cast
+/// this function has no way to fail. Revisit both pickers' filler rows if the
+/// sound list ever changes length.
+pub(super) fn make_buzzer_grid_rows<'a>(
+    selected: BuzzerSound,
+    on_select: fn(BuzzerSound) -> Message,
+) -> Vec<Element<'a, Message>> {
+    // Build each sound cell: blue when selected, gray otherwise.
+    let cell = |s: BuzzerSound| -> Element<'a, Message> {
+        let style = if s == selected {
+            blue_selected_button
+        } else {
+            light_gray_button
+        };
+        button(centered_text(s.to_string().to_uppercase()))
+            .padding(PADDING)
+            .height(Length::Fill)
+            .width(Length::Fill)
+            .style(style)
+            .on_press(on_select(s))
+            .into()
+    };
+
+    // 12 sounds laid out in 3 rows of 4. BuzzerSound::ALL is always exactly 12
+    // elements.
+    let mut rows = Vec::new();
+    for chunk in BuzzerSound::ALL.chunks(4) {
+        let mut r = Row::new().spacing(SPACING).height(Length::Fill);
+        for &s in chunk {
+            r = r.push(cell(s));
+        }
+        // Pad any short final chunk with spacers (chunks(4) on 12 items is always
+        // exactly 3 full rows, but this keeps the layout robust).
+        for _ in chunk.len()..4 {
+            r = r.push(horizontal_space());
+        }
+        rows.push(r.into());
+    }
+    rows
+}
+
+/// Text centred in both axes, filling its parent.
+///
+/// **Do not use this for a label that changes in place.** Pairing
+/// `align_y(Center)` with `height(Fill)` is the iced 0.13 stale-paragraph
+/// pattern that `make_multi_label_button` and the other button helpers were
+/// rewritten to avoid — and this helper does the same on the horizontal axis, so
+/// both of its anchors depend on the content. A text widget's cached paragraph
+/// position survives a content change, so the replacement label is drawn from
+/// the old one's offset and leaves the previous glyphs stranded on screen.
+/// `make_custom_site_page`'s rejection message carries a longer note on the same
+/// class of bug, measured on screen, and avoids this helper for exactly that
+/// reason. The title on that same page still uses it — see below.
+///
+/// It is safe at every call site today only because none of those labels ever
+/// changes while its widget stays put: the buzzer cells, the language tiles and
+/// the beep-test preset button are fixed per cell — selecting one changes the
+/// *style*, never the text — and the foul keypad's `=` is a literal. The two
+/// built from `fl!` (the preset button's label and the custom-site title) change
+/// only on a language switch, which rebuilds the page. Making any of these
+/// labels dynamic means moving it off this helper first.
 pub fn centered_text<'a, T: IntoFragment<'a>>(label: T) -> Text<'a> {
     text(label)
         .align_y(Vertical::Center)

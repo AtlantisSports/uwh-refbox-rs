@@ -654,5 +654,85 @@ If nothing changed, commit nothing.
 
 ## Deviations
 
-(Record execution deviations here rather than in standalone commits, per
-`.claude/rules/plan-execution.md`.)
+Recorded here rather than in standalone commits, per `.claude/rules/plan-execution.md`.
+
+**The plan was wrong about the pair rule, and the final review caught it.** Task 3's brief said to
+remember the address "the same way the event id is already remembered" — independently, under its
+own `is_some()` guard. Independent halves can be married into a pair no refbox ever reported: stop a
+refbox on one portal, relaunch it against another, and it comes up with an address but no event
+chosen, so the new address lands beside the previous portal's event id and that event is fetched
+from the new portal — the original incident, by a different road. `AppState::forget_game` does not
+save it (one call site, an operator *switching* refbox, not a restart). Neither the acceptance
+walkthrough nor any of the six tests written from this plan could tell the two rules apart. Fixed in
+`b683c99a` by remembering both halves jointly, with a test that fails against the old rule; the spec
+was corrected in `e7fc35f8`.
+
+**Two of the plan's own tests could pass vacuously.** Task 3's brief specified a fixed 50 ms sleep
+plus an observationally identical gap snapshot, so `Arc::ptr_eq` and `is_none()` both held trivially
+if the consumer never ran — and `server.rs` already carried a comment forbidding exactly that shape.
+Fixed in `152d1f5c` using the existing `wait_for_scores` helper.
+
+**Task 4 was not dispatchable.** Its walkthrough requires driving the refbox UI, which is Eric's, so
+the controller ran steps 1–2 and handed him step 3 rather than letting a subagent report a
+walkthrough it could not perform.
+
+**A pre-existing flaky test was fixed rather than documented.** `just check` was red on arrival:
+`status_json_distinguishes_all_three_connection_states...` dropped its accepted connection while its
+listener was still bound, so the supervisor reconnected through the listen backlog and the state
+flipped back to Live under load. Test-only, this branch's own phase-1 work, and an intermittently red
+gate blocks this plan's acceptance — so it was fixed in `152d1f5c` (`drop(listener)`), not parked.
+
+**The plan's "65 literal sites" figure is an over-count.** The grep behind it matched struct
+definitions and non-literals; almost every real literal ends in `..Default::default()`, which is why
+only 5 files needed changing. Task 1's premise (the compiler names every site that needs it) held.
+
+**Section 9's claim about the `update_sender` test was wrong** and is corrected in the spec: that
+test builds its expectation with the same serializer call the code under test uses, so it cannot
+guard the field's presence on the wire. The real guard is the missing-key test in `uwh-common`.
+
+**Deferred, with reasons, for a future pass:** three new tests still gate on a fixed 50 ms sleep
+(they assert positive facts, so the failure mode is a flake rather than a false pass); a third
+existing test carries the same undocumented current-thread-runtime assumption that Findings 4
+documented in two others; the reported address is used unvalidated, so a garbled value degrades
+silently to blank names; and `overlay-bridge/src/status.rs:909` has a pre-existing
+`clippy::useless_format` that `just lint` does not catch because it is not `--all-targets`.
+
+**Open decision for Eric, not absorbed silently:** this field adds ~46 bytes to every feed line, and
+the deployed Pi overlay stops for the rest of the game once a line passes 1024 bytes
+(`docs/backlog/overlay-feed-reader-defects/NOTE.md`, defect 2). Headroom on the repo's own 7-entry
+capture falls from ~231 to ~181 bytes. Whether the overlay-reader fix now moves ahead of the
+fouls/warnings rollout is his call.
+
+## Walkthrough outcome
+
+Walked 2026-08-28 against a live refbox and bridge. **Note the config that actually reached it:**
+refbox was on `source = "Custom"` with the custom site `https://api.dev.uwhportal.com/api/1889-B`,
+so the address came through the custom-site path, not the built-in portal plus
+`UWH_PORTAL_URL_OVERRIDE`. The override was set but is deliberately never consulted for a custom
+site.
+
+- **Step 1 — PASSED (controller observed).** The bridge, launched with no portal argument of any
+  kind, served `SYDNEY KINGS A` vs `BRISBANE A` on `/scorebug`. Those are the dev portal's
+  `1889-B` teams; production's `1889-B` is a different tournament entirely (the Colorado "Battle @
+  Altitude"), so the names themselves identify which portal was read. With `--portal-url` deleted,
+  refbox's feed is the only place the address could have come from.
+- **Live wire proof of Task 2 — PASSED (controller observed).** Sampling refbox's feed directly
+  showed `"portal_base_url":"https://api.dev.uwhportal.com"` on every line. This is the evidence
+  Task 2 could not get from a unit test, and it is why the walkthrough was that task's only guard.
+- **Step 3 — PASSED (controller observed).** `--portal-url` is refused: "unexpected argument
+  '--portal-url' found", with a tip pointing at `--port`.
+- **Step 4, the stopped clock — PASSED (Eric walked it).** Eric stopped the clock two ways rather
+  than the one asked for — clicking the time to edit it (which pauses), and a team timeout — and
+  saw no effect on the bridge: the dot stayed green and values held. This is the result a wrong
+  build would have failed while passing everything else.
+- **Step 2 (follow a portal change mid-session) — NOT WALKED.** The controller recommended skipping
+  it and Eric replied "that all seems good" to the message carrying that recommendation. Reasons:
+  the live chain is already proven end to end by step 1 plus the wire capture; the change-of-address
+  case is covered by unit tests (`the_same_event_on_a_different_address_replaces_the_directory`);
+  and the faithful live version points a refbox at the production portal, which risks a real result
+  being posted to a live event. An unreachable-address variant remains available if wanted.
+
+Measured while walking it, for the record: refbox emits ~1 snapshot/second (7 lines in 6s, one per
+second-value), each ~418 bytes on this configuration — relevant to the 1024-byte overlay-reader
+margin discussed in the spec's §5.
+

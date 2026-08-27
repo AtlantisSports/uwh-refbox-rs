@@ -957,7 +957,8 @@ fn make_event_config_page<'a>(
                         time_string(config.half_play_duration),
                         (false, true),
                         Some(Message::EditParameter(LengthParameter::Half)),
-                    ),
+                    )
+                    .style(length_button_style(config, LengthParameter::Half)),
                     make_value_button(
                         fl!("pre-ot-break-length"),
                         time_string(config.pre_overtime_break),
@@ -967,7 +968,8 @@ fn make_event_config_page<'a>(
                         } else {
                             None
                         },
-                    ),
+                    )
+                    .style(length_button_style(config, LengthParameter::PreOvertime)),
                     make_value_button(
                         fl!("pre-sd-break-length"),
                         time_string(config.pre_sudden_death_duration),
@@ -978,6 +980,7 @@ fn make_event_config_page<'a>(
                             None
                         },
                     )
+                    .style(length_button_style(config, LengthParameter::PreSuddenDeath))
                 ]
                 .spacing(SPACING)
                 .height(Length::Fill),
@@ -993,7 +996,8 @@ fn make_event_config_page<'a>(
                         } else {
                             None
                         },
-                    ),
+                    )
+                    .style(length_button_style(config, LengthParameter::HalfTime)),
                     make_value_button(
                         fl!("ot-half-length"),
                         time_string(config.ot_half_play_duration),
@@ -1003,13 +1007,18 @@ fn make_event_config_page<'a>(
                         } else {
                             None
                         },
-                    ),
+                    )
+                    .style(length_button_style(config, LengthParameter::OvertimeHalf)),
                     make_value_button(
                         fl!("minimum-brk-btwn-games"),
                         time_string(config.minimum_break),
                         (false, true),
                         Some(Message::EditParameter(LengthParameter::MinimumBetweenGame)),
                     )
+                    .style(length_button_style(
+                        config,
+                        LengthParameter::MinimumBetweenGame
+                    ))
                 ]
                 .spacing(SPACING)
                 .height(Length::Fill),
@@ -1042,7 +1051,11 @@ fn make_event_config_page<'a>(
                         } else {
                             None
                         },
-                    ),
+                    )
+                    .style(length_button_style(
+                        config,
+                        LengthParameter::OvertimeHalfTime
+                    )),
                     make_value_button(
                         fl!("game-block-full"),
                         time_string(config.game_block),
@@ -1072,7 +1085,13 @@ fn make_event_config_page<'a>(
     let game_block_too_short =
         !uses_remote && matches!(game_block_validity(config), GameBlockValidity::TooShort);
     let has_changes = page_has_changes(ConfigPage::Game, settings, page_entry_snapshot);
-    let apply_enabled = has_changes && !apply_blocked && !game_block_too_short;
+    let apply_enabled = page_apply_enabled(
+        has_changes,
+        apply_blocked,
+        game_block_too_short,
+        config,
+        uses_remote,
+    );
 
     let cancel_btn = make_button(cancel_or_back_label(has_changes))
         .style(red_button)
@@ -1683,6 +1702,223 @@ fn param_edit_has_changes(
         || (matches!(param, LengthParameter::Half) && single_half != old_single_half)
 }
 
+/// The shortest any constrained period may be.
+///
+/// A zero-length half is not a real game format, and the engine cannot survive one:
+/// entering a period that carries penalties across the boundary (Second Half,
+/// Overtime First/Second Half, and Sudden Death) sets that period's clock and then
+/// immediately reads it back, and a zero-length countdown clock whose start instant
+/// has already passed reports no time at all. `cull_penalties` in
+/// `tournament_manager/mod.rs` turns that into an error, which the clock updater
+/// unwraps — panicking with the game-state lock held, which poisons it and takes
+/// the whole app down.
+///
+/// Sudden Death also culls, but is the exception, and not because it skips it: it
+/// installs a counting-*up* clock, which never reports no time left.
+const MIN_PERIOD_LENGTH: Duration = Duration::from_secs(1);
+
+/// Whether the pending value is shorter than [`MIN_PERIOD_LENGTH`], for a parameter
+/// where that is not a legal setting. Refused by greying out APPLY.
+///
+/// The rule is that **no time value in the settings may be zero** (ruling by the
+/// tournament organiser, 2026-08-27, who owns this question). It rests on two
+/// separate grounds, and it is worth knowing which applies where:
+///
+/// * The two play halves and the overtime halves genuinely crash the engine at zero,
+///   as described on [`MIN_PERIOD_LENGTH`]. `Half` is constrained in both its
+///   2 Halves and 1 Period forms, since both commit the same `half_play_duration`.
+/// * The breaks — half-time, pre-overtime, overtime half-time, pre-sudden-death and
+///   the minimum break between games — survive zero perfectly well: none of them
+///   culls penalties, so the engine resolves a zero-length one in about a tenth of a
+///   second. They are refused because zero is not a setting the operator should be
+///   able to choose, not because anything breaks. A game with no half-time, for
+///   instance, is expressed by picking 1 Period rather than 2 Halves with a zero
+///   break, which is what makes that length irrelevant rather than zero.
+///
+/// `GameBlock` is the only length this does not constrain, and not because zero is
+/// acceptable for it: `game_block_validity` already refuses any slot too short to
+/// fit the game plus the minimum break, which refuses zero as a special case and
+/// gives a more informative reason than this rule could.
+fn param_length_too_short(param: LengthParameter, length: Duration) -> bool {
+    // Exhaustive on purpose: a new `LengthParameter` must be classified here rather
+    // than silently defaulting to unguarded.
+    let is_constrained = match param {
+        LengthParameter::Half
+        | LengthParameter::HalfTime
+        | LengthParameter::OvertimeHalf
+        | LengthParameter::OvertimeHalfTime
+        | LengthParameter::PreOvertime
+        | LengthParameter::PreSuddenDeath
+        | LengthParameter::MinimumBetweenGame => true,
+        // Game Block is the exception, and not because zero is acceptable there: it
+        // already has a stricter rule of its own (`game_block_validity`), which
+        // refuses any slot too short to fit the game plus the minimum break, and so
+        // refuses zero as a special case. A second overlapping rule would only
+        // duplicate it, with a less informative reason.
+        LengthParameter::GameBlock => false,
+    };
+    is_constrained && length < MIN_PERIOD_LENGTH
+}
+
+/// The colour for the value shown in the game parameter editor, or `None` for the
+/// normal colour.
+///
+/// Red marks a value APPLY will refuse, which is what red already means on the Game
+/// Block editor — so it is shown only for the lengths that are actually constrained.
+/// A legal 0:00 (the minimum break, the pre-overtime / pre-sudden-death breaks, the
+/// overtime half-time) stays the normal colour, because red beside a working APPLY
+/// would teach the operator that red signals nothing.
+///
+/// The time edit screen deliberately has no equivalent: it passes `None`, and editing
+/// the live game clock down to 0:00 is a legitimate thing to do.
+fn param_value_color(
+    game_block_validity: Option<GameBlockValidity>,
+    param: LengthParameter,
+    length: Duration,
+) -> Option<iced::Color> {
+    if param_length_too_short(param, length) {
+        return Some(RED);
+    }
+    match game_block_validity {
+        Some(GameBlockValidity::TooShort) => Some(RED),
+        Some(GameBlockValidity::Tight) => Some(YELLOW),
+        _ => None,
+    }
+}
+
+/// Whether APPLY is offered in the game parameter editor.
+///
+/// Lifted out of the view so the composition itself is testable: a guard that is
+/// correct but never consulted is indistinguishable from no guard at all.
+fn param_apply_enabled(
+    game_block_validity: Option<GameBlockValidity>,
+    param: LengthParameter,
+    length: Duration,
+    has_changes: bool,
+) -> bool {
+    !matches!(game_block_validity, Some(GameBlockValidity::TooShort))
+        && !param_length_too_short(param, length)
+        && has_changes
+}
+
+/// Whether the Game config page's whole-page APPLY must be refused because a play
+/// length already in the config is below [`MIN_PERIOD_LENGTH`].
+///
+/// The parameter editor's guard cannot cover this. That page's APPLY commits the
+/// entire config, so an operator whose config already holds a zero-length overtime
+/// half — saved by a build from before the guard existed, hand-edited, or inherited
+/// from a portal "FINALS" rule, which leaves the length at zero and simply turns
+/// overtime off — can re-arm the crash by flipping OVERTIME ALLOWED on and pressing
+/// APPLY, without ever opening the OT HALF LENGTH editor.
+///
+/// Each length counts only while its own editor is reachable, so guard-active and
+/// button-pressable are the same predicate and the control that clears a greyed
+/// APPLY is always on screen: the overtime half only while OVERTIME ALLOWED is on
+/// (its button is dead otherwise), and half-time only in 2 Halves mode (its button
+/// is dead in 1 Period mode, where the value is irrelevant anyway). A dormant zero
+/// behind a disabled button can never reach a period transition, and refusing APPLY
+/// over one would block unrelated edits with nothing on screen to explain why.
+/// CANCEL is unconditional either way.
+///
+/// Skipped whenever the config comes from a remote source — `uses_remote` is any
+/// `GameSource` other than `Manual`, so Custom as well as Portal. There the config is
+/// derived from the schedule's timing rule rather than typed in and the length grid is
+/// not rendered at all, so refusing APPLY would strand the operator with no control
+/// that could fix it.
+fn config_has_too_short_length(config: &GameConfig, uses_remote: bool) -> bool {
+    !uses_remote
+        && ALL_LENGTHS
+            .into_iter()
+            .any(|param| config_length_refused(config, param))
+}
+
+/// Whether this committed length is a reason the Game config page's APPLY is refused,
+/// which also drives the red style on its button in the length grid.
+///
+/// A length only counts while its own editor is reachable: half-time only in 2 Halves
+/// mode and the overtime half only while OVERTIME ALLOWED is on, because otherwise the
+/// button is dead, the value is not in play, and colouring it red would point the
+/// operator at a control they cannot open. This is the same predicate the button's
+/// `on_press` uses, which is what makes a greyed APPLY always escapable.
+fn config_length_refused(config: &GameConfig, param: LengthParameter) -> bool {
+    // The `&&` on each arm mirrors that button's own `on_press` condition in the
+    // length grid, so a length is only ever flagged while the operator can open it.
+    match param {
+        LengthParameter::Half => param_length_too_short(param, config.half_play_duration),
+        LengthParameter::HalfTime => {
+            !config.single_half && param_length_too_short(param, config.half_time_duration)
+        }
+        LengthParameter::OvertimeHalf => {
+            config.overtime_allowed && param_length_too_short(param, config.ot_half_play_duration)
+        }
+        LengthParameter::OvertimeHalfTime => {
+            config.overtime_allowed && param_length_too_short(param, config.ot_half_time_duration)
+        }
+        LengthParameter::PreOvertime => {
+            config.overtime_allowed && param_length_too_short(param, config.pre_overtime_break)
+        }
+        LengthParameter::PreSuddenDeath => {
+            config.sudden_death_allowed
+                && param_length_too_short(param, config.pre_sudden_death_duration)
+        }
+        LengthParameter::MinimumBetweenGame => param_length_too_short(param, config.minimum_break),
+        // Game Block refuses zero through `game_block_validity` instead; see
+        // `param_length_too_short`.
+        LengthParameter::GameBlock => false,
+    }
+}
+
+/// Every length parameter, in grid order.
+///
+/// Deliberately the FULL set rather than only the constrained ones:
+/// `config_length_refused` already answers false for anything unconstrained, so
+/// iterating everything means there is no second list of "which lengths are
+/// constrained" that could drift out of step with `param_length_too_short`'s match.
+///
+/// Hand-maintained (there is no way to enumerate the variants without another
+/// dependency); `tests::expected_constrained` matches exhaustively, so adding a
+/// variant is a compile error there until it has been classified.
+const ALL_LENGTHS: [LengthParameter; 8] = [
+    LengthParameter::Half,
+    LengthParameter::PreOvertime,
+    LengthParameter::PreSuddenDeath,
+    LengthParameter::HalfTime,
+    LengthParameter::OvertimeHalf,
+    LengthParameter::MinimumBetweenGame,
+    LengthParameter::OvertimeHalfTime,
+    LengthParameter::GameBlock,
+];
+
+/// The style for a length button in the Game config page's grid: red when that length
+/// is refusing APPLY, mirroring what Game Block's button already does when it is too
+/// short, so a greyed APPLY always has something red on the page explaining it.
+fn length_button_style(
+    config: &GameConfig,
+    param: LengthParameter,
+) -> fn(&iced::Theme, button::Status) -> button::Style {
+    if config_length_refused(config, param) {
+        red_button
+    } else {
+        light_gray_button
+    }
+}
+
+/// Whether the Game config page's whole-page APPLY is offered. Lifted out of the
+/// view for the same reason as [`param_apply_enabled`]: the composition is the part
+/// that can silently rot, so it is the part worth a test.
+fn page_apply_enabled(
+    has_changes: bool,
+    apply_blocked: bool,
+    game_block_too_short: bool,
+    config: &GameConfig,
+    uses_remote: bool,
+) -> bool {
+    has_changes
+        && !apply_blocked
+        && !game_block_too_short
+        && !config_has_too_short_length(config, uses_remote)
+}
+
 pub(in super::super) fn build_game_parameter_editor<'a>(
     data: ViewData<'_, '_>,
     param: LengthParameter,
@@ -1730,11 +1966,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     } else {
         None
     };
-    let value_color = match game_block_validity {
-        Some(GameBlockValidity::TooShort) => Some(RED),
-        Some(GameBlockValidity::Tight) => Some(YELLOW),
-        _ => None,
-    };
+    let value_color = param_value_color(game_block_validity, param, length);
     let validity_note: Option<Element<'a, Message>> = match game_block_validity {
         Some(GameBlockValidity::TooShort) => Some(
             text(fl!("game-block-too-short"))
@@ -1838,8 +2070,9 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     // The original value shown when the editor opened, re-derived from the seed
     // config (the in-progress edited config, or the saved config) — the same
     // source `EditParameter` used to populate the editor. Apply is enabled only
-    // when the operator has actually changed something, and (for Game Block) the
-    // pending value is not too short.
+    // when the operator has actually changed something, the pending value is not
+    // too short for Game Block, and not below `MIN_PERIOD_LENGTH` for any of the
+    // lengths `param_length_too_short` constrains.
     let old_length = match param {
         LengthParameter::Half => config.half_play_duration,
         LengthParameter::HalfTime => config.half_time_duration,
@@ -1852,8 +2085,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     };
     let has_changes =
         param_edit_has_changes(length, old_length, param, single_half, config.single_half);
-    let apply_enabled =
-        !matches!(game_block_validity, Some(GameBlockValidity::TooShort)) && has_changes;
+    let apply_enabled = param_apply_enabled(game_block_validity, param, length, has_changes);
 
     col.push(vertical_space())
         .push(
@@ -2647,6 +2879,431 @@ mod tests {
             false,
             false
         ));
+    }
+
+    #[test]
+    fn zero_half_length_is_too_short() {
+        // A zero-length half crashes the engine the moment the second half is
+        // entered, so APPLY must refuse to commit it.
+        assert!(param_length_too_short(
+            LengthParameter::Half,
+            Duration::ZERO
+        ));
+    }
+
+    #[test]
+    fn near_zero_half_length_is_too_short() {
+        // The +/- buttons floor a length just above zero, which still displays as
+        // 0:00 and crashes exactly like a true zero.
+        assert!(param_length_too_short(
+            LengthParameter::Half,
+            Duration::from_micros(1)
+        ));
+    }
+
+    #[test]
+    fn zero_overtime_half_length_is_too_short() {
+        assert!(param_length_too_short(
+            LengthParameter::OvertimeHalf,
+            Duration::ZERO
+        ));
+    }
+
+    #[test]
+    fn zero_half_time_length_is_too_short() {
+        // Not a crash — half-time is not a period that culls penalties, so the engine
+        // resolves a zero-length one cleanly — but not a legal setting either: a game
+        // with no half-time is 1 Period, not 2 Halves with a zero break.
+        assert!(param_length_too_short(
+            LengthParameter::HalfTime,
+            Duration::ZERO
+        ));
+        assert!(param_length_too_short(
+            LengthParameter::HalfTime,
+            Duration::from_micros(1)
+        ));
+    }
+
+    #[test]
+    fn one_second_half_time_length_is_allowed() {
+        assert!(!param_length_too_short(
+            LengthParameter::HalfTime,
+            MIN_PERIOD_LENGTH
+        ));
+    }
+
+    #[test]
+    fn one_second_half_length_is_allowed() {
+        assert!(!param_length_too_short(
+            LengthParameter::Half,
+            Duration::from_secs(1)
+        ));
+    }
+
+    /// Whether this module's one-second rule constrains `param`, stated independently
+    /// of the implementation so the tests measure against an expectation rather than
+    /// against the code under test.
+    ///
+    /// Exhaustive on purpose: a new `LengthParameter` variant is a compile error here
+    /// until someone decides whether it is a time value that may not be zero.
+    fn expected_constrained(param: LengthParameter) -> bool {
+        match param {
+            LengthParameter::Half
+            | LengthParameter::HalfTime
+            | LengthParameter::OvertimeHalf
+            | LengthParameter::OvertimeHalfTime
+            | LengthParameter::PreOvertime
+            | LengthParameter::PreSuddenDeath
+            | LengthParameter::MinimumBetweenGame => true,
+            LengthParameter::GameBlock => false,
+        }
+    }
+
+    #[test]
+    fn every_length_is_constrained_except_game_block() {
+        // No time value in the settings may be zero. Game Block is the sole exception
+        // to THIS rule because it has a stricter one of its own — it must fit the game
+        // plus the minimum break — which already refuses zero.
+        for param in ALL_LENGTHS {
+            let constrained = expected_constrained(param);
+            assert_eq!(
+                param_length_too_short(param, Duration::ZERO),
+                constrained,
+                "{param:?} at 0:00"
+            );
+            // The value the +/- buttons actually reach, which still displays as 0:00.
+            assert_eq!(
+                param_length_too_short(param, Duration::from_micros(1)),
+                constrained,
+                "{param:?} just above zero"
+            );
+            assert!(
+                !param_length_too_short(param, MIN_PERIOD_LENGTH),
+                "{param:?} must accept the one-second minimum"
+            );
+        }
+    }
+
+    /// A config with the two play lengths and the overtime toggle set explicitly;
+    /// every other field stays at its default.
+    fn cfg_with(half: Duration, ot_half: Duration, overtime_allowed: bool) -> GameConfig {
+        GameConfig {
+            half_play_duration: half,
+            ot_half_play_duration: ot_half,
+            overtime_allowed,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn apply_is_refused_for_a_too_short_length() {
+        // Guards the WIRING, not the helper: deleting the too-short clause from
+        // `param_apply_enabled` must fail a test, or a correct guard that is never
+        // consulted is indistinguishable from no guard at all.
+        assert!(!param_apply_enabled(
+            None,
+            LengthParameter::Half,
+            Duration::ZERO,
+            true
+        ));
+        assert!(!param_apply_enabled(
+            None,
+            LengthParameter::OvertimeHalf,
+            Duration::ZERO,
+            true
+        ));
+        assert!(!param_apply_enabled(
+            None,
+            LengthParameter::HalfTime,
+            Duration::ZERO,
+            true
+        ));
+    }
+
+    #[test]
+    fn apply_is_offered_at_the_allowed_boundary() {
+        assert!(param_apply_enabled(
+            None,
+            LengthParameter::Half,
+            MIN_PERIOD_LENGTH,
+            true
+        ));
+        assert!(param_apply_enabled(
+            None,
+            LengthParameter::OvertimeHalf,
+            MIN_PERIOD_LENGTH,
+            true
+        ));
+    }
+
+    #[test]
+    fn apply_still_respects_the_pre_existing_gates() {
+        let ok = Duration::from_secs(900);
+        // Nothing edited yet.
+        assert!(!param_apply_enabled(None, LengthParameter::Half, ok, false));
+        // A too-short Game Block still blocks, as it did before this guard.
+        assert!(!param_apply_enabled(
+            Some(GameBlockValidity::TooShort),
+            LengthParameter::GameBlock,
+            ok,
+            true
+        ));
+        // "Tight" is a caution, not invalid, and must still be committable.
+        assert!(param_apply_enabled(
+            Some(GameBlockValidity::Tight),
+            LengthParameter::GameBlock,
+            ok,
+            true
+        ));
+    }
+
+    #[test]
+    fn page_apply_refused_for_a_zero_half_length() {
+        let cfg = cfg_with(Duration::ZERO, Duration::from_secs(300), true);
+        assert!(config_has_too_short_length(&cfg, false));
+    }
+
+    #[test]
+    fn page_apply_refused_when_overtime_is_on_beside_a_zero_overtime_half() {
+        // The hole the parameter-editor guard cannot see: the length was already
+        // zero, and the operator re-arms it with the OVERTIME ALLOWED toggle
+        // without ever opening the OT HALF LENGTH editor.
+        let cfg = cfg_with(Duration::from_secs(900), Duration::ZERO, true);
+        assert!(config_has_too_short_length(&cfg, false));
+    }
+
+    #[test]
+    fn page_apply_allowed_for_a_dormant_zero_overtime_half() {
+        // Overtime off: the zero can never reach a period transition, and blocking
+        // APPLY over it would stop unrelated edits with nothing on screen to explain
+        // why.
+        let cfg = cfg_with(Duration::from_secs(900), Duration::ZERO, false);
+        assert!(!config_has_too_short_length(&cfg, false));
+    }
+
+    #[test]
+    fn page_apply_allowed_in_portal_mode() {
+        // Portal mode does not offer the length buttons, so refusing APPLY would
+        // strand the operator with no control that could fix it.
+        let cfg = cfg_with(Duration::ZERO, Duration::ZERO, true);
+        assert!(!config_has_too_short_length(&cfg, true));
+    }
+
+    #[test]
+    fn refused_lengths_show_their_value_in_red() {
+        for param in ALL_LENGTHS {
+            // Game Block takes its colour from `game_block_validity` instead, so with
+            // no validity passed it stays uncoloured; see the test below.
+            let expected = expected_constrained(param).then_some(RED);
+            assert_eq!(
+                param_value_color(None, param, Duration::ZERO),
+                expected,
+                "{param:?} at 0:00"
+            );
+            // The value the +/- buttons actually reach also displays as 0:00.
+            assert_eq!(
+                param_value_color(None, param, Duration::from_micros(1)),
+                expected,
+                "{param:?} just above zero"
+            );
+            assert_eq!(
+                param_value_color(None, param, MIN_PERIOD_LENGTH),
+                None,
+                "{param:?} at the minimum must not be red"
+            );
+        }
+    }
+
+    #[test]
+    fn game_block_takes_its_colour_from_its_own_rule() {
+        // Game Block is not constrained by `param_length_too_short`, so its colour
+        // must come from `game_block_validity` alone — which is what the view always
+        // passes for that parameter.
+        assert_eq!(
+            param_value_color(
+                Some(GameBlockValidity::TooShort),
+                LengthParameter::GameBlock,
+                Duration::ZERO
+            ),
+            Some(RED),
+            "a zero Game Block is red because it is too short to fit the game"
+        );
+    }
+
+    #[test]
+    fn game_block_keeps_its_own_colours() {
+        let ok = Duration::from_secs(2880);
+        assert_eq!(
+            param_value_color(
+                Some(GameBlockValidity::TooShort),
+                LengthParameter::GameBlock,
+                ok
+            ),
+            Some(RED)
+        );
+        assert_eq!(
+            param_value_color(
+                Some(GameBlockValidity::Tight),
+                LengthParameter::GameBlock,
+                ok
+            ),
+            Some(YELLOW)
+        );
+        assert_eq!(
+            param_value_color(Some(GameBlockValidity::Ok), LengthParameter::GameBlock, ok),
+            None
+        );
+    }
+
+    #[test]
+    fn a_refused_length_is_flagged_for_its_own_button() {
+        // Half is always in play.
+        let half_zero = cfg_with(Duration::ZERO, Duration::from_secs(300), true);
+        assert!(config_length_refused(&half_zero, LengthParameter::Half));
+
+        // The overtime half counts only while overtime is on — its button is dead
+        // otherwise, so red would point at a control the operator cannot open.
+        let ot_on = cfg_with(Duration::from_secs(600), Duration::ZERO, true);
+        assert!(config_length_refused(&ot_on, LengthParameter::OvertimeHalf));
+        let ot_off = cfg_with(Duration::from_secs(600), Duration::ZERO, false);
+        assert!(!config_length_refused(
+            &ot_off,
+            LengthParameter::OvertimeHalf
+        ));
+
+        // Half-time counts only in 2 Halves mode, for the same reason.
+        let two_halves = GameConfig {
+            half_time_duration: Duration::ZERO,
+            ..Default::default()
+        };
+        assert!(config_length_refused(
+            &two_halves,
+            LengthParameter::HalfTime
+        ));
+        let one_period = GameConfig {
+            half_time_duration: Duration::ZERO,
+            single_half: true,
+            ..Default::default()
+        };
+        assert!(!config_length_refused(
+            &one_period,
+            LengthParameter::HalfTime
+        ));
+    }
+
+    #[test]
+    fn game_block_never_refuses_apply_through_this_rule() {
+        let zeroed = GameConfig {
+            game_block: Duration::ZERO,
+            ..Default::default()
+        };
+        assert!(!config_length_refused(&zeroed, LengthParameter::GameBlock));
+    }
+
+    #[test]
+    fn a_length_is_only_flagged_while_its_own_button_is_live() {
+        // Each arm must match that button's `on_press` condition, or the operator can
+        // face a greyed APPLY with no control able to clear it.
+        let all_zero = GameConfig {
+            pre_overtime_break: Duration::ZERO,
+            ot_half_time_duration: Duration::ZERO,
+            pre_sudden_death_duration: Duration::ZERO,
+            minimum_break: Duration::ZERO,
+            ..Default::default()
+        };
+
+        // Minimum break is always editable, so it always counts.
+        assert!(config_length_refused(
+            &all_zero,
+            LengthParameter::MinimumBetweenGame
+        ));
+
+        // The overtime pair is dead while overtime is off.
+        let ot_off = GameConfig {
+            overtime_allowed: false,
+            ..all_zero.clone()
+        };
+        assert!(!config_length_refused(
+            &ot_off,
+            LengthParameter::PreOvertime
+        ));
+        assert!(!config_length_refused(
+            &ot_off,
+            LengthParameter::OvertimeHalfTime
+        ));
+        let ot_on = GameConfig {
+            overtime_allowed: true,
+            ..all_zero.clone()
+        };
+        assert!(config_length_refused(&ot_on, LengthParameter::PreOvertime));
+        assert!(config_length_refused(
+            &ot_on,
+            LengthParameter::OvertimeHalfTime
+        ));
+
+        // The pre-sudden-death break is dead while sudden death is off.
+        let sd_off = GameConfig {
+            sudden_death_allowed: false,
+            ..all_zero.clone()
+        };
+        assert!(!config_length_refused(
+            &sd_off,
+            LengthParameter::PreSuddenDeath
+        ));
+        let sd_on = GameConfig {
+            sudden_death_allowed: true,
+            ..all_zero
+        };
+        assert!(config_length_refused(
+            &sd_on,
+            LengthParameter::PreSuddenDeath
+        ));
+    }
+
+    #[test]
+    fn page_apply_refused_for_a_zero_half_time_in_two_half_mode() {
+        let cfg = GameConfig {
+            half_time_duration: Duration::ZERO,
+            ..Default::default()
+        };
+        assert!(
+            !cfg.single_half,
+            "default must be 2 Halves or this case proves nothing"
+        );
+        assert!(config_has_too_short_length(&cfg, false));
+    }
+
+    #[test]
+    fn page_apply_allowed_for_a_zero_half_time_in_one_period_mode() {
+        // 1 Period mode disables the HALF TIME LENGTH button, so refusing APPLY over
+        // it would strand the operator — and the value is irrelevant in that mode.
+        let cfg = GameConfig {
+            half_time_duration: Duration::ZERO,
+            single_half: true,
+            ..Default::default()
+        };
+        assert!(!config_has_too_short_length(&cfg, false));
+    }
+
+    #[test]
+    fn page_apply_allowed_for_a_normal_config() {
+        assert!(!config_has_too_short_length(&GameConfig::default(), false));
+    }
+
+    #[test]
+    fn page_apply_is_refused_for_a_too_short_play_length() {
+        // Guards the WIRING of `config_has_too_short_length` into the page's APPLY,
+        // the same gap `apply_is_refused_for_a_too_short_length` closes for the
+        // editor.
+        let bad = cfg_with(Duration::ZERO, Duration::from_secs(300), true);
+        assert!(!page_apply_enabled(true, false, false, &bad, false));
+
+        // The gates that were already there must still behave.
+        let ok = GameConfig::default();
+        assert!(page_apply_enabled(true, false, false, &ok, false));
+        assert!(!page_apply_enabled(false, false, false, &ok, false)); // nothing edited
+        assert!(!page_apply_enabled(true, true, false, &ok, false)); // portal incomplete
+        assert!(!page_apply_enabled(true, false, true, &ok, false)); // game block too short
     }
 
     #[test]

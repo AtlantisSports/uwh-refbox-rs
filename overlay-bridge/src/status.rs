@@ -77,6 +77,8 @@
 //! status page that needed the internet to render correctly would fail exactly when it was most
 //! needed.
 
+use std::collections::BTreeMap;
+
 use std::fmt::Write as _;
 
 use crate::{
@@ -134,8 +136,6 @@ pub struct PageData {
     /// separately-sourced pieces. See the module doc's "One source, not two" section.
     pub status: ConnectionStatus,
     pub keepalive_active: bool,
-    /// The current event id, or empty if none is known yet.
-    pub event_id: String,
     pub game_number: String,
     /// The four live game values shown in the game box, and the period and clock beside them.
     /// **Taken from the same `/scorebug` row vMix polls, never derived separately** -- see the
@@ -178,30 +178,82 @@ const VMIX_ROUTES: [&str; 6] = [
     "/status.json",
 ];
 
+/// Every string the page displays that can change while it is open, keyed by the id of the
+/// element that shows it.
+///
+/// **This is the only place any of them is decided.** [`render_page`] paints these on first load
+/// and `GET /page.json` serves the same map a second later, so the two cannot disagree. The
+/// alternative -- letting the browser update raw values -- forces it to re-derive the display
+/// form: reformat a duration, re-compose `TEAM | score`, substitute a placeholder when a value is
+/// missing. Each of those is a second implementation of a rule that already exists here, written
+/// in another language where nothing checks it against this one, and an operator looking at the
+/// page cannot tell which of the two produced what they are reading.
+///
+/// Values are returned **unescaped**. `render_page` escapes them as it interpolates; the JSON
+/// route needs them raw, and the browser assigns them via `textContent`, which is inert by
+/// construction.
+///
+/// `dotClass` and `downHidden` are not element text -- they are the indicator's class and whether
+/// the duration line is shown. They are decided here for the same reason as everything else.
+pub fn live_fields(data: &PageData) -> BTreeMap<String, String> {
+    let (dot_class, conn_label) = match data.status.connection {
+        Connection::Connected => ("indicator live", "Connected"),
+        // Both not-connected states read the same. The bridge keeps them apart internally --
+        // only a link that once existed has a duration worth showing, which is what the
+        // "Down for ..." line depends on -- but the operator is not asked to care: in
+        // either case nothing is feeding the overlay, and in either case the fix is the refbox
+        // picker further down the page.
+        Connection::NeverConnected | Connection::Disconnected => {
+            ("indicator down", "Not Connected")
+        }
+    };
+    let down_text = data
+        .status
+        .disconnected_for
+        .map(|d| format!("Down for {}", format_duration(d)))
+        .unwrap_or_default();
+    let game = if data.game_number.is_empty() {
+        "(none known yet)".to_string()
+    } else {
+        data.game_number.clone()
+    };
+
+    let mut fields = BTreeMap::new();
+    fields.insert("dotClass".to_string(), dot_class.to_string());
+    fields.insert("downHidden".to_string(), down_text.is_empty().to_string());
+    fields.insert("v-conn".to_string(), conn_label.to_string());
+    fields.insert("v-down".to_string(), down_text);
+    fields.insert("v-game".to_string(), game);
+    fields.insert("v-period".to_string(), data.period.clone());
+    fields.insert("v-time".to_string(), data.clock.clone());
+    fields.insert(
+        "v-white".to_string(),
+        format!("{} | {}", data.white_team, data.white_score),
+    );
+    fields.insert(
+        "v-black".to_string(),
+        format!("{} | {}", data.black_team, data.black_score),
+    );
+    fields
+}
+
 /// Renders the operator status page described in the module doc. Always produces a complete,
 /// valid HTML document -- see "No chicken-and-egg" above for why every field of `data` must be
 /// renderable in its default/empty form.
 pub fn render_page(data: &PageData) -> String {
-    let (indicator_class, indicator_label) = match data.status.connection {
-        Connection::Connected => ("live", "Connected"),
-        // Both not-connected states read the same. The bridge keeps them apart internally --
-        // only a link that once existed has a duration worth showing, which is what the
-        // "Down for ..." line below depends on -- but the operator is not asked to care: in
-        // either case nothing is feeding the overlay, and in either case the fix is the refbox
-        // picker further down the page.
-        Connection::NeverConnected | Connection::Disconnected => ("down", "Not Connected"),
-    };
+    // Every changing value comes from `live_fields` -- see its doc. This function's job is to
+    // place and escape them, never to decide them.
+    let fields = live_fields(data);
+    let field = |key: &str| escape_html(fields.get(key).map_or("", String::as_str));
 
-    let duration_html = data
-        .status
-        .disconnected_for
-        .map(|d| {
-            format!(
-                "<p class=\"duration\">Down for {}</p>\n",
-                format_duration(d)
-            )
-        })
-        .unwrap_or_default();
+    let indicator_class = field("dotClass");
+    let indicator_label = field("v-conn");
+    let duration_text = field("v-down");
+    let duration_hidden = if fields.get("downHidden").is_some_and(|h| h == "true") {
+        " hidden"
+    } else {
+        ""
+    };
 
     let keepalive_html = if data.keepalive_active {
         String::new()
@@ -211,16 +263,6 @@ pub fn render_page(data: &PageData) -> String {
             .to_string()
     };
 
-    let event_text = if data.event_id.is_empty() {
-        "(none known yet)".to_string()
-    } else {
-        escape_html(&data.event_id)
-    };
-    let game_text = if data.game_number.is_empty() {
-        "(none known yet)".to_string()
-    } else {
-        escape_html(&data.game_number)
-    };
     // The two long explanations the page used to carry as paragraphs. They live in `title`
     // attributes now, so they must be escaped as attribute values -- `escape_html` covers the
     // quote characters that would otherwise end the attribute early and let the rest of the
@@ -281,16 +323,17 @@ pub fn render_page(data: &PageData) -> String {
 </head>
 <body>
 <h1>Atlantis Sports Overlay Bridge</h1>
-<p class="status-line"><span class="indicator {indicator_class}"></span>{indicator_label}</p>
-{duration_html}{keepalive_html}<p class="event-name">Event Name: {event_text}</p>
-<h2>Current game</h2>
+<p class="status-line"><span class="{indicator_class}" id="v-dot"></span><span
+ id="v-conn">{indicator_label}</span></p>
+<p class="duration" id="v-down"{duration_hidden}>{duration_text}</p>
+{keepalive_html}<h2>Current game</h2>
 <div class="game-box">
 <table>
-<tr><th>Game:</th><td>{game_text}</td></tr>
-<tr><th>Period:</th><td>{period}</td></tr>
-<tr><th>Time:</th><td>{clock}</td></tr>
-<tr><th>White Team:</th><td>{white_team} | {white_score}</td></tr>
-<tr><th>Black Team:</th><td>{black_team} | {black_score}</td></tr>
+<tr><th>Game:</th><td id="v-game">{game}</td></tr>
+<tr><th>Period:</th><td id="v-period">{period}</td></tr>
+<tr><th>Time:</th><td id="v-time">{time}</td></tr>
+<tr><th>White Team:</th><td id="v-white">{white}</td></tr>
+<tr><th>Black Team:</th><td id="v-black">{black}</td></tr>
 </table>
 </div>
 <h2>Refbox connection <span class="help" tabindex="0" aria-label="{settings_hint}"
@@ -316,22 +359,22 @@ pub fn render_page(data: &PageData) -> String {
 <h2>Addresses for vMix</h2>
 <ul>
 {vmix_addresses}</ul>
+<script>
+{live_script}</script>
 </body>
 </html>
 "#,
         style = STYLE,
         indicator_class = indicator_class,
         indicator_label = indicator_label,
-        duration_html = duration_html,
+        duration_hidden = duration_hidden,
+        duration_text = duration_text,
         keepalive_html = keepalive_html,
-        event_text = event_text,
-        game_text = game_text,
-        period = escape_html(&data.period),
-        clock = escape_html(&data.clock),
-        white_team = escape_html(&data.white_team),
-        white_score = escape_html(&data.white_score),
-        black_team = escape_html(&data.black_team),
-        black_score = escape_html(&data.black_score),
+        game = field("v-game"),
+        period = field("v-period"),
+        time = field("v-time"),
+        white = field("v-white"),
+        black = field("v-black"),
         refbox_address = escape_html(&data.refbox_address.to_string()),
         refbox_port = data.refbox_address.port,
         scan_network = escape_html(&data.scan_network),
@@ -340,6 +383,7 @@ pub fn render_page(data: &PageData) -> String {
         scan_hint = scan_hint,
         settings_hint = settings_hint,
         vmix_addresses = vmix_addresses,
+        live_script = LIVE_SCRIPT,
     )
 }
 
@@ -382,6 +426,51 @@ fn render_scan(scan: &ScanOutcome) -> String {
 
 /// Inline CSS only -- see the module doc's "Self-contained, deliberately" section. No external
 /// stylesheet, font or script anywhere on this page.
+/// Keeps the page current without a reload.
+///
+/// **It asks the bridge; it never works anything out for itself.** In particular it does not tick
+/// the clock down between polls, however cheap that would be. A browser counting locally would go
+/// on showing a smoothly running clock after the refbox had died -- and this is the page an
+/// operator opens *to find out* whether that has happened. A frozen value is honest; a confidently
+/// wrong one is not. Same reasoning as the relay-only decision for the served tables (design spec
+/// §4.6), applied to the one page that reports on the feed itself.
+///
+/// **It formats nothing.** Every string it writes was produced by [`live_fields`], the same
+/// function that painted the page on load, and this script only puts string X into element Y. It
+/// does not compose `TEAM | score`, reformat a duration, or substitute a placeholder for a missing
+/// value -- each of those would be a second implementation of a rule that already exists in Rust,
+/// free to drift from it silently.
+///
+/// Polls once a second, the rate the refbox sends at while the clock runs -- faster gains nothing,
+/// slower makes the clock visibly stutter. A few hundred bytes over loopback, against the ~8 KB a
+/// whole-page refresh would cost, and unlike a refresh it cannot disturb a half-typed address.
+///
+/// A failed fetch leaves the page exactly as it was rather than blanking it: the bridge being
+/// briefly unreachable is not evidence about the refbox, and guessing otherwise is the same
+/// mistake as ticking the clock.
+const LIVE_SCRIPT: &str = r#"(function () {
+  async function tick() {
+    if (document.hidden) { return; }
+    try {
+      var f = await fetch("/page.json").then(function (r) { return r.json(); });
+      for (var id in f) {
+        if (id.indexOf("v-") !== 0) { continue; }
+        var el = document.getElementById(id);
+        if (el && el.textContent !== f[id]) { el.textContent = f[id]; }
+      }
+      var dot = document.getElementById("v-dot");
+      if (dot) { dot.className = f.dotClass; }
+      var down = document.getElementById("v-down");
+      if (down) { down.hidden = f.downHidden === "true"; }
+    } catch (e) {
+      /* Leave every value where it is -- see this constant's doc. */
+    }
+  }
+  setInterval(tick, 1000);
+  tick();
+})();
+"#;
+
 const STYLE: &str = r#"
 :root { color-scheme: light dark; }
 body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 40rem; line-height: 1.4; }
@@ -450,7 +539,6 @@ h2:hover, h2:focus-within, form.chooser:hover, form.chooser:focus-within { z-ind
 .chooser button, .found button { font: inherit; padding: 0.2rem 0.75rem; cursor: pointer; }
 table.found td { padding-right: 1rem; vertical-align: baseline; }
 table { border-collapse: collapse; margin: 0.25rem 0 1.25rem; }
-.event-name { margin: 0.75rem 0 0.35rem; }
 .game-box {
   border: 1px solid currentColor; border-radius: 0.25rem; padding: 0.35rem 0.9rem;
   max-width: 24rem; margin-bottom: 1.25rem;
@@ -512,7 +600,6 @@ mod tests {
                 disconnected_for: None,
             },
             keepalive_active: true,
-            event_id: String::new(),
             game_number: String::new(),
             period: String::new(),
             clock: String::new(),
@@ -535,10 +622,12 @@ mod tests {
     fn a_never_connected_page_shows_the_down_indicator_and_no_duration() {
         let html = render_page(&base_data());
         assert!(html.contains("indicator down"));
-        assert!(!html.contains("class=\"duration\""));
+        // The element is always in the document so the live update can rewrite it; with nothing
+        // to report it is hidden, which is what "no duration shown" means now.
+        assert!(html.contains("id=\"v-down\" hidden"));
         // No "Down for ..." line here, and that is the point of this test: a bridge that has
         // never reached a refbox has no last-contact time to report, however the state is worded.
-        assert!(html.contains("Not Connected"));
+        assert!(html.contains("<span\n id=\"v-conn\">Not Connected</span>"));
     }
 
     #[test]
@@ -552,7 +641,9 @@ mod tests {
         };
         let html = render_page(&data);
         assert!(html.contains("indicator live"));
-        assert!(!html.contains("class=\"duration\""));
+        // The element is always in the document so the live update can rewrite it; with nothing
+        // to report it is hidden, which is what "no duration shown" means now.
+        assert!(html.contains("id=\"v-down\" hidden"));
     }
 
     #[test]
@@ -612,7 +703,7 @@ mod tests {
         let html = render_page(&data);
         assert!(html.contains("indicator live"));
         assert!(
-            !html.contains("class=\"duration\""),
+            html.contains("id=\"v-down\" hidden"),
             "the rendered page must not show a stale down-duration immediately after a real \
              reconnect"
         );
@@ -656,8 +747,79 @@ mod tests {
             ..base_data()
         };
         let html = render_page(&data);
-        assert!(!html.contains("<script>"));
+        // The page carries exactly one script of its own (the live update). The guard is
+        // therefore "one, and it is ours" rather than "none": an injected element would make two.
+        assert_eq!(
+            html.matches("<script").count(),
+            1,
+            "an injected <script> would be a second one"
+        );
+        assert!(
+            html.contains("(function () {"),
+            "the one script present is the page's own"
+        );
         assert!(html.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn the_live_update_serves_exactly_the_strings_the_page_renders() {
+        // The whole point of `live_fields`. The page's first paint and its updates a second later
+        // must come from one place, or the browser ends up re-deriving what the bridge already
+        // knows -- reformatting a duration, re-composing "TEAM | score", substituting its own
+        // placeholder. Every one of those is a second implementation that can drift from this one
+        // silently, and the operator cannot tell which they are looking at.
+        let data = PageData {
+            game_number: "12".to_string(),
+            period: "Second Half".to_string(),
+            clock: "4:23".to_string(),
+            white_team: "SHARKS".to_string(),
+            white_score: "3".to_string(),
+            black_team: "BARRACUDAS".to_string(),
+            black_score: "2".to_string(),
+            ..base_data()
+        };
+        let fields = live_fields(&data);
+        let html = render_page(&data);
+
+        for (id, value) in &fields {
+            if !id.starts_with("v-") || value.is_empty() {
+                continue;
+            }
+            assert!(
+                html.contains(&format!("id=\"{id}\">{value}<")),
+                "the rendered page must show live_fields' own {id} value {value:?}, not its own \
+                 version of it; got:\n{html}"
+            );
+        }
+        assert_eq!(
+            fields.get("v-white").map(String::as_str),
+            Some("SHARKS | 3")
+        );
+        assert_eq!(fields.get("v-game").map(String::as_str), Some("12"));
+    }
+
+    #[test]
+    fn every_value_the_page_updates_live_has_a_stable_id() {
+        // The page keeps itself current by rewriting these elements by id. Nothing in Rust type-
+        // checks a `getElementById` against the markup above it, so a renamed or dropped id would
+        // leave the page silently frozen -- looking exactly like a bridge that had stopped
+        // receiving, which is the one impression this page must never give falsely. Asserting the
+        // ids exist is the cheapest guard against that.
+        let html = render_page(&base_data());
+        for id in [
+            "v-dot", "v-conn", "v-down", "v-game", "v-period", "v-time", "v-white", "v-black",
+        ] {
+            assert_eq!(
+                html.matches(&format!("id=\"{id}\"")).count(),
+                1,
+                "exactly one element should carry id={id:?}"
+            );
+        }
+        assert!(
+            html.contains("/scorebug") && html.contains("/status.json"),
+            "the page must poll both endpoints -- the game values and the game number live in \
+             different ones"
+        );
     }
 
     #[test]
@@ -675,12 +837,14 @@ mod tests {
                 },
                 ..base_data()
             });
+            // On the element, not the whole page: the live-update script names both labels, so
+            // a bare `contains` would be true whatever the state.
             assert!(
-                html.contains("Not Connected"),
+                html.contains("<span\n id=\"v-conn\">Not Connected</span>"),
                 "{connection:?} should read as Not Connected, got:\n{html}"
             );
             assert!(
-                !html.contains("Never connected"),
+                !html.contains(">Never connected<"),
                 "{connection:?} should not use the old wording"
             );
         }
@@ -692,8 +856,7 @@ mod tests {
             },
             ..base_data()
         });
-        assert!(html.contains("Connected"));
-        assert!(!html.contains("Not Connected"));
+        assert!(html.contains("<span\n id=\"v-conn\">Connected</span>"));
     }
 
     #[test]
@@ -756,7 +919,10 @@ mod tests {
         // as a broken page rather than as "no game yet".
         let html = render_page(&base_data());
 
-        assert!(html.contains("Event Name:"));
+        // The event name was dropped 2026-08-27: the operator picks a refbox, not an event, and
+        // the bridge's own page is not where they would look one up. It was also the one value on
+        // the page that no polled table carries, so it could only ever have gone stale.
+        assert!(!html.contains("Event Name"));
         for label in ["Game:", "Period:", "Time:", "White Team:", "Black Team:"] {
             assert!(
                 html.contains(&format!("<th>{label}</th>")),
@@ -905,7 +1071,17 @@ mod tests {
             )),
             ..base_data()
         });
-        assert!(!html.contains("<script>"));
+        // The page carries exactly one script of its own (the live update). The guard is
+        // therefore "one, and it is ours" rather than "none": an injected element would make two.
+        assert_eq!(
+            html.matches("<script").count(),
+            1,
+            "an injected <script> would be a second one"
+        );
+        assert!(
+            html.contains("(function () {"),
+            "the one script present is the page's own"
+        );
         assert!(html.contains("&lt;script&gt;"));
     }
 
@@ -972,7 +1148,17 @@ mod tests {
             }),
             ..base_data()
         });
-        assert!(!html.contains("<script>"));
+        // The page carries exactly one script of its own (the live update). The guard is
+        // therefore "one, and it is ours" rather than "none": an injected element would make two.
+        assert_eq!(
+            html.matches("<script").count(),
+            1,
+            "an injected <script> would be a second one"
+        );
+        assert!(
+            html.contains("(function () {"),
+            "the one script present is the page's own"
+        );
         assert!(html.contains("&lt;script&gt;"));
     }
 
@@ -1007,14 +1193,11 @@ mod tests {
             }),
             ..base_data()
         });
-        for forbidden in [
-            "<script",
-            "src=",
-            "@import",
-            "<link",
-            "cdn.",
-            "fonts.googleapis",
-        ] {
+        // `<script` is deliberately NOT forbidden: the page carries its own inline one for the
+        // live update, and inline script fetches nothing. What would make the page depend on
+        // something else is `src=`, `<link` or an `@import`, and those stay forbidden -- including
+        // on a script element, which is why `src=` alone is the right thing to test for.
+        for forbidden in ["src=", "@import", "<link", "cdn.", "fonts.googleapis"] {
             assert!(
                 !html.contains(forbidden),
                 "the page must be entirely self-contained, found {forbidden:?} in:\n{html}"

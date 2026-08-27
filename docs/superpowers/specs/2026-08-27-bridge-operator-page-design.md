@@ -114,10 +114,12 @@ string.
 
 ### 4.3 Current game
 
-Event name sits above the box; everything else inside it.
+**REVISED 2026-08-27:** the event name was dropped after seeing the page against a real refbox.
+The operator picks a refbox, not an event, and it was the one value on the page that no polled
+table carries — so it was also the only thing that could go stale once the page began keeping
+itself current.
 
 ```
-Event Name: Kings Cup 2026
 ┌─────────────────────────────────────┐
 │  Game: 12                           │
 │  Period: Second Half                │

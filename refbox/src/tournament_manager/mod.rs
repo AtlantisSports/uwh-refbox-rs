@@ -37,7 +37,11 @@ const MAX_TIME_VAL: Duration = Duration::from_secs(MAX_LONG_STRINGABLE_SECS as u
 const RECENT_GOAL_TIME: Duration = Duration::from_secs(15);
 
 /// How many times the tick will try to build a snapshot before giving up.
-/// Matches the app's historical 5-attempt loop.
+///
+/// The same five attempts the app's original loop made, but NOT byte-identical to it: the
+/// old loop ran a fifth `update()` before panicking, this returns after the fourth. Since
+/// `generate_snapshot` mutates the engine, that count is a real behavioural detail rather
+/// than a cosmetic one — `golden/mod.rs` documents the same difference from its side.
 const SNAPSHOT_ATTEMPTS: u32 = 5;
 
 /// What one background clock tick did, so the caller can pick the matching app message.
@@ -84,24 +88,27 @@ impl SharedGame {
     /// frame.
     pub fn lock(&self) -> MutexGuard<'_, TournamentManager> {
         match self.0.lock() {
-            Ok(guard) => {
-                // Once a recovered contamination is behind us, arm the report again so a
-                // LATER, unrelated tear is reported too. Without this the flag latches on
-                // the first one and every subsequent tear is silent, while the one message
-                // in the log points the reader at the wrong panic.
-                POISON_REPORTED.store(false, Ordering::Relaxed);
-                guard
-            }
+            Ok(guard) => guard,
             Err(contaminated) => {
+                // Announced once per run, deliberately. An earlier version re-armed this
+                // after each recovery so that a second, unrelated tear would also be
+                // announced — but a repeatedly-panicking tick then wrote this line on
+                // every retry, and because the log file rotates by size that flood pushes
+                // out the very panic record the message tells the reader to find.
+                //
+                // Nothing is lost by announcing once: `log_panics` already records EVERY
+                // panic, with its backtrace, individually. This line's only job is to say
+                // that the app is running on recovered state at all.
                 if !POISON_REPORTED.swap(true, Ordering::Relaxed) {
                     error!(
-                        "Recovered a contaminated game-state lock: an earlier operation \
-                         panicked while holding it. See the panic recorded earlier in this log \
-                         for the cause. Continuing with the last known state."
+                        "Recovered a contaminated game-state lock: an operation panicked \
+                         while holding it. Every such panic is recorded separately in this \
+                         log. Continuing with the last known state."
                     );
                 }
-                // Clear the poison so the next tear is distinguishable from this one.
-                // Nothing else consults the flag; recovery is this type's whole job.
+                // Leave the lock usable so a later tear is a fresh `Err` rather than a
+                // permanent one; the announcement above is what is rate-limited, not the
+                // recovery.
                 self.0.clear_poison();
                 contaminated.into_inner()
             }
@@ -1599,15 +1606,17 @@ impl TournamentManager {
             match self.generate_snapshot(now) {
                 Some(snapshot) => break snapshot,
                 None if attempts >= SNAPSHOT_ATTEMPTS => {
-                    // The caller logs the engine state, time-gated. Dumping it here too
-                    // printed the same multi-page state twice for a single failure.
-                    error!("Failed to generate snapshot after {SNAPSHOT_ATTEMPTS} attempts");
+                    // Deliberately silent. The clock updater owns reporting for this path
+                    // and rate-limits it; logging here as well put five lines per failed
+                    // tick straight past that limit, which is how a repeating fault used
+                    // to roll its own evidence out of a size-rotated log file. The error
+                    // returned below carries the attempt count to the one reporter.
                     return Err(TournamentManagerError::SnapshotUnavailable(
                         SNAPSHOT_ATTEMPTS,
                     ));
                 }
                 None => {
-                    warn!("Failed to generate snapshot. Updating and trying again");
+                    trace!("Failed to generate snapshot. Updating and trying again");
                     self.update(now)?;
                     attempts += 1;
                 }
@@ -2886,9 +2895,15 @@ mod test {
                 break;
             }
         }
+        // This encodes the presence of a still-open engine defect as a requirement. If
+        // someone fixes the engine so a zero-length half ticks cleanly, this fires even
+        // though behaviour improved — which is intended, so the fix cannot land without
+        // someone revisiting what this test is for. Update the expectation; do not delete
+        // it. `zero_probe::measure_what_a_failed_cull_leaves_behind` carries the same note.
         assert!(
             saw_failure,
-            "expected the zero-length-half config to report a tick failure"
+            "the zero-length-half config no longer reports a tick failure — if the engine \
+             defect was fixed, update this test instead of removing it"
         );
     }
 

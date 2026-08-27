@@ -153,6 +153,82 @@ measured — so silence can never mean "connection lost", or the graphic would v
 referee stops the clock. Only the connection's own liveness distinguishes "paused" from "gone", and
 guessing is exactly what this decision removes.
 
+### 4.7 The NDI renderer consumes the bridge, not the refbox
+
+**ADDED 2026-08-28, by Eric, after comparing this work against a parallel NDI effort.**
+
+A second effort took the opposite approach to the same problem: keep the existing renderer, give
+it real transparency, and send finished video to vMix over NDI — removing the capture card but
+keeping the Pi-era renderer and the look baked into our code. Comparing the two showed they are
+not competing designs. They are **opposite halves of one program**: that effort built the output
+half (pixels, transparency, transport, years of layout decisions), this one built the input half
+(discovery, connection, held state, connection health, portal-correct name resolution, operator
+control).
+
+**Decision: converge on one design — their renderer, our client.** The renderer stops connecting
+to the refbox and consumes this bridge over HTTP, exactly as vMix does. The bridge becomes the
+only thing in the system that talks to a refbox.
+
+*Why this shape rather than merging the two codebases:*
+
+- **Two real defects in the renderer disappear by deletion rather than by fixing.** It stops
+  having a feed reader at all, so `overlay/src/network.rs:472`'s 1024-byte read (one
+  `stream.read()` treated as exactly one JSON message — a snapshot spanning two reads, or two
+  snapshots landing in one, both break it) and `overlay/src/main.rs:37,45`'s independently
+  configured portal address (the wrong-tournament bug of §4.2's amendment, live in the shipped
+  overlay today) both go away with the code that caused them.
+- **The renderer inherits correct disconnect behaviour for free.** `overlay/src/main.rs:281` has
+  no disconnected branch at all — it freezes on its last frame indefinitely, with no indicator,
+  which is precisely the behaviour §4.6 rejected. Consuming a bridge that already blanks every
+  value removes that gap without anyone implementing it twice.
+- **One contract feeds the renderer, vMix titles, and third parties.** One place to be correct.
+- **It dissolves the repo-split coupling problem.** The hard part of moving `overlay/` to
+  `AtlantisSports/uwh-overlay-rs` was that a renderer in another repo depends on `uwh-common` for
+  the wire format, and a stale git pin fails *silently*. A renderer that consumes HTTP needs
+  `uwh-common` not at all: no pin, no CI canary, no compile-time coupling.
+
+**The trade, stated as a trade and not as a fix.** This exchanges a *compile-time* coupling that
+fails silently (a stale `uwh-common` pin) for a *runtime* contract drift that would also fail
+silently (the bridge's served schema moving out from under the renderer). The difference that
+makes it worth taking: a stale pin cannot announce itself at run time, whereas an HTTP response
+can. **So the bridge serves an explicit schema version, and the renderer refuses loudly on a
+mismatch** rather than rendering something subtly wrong.
+
+**The asymmetry this rests on, and the reason it works for the renderer but not for vMix:** a vMix
+title has no logic and cannot check a version — which is exactly why the column names of §5.2 are
+frozen as a published contract with no error path (G1 of the walkthrough). The renderer is our own
+code, so its link *can* negotiate. Same bridge, two consumers, deliberately different guarantees.
+
+*Not in scope of this decision:* how the renderer is packaged, its NDI transport, its MSRV, or its
+layout work. All of that is the other effort's, travels with it to `uwh-overlay-rs`, and this
+design does not constrain it.
+
+### 4.8 The renderer judges the two links by different rules
+
+**ADDED 2026-08-28.** §4.6 is easy to restate wrongly as "never use timeouts", and doing so would
+reintroduce the exact defect it exists to prevent, one layer up. The rule is narrower:
+
+> Never infer liveness from the **absence of expected traffic** where absence is normal.
+
+The two links differ on precisely that point. Refbox → bridge is a **push stream**, and silence is
+normal: the refbox sends nothing at all whenever the clock is stopped, ~25 seconds measured. Bridge
+→ renderer is **request/response**, where every request must produce a response and silence is
+never normal. So a timeout is forbidden on the first link and correct on the second.
+
+Written as flatly as the decisions above, because leaving it implicit is how it gets rebuilt wrong:
+
+- **R1.** An HTTP request that fails or times out means **the bridge** is unreachable. Hide the
+  graphic.
+- **R2.** An HTTP request that succeeds carries a `connected` field. That field, and nothing else,
+  says whether **the refbox** is alive. When it reads false the bridge has already blanked every
+  other value in the response.
+- **R3.** **Never judge the refbox by HTTP timing** — not by the age of the last successful poll,
+  not by how long a value has been unchanged. That is §4.6's trap relocated one layer up, and it
+  would resurface as the graphic vanishing every time a referee stops the clock.
+
+R1 and R3 together are the whole rule: **timing tells you about the bridge, never about the
+refbox.**
+
 ---
 
 ## 5. The bridge
@@ -306,6 +382,47 @@ It can be left open on a second monitor, or checked from a phone on the same net
 
 ---
 
+### 5.7 Goals are served as a sequenced list, not a single slot
+
+**ADDED 2026-08-28, required by §4.7.** The renderer needs the goal callout, and the feed's
+`recent_goal` field cannot carry it reliably to a *polling* consumer — or, it turns out, to the
+current pushed one either.
+
+**What the refbox actually sends.** `recent_goal: Option<(Color, u8)>` is a single slot holding
+the most recent goal, retained for `RECENT_GOAL_TIME` = **15 seconds**
+(`refbox/src/tournament_manager/mod.rs:33`) and cleared early only on a period change. Fifteen
+seconds is long enough that polling at ~250ms sees any goal about sixty times, so the obvious
+worry — a polled consumer missing a goal that a pushed one would catch — needs two goals inside a
+single poll gap, which this sport cannot produce.
+
+**The real defect is older and worse, and polling does not cause it.** The slot carries no goal
+*identity*. If the same player scores twice inside the 15-second window, the value goes from
+`Some((Black, 7))` to `Some((Black, 7))` — byte-identical. There is no transition to observe, so
+reading every message off the socket does not help: the existing renderer draws one callout for
+two goals today. Confirmed on the renderer side at `overlay/src/flag.rs:123-136`, which looks up
+an existing flag by `(color, player_number)` and, finding one, only sets `is_visited = true` —
+it never restarts the animation or spawns a second instance.
+
+**So the bridge, which is on the socket at full rate, supplies the identity the wire format
+lacks.** It serves the last N goals as a list, each with a monotonically increasing id. A consumer
+records the highest id it has drawn and renders anything above it. This is strictly better than
+what either consumer has today, not merely no worse.
+
+**How a repeat is detected, and the one case where it is wrong.** A byte-identical slot value is
+disambiguated by the *score delta*: black going 3 → 4 alongside `recent_goal (Black, 7)` is a new
+goal by black #7 even when the slot did not change. The limitation, verified on both sides rather
+than assumed: `add_score` (`refbox/src/tournament_manager/mod.rs:105-123`) sets the score and
+`recent_goal` together atomically, but `Message::EditScores` (`refbox/src/app/mod.rs:2743`) calls
+`set_scores` directly and never touches `recent_goal`. So an operator correcting a team's score
+while that same team's slot still holds a real goal from earlier in the same 15-second window
+produces **one spurious extra callout**.
+
+**Accepted, 2026-08-28, both sides.** It is narrow, coincidental, and a *false positive* — an
+extra callout — never a false negative. The alternative it replaces is silently showing nothing
+for a real second goal. Documented here rather than discovered at a tournament.
+
+---
+
 ## 6. The third-party contract document
 
 A companion to `docs/third-party-integration.md`, living beside it. Covers:
@@ -442,6 +559,13 @@ The remaining unknowns are the title-binding step and the practical minimum refr
 both settled at the end of phase 1 (§7). Accepted rather than mitigated, because the served shape
 is the cheapest part of the bridge to change if it turns out wrong.
 
+**NARROWED 2026-08-28 by §4.7.** The live run got smaller. Images are no longer part of it (§9.5),
+so what remains to establish in vMix is the title binding itself and **the refresh interval** —
+which still matters, because vMix titles remain a consumer for the scorebug even after the renderer
+stops being one. Partial confirmation already exists: on 2026-08-28 the bridge was served from WSL
+and fetched successfully from Windows over `http://localhost:8099/`, and every table returned its
+contracted row count and column names against a live refbox. No title has yet been bound.
+
 ### 9.5 What a vMix setup would need to cover the overlay's full range
 
 Informational, not a gate. The overlay draws considerably more than a scorebug, and this is the
@@ -457,10 +581,16 @@ if it were ever pursued.
 | Overtime / sudden death | Its own layout |
 | Roster | Every player's name, number and **photograph**, per team, plus team flags and event/sponsor logos |
 
-The scorebug half maps cleanly onto data sources. **The roster pages are the open question**: they
+The scorebug half maps cleanly onto data sources. **The roster pages were the open question**: they
 are built from player photographs, team flags and event logos, and vMix data sources map *text*
-into title fields. Whether images can be driven the same way is unverified. Worth settling before
-anyone assumes the vMix path can do everything the overlay does.
+into title fields. Whether images can be driven the same way is unverified.
+
+**RESOLVED 2026-08-28 by §4.7, and not by testing vMix.** The convergence answers this
+architecturally: the NDI renderer draws pixels, so photographs, flags and logos are its job and
+work by construction. The bridge is not required to drive images, and **the live run no longer
+needs to establish whether vMix data sources can** — that question is moot rather than open. The
+renderer keeps fetching its own image assets from the portal, but is now *told* which portal by the
+bridge instead of choosing one (§4.7), which is the same wrong-tournament fix applied to its side.
 
 ### 9.3 Network discovery may be blocked
 

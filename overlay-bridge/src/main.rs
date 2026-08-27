@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use clap::Parser;
-use overlay_bridge::{config, server};
+use overlay_bridge::{browser, config, server};
 
 /// Reads a refbox's live game feed and serves it to vMix (or any other third party) as JSON
 /// tables over HTTP, surviving refbox dropouts and Portal outages without the served picture
@@ -92,7 +92,21 @@ async fn main() {
             return;
         }
     };
-    println!("Serving vMix tables at http://{addr}/ (Ctrl+C to stop)...");
+    // Not `addr`: that is the wildcard the server binds, which is "listen on every interface"
+    // rather than a destination -- an operator who typed it into a browser on Windows would
+    // generally get nothing. `browser::status_page_url` is the address that actually works from
+    // this machine, and printing the same one the browser is sent to below is what makes the
+    // manual fallback usable when the launch fails.
+    println!(
+        "Serving vMix tables at {} (Ctrl+C to stop)...",
+        browser::status_page_url(port)
+    );
+
+    // After the bind above, deliberately: from the moment the port is claimed the operating
+    // system queues an incoming connection, so the browser cannot arrive before the server is
+    // ready for it. Before the bind it could be refused; after `axum::serve` is impossible,
+    // because that call never returns.
+    browser::open_status_page(port);
 
     if let Err(e) = axum::serve(listener, server::router(Arc::clone(&bridge.state))).await {
         eprintln!("the bridge's HTTP server stopped unexpectedly: {e}");

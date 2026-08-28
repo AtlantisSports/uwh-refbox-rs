@@ -59,13 +59,20 @@ pub struct GameSnapshot {
     /// this says where this refbox's portal lookups do or would go, not that any is happening.
     ///
     /// `None` from a refbox too old to report it; on snapshots synthesized outside a game (the
-    /// beep test), which carry no portal address at all; and when the configured address will not
-    /// parse, where reporting an unreachable address as authoritative would be worse than
-    /// reporting nothing.
+    /// beep test), which carry no portal address at all; and when the configured address is not
+    /// one the refbox could talk to -- it will not parse, or its scheme is not http(s). Reporting
+    /// an unreachable address as authoritative would be worse than reporting nothing.
     ///
-    /// Any `user:password@` credentials are stripped before sending, so this is the address the
-    /// operator configured but not necessarily byte-identical to what they typed -- the feed is
-    /// unauthenticated, and a password on it would be readable by anyone on the same network.
+    /// Sent as a parser-normalised address, not the operator's raw string: `user:password@`
+    /// credentials are removed, the host is lower-cased, a default port is dropped and an
+    /// international name is punycoded. It is therefore the address the sending refbox's requests
+    /// actually go to, which is the point -- but it is not byte-identical to what was typed, so do
+    /// not compare it against a configured string to decide whether the site changed.
+    ///
+    /// Credentials are removed because this feed is unauthenticated and readable by anyone on the
+    /// same network. Note what is *not* removed: only userinfo. A secret placed elsewhere in the
+    /// address (`https://host/x?token=SECRET`) is still published, so this value must not be
+    /// treated as safe to share on the basis that credentials were stripped.
     ///
     /// A consumer that resolves names from a portal must use this and not an address of its own.
     /// Event ids are not unique across portal environments -- `1889-B` is one tournament on the

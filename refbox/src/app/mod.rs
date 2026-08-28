@@ -745,8 +745,14 @@ impl RefBoxApp {
         // The address this refbox's own portal client is pointed at, so a consumer resolving names
         // from a portal looks them up where refbox looks them up. `current_site` is the value the
         // client is built from -- already accounting for the override env var, Rugby mode's
-        // separate portal, and a custom site -- so this reports rather than re-derives, and the
-        // two cannot disagree.
+        // separate portal, and a custom site -- so this reports rather than re-derives, instead of
+        // computing a second answer that could drift from the client's.
+        //
+        // It does NOT follow that the reported address always has a live client behind it.
+        // `repoint_client` returns early without assigning `current_site` when there is no client
+        // (degraded start) or when one cannot be built, so after such an APPLY this keeps naming
+        // the startup site. The field's own doc is deliberate about that: it says where lookups
+        // do or would go, not that any are happening.
         //
         // Credentials are stripped first: this feed is unauthenticated and bound to every
         // interface, and a custom site is stored exactly as the operator typed it, so a URL

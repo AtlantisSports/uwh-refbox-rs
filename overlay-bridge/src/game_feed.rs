@@ -123,10 +123,18 @@ pub struct GameFeed {
 /// The address with any `user:password@` credential removed, or `None` if that cannot be
 /// guaranteed.
 ///
-/// `base_url` is a plain `String` normalised only by trimming a trailing slash
-/// (`uwh-common/src/uwhportal/mod.rs`), and nothing anywhere strips credentials from it. That has
-/// never mattered while the value was only used to build requests, but this one is served over
-/// HTTP to anything on the network.
+/// **A second layer, not the only one.** The refbox already sends this field
+/// parser-normalised with `user:password@` removed (`refbox`'s `published_site_address`), so a
+/// current refbox cannot hand the bridge a credential in the first place, and one too old to
+/// normalise sends no address at all rather than a raw one.
+///
+/// This stays because the bridge does not control what is on the other end of the socket. It
+/// connects to a configured host and port, and `discovery` probes candidates that have not been
+/// confirmed to be refboxes at all — so what arrives is untrusted input, and `/game` re-serves it
+/// unauthenticated to anything on the network. Validating rather than trusting costs one parse.
+///
+/// **Do not delete this on the grounds that the refbox already strips.** That is true of the
+/// refbox and says nothing about an arbitrary peer.
 ///
 /// **Parsed rather than split by hand.** An earlier hand-rolled version took the authority as
 /// everything before the first `/` and then split on `@`, which leaks the whole credential when a
@@ -643,9 +651,10 @@ mod tests {
         );
     }
 
-    /// `/game` is readable by anything on the network, and the portal address is normalised only
-    /// by trimming a trailing slash -- nothing strips a `user:password@` prefix. Serving it raw
-    /// would put a credential an operator typed into a custom site address onto the network.
+    /// `/game` re-serves this address unauthenticated to anything on the network, and what
+    /// arrives on the socket is untrusted: the bridge connects to a configured host and port, and
+    /// `discovery` probes peers not yet known to be refboxes. A current refbox strips credentials
+    /// itself, so these inputs are not what it sends -- they are what an arbitrary peer could.
     #[test]
     fn a_credential_in_the_portal_address_is_not_served() {
         for (raw, expected) in [

@@ -1690,11 +1690,7 @@ impl RefBoxApp {
         // choke point where the live source is committed, so the two cannot
         // drift. Linked, the engine refuses to name a next game it was never
         // given; unlinked (manual), it resumes its own numbering.
-        // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
-        self.tm
-            .lock()
-            .unwrap()
-            .set_schedule_linked(self.uses_remote());
+        self.tm.lock().set_schedule_linked(self.uses_remote());
     }
 
     /// Commit a whole [`LinkSelection`].
@@ -3780,8 +3776,7 @@ impl RefBoxApp {
                     // and queued a 0-0. Timing and start time stay unknown until a
                     // schedule confirms them.
                     if let Some(ref number) = note.current_game {
-                        // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
-                        new.tm.lock().unwrap().set_next_game(NextGameInfo {
+                        new.tm.lock().set_next_game(NextGameInfo {
                             number: number.clone(),
                             timing: None,
                             start_time: None,

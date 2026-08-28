@@ -146,7 +146,7 @@ jobs:
     name: Upload release artifacts
     runs-on: ubuntu-latest
 
-    needs: [build-windows, build-macos-arm, build-macos-x86, build-rpi]
+    needs: [build-windows, build-macos-arm, build-macos-x86, build-rpi, build-overlay-rpi]
 
     steps:
     - uses: actions/download-artifact@v5
@@ -169,6 +169,15 @@ jobs:
       with:
         name: refbox-rpi-sha256
         path: 'release/rpi-sha256'
+    # Into overlay-release/, NOT release/ -- release/ is what becomes refbox.zip.
+    - uses: actions/download-artifact@v5
+      with:
+        name: overlay-rpi
+        path: 'overlay-release/Raspberry Pi'
+    - uses: actions/download-artifact@v5
+      with:
+        name: overlay-rpi-sha256
+        path: 'overlay-release/Raspberry Pi'
     # Artifact upload/download normalises every file to 0644, which leaves the
     # macOS app bundles and the Pi binary unrunnable: macOS reports "The
     # application refbox can't be opened". Restore the executable bit before
@@ -179,6 +188,22 @@ jobs:
         chmod +x 'release/Mac (Arm processor)/refbox.app/Contents/MacOS/refbox'
         chmod +x 'release/Mac (Intel processor)/refbox.app/Contents/MacOS/refbox'
         chmod +x 'release/Raspberry Pi/refbox'
+    # Artifact upload/download normalises every file to 0644. A ZIP preserves the
+    # executable bit; a bare release asset cannot, because GitHub serves assets as
+    # opaque HTTP blobs with no Unix mode. So overlay.zip is the copy that arrives
+    # runnable, and the loose binary below always needs `chmod +x` -- that is
+    # expected and documented, not a defect.
+    #
+    # Folder naming matches refbox's own, so Windows/macOS overlay builds are
+    # additive later.
+    - name: Package the overlay
+      run: |
+        chmod +x 'overlay-release/Raspberry Pi/overlay'
+        cd overlay-release && zip -r ../overlay.zip .
+    - name: Stage standalone overlay assets
+      run: |
+        cp 'overlay-release/Raspberry Pi/overlay' overlay-aarch64-linux
+        cp 'overlay-release/Raspberry Pi/overlay.sha256' overlay-aarch64-linux.sha256
     - name: Download PDFs from Google Drive
       run: |
         curl -L "https://drive.usercontent.google.com/download?id=1Momxds_2oyPTEZHgcuSxnTxI_HbGeaN8&export=download" -o "release/Getting Started Guide - English.pdf"
@@ -202,5 +227,8 @@ jobs:
           refbox.zip
           refbox-aarch64-linux
           refbox-aarch64-linux.sha256
+          overlay.zip
+          overlay-aarch64-linux
+          overlay-aarch64-linux.sha256
         draft: true
         generate_release_notes: true

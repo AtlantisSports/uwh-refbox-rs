@@ -306,11 +306,21 @@ which holds the value as a *number* and only then sends it as text — so:
 { "accessKey": "a1b2c3d4e5f6" }
 ```
 
-**Keep the `accessKey` to printable ASCII, with no whitespace and no control characters.** refbox
-puts it directly into an HTTP header without checking it, so a character that is illegal there
-**crashes the application** rather than being reported as a bad token. It happens almost
-immediately: refbox requests the schedule as soon as a link succeeds, so the crash follows the
-link within seconds, in front of the operator who just linked. There is no length limit.
+**Keep the `accessKey` to printable ASCII (`U+0020`–`U+007E`).** refbox checks every character
+before it uses the key and refuses one that falls outside that range: the operator is told "The
+site sent an access key this refbox cannot use.", the key is not stored, and the link does not
+complete. Any credential refbox already held is left untouched. The rule is deliberately stricter
+than an HTTP header's own — a header rejects only newline, carriage return, NUL and DEL, and
+would happily carry a tab, an accented letter or a curly quote — because an access key is base64
+or a JWT and has no business containing any of them. Whitespace around the key is trimmed before
+the check, so a trailing newline is harmless. There is no length limit.
+
+Note that the key is refused *after* you have issued it. If your site consumes the pending link when
+it issues the key — as recommended below — the operator needs a fresh code to try again.
+
+**On refbox v0.4.9 and earlier there was no check.** The key went straight into an HTTP header, and
+a character that is illegal there **crashed the application** — within seconds of the link, in
+front of the operator who had just linked. The check arrived in v0.5.0.
 
 **One credential per site, honoured for every event.** The event id in this path names the event the
 operator was on when they linked; it does not scope the key. refbox stores exactly one credential

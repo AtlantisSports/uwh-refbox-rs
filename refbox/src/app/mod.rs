@@ -1943,6 +1943,21 @@ impl RefBoxApp {
             courts: None,
         });
 
+        // A different event invalidates the schedule anchor too: custom sites
+        // deliberately reuse portal-style game numbering, so a `last_played`
+        // carried over from the previous site would still name a real game —
+        // just the wrong one (decision 25). This must run before
+        // `set_current_event_id` below commits the new id, or the comparison
+        // inside finds old == new and never fires. Mirrors the court value
+        // this function is about to commit: cleared with the schedule when
+        // the event changes, otherwise left as it is.
+        let court_after_adopt = if event_changed {
+            None
+        } else {
+            self.current_court.clone()
+        };
+        self.clear_anchor_if_event_or_court_changing(&Some(event_id.clone()), &court_after_adopt);
+
         // Route through set_current_event_id so portal_event_id stays in sync
         // for the background health check (ADR 011 amendment 2026-04-23).
         self.set_current_event_id(Some(event_id.clone()));

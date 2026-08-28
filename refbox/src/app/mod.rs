@@ -6863,6 +6863,38 @@ mod site_target_tests {
         assert!(!none.contains("hunter2"), "leaked: {none}");
     }
 
+    /// The same trace line carries the Portal access key. This is the live path: a successful
+    /// link arrives as `RecvPortalToken(Success(<key>))`, and `trace!("Handling message:
+    /// {message:?}")` runs on it like any other.
+    ///
+    /// Checked through the message rather than through `PortalTokenResponse` alone, because it is
+    /// the message that reaches the log -- the type having a safe `Debug` is only useful if
+    /// nothing between it and the log undoes that.
+    #[test]
+    fn a_traced_message_never_carries_a_portal_token() {
+        const SECRET: &str = "s3cret-access-key";
+        let message = Message::RecvPortalToken(PortalTokenResponse::Success(SECRET.to_string()));
+        assert!(
+            !format!("{message:?}").contains(SECRET),
+            "leaked: {message:?}"
+        );
+    }
+
+    /// The app state is traced too (`trace!("AppState changed to {:?}", ...)`), and one of its
+    /// variants nests a `PortalTokenResponse` inside a `ConfirmationKind`. Nothing can put a token
+    /// there today -- the view has an `unreachable!()` for exactly that case, because a *failed*
+    /// link is the only thing that builds it -- so this is not a leak that exists. It is here so
+    /// that if the type ever does travel that way, the redaction still holds through two layers of
+    /// derived `Debug`, which is the whole reason the guard lives on the type and not at the log.
+    #[test]
+    fn a_nested_token_is_still_redacted_through_derived_debug() {
+        const SECRET: &str = "s3cret-access-key";
+        let state = AppState::ConfirmationPage(ConfirmationKind::UwhPortalLinkFailed(
+            PortalTokenResponse::Success(SECRET.to_string()),
+        ));
+        assert!(!format!("{state:?}").contains(SECRET), "leaked: {state:?}");
+    }
+
     /// Every message is Debug-logged at trace level, which runs on every keystroke, so what the
     /// operator is part-way through typing must not be in it.
     #[test]

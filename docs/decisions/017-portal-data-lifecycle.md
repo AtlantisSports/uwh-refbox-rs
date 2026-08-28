@@ -170,6 +170,41 @@ predictable for the operator. The original network-cost rationale is unaffected 
 fetches fire while the portal is off. See
 `docs/superpowers/specs/2026-06-22-portal-off-manual-reset-design.md`.
 
+### Amendment 2026-08-27 — the event list is no longer gated by the source
+
+Q1's answer ("never while the portal is off") and Q2's ("teams-list fetches
+continue to fire in batch from `RecvEventList`") are both revised.
+
+**The event list is fetched whatever the source, including manual games.** It is
+fetched through a client built for the portal rather than the live one, which
+follows the committed source and on a custom site points at the operator's own
+server. Reason: the portal's event picker read the same map that holds the entry
+refbox manufactures for a custom site, so switching from a custom site to the
+portal offered that entry as though the portal had served it. Separating the two
+stores fixes the leak; fetching the list unconditionally is what puts the real
+list there in its place, at the moment the operator switches.
+
+The dormancy contract's *cost* claim is narrowed accordingly: an operator on
+manual games or a custom site now makes **one** portal request per launch, which
+fails and is logged when there is no route to the portal. The privacy concern
+from the original Context is unchanged in kind but no longer zero — this is a
+deliberate trade the human accepted on 2026-08-27, in exchange for the portal's
+picker never showing another site's event.
+
+**Teams are fetched for the chosen event, not for every event.** The burst in
+`RecvEventList` is removed and `request_teams_list` moves to
+`ParameterSelected::Event` (and to the startup restore path, which used to be
+served by the burst). This is the deferral Q2 parked as future work, and it is
+now required rather than optional: with the list loading unconditionally, the
+burst would mean dozens of requests for events nobody opens.
+
+Because switching source deliberately leaves the staged `current_event_id` /
+`current_court` / `schedule` fields uncleared, both settings-commit paths that
+write them — `ConfigPage::Game`'s `apply_game_options` and `ConfigPage::App`'s
+`apply_app_options` — must independently apply the ownership guard above.
+
+See `docs/superpowers/plans/2026-08-27-portal-event-list-source-separation.md`.
+
 ### What is not in scope for this ADR
 
 - Persisting `using_uwhportal` across sessions in `config.toml` (currently

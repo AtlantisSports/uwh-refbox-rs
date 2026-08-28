@@ -74,6 +74,9 @@ mod power_control;
 mod custom_site;
 use custom_site::SiteAddress;
 
+mod event_store;
+use event_store::EventStore;
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long the operator must hold a used-up team timeout button to revive
 /// (give back) one team timeout. Long enough to confirm the hold was intentional.
@@ -178,7 +181,9 @@ pub struct RefBoxApp {
     /// portal only — a custom site derives TLS from the scheme that was typed.
     require_https: bool,
     source: GameSource,
-    events: Option<BTreeMap<EventId, Event>>,
+    /// Event data for both remote sources, held apart so neither can be read
+    /// as the other. See `event_store::EventStore`.
+    events: EventStore,
     schedule: Option<Schedule>,
     /// The running game's copy of both teams' cap numbers, taken at kickoff so
     /// a mid-game REFRESH cannot move the grid under the operator's hand. Empty
@@ -195,8 +200,9 @@ pub struct RefBoxApp {
     pending_restore_game: Option<GameNumber>,
     /// One-shot: the event whose schedule to fetch once the event list lands
     /// during a startup link restore. Deferred (rather than fetched at startup)
-    /// so the schedule arrives after `self.events` is populated — `RecvSchedule`
-    /// requires the event to be present there. Cleared on first use.
+    /// so the schedule arrives after the portal's event list is populated in
+    /// `self.events` — `RecvSchedule` requires the event to be present there.
+    /// Cleared on first use.
     pending_restore_schedule: Option<EventId>,
     sound: SoundController,
     sim_children: Vec<Child>,
@@ -520,6 +526,25 @@ fn site_target(
                     address: custom_site.url.trim().to_string().into(),
                 })
         }
+    }
+}
+
+/// Whether a client pointed at `kind` can answer for `source`.
+///
+/// The live client follows the *committed* source, while the editor previews the
+/// *staged* one, so the two disagree for as long as a source change sits
+/// unapplied. Fetching during that window sends one site's event id to the
+/// other — a portal event asked of the operator's own server, or the reverse.
+/// The APPLY that repoints the client is what closes the gap; until then the
+/// fetch simply does not happen.
+fn site_serves(kind: SiteKind, source: GameSource) -> bool {
+    match (kind, source) {
+        (SiteKind::Portal, GameSource::Portal) => true,
+        (SiteKind::Custom, GameSource::Custom) => true,
+        // Manual fetches nothing, so no site serves it.
+        (_, GameSource::Manual)
+        | (SiteKind::Portal, GameSource::Custom)
+        | (SiteKind::Custom, GameSource::Portal) => false,
     }
 }
 
@@ -961,30 +986,46 @@ impl RefBoxApp {
         self.beep_test_has_run = false;
     }
 
+    /// Fetch the UWH Portal's event list — always from the portal itself.
+    ///
+    /// Deliberately not through `uwhportal_client`: that client follows the
+    /// *committed* source, so on a custom site it points at the operator's own
+    /// server, which has no portal event list and no reason to be asked for
+    /// one. A client built here for the portal keeps the list loading whatever
+    /// the refbox is committed to, and — unlike repointing — does not move
+    /// where results are sent, which must keep going to the site they were
+    /// queued for until an APPLY says otherwise.
+    ///
+    /// The token comes from the config, which is written at the same moment the
+    /// live client's is (`Message::RecvPortalToken`), so the two agree. The one
+    /// exception is the debug-only `UWH_PORTAL_SCRAMBLE_TOKEN`, which scrambles
+    /// the live client's token in memory and not the config's; a scrambled
+    /// session will still load the list here. That is acceptable — the flag
+    /// exists to exercise token *rejection*, which this fetch is not.
     fn request_event_list(&self) -> Task<Message> {
-        if let Some(client) = &self.uwhportal_client {
-            // why this cannot panic: the `UwhPortalClient` is only mutated by
-            // `set_token`/`clear_token`, neither of which panics, so the
-            // mutex is never poisoned in practice.
-            let request = client
-                .lock()
-                .unwrap()
-                .get_event_list(self.list_all_events, true);
-            Task::future(async move {
-                match request.await {
-                    Ok(events) => {
-                        info!("Got event list");
-                        Message::RecvEventList(events)
-                    }
-                    Err(e) => {
-                        error!("Failed to get event list: {e}");
-                        Message::NoAction
-                    }
+        let target = portal_target(self.config.mode, self.require_https);
+        let Some(client) = build_site_client(&target, &self.config) else {
+            // build_site_client has already logged why.
+            return Task::none();
+        };
+        // The future captures nothing (`impl Future + use<>`), so the client can
+        // be dropped here rather than held across the await.
+        let request = client.get_event_list(self.list_all_events, true);
+        Task::future(async move {
+            match request.await {
+                Ok(events) => {
+                    info!("Got event list");
+                    Message::RecvEventList(events)
                 }
-            })
-        } else {
-            Task::none()
-        }
+                Err(e) => {
+                    // Expected whenever there is no route to the portal — a
+                    // custom site on a closed poolside network, or manual games
+                    // offline. Nothing else changes and nothing is shown.
+                    error!("Failed to get event list: {e}");
+                    Message::NoAction
+                }
+            }
+        })
     }
 
     /// Directory the running binary lives in (where the new binary is swapped
@@ -1138,6 +1179,19 @@ impl RefBoxApp {
     /// tell the official Portal from a third-party site match on `source`.
     fn uses_remote(&self) -> bool {
         !matches!(self.source, GameSource::Manual)
+    }
+
+    /// The source reads should resolve against: the one staged in the editor
+    /// while it is open, the committed one otherwise.
+    ///
+    /// The editor previews the staged source, which is the same rule `view()`
+    /// already applies to the staged *event* id — the pickers have to show what
+    /// the operator is choosing, not what is committed. Writes do not follow
+    /// this: `commit_source` is the only thing that moves the committed source.
+    fn active_source(&self) -> GameSource {
+        self.edited_settings
+            .as_ref()
+            .map_or(self.source, |edited| edited.source)
     }
 
     /// Commit an applied source: the live field, the saved field so a relaunch
@@ -1307,14 +1361,17 @@ impl RefBoxApp {
     /// and schedule.
     ///
     /// A custom site never calls the event list — its event is named in the URL
-    /// — so the events-map entry the portal path gets from that list has to be
-    /// made here. That entry is not bookkeeping: `RecvTeamsList` and
-    /// `RecvSchedule` both store *into* it and log an error when it is missing,
-    /// and the court picker reads its court list from it, so without one the
-    /// court list stays permanently empty.
+    /// — so its entry in the per-source `EventStore` has to be made here. That
+    /// entry is not bookkeeping: `RecvTeamsList` and `RecvSchedule` both store
+    /// *into* it and log an error when it is missing, and the court picker
+    /// reads its court list from it, so without one the court list stays
+    /// permanently empty. It is unreachable from the portal's own picker by
+    /// construction — `EventStore::selectable` answers `None` for a custom site.
     ///
-    /// Safe to call more than once: the entry is only created when absent, so
-    /// re-adopting refreshes the data without discarding what has arrived.
+    /// Safe to call more than once: `EventStore::adopt_custom` keeps the data
+    /// already stored when re-adopting the same id, and replaces it outright
+    /// when the id differs, so this refreshes rather than discards what has
+    /// arrived.
     fn adopt_custom_event(&mut self) -> Task<Message> {
         let parsed = match custom_site::parse_custom_site(&self.config.custom_site.url) {
             Ok(parsed) => parsed,
@@ -1328,16 +1385,16 @@ impl RefBoxApp {
         let event_id = parsed.event_id;
         let event_changed = self.current_event_id.as_ref() != Some(&event_id);
 
-        let events = self.events.get_or_insert_with(BTreeMap::new);
-        events.entry(event_id.clone()).or_insert_with(|| Event {
+        self.events.adopt_custom(Event {
             id: event_id.clone(),
-            // Only ever shown in the event picker, which a custom site never
-            // opens. The id keeps it recognisable in a log rather than blank.
+            // Never shown in a picker: a custom site offers no event list, so
+            // `EventStore::selectable` answers `None` for it. The id keeps the
+            // entry recognisable in a log rather than blank.
             name: event_id.partial().to_string(),
             slug: String::new(),
             // A custom site serves no event-level date range, and the only
-            // reader sorts the event picker — unreachable here. Both ends are
-            // set to now rather than invented.
+            // reader sorts the portal's picker — unreachable for this event.
+            // Both ends are set to now rather than invented.
             date_range: DateRange {
                 start: time::OffsetDateTime::now_utc(),
                 end: time::OffsetDateTime::now_utc(),
@@ -1637,9 +1694,6 @@ impl RefBoxApp {
         // `edited_settings` ends before we call `set_current_event_id`
         // (which takes `&mut self`).
         let source = edited.source;
-        let event_id = edited.current_event_id.clone();
-        let current_court = edited.current_court.clone();
-        let schedule = edited.schedule.clone();
         let mode = edited.mode;
 
         // Cross-portal Mode change requires explicit confirmation and an app
@@ -1655,6 +1709,31 @@ impl RefBoxApp {
                 source,
             });
         }
+
+        // This is the second commit site for `current_event_id` / `current_court`
+        // / `schedule` — `apply_game_options` is the first. Switching source
+        // deliberately leaves those fields staged in `edited_settings` instead of
+        // clearing them, so Custom -> Portal -> Custom stays lossless; the
+        // corollary is that every site committing them must independently check
+        // ownership before trusting them. Without this guard: commit Custom, stage
+        // Portal on the Game page, APPLY there (which correctly nulls the commit
+        // because the selection isn't owned), then reopen App Options and APPLY
+        // again — that second Apply would re-commit the still-staged custom event
+        // id under Portal and write it into portal_link.json as a Portal link,
+        // sending the real UWH Portal a request for an event only the operator's
+        // own server has. Mirrors `selection_owned` in `apply_game_options`.
+        let client_serves_staged = site_serves(self.current_site.kind, source);
+        let selection_owned =
+            self.events.owns(source, edited.current_event_id.as_ref()) && client_serves_staged;
+        let (event_id, current_court, schedule) = if selection_owned {
+            (
+                edited.current_event_id.clone(),
+                edited.current_court.clone(),
+                edited.schedule.clone(),
+            )
+        } else {
+            (None, None, None)
+        };
 
         // Committed here, while `edited` is still borrowed, so the six toggles
         // need no per-field locals. `config` and `edited_settings` are disjoint
@@ -1761,7 +1840,19 @@ impl RefBoxApp {
     fn apply_game_options(&mut self) -> Option<ConfirmationKind> {
         let edited = self.edited_settings.as_ref()?;
 
-        if edited.uwhportal_incomplete() {
+        // A store hit alone does not prove the selection came from the site the
+        // client is actually pointed at — event ids collide across sites — so
+        // `selection_owned` also requires the client to currently serve the
+        // staged source. The same bool is `game_apply_blocked`'s override input:
+        // when the client cannot yet serve the staged source, its pickers cannot
+        // be completed before an Apply repoints it, so completeness is not
+        // required to let this Apply through.
+        let client_serves_staged = site_serves(self.current_site.kind, edited.source);
+        let selection_owned = self
+            .events
+            .owns(edited.source, edited.current_event_id.as_ref())
+            && client_serves_staged;
+        if game_apply_blocked(edited, client_serves_staged, selection_owned) {
             return Some(ConfirmationKind::UwhPortalIncompleteFromApply);
         }
 
@@ -1791,14 +1882,27 @@ impl RefBoxApp {
             return None;
         }
 
+        // On a bare remote-to-remote switch (uses_remote() but !selection_owned,
+        // let through only by the game_apply_blocked override) `edited.schedule`
+        // still belongs to the site the refbox has not moved to yet. Reading game
+        // timing out of it would commit the other source's period lengths, breaks,
+        // and overtime/sudden-death settings as this game's live config — the same
+        // leak the ownership check exists to stop, just reached through `new_config`
+        // instead of `current_event_id`. Falling back to the unchanged `tm.config()`
+        // keeps a bare switch from changing the config at all; the operator's next
+        // APPLY, after picking the new source's own event/court/game, sets it properly.
         let new_config = if edited.uses_remote() {
-            edited
-                .schedule
-                .as_ref()
-                .and_then(|schedule| schedule.get_game_timing(&edited.game_number))
-                .cloned()
-                .map(|tr| tr.into())
-                .unwrap_or_else(|| tm.config().clone())
+            if selection_owned {
+                edited
+                    .schedule
+                    .as_ref()
+                    .and_then(|schedule| schedule.get_game_timing(&edited.game_number))
+                    .cloned()
+                    .map(|tr| tr.into())
+                    .unwrap_or_else(|| tm.config().clone())
+            } else {
+                tm.config().clone()
+            }
         } else {
             edited.config.clone()
         };
@@ -1833,14 +1937,41 @@ impl RefBoxApp {
             std::mem::drop(tm);
             // Snapshot the selection so the immutable borrow on `edited` ends
             // before `commit_link_selection` takes `&mut self`.
-            let link = LinkSelection::from_edited(edited);
+            //
+            // Guarded on ownership, which `commit_link_selection` deliberately does
+            // not do for itself: a selection belonging to the OTHER source must not
+            // be committed under this one. `owns` is an id lookup, and custom sites
+            // are required to reuse portal event numbering, so the same id resolves
+            // in either store — which is why `selection_owned` pairs it with
+            // `site_serves`. Committing regardless would put a custom site's event
+            // under PORTAL, which is what sent the portal a request for an event
+            // only the operator's own server has. The game config and next-game info
+            // drawn from that same unowned schedule are guarded separately, by the
+            // `new_config` and `game_number` checks above — together, nothing derived
+            // from an unowned selection reaches the committed state.
+            let link = if selection_owned {
+                LinkSelection::from_edited(edited)
+            } else {
+                LinkSelection {
+                    source: edited.source,
+                    event_id: None,
+                    court: None,
+                    schedule: None,
+                }
+            };
 
             self.config.game = new_config;
             self.commit_link_selection(link);
             return None;
         }
 
-        if edited.game_number != self.snapshot.game_number {
+        // Same leak, same fix, as the `new_config` guard above: on a bare
+        // remote-to-remote switch the staged game number resolves against the
+        // other source's schedule, not the one just committed. Skip this branch
+        // entirely rather than build a NextGameInfo out of it.
+        if edited.game_number != self.snapshot.game_number
+            && (!edited.uses_remote() || selection_owned)
+        {
             if tm.current_period() != GamePeriod::BetweenGames {
                 return Some(ConfirmationKind::GameNumberChangedFromApply);
             }
@@ -1874,7 +2005,28 @@ impl RefBoxApp {
         std::mem::drop(tm);
         // Snapshot the selection so the immutable borrow on `edited` ends
         // before `commit_link_selection` takes `&mut self`.
-        let link = LinkSelection::from_edited(edited);
+        //
+        // Guarded on ownership, which `commit_link_selection` deliberately does
+        // not do for itself: a selection belonging to the OTHER source must not
+        // be committed under this one. `owns` is an id lookup, and custom sites
+        // are required to reuse portal event numbering, so the same id resolves
+        // in either store — which is why `selection_owned` pairs it with
+        // `site_serves`. Committing regardless would put a custom site's event
+        // under PORTAL, which is what sent the portal a request for an event
+        // only the operator's own server has. The game config and next-game info
+        // drawn from that same unowned schedule are guarded separately, by the
+        // `new_config` and `game_number` checks above — together, nothing derived
+        // from an unowned selection reaches the committed state.
+        let link = if selection_owned {
+            LinkSelection::from_edited(edited)
+        } else {
+            LinkSelection {
+                source: edited.source,
+                event_id: None,
+                court: None,
+                schedule: None,
+            }
+        };
 
         self.commit_link_selection(link);
 
@@ -2653,7 +2805,7 @@ impl RefBoxApp {
             current_site,
             require_https,
             source: startup_source,
-            events: None,
+            events: EventStore::default(),
             schedule: None,
             game_rosters: BlackWhiteBundle {
                 black: Vec::new(),
@@ -2733,23 +2885,26 @@ impl RefBoxApp {
             Err(e) => error!("Failed to read portal_link.json: {e}"),
         }
 
-        // Portal subsystem stays dormant until the operator turns Using-UWH-Portal
-        // ON (or a recent link was restored above): no event-list fetch fires at
-        // startup unless the runtime flag is true.
-        // See ADR 017 (Portal Data Lifecycle) for the dormancy contract.
+        // The event-list fetch pushed below no longer waits for the operator to
+        // turn Using-UWH-Portal ON — that dormancy was relaxed 2026-08-27; see
+        // the comment at the fetch itself for why.
         let mut startup_tasks = vec![if fullscreen {
             window::get_latest().and_then(|w| window::change_mode(w, window::Mode::Fullscreen))
         } else {
             Task::none()
         }];
-        // A custom site names its event in the URL, so the event list is not
-        // needed — and would be answered by a third-party site that has no
-        // reason to serve one. It adopts its own event instead, which is also
-        // what brings its schedule and teams back after a restart.
+        // The portal's event list is fetched whatever the source, so that
+        // choosing UWH PORTAL in the editor finds the list already there rather
+        // than an empty picker — and, critically, never the custom site's own
+        // event standing in for it. Offline this fails and is logged; see
+        // `request_event_list`. This relaxes ADR 017's dormancy contract for
+        // the event list alone; see the 2026-08-27 amendment.
+        startup_tasks.push(new.request_event_list());
+        // A custom site's event is named in its URL rather than picked from a
+        // list, so it is adopted directly. This is also what brings its
+        // schedule and teams back after a restart.
         if new.source == GameSource::Custom {
             startup_tasks.push(new.adopt_custom_event());
-        } else if new.uses_remote() {
-            startup_tasks.push(new.request_event_list());
         }
         // Arm a one-shot ~20s timer. If the app is still running when it fires,
         // startup was healthy and the update trial marker can be cleared so a
@@ -3925,6 +4080,9 @@ impl RefBoxApp {
                 let moved_to_custom = new_site
                     .as_ref()
                     .is_some_and(|t| t.kind == SiteKind::Custom);
+                let moved_to_portal = new_site
+                    .as_ref()
+                    .is_some_and(|t| t.kind == SiteKind::Portal);
                 if let Some(target) = new_site {
                     self.repoint_client(target);
                     task = self.refresh_token_indicator();
@@ -3944,6 +4102,30 @@ impl RefBoxApp {
                     // — keeping the court and game pickers greyed and the Game
                     // page's APPLY blocked for a reason that was an artifact.
                     task = Task::batch(vec![task, self.refresh_token_indicator()]);
+                }
+                // The refbox has just moved onto the portal, so the event the
+                // operator staged before the move can finally be fetched. This
+                // is the other half of the guard in `ParameterSelected::Event`:
+                // that skipped the fetch because the client was elsewhere, and
+                // without this line the operator is left with an event selected,
+                // COURT stuck on "loading" and no control that would fill it.
+                //
+                // Gated on `moved_to_portal`, not `self.source`, so this does
+                // not re-run on every later APPLY once the refbox is already on
+                // the portal — only the APPLY that actually repoints the client
+                // fires it. The `site_serves` conjunct still earns its place:
+                // `repoint_client` returns early without updating
+                // `self.current_site` when `build_site_client` fails, so a
+                // Portal-committed source can still be talking to a stale
+                // client, and the fetch must stay suppressed in that case too.
+                if moved_to_portal && site_serves(self.current_site.kind, GameSource::Portal) {
+                    if let Some(event_id) = self.current_event_id.clone() {
+                        task = Task::batch(vec![
+                            task,
+                            self.request_teams_list(event_id.clone()),
+                            self.request_schedule(event_id),
+                        ]);
+                    }
                 }
                 self.page_entry_snapshot = None;
                 self.persist_config();
@@ -4514,28 +4696,44 @@ impl RefBoxApp {
                 let task = match param {
                     ListableParameter::Event => {
                         let id = EventId::from_full(val).unwrap();
+                        let edited_source = edited_settings.source;
+                        // Whether the live client will actually be asked about
+                        // this event — see `site_serves`. Shared by the token
+                        // indicator below and the fetch batch at the end of
+                        // this arm; both need the same answer.
+                        let will_fetch = site_serves(self.current_site.kind, edited_source);
                         // Set the new event id and clear court / game number / schedule
                         // that were filtered by the previous event so the user re-picks
                         // against the new event's data.
                         edited_settings.select_event(id.clone());
 
-                        if let Some(ref client) = self.uwhportal_client {
-                            // why this cannot panic: the guard is held only for a
-                            // synchronous `has_token()` call and dropped immediately.
-                            let has_token = client.lock().unwrap().has_token();
-                            if has_token {
-                                edited_settings.uwhportal_token_valid = None;
+                        // Only resolve (or reset) the token indicator when a
+                        // fetch will actually follow to settle it. Setting it to
+                        // `None` ("CHECKING...") when the fetch is suppressed
+                        // would promise a check that will not happen until the
+                        // APPLY that repoints the client — the same untruth
+                        // `EditableSettings::clear_for_remote_switch` avoids by
+                        // resetting to FAILED rather than `None`. Here, when
+                        // suppressed, the previous verdict is left standing.
+                        if will_fetch {
+                            if let Some(ref client) = self.uwhportal_client {
+                                // why this cannot panic: the guard is held only for a
+                                // synchronous `has_token()` call and dropped immediately.
+                                let has_token = client.lock().unwrap().has_token();
+                                if has_token {
+                                    edited_settings.uwhportal_token_valid = None;
+                                } else {
+                                    edited_settings.uwhportal_token_valid = Some(false);
+                                }
                             } else {
                                 edited_settings.uwhportal_token_valid = Some(false);
-                            }
-                        } else {
-                            edited_settings.uwhportal_token_valid = Some(false);
-                        };
+                            };
+                        }
 
                         if let Some(pools) = self
                             .events
-                            .as_ref()
-                            .and_then(|events| events.get(&id).and_then(|e| e.courts.as_ref()))
+                            .get(self.active_source(), &id)
+                            .and_then(|e| e.courts.as_ref())
                         {
                             if pools.len() == 1 {
                                 if let Some(ref mut edits) = self.edited_settings {
@@ -4543,10 +4741,23 @@ impl RefBoxApp {
                                 }
                             }
                         }
-                        Task::batch(vec![
-                            self.check_uwhportal_auth(&id),
-                            self.request_schedule(id),
-                        ])
+                        // Only fetch when the refbox is actually on this
+                        // source's site. Choosing an event before the APPLY
+                        // that moves it there is a staged choice; its schedule
+                        // and teams are fetched by that APPLY instead.
+                        if will_fetch {
+                            Task::batch(vec![
+                                self.check_uwhportal_auth(&id),
+                                // Teams for this event only. They used to arrive in
+                                // the batch fired from `RecvEventList` for every
+                                // event at once; that burst is gone, so the game
+                                // picker's team names now depend on this line.
+                                self.request_teams_list(id.clone()),
+                                self.request_schedule(id),
+                            ])
+                        } else {
+                            Task::none()
+                        }
                     }
                     ListableParameter::Court => {
                         // Set the new court and clear the game number that was filtered
@@ -4719,30 +4930,28 @@ impl RefBoxApp {
                 // so a choice the operator cancels cannot survive as a hidden
                 // preference. See the plan's deviation note.
 
-                let mut trigger_event_list_fetch = false;
-                // Per ADR 017 (Portal Data Lifecycle): on manual -> remote,
-                // start the pickers from a blank slate (see
-                // `clear_for_remote_switch`) and kick off the event-list fetch
-                // immediately so the picker has data ready when the operator
-                // navigates to it.
+                // Per ADR 017: on manual -> remote, start the pickers from a
+                // blank slate.
                 if !was_using && edited_settings.uses_remote() {
                     edited_settings.clear_for_remote_switch();
-                    // Only the portal has a list to fetch. A custom site names
-                    // its event in the URL and adopts it when the source is
-                    // applied, so asking a third-party site for an event list
-                    // would be a call it has no reason to answer.
-                    trigger_event_list_fetch = new_source == GameSource::Portal;
                 }
                 if was_using && !edited_settings.uses_remote() {
-                    // remote -> manual is a clean slate (reverses ADR 017's
-                    // "no proactive clearing").
+                    // remote -> manual is a clean slate.
                     edited_settings.current_event_id = None;
                     edited_settings.current_court = None;
                     edited_settings.schedule = None;
                     edited_settings.game_number = String::new();
                 }
 
-                if trigger_event_list_fetch {
+                // Refresh the list on every switch into PORTAL, including from
+                // CUSTOM — which used to fetch nothing at all, because both
+                // sources counted as "remote" and the transition fell between
+                // the two branches above. That is what left the custom site's
+                // event standing in the portal's picker. Deliberately NOT
+                // conditioned on the previous source: an operator returning to
+                // PORTAL wants the current list, and a stale one is what sent
+                // them to a game that no longer exists.
+                if new_source == GameSource::Portal {
                     self.request_event_list()
                 } else {
                     Task::none()
@@ -5095,19 +5304,22 @@ impl RefBoxApp {
             Message::RecvEventList(e_list) => {
                 let mut tasks = vec![];
                 let e_map: BTreeMap<_, _> = e_list.into_iter().map(|e| (e.id.clone(), e)).collect();
-                for event in e_map.values() {
-                    tasks.push(self.request_teams_list(event.id.clone()));
-                }
-                self.events = Some(e_map);
+                // Teams are NOT fetched here any more. This handler used to fire
+                // one teams request per event, which was affordable only while
+                // the list itself was fetched solely on opting in; now that the
+                // list loads whatever the source, it would mean dozens of
+                // requests for events nobody opens. They are fetched for the
+                // event the operator picks instead — see
+                // `ParameterSelected::Event` — which is the deferral ADR 017
+                // parked in its Q2.
+                self.events.set_portal_list(e_map);
                 // Startup link restore: now that the event list is populated,
                 // fetch the schedule for the restored event so RecvSchedule can
                 // re-select the remembered game and start its scheduled countdown.
                 if let Some(event_id) = self.pending_restore_schedule.take() {
-                    let in_list = self
-                        .events
-                        .as_ref()
-                        .is_some_and(|m| m.contains_key(&event_id));
+                    let in_list = self.events.owns(GameSource::Portal, Some(&event_id));
                     if in_list {
+                        tasks.push(self.request_teams_list(event_id.clone()));
                         tasks.push(self.request_schedule(event_id));
                     } else {
                         warn!(
@@ -5119,18 +5331,20 @@ impl RefBoxApp {
                 Task::batch(tasks)
             }
             Message::RecvTeamsList(event_id, teams) => {
-                if let Some(ref mut events) = self.events {
-                    if let Some(event) = events.get_mut(&event_id) {
-                        event.teams = Some(teams);
-                    } else {
-                        error!(
-                            "Received teams for event_id {}, it is not in the event list",
-                            event_id.full()
-                        );
-                    }
-                } else {
+                // Resolves against the COMMITTED source, not the staged one: the
+                // client that issued this reply follows the committed source, so a
+                // reply still arriving after the operator has staged a different
+                // source (but not yet applied it) belongs to the committed one.
+                if let Some(event) = self.events.get_mut(self.source, &event_id) {
+                    event.teams = Some(teams);
+                } else if self.source == GameSource::Portal && !self.events.portal_list_loaded() {
                     error!(
                         "Received teams for event_id {}, but there is no event list yet",
+                        event_id.full()
+                    );
+                } else {
+                    error!(
+                        "Received teams for event_id {}, it is not in the event list",
                         event_id.full()
                     );
                 }
@@ -5199,74 +5413,77 @@ impl RefBoxApp {
                     }
                 }
 
-                if let Some(ref mut events) = self.events {
-                    if let Some(event) = events.get_mut(&event_id) {
-                        event.courts = Some(courts);
-                        event.schedule = Some(schedule.clone());
-                        if let Some(ref mut edits) = self.edited_settings {
-                            if let Some(ref id) = edits.current_event_id {
-                                if *id == event_id {
-                                    edits.schedule = Some(schedule.clone());
-                                }
+                // Resolves against the COMMITTED source, not the staged one: the
+                // client that issued this reply follows the committed source, so a
+                // reply still arriving after the operator has staged a different
+                // source (but not yet applied it) belongs to the committed one.
+                let source = self.source;
+                if let Some(event) = self.events.get_mut(source, &event_id) {
+                    event.courts = Some(courts);
+                    event.schedule = Some(schedule.clone());
+                    if let Some(ref mut edits) = self.edited_settings {
+                        if let Some(ref id) = edits.current_event_id {
+                            if *id == event_id {
+                                edits.schedule = Some(schedule.clone());
                             }
                         }
-                        if let Some(ref id) = self.current_event_id {
-                            if *id == event_id {
-                                self.schedule = Some(schedule);
-                                if self.edited_settings.is_none() {
-                                    let mut tm = self.tm.lock();
-                                    if tm.current_period() == GamePeriod::BetweenGames {
-                                        // On a startup link restore, re-select the
-                                        // remembered game; otherwise pick the default
-                                        // next game by number.
-                                        let restore_num = self.pending_restore_game.take();
-                                        let lookup_num = restore_num
-                                            .clone()
-                                            .unwrap_or_else(|| tm.next_game_number());
-                                        if let (Some(game), Some(timing)) = self
-                                            .schedule
-                                            .as_ref()
-                                            .unwrap()
-                                            .get_game_and_timing(&lookup_num)
-                                        {
-                                            info!(
-                                                "Setting upcoming game info from received schedule: {game:?}"
-                                            );
-                                            tm.set_next_game(NextGameInfo {
-                                                number: game.number.clone(),
-                                                timing: Some(timing.clone()),
-                                                start_time: Some(game.start_time),
-                                            });
-                                            if restore_num.is_some() {
-                                                // Start the live countdown to the
-                                                // scheduled start so a restored session
-                                                // is ready to go (same path the normal
-                                                // between-games transition uses).
-                                                let now = Instant::now();
-                                                // why this cannot panic: BetweenGames was
-                                                // just checked and next_game was just set.
-                                                tm.apply_next_game_start(now).unwrap();
-                                                let new_game_config = tm.config().clone();
-                                                let snapshot = tm.generate_snapshot(now).unwrap();
-                                                std::mem::drop(tm);
-                                                self.config.game = new_game_config;
-                                                roster_tasks.push(self.apply_snapshot(snapshot));
-                                                return Task::batch(roster_tasks);
-                                            }
+                    }
+                    if let Some(ref id) = self.current_event_id {
+                        if *id == event_id {
+                            self.schedule = Some(schedule);
+                            if self.edited_settings.is_none() {
+                                let mut tm = self.tm.lock().unwrap();
+                                if tm.current_period() == GamePeriod::BetweenGames {
+                                    // On a startup link restore, re-select the
+                                    // remembered game; otherwise pick the default
+                                    // next game by number.
+                                    let restore_num = self.pending_restore_game.take();
+                                    let lookup_num = restore_num
+                                        .clone()
+                                        .unwrap_or_else(|| tm.next_game_number());
+                                    if let (Some(game), Some(timing)) = self
+                                        .schedule
+                                        .as_ref()
+                                        .unwrap()
+                                        .get_game_and_timing(&lookup_num)
+                                    {
+                                        info!(
+                                            "Setting upcoming game info from received schedule: {game:?}"
+                                        );
+                                        tm.set_next_game(NextGameInfo {
+                                            number: game.number.clone(),
+                                            timing: Some(timing.clone()),
+                                            start_time: Some(game.start_time),
+                                        });
+                                        if restore_num.is_some() {
+                                            // Start the live countdown to the
+                                            // scheduled start so a restored session
+                                            // is ready to go (same path the normal
+                                            // between-games transition uses).
+                                            let now = Instant::now();
+                                            // why this cannot panic: BetweenGames was
+                                            // just checked and next_game was just set.
+                                            tm.apply_next_game_start(now).unwrap();
+                                            let new_game_config = tm.config().clone();
+                                            let snapshot = tm.generate_snapshot(now).unwrap();
+                                            std::mem::drop(tm);
+                                            self.config.game = new_game_config;
+                                            roster_tasks.push(self.apply_snapshot(snapshot));
+                                            return Task::batch(roster_tasks);
                                         }
                                     }
                                 }
                             }
                         }
-                    } else {
-                        error!(
-                            "Received schedule for event_id {}, it is not in the event list",
-                            event_id.full()
-                        );
                     }
-                } else {
+                } else if source == GameSource::Portal && !self.events.portal_list_loaded() {
                     error!(
                         "Received schedule for event_id {}, but there is no event list yet",
+                        event_id.full()
+                    );
+                } else {
+                    error!(
+                        "Received schedule for event_id {}, it is not in the event list",
                         event_id.full()
                     );
                 }
@@ -6108,10 +6325,10 @@ impl RefBoxApp {
 
     pub(super) fn view(&self) -> Element<'_, Message> {
         // During Game Config edit, the operator may have picked a new event whose
-        // teams have already loaded into `self.events[new_id].teams` but whose
-        // commit is still pending Apply. Resolve teams against the in-edit
-        // event id (when present) so the picker shows real team names during edit;
-        // fall back to the committed `current_event_id` outside of edit.
+        // teams have already loaded into the EventStore but whose commit is still
+        // pending Apply. Resolve teams against the in-edit event id AND the staged
+        // source (when present) so the picker shows real team names during edit;
+        // fall back to the committed event id and source outside of edit.
         let active_event_id = self
             .edited_settings
             .as_ref()
@@ -6124,8 +6341,8 @@ impl RefBoxApp {
             clock_running: self.tm.lock().clock_is_running(),
             teams: active_event_id.and_then(|id| {
                 self.events
-                    .as_ref()
-                    .and_then(|events| events.get(id).and_then(|event| event.teams.as_ref()))
+                    .get(self.active_source(), id)
+                    .and_then(|event| event.teams.as_ref())
             }),
             // The portal health indicator is dormant whenever Using-UWH-Portal
             // is off OR no event is linked. `Some` only when the feature is on
@@ -6242,10 +6459,14 @@ impl RefBoxApp {
             AppState::EditGameConfig(page) => build_game_config_edit_page(
                 data,
                 self.edited_settings.as_ref().unwrap(),
-                self.events.as_ref(),
+                &self.events,
                 page,
                 self.page_entry_snapshot.as_ref(),
                 self.power_controls_visible(),
+                site_serves(
+                    self.current_site.kind,
+                    self.edited_settings.as_ref().unwrap().source,
+                ),
             ),
             AppState::ParameterEditor(param, dur, single_half) => build_game_parameter_editor(
                 data,
@@ -6264,7 +6485,7 @@ impl RefBoxApp {
                 param,
                 index,
                 self.edited_settings.as_ref().unwrap(),
-                self.events.as_ref(),
+                &self.events,
             ),
             AppState::ConfirmationPage(ref kind) => {
                 build_confirmation_page(data, kind)
@@ -7193,6 +7414,20 @@ mod site_target_tests {
             assert_eq!(target.require_https, require_https);
             assert!(!target.base_url.expose().contains("scoreboard.local"));
         }
+    }
+
+    /// Whether the live client can answer for a source. A staged source the
+    /// client has not moved to yet cannot be fetched from, and asking anyway is
+    /// how a portal event id ended up being sent to somebody's own server.
+    #[test]
+    fn site_serves_only_its_own_source() {
+        assert!(site_serves(SiteKind::Portal, GameSource::Portal));
+        assert!(!site_serves(SiteKind::Portal, GameSource::Custom));
+        assert!(site_serves(SiteKind::Custom, GameSource::Custom));
+        assert!(!site_serves(SiteKind::Custom, GameSource::Portal));
+        // Manual fetches nothing, so no site serves it.
+        assert!(!site_serves(SiteKind::Portal, GameSource::Manual));
+        assert!(!site_serves(SiteKind::Custom, GameSource::Manual));
     }
 }
 

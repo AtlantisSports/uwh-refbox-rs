@@ -1,5 +1,6 @@
 use super::fit_text::fit_text;
 use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
+use crate::app::EventStore;
 use crate::app::PageEntrySnapshot;
 use crate::app::languages::Language;
 use crate::config::{CustomSite, GameSource, Level, Mode, RemoteSource};
@@ -16,12 +17,11 @@ use iced::{
     },
 };
 use matrix_drawing::transmitted_data::Brightness;
-use std::collections::BTreeMap;
 use tokio::time::Duration;
 use uwh_common::{
     config::Game as GameConfig,
     game_snapshot::{GamePeriod, GameSnapshot},
-    uwhportal::schedule::{Event, EventId, GameNumber, Schedule},
+    uwhportal::schedule::{EventId, GameNumber, Schedule},
 };
 
 impl EditableSettings {
@@ -150,6 +150,52 @@ impl EditableSettings {
             && self.current_court.is_none()
             && self.current_event_id.as_ref() == Some(schedule_event_id)
     }
+}
+
+/// Whether the Game page's APPLY must be refused, given what the editor holds.
+///
+/// Two things block it, and one overrides them.
+///
+/// Blocking: an incomplete remote selection (`uwhportal_incomplete`), and a
+/// selection belonging to the *other* source — which passes every completeness
+/// check, because a custom site's event, court and schedule are as complete as
+/// a portal event's. Without the ownership test APPLY would let a click through
+/// that ends up committing one source's selection under the other — not just
+/// `current_event_id`, but the game config and next-game info
+/// `apply_game_options` reads out of that same unowned schedule — which is the
+/// whole bug this change exists to fix.
+///
+/// The override: the live client does not yet serve the staged source
+/// (`client_serves_staged` — see `site_serves`). Those pickers cannot be
+/// completed until the client is repointed at that site — an event's schedule
+/// comes from the site the refbox has not moved to yet — so refusing here
+/// would leave the operator with a valid choice on screen and no control that
+/// acts on it.
+///
+/// This used to be a comparison of source values (staged != committed, with
+/// committed == Manual excluded). Both halves of that were wrong. A store hit
+/// is not proof the schedule came from the site the client is actually
+/// pointed at: event ids collide across sites with no error at all — the same
+/// id has named a completely different tournament on two different portals —
+/// so `selection_owned` needs this same client-serves test alongside the
+/// store lookup, not just here. And excluding `committed == Manual` assumed
+/// the client is always sitting on whatever remote was last committed, which
+/// is false the moment MANUAL GAMES is used as a stopover: commit Custom, go
+/// Manual, stage Portal, and the client is still on Custom while committed
+/// and staged alone say nothing about that. Testing what the client can
+/// actually serve answers the real question directly and fixes both at once.
+///
+/// `apply_game_options` and this page's action row both call this, so the gate
+/// and the commit cannot drift apart.
+pub(in super::super) fn game_apply_blocked(
+    settings: &EditableSettings,
+    client_serves_staged: bool,
+    selection_owned: bool,
+) -> bool {
+    if !client_serves_staged {
+        return false;
+    }
+    settings.uwhportal_incomplete() || (settings.uses_remote() && !selection_owned)
 }
 
 pub(in super::super) trait Cyclable
@@ -320,10 +366,14 @@ pub(in super::super) fn page_has_changes(
 pub(in super::super) fn build_game_config_edit_page<'a>(
     data: ViewData<'_, '_>,
     settings: &EditableSettings,
-    events: Option<&BTreeMap<EventId, Event>>,
+    events: &EventStore,
     page: ConfigPage,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     show_power_button: bool,
+    // Whether the live client currently serves the source staged in `settings`
+    // — see `site_serves` in `mod.rs`, which built this from `self.current_site`
+    // (not available to view builders). Only the Game page needs it.
+    client_serves_staged: bool,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -356,6 +406,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             clock_running,
             page_entry_snapshot,
             portal_indicator,
+            client_serves_staged,
         ),
         ConfigPage::Sound => make_sound_config_page(
             snapshot,
@@ -649,11 +700,18 @@ fn make_event_config_page<'a>(
     committed_site_url: &str,
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
-    events: Option<&BTreeMap<EventId, Event>>,
+    events: &EventStore,
     mode: Mode,
     clock_running: bool,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
+    // Whether the live client currently serves the staged source (`source`,
+    // destructured from `settings` below) — see `site_serves`. Computed in
+    // `mod.rs` from `self.current_site`, which this view builder has no
+    // access to itself. Doubles as the second half of `selection_owned` (a
+    // store hit alone is not proof the selection came from this site — event
+    // ids collide across sites) and as `game_apply_blocked`'s override input.
+    client_serves_staged: bool,
 ) -> Element<'a, Message> {
     let EditableSettings {
         config,
@@ -679,8 +737,19 @@ fn make_event_config_page<'a>(
 
     // Game-number picker — placed in the centre cell of the action row
     // (Cancel | Game | Apply) in both portal modes per ADR-009 Task 14 layout.
+    //
+    // A staged source switch deliberately leaves `current_event_id` /
+    // `current_court` / `schedule` unchanged in `edited_settings` (see
+    // `EventStore`), so on a bare switch these can still resolve against the
+    // OTHER source's schedule. `event_label` and `pool_label` below already
+    // gate on ownership through `events.get`; this tile has to as well, or it
+    // would keep showing — and let the operator open — the other source's
+    // games and team names.
+    let selection_owned = events.owns(*source, current_event_id.as_ref());
+
     let game_btn_msg = if uses_remote {
         if !token_rejected
+            && selection_owned
             && current_event_id.is_some()
             && current_court.is_some()
             && schedule.is_some()
@@ -695,7 +764,9 @@ fn make_event_config_page<'a>(
 
     let mut game_large_text = true;
     let game_label = if uses_remote {
-        if let (Some(_), Some(cur_court)) = (current_event_id, current_court) {
+        if !selection_owned {
+            String::new()
+        } else if let (Some(_), Some(cur_court)) = (current_event_id, current_court) {
             if let Some(schedule) = schedule {
                 match schedule.games.get(game_number) {
                     Some(game) if game.court == *cur_court => game.number.to_string(),
@@ -754,28 +825,30 @@ fn make_event_config_page<'a>(
         // the current mode — UWH, UWR) + Custom; rows 2–4 are full-width
         // single-button rows — Event (or Custom Site, under CUSTOM), then Token,
         // then Court.
-        let event_label = if let Some(events) = events {
-            if let Some(event_id) = current_event_id {
-                match events.get(event_id) {
-                    Some(t) => t.name.clone(),
-                    None => fl!("none-selected"),
-                }
-            } else {
-                fl!("none-selected")
+        //
+        // Resolved against the STAGED source, so the tile previews what the
+        // operator is choosing. A selection belonging to the other source does
+        // not resolve here, which is what stops a custom site's event from being
+        // shown as a portal event.
+        let event_label = if events.portal_list_loaded() || *source == GameSource::Custom {
+            match current_event_id
+                .as_ref()
+                .and_then(|id| events.get(*source, id))
+            {
+                Some(event) => event.name.clone(),
+                None => fl!("none-selected"),
             }
         } else {
             fl!("loading")
         };
 
-        let event_btn_msg = if events.is_some() {
-            Some(Message::SelectParameter(ListableParameter::Event))
-        } else {
-            None
-        };
+        let event_btn_msg = events
+            .selectable(*source)
+            .map(|_| Message::SelectParameter(ListableParameter::Event));
 
-        let pool_label = if let Some(event) = events
+        let pool_label = if let Some(event) = current_event_id
             .as_ref()
-            .and_then(|events| events.get(current_event_id.as_ref()?))
+            .and_then(|id| events.get(*source, id))
         {
             if event.courts.is_some() {
                 if let Some(court) = current_court {
@@ -798,9 +871,10 @@ fn make_event_config_page<'a>(
         let pool_btn_msg = if token_rejected {
             None
         } else {
-            events
+            current_event_id
                 .as_ref()
-                .and_then(|tourns| tourns.get(current_event_id.as_ref()?)?.courts.as_ref())
+                .and_then(|id| events.get(*source, id))
+                .and_then(|event| event.courts.as_ref())
                 .filter(|courts| courts.len() > 1)
                 .map(|_| Message::SelectParameter(ListableParameter::Court))
         };
@@ -1084,7 +1158,8 @@ fn make_event_config_page<'a>(
     // Action row: Cancel | Game-number picker | Apply.
     // Apply is blocked when the portal state is incomplete, so a click on Apply
     // can't reach a wasteful "fix something and try again" dialog.
-    let apply_blocked = settings.uwhportal_incomplete();
+    let selection_owned = events.owns(*source, current_event_id.as_ref()) && client_serves_staged;
+    let apply_blocked = game_apply_blocked(settings, client_serves_staged, selection_owned);
     // A red (too-short) Game Block is invalid, so APPLY must be disabled until it
     // is widened. Only gate this in portal-OFF mode — that is the only mode that
     // renders the Game Block button, so the disabled APPLY always has a visible
@@ -3526,18 +3601,132 @@ mod tests {
         assert!(!edited.uwhportal_incomplete());
     }
 
+    /// A completed portal selection is applicable, as it always was. The
+    /// client already serves the staged source (no pending switch), so the
+    /// override does not fire and completeness + ownership decide alone.
+    #[test]
+    fn apply_not_blocked_when_the_selection_is_complete_and_owned() {
+        let event_id = EventId::from_partial("evt-A");
+        let edited = EditableSettings {
+            source: GameSource::Portal,
+            current_event_id: Some(event_id.clone()),
+            current_court: Some("CourtA".to_string()),
+            schedule: Some(make_schedule_with_one_game(event_id, "1", "CourtA")),
+            game_number: "1".to_string(),
+            ..Default::default()
+        };
+        assert!(!game_apply_blocked(&edited, true, true));
+    }
+
+    /// The regression this pairs with: a selection that looks complete but
+    /// belongs to the other source must NOT be applicable, or a custom site's
+    /// event gets committed as a portal selection.
+    #[test]
+    fn apply_blocked_when_the_selection_belongs_to_the_other_source() {
+        let event_id = EventId::from_partial("mine-1");
+        let edited = EditableSettings {
+            source: GameSource::Portal,
+            current_event_id: Some(event_id.clone()),
+            current_court: Some("CourtA".to_string()),
+            schedule: Some(make_schedule_with_one_game(event_id, "1", "CourtA")),
+            game_number: "1".to_string(),
+            ..Default::default()
+        };
+        // The client already serves the staged source, so no switch is
+        // pending to override the gate — only the ownership term can excuse
+        // this selection, and it does not.
+        assert!(game_apply_blocked(&edited, true, false));
+    }
+
+    /// A pending switch between the two remotes is applicable on its own: the
+    /// pickers cannot be completed until the client is repointed at the new
+    /// site — which is exactly what `!client_serves_staged` means here.
+    #[test]
+    fn apply_not_blocked_by_a_pending_switch_between_remotes() {
+        let edited = EditableSettings {
+            source: GameSource::Portal,
+            current_event_id: None,
+            current_court: None,
+            schedule: None,
+            ..Default::default()
+        };
+        // Committed Custom, client on the custom site, staged Portal: the
+        // client does not yet serve Portal.
+        assert!(!game_apply_blocked(&edited, false, false));
+
+        let edited = EditableSettings {
+            source: GameSource::Custom,
+            ..Default::default()
+        };
+        // Committed Portal, client on the portal, staged Custom: the client
+        // does not yet serve Custom either.
+        assert!(!game_apply_blocked(&edited, false, false));
+    }
+
+    /// Committed Manual with the client already on the portal (the ordinary
+    /// case: manual was reached FROM the portal, so the client never left
+    /// it) is NOT covered by the override — the pickers can be completed
+    /// first, and APPLY must stay grey until they are. This is the "Apply
+    /// stays gray" report's guard — do not let the override widen into it.
+    #[test]
+    fn apply_still_blocked_on_an_incomplete_switch_from_manual() {
+        let edited = EditableSettings {
+            source: GameSource::Portal,
+            current_event_id: None,
+            ..Default::default()
+        };
+        assert!(game_apply_blocked(&edited, true, false));
+    }
+
+    /// Committed Manual with the client on the *other* remote's site (e.g.
+    /// Custom was committed, then MANUAL GAMES was used as a stopover before
+    /// staging Portal): the old committed-source comparison excluded every
+    /// manual -> remote case from the override, so this combination stayed
+    /// blocked forever — the pickers can never complete because the client
+    /// cannot fetch from a site it is not pointed at, and nothing else moves
+    /// it. Testing what the client can actually serve, instead of comparing
+    /// source values, closes that dead end: the override fires here exactly
+    /// as it would for a direct remote-to-remote switch.
+    #[test]
+    fn apply_not_blocked_from_manual_when_client_is_on_the_other_remote() {
+        let edited = EditableSettings {
+            source: GameSource::Portal,
+            current_event_id: None,
+            ..Default::default()
+        };
+        assert!(!game_apply_blocked(&edited, false, false));
+    }
+
+    /// Nor does the override apply to a switch INTO manual, which needs no
+    /// remote data at all and is never blocked in the first place. No site
+    /// serves Manual (`site_serves` returns false for every `(_, Manual)`
+    /// pair), so a real caller always passes `false` here regardless of
+    /// where the client currently is.
+    #[test]
+    fn apply_not_blocked_switching_to_manual() {
+        let edited = EditableSettings {
+            source: GameSource::Manual,
+            current_event_id: None,
+            ..Default::default()
+        };
+        assert!(!game_apply_blocked(&edited, false, false));
+    }
+
     // ---------------------------------------------------------------------
     // Invariant 5: a completed portal selection enables Apply (regression)
     //
     // Regression guard for the "Apply stays gray after switching USING
     // UWHPORTAL to YES and completing the picks" report. The Game-page footer
-    // enables Apply only when `page_has_changes(...) && !uwhportal_incomplete()`.
-    // These lock that combined decision: a fully-completed portal selection
-    // (changed from a portal-off entry) enables Apply, while a still-incomplete
-    // one keeps it disabled. The async flow that *populates* those fields lives
-    // in App::update (not unit-testable without sockets); the existing
-    // uwhportal_incomplete_* tests already cover the "schedule not locked in"
-    // shape that produced the report.
+    // enables Apply when `page_has_changes(...) && !game_apply_blocked(...) &&
+    // !game_block_too_short` — the last term is always false for both
+    // selections below (Game Block only gates portal-OFF mode, and both are
+    // portal-ON), so these lock the first two terms together: a
+    // fully-completed, owned portal selection (changed from a portal-off
+    // entry) enables Apply, while a still-incomplete one keeps it disabled.
+    // The async flow that *populates* those fields lives in App::update (not
+    // unit-testable without sockets); the existing uwhportal_incomplete_*
+    // tests and the `game_apply_blocked` predicate tests above already cover
+    // the individual branches that produced the report.
     // ---------------------------------------------------------------------
 
     #[test]
@@ -3565,8 +3754,13 @@ mod tests {
             ..Default::default()
         };
 
+        // Ordinary case, not the manual-stopover dead end: the client was
+        // already serving Portal (entry was portal-off, not "never visited
+        // Portal"), so no switch is pending to override the gate, and the
+        // selection is owned because the operator picked it fresh from the
+        // portal's own list in this session.
         let apply_enabled = page_has_changes(ConfigPage::Game, &edited, Some(&snapshot))
-            && !edited.uwhportal_incomplete();
+            && !game_apply_blocked(&edited, true, true);
         assert!(
             apply_enabled,
             "a completed portal selection (changed from portal-off entry) must enable Apply"
@@ -3594,8 +3788,12 @@ mod tests {
 
         // Toggling the portal on is itself a change...
         assert!(page_has_changes(ConfigPage::Game, &edited, Some(&snapshot)));
+        // Client already serving Portal (same ordinary case as the sibling
+        // test above), so the gate is not overridden. Nothing is selected,
+        // so nothing is owned either — moot here since uwhportal_incomplete()
+        // alone already blocks this.
         let apply_enabled = page_has_changes(ConfigPage::Game, &edited, Some(&snapshot))
-            && !edited.uwhportal_incomplete();
+            && !game_apply_blocked(&edited, true, false);
         // ...but the incomplete selection keeps Apply disabled.
         assert!(
             !apply_enabled,

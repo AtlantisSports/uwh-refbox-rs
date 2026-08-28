@@ -23,7 +23,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
     param: ListableParameter,
     index: usize,
     settings: &EditableSettings,
-    events: Option<&BTreeMap<EventId, Event>>,
+    events: &EventStore,
 ) -> Element<'a, Message> {
     const LIST_LEN: usize = 4;
     const TEAM_NAME_LEN_LIMIT: usize = 15;
@@ -87,7 +87,10 @@ pub(in super::super) fn build_list_selector_page<'a>(
 
     let (num_items, buttons): (usize, CollectArrayResult<_, LIST_LEN>) = match param {
         ListableParameter::Event => {
-            let list = events.as_ref().unwrap();
+            // Only the portal offers a list, so this can only ever be the
+            // portal's own events. `unwrap` is safe for the same reason it was
+            // before: the tile has no press action unless this is `Some`.
+            let list = events.selectable(settings.source).unwrap();
             let num_items = list.len();
             let sorted = sorted_events_for_picker(list);
             let iter = sorted.into_iter();
@@ -95,10 +98,11 @@ pub(in super::super) fn build_list_selector_page<'a>(
             (num_items, make_buttons!(iter, transform))
         }
         ListableParameter::Court => {
+            // pool_btn_msg (configuration.rs:794-801) gates the Court tile's
+            // press action on this same events.get(*source, id)?.courts chain, so
+            // all three unwraps below are `Some` whenever this arm is reachable.
             let list = events
-                .as_ref()
-                .unwrap()
-                .get(settings.current_event_id.as_ref().unwrap())
+                .get(settings.source, settings.current_event_id.as_ref().unwrap())
                 .unwrap()
                 .courts
                 .as_ref()

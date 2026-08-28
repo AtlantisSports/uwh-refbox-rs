@@ -120,29 +120,33 @@ pub struct GameFeed {
     pub portal_base_url: Option<String>,
 }
 
-/// The address with any `user:password@` prefix removed, leaving scheme, host and path.
+/// The address with any `user:password@` credential removed, or `None` if that cannot be
+/// guaranteed.
 ///
 /// `base_url` is a plain `String` normalised only by trimming a trailing slash
 /// (`uwh-common/src/uwhportal/mod.rs`), and nothing anywhere strips credentials from it. That has
 /// never mattered while the value was only used to build requests, but this one is served over
 /// HTTP to anything on the network.
 ///
-/// Splits on the **last** `@` in the authority, so a password containing `@` cannot leave part of
-/// itself behind. Anything without `://` is returned unchanged -- the refbox refuses non-http
-/// schemes upstream, and inventing a repair here would be guessing.
-fn without_credentials(url: &str) -> String {
-    let Some((scheme, rest)) = url.split_once("://") else {
-        return url.to_string();
-    };
-    let (authority, path) = match rest.find('/') {
-        Some(index) => (&rest[..index], &rest[index..]),
-        None => (rest, ""),
-    };
-    let authority = match authority.rsplit_once('@') {
-        Some((_credentials, host)) => host,
-        None => authority,
-    };
-    format!("{scheme}://{authority}{path}")
+/// **Parsed rather than split by hand.** An earlier hand-rolled version took the authority as
+/// everything before the first `/` and then split on `@`, which leaks the whole credential when a
+/// password contains an unencoded `/`: `https://user:pa/ss@host` came back verbatim. Splitting
+/// more aggressively is not the answer either -- `https://host/a@b` is a legitimate address whose
+/// `@` must survive -- so this uses the URL parser `reqwest` already re-exports. No new
+/// dependency: `reqwest` is already a direct dependency of this crate.
+///
+/// **Returns `None` rather than a best effort.** An address this cannot parse is an address whose
+/// credential this cannot prove it has removed, and serving nothing is always safe where serving
+/// a credential is not.
+fn without_credentials(url: &str) -> Option<String> {
+    let mut parsed = reqwest::Url::parse(url).ok()?;
+    // Both setters fail only on a cannot-be-a-base URL (`mailto:`, `data:`), which is not an
+    // address the refbox could have been configured with; `None` is the right answer there too.
+    parsed.set_username("").ok()?;
+    parsed.set_password(None).ok()?;
+    // The parser normalises a bare host to a trailing slash. The refbox's own `base_url`
+    // convention trims it, so match that rather than serve a value it never sent.
+    Some(parsed.as_str().trim_end_matches('/').to_string())
 }
 
 /// Every penalty on the snapshot, ordered exactly as `tables::penalties` orders it so both
@@ -233,7 +237,12 @@ pub fn game_feed(
         snapshot.event_id.as_ref(),
         snapshot.portal_base_url.as_deref(),
     ) {
-        (Some(id), Some(url)) => (Some(id.full().to_string()), Some(without_credentials(url))),
+        // A credential that cannot be stripped means neither value is served: an address is
+        // useless to a consumer without the id, and the id is unsafe without the address.
+        (Some(id), Some(url)) => match without_credentials(url) {
+            Some(clean) => (Some(id.full().to_string()), Some(clean)),
+            None => (None, None),
+        },
         _ => (None, None),
     };
 
@@ -329,12 +338,26 @@ mod tests {
             true,
         );
 
+        // Pinned as a literal, NOT as `snapshot.current_period.to_string()`. Computing the
+        // expectation with the implementation's own expression means a `GamePeriod` Display
+        // rename changes both sides and nothing fails -- while the contract says such a rename
+        // is a meaning change requiring a SCHEMA_VERSION bump. A literal forces that decision.
+        assert_eq!(feed.period.as_deref(), Some("First Half"));
+
+        // And it must still be the same word `/scorebug` serves: one vocabulary for both
+        // consumers. Compared against the real table rather than a shared helper, because
+        // `/scorebug` inlines this value and there is no helper to share.
+        let scorebug = crate::tables::scorebug(&display_with(snapshot), None, true);
         assert_eq!(
             feed.period.as_deref(),
-            Some(snapshot.current_period.to_string().as_str())
+            scorebug[0].get("period").map(String::as_str),
+            "/game and /scorebug must name the period identically"
         );
 
         let timeout = feed.timeout.expect("a timeout was set on the snapshot");
+        // Literal for the same reason as `period`, plus the cross-check against the vMix helper
+        // so the two consumers cannot drift apart.
+        assert_eq!(timeout.kind, "Black Timeout");
         assert_eq!(
             timeout.kind,
             crate::tables::timeout_label(TimeoutSnapshot::Black(45))
@@ -644,6 +667,13 @@ mod tests {
                 "https://api.dev.uwhportal.com/base",
                 "https://api.dev.uwhportal.com/base",
             ),
+            // A legitimate `@` in the path is not a credential and must survive untouched.
+            // Stripping aggressively enough to catch every credential would corrupt this, which
+            // is why this parses the address rather than splitting it by hand.
+            (
+                "https://api.dev.uwhportal.com/a@b",
+                "https://api.dev.uwhportal.com/a@b",
+            ),
         ] {
             let snapshot = GameSnapshot {
                 event_id: Some(EventId::from_partial("1889-B")),
@@ -691,5 +721,36 @@ mod tests {
         let feed = game_feed(&display_with(playing), None, &Rosters::default(), true);
         assert_eq!(feed.game_number.as_deref(), Some("10"));
         assert_eq!(feed.next_game_number.as_deref(), Some("20"));
+    }
+
+    /// An address whose credential cannot be provably removed serves **nothing** -- not a best
+    /// effort. This is the case the first version got wrong: a password containing an unencoded
+    /// `/` made the hand-rolled parser treat `user:pa` as the whole authority, find no `@` in it,
+    /// and hand back the credential verbatim. Serving null is always safe where serving a
+    /// credential is not, so an unparseable address takes the id down with it under
+    /// both-or-neither.
+    #[test]
+    fn an_address_whose_credential_cannot_be_stripped_serves_neither_value() {
+        for raw in [
+            "https://user:pa/ss@host",
+            "https://user:pa/ss@host/base",
+            "not a url at all",
+        ] {
+            let snapshot = GameSnapshot {
+                event_id: Some(EventId::from_partial("1889-B")),
+                portal_base_url: Some(raw.to_string()),
+                ..Default::default()
+            };
+            let feed = game_feed(&display_with(snapshot), None, &Rosters::default(), true);
+
+            assert_eq!(
+                feed.portal_base_url, None,
+                "{raw:?} must not be served at all"
+            );
+            assert_eq!(
+                feed.event_id, None,
+                "and the id goes with it -- an id without its portal cannot be resolved safely"
+            );
+        }
     }
 }

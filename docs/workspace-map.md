@@ -100,6 +100,10 @@ connects to the refbox.
 **Note:** Used at major tournaments; increasingly common. Changes here do not affect game
 management.
 
+**How it reaches the streaming machine:** Ships on refbox's release as `overlay.zip` plus loose
+`overlay-aarch64-linux` assets — see `docs/release-checklist.md`. It has no self-update; the binary
+is copied to the streaming machine by hand.
+
 ---
 
 ## Utility Crates

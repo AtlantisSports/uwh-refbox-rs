@@ -1251,10 +1251,18 @@ mod tests {
             sock.keepalive().expect("read SO_KEEPALIVE"),
             "SO_KEEPALIVE should be enabled"
         );
+        // These two read-backs are Unix-only: `socket2` does not expose `tcp_keepalive_time` or
+        // `tcp_keepalive_interval` on Windows, which *sets* both but offers no getter for either,
+        // so referring to them at all is a compile error there rather than a failed assertion.
+        // Gated as narrowly as possible -- `configure_keepalive` above, `SO_KEEPALIVE` below and
+        // the retry count are all still exercised on Windows, so a Windows-specific failure in the
+        // setter is still caught by its own `expect`.
+        #[cfg(not(windows))]
         assert_eq!(
             sock.tcp_keepalive_time().expect("read TCP_KEEPIDLE"),
             KEEPALIVE_IDLE
         );
+        #[cfg(not(windows))]
         assert_eq!(
             sock.tcp_keepalive_interval().expect("read TCP_KEEPINTVL"),
             KEEPALIVE_INTERVAL

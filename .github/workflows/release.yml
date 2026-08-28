@@ -34,7 +34,22 @@ jobs:
         crate: cargo-bundle
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version && cargo bundle --version
-    - run: cargo bundle --release --target aarch64-apple-darwin -p refbox
+    # cargo-bundle globs the `icon` path from `[package.metadata.bundle]` against
+    # the PROCESS working directory, not the package root — it calls glob::glob
+    # on the raw pattern with no join. Run from `refbox/` so
+    # `resources/AppIcon.png` resolves; from the workspace root it matched
+    # nothing and the icon was dropped SILENTLY (no warning), which is why the
+    # app has never had one. The bundle still lands under the workspace
+    # `target/` because cargo-bundle takes its output directory from
+    # `cargo metadata`. `--format osx` skips the .dmg we build and never ship.
+    - name: Bundle the macOS app
+      working-directory: refbox
+      run: cargo bundle --release --target aarch64-apple-darwin --format osx
+    - name: Verify the bundle carries its icon
+      run: |
+        APP='target/aarch64-apple-darwin/release/bundle/osx/refbox.app'
+        ls "$APP/Contents/Resources/"*.icns
+        grep -q CFBundleIconFile "$APP/Contents/Info.plist"
     - uses: actions/upload-artifact@v4
       with:
         name: refbox-macos-arm
@@ -54,7 +69,16 @@ jobs:
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version && cargo bundle --version
     - run: rustup target add x86_64-apple-darwin
-    - run: cargo bundle --release --target x86_64-apple-darwin -p refbox
+    # Run from `refbox/` so the bundle icon path resolves, and skip the unused
+    # .dmg — see the arm job above for why.
+    - name: Bundle the macOS app
+      working-directory: refbox
+      run: cargo bundle --release --target x86_64-apple-darwin --format osx
+    - name: Verify the bundle carries its icon
+      run: |
+        APP='target/x86_64-apple-darwin/release/bundle/osx/refbox.app'
+        ls "$APP/Contents/Resources/"*.icns
+        grep -q CFBundleIconFile "$APP/Contents/Info.plist"
     - uses: actions/upload-artifact@v4
       with:
         name: refbox-macos-x86

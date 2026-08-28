@@ -2563,34 +2563,28 @@ impl RefBoxApp {
         // next-game state: it would keep reporting a blank next-game number, which greys
         // START NOW and would strand the operator in manual mode. The Game page does this
         // via reset_to_manual_break; here the minimal clear is enough, since manual mode
-        // resumes its own numbering from "unknown". Read the outgoing source before the
-        // commit below overwrites it.
-        if self.uses_remote() && matches!(source, GameSource::Manual) {
+        // resumes its own numbering from "unknown". Read the outgoing source before
+        // `commit_source` overwrites it.
+        //
+        // Detection has to happen here, ahead of `commit_source`: "no next game" is
+        // exactly what `commit_source` is about to stop being true, so read the state
+        // the operator is escaping from before it is unwound. The clock work that acts
+        // on it waits until after, for the same reason in reverse — see below.
+        let escaping_finished_state = if self.uses_remote() && matches!(source, GameSource::Manual)
+        {
             let mut tm = self.tm.lock();
             // In the finished state the break clock is held stopped at 0:00, so no
             // snapshot is generated again on its own. Clearing the engine alone would
             // leave the main page reading the stale blank number, with START NOW still
             // greyed — the very trap the operator switched the portal off to escape.
-            let escaping_finished_state = tm.current_period() == GamePeriod::BetweenGames
+            let escaping = tm.current_period() == GamePeriod::BetweenGames
                 && tm.next_game_number().is_empty()
                 && !tm.clock_is_running();
             tm.clear_portal_next_game();
-            if escaping_finished_state {
-                let now = Instant::now();
-                let nominal_break = tm.config().nominal_break;
-                // why this cannot panic: `escaping_finished_state` requires a stopped
-                // clock, and `set_game_clock_time` only errors while it is running.
-                tm.set_game_clock_time(nominal_break).unwrap();
-                tm.start_clock(now);
-                let snapshot = tm.generate_snapshot(now);
-                std::mem::drop(tm);
-                if let Some(snapshot) = snapshot {
-                    // Between games before and after, so `apply_snapshot` returns an
-                    // empty task; this page's Apply has no task to carry in any case.
-                    let _ = self.apply_snapshot(snapshot);
-                }
-            }
-        }
+            escaping
+        } else {
+            false
+        };
 
         match commit_link {
             Some(link) => self.commit_link_selection(link),
@@ -2598,6 +2592,31 @@ impl RefBoxApp {
             // Nulling it here destroyed a restored link whenever the portal
             // event list had not loaded.
             None => self.commit_source(source),
+        }
+
+        // Now, and not before: `commit_source` is what tells the engine it is no longer
+        // tied to a site's schedule, and a still-linked engine refuses to start a clock
+        // toward a game no schedule has named — so a `start_clock` run ahead of it would
+        // leave the break frozen at the nominal time, the snapshot still carrying a blank
+        // next-game number, and the update loop spinning on a stopped clock it believes
+        // is running.
+        if escaping_finished_state {
+            let now = Instant::now();
+            let snapshot = {
+                let mut tm = self.tm.lock();
+                let nominal_break = tm.config().nominal_break;
+                // why this cannot panic: `escaping_finished_state` requires a stopped
+                // clock, nothing between there and here starts one, and
+                // `set_game_clock_time` only errors while the clock is running.
+                tm.set_game_clock_time(nominal_break).unwrap();
+                tm.start_clock(now);
+                tm.generate_snapshot(now)
+            };
+            if let Some(snapshot) = snapshot {
+                // Between games before and after, so `apply_snapshot` returns an
+                // empty task; this page's Apply has no task to carry in any case.
+                let _ = self.apply_snapshot(snapshot);
+            }
         }
         self.config.mode = mode;
         // `hide_time` is mirrored to the update server, which the pure helper
@@ -3231,7 +3250,10 @@ impl RefBoxApp {
                     tm.set_config(manual_config.clone()).unwrap();
                     // Overrides reset_game's minimum-break clock with the nominal
                     // break; also resets the game number to "0", clears the
-                    // next-game / grid, and starts the break counting down.
+                    // next-game / grid, drops the schedule link, and starts the
+                    // break counting down. `clear_portal_selections_to_manual`
+                    // below commits the same manual source to the app, so the
+                    // engine's view of linkage and the app's end up agreeing.
                     tm.reset_to_manual_break(now);
                 }
                 self.clear_portal_selections_to_manual(manual_config);

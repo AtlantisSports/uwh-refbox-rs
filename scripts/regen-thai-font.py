@@ -29,6 +29,8 @@ Output:
 """
 
 import os
+import re
+import shutil
 import sys
 import urllib.request
 from pathlib import Path
@@ -40,9 +42,31 @@ SOURCE_FONT_URL = (
 SOURCE_FONT_PATH = Path("/tmp/NotoSansThai-Regular.ttf")
 ROBOTO_FONT_PATH = Path("refbox/resources/Roboto-Medium.ttf")
 OUTPUT_FONT_PATH = Path("refbox/resources/NotoSansThai-Subset.ttf")
+# Built here and moved into place only once verified, so a font known to be
+# incomplete is never left in the working tree for someone to commit.
+STAGING_FONT_PATH = Path("/tmp/noto-thai-subset-staging.ttf")
 TRANSLATION_FILES = [
     Path("refbox/translations/th-TH/refbox.ftl"),
+    # The fallback language (i18n.toml). A message missing from a translation is
+    # shown in English but still drawn in the current language's font, so this
+    # font has to be able to render it.
+    Path("refbox/translations/en-US/refbox.ftl"),
 ]
+
+# UI text written as Rust string literals rather than translation keys: the
+# language picker's entries and the CANCEL/BACK/APPLY labels. Cutting from the
+# .ftl files alone silently drops them. `refbox/build.rs` checks the same two
+# files; adding UI literals to a third means adding it in both places.
+UI_SOURCE_FILES = [
+    Path("refbox/src/app/view_builders/shared_elements.rs"),
+    Path("refbox/src/app/languages.rs"),
+]
+
+STRING_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"')
+# A `\u{65E5}` escape read literally becomes the ASCII "u{65E5}", so the real
+# character would be neither cut into the subset nor reported as missing.
+# `refbox/build.rs` decodes the same escape for the same reason.
+UNICODE_ESCAPE = re.compile(r"\\u\{([0-9a-fA-F]+)\}")
 
 # Printable Basic Latin (U+0020–U+007E) and Latin-1 Supplement (U+00A0–U+00FF).
 # Included so the game clock digits, Latin-script language names, and other
@@ -50,6 +74,19 @@ TRANSLATION_FILES = [
 # fallback needed. Latin-1 Supplement covers the × sign (U+00D7) used in the
 # schedule-spacing formula in the Thai translation file.
 BASIC_LATIN = set(chr(c) for c in range(0x20, 0x7F)) | set(chr(c) for c in range(0xA0, 0x100))
+
+
+def collect_ui_source_characters():
+    """Non-ASCII characters in string literals in the UI source files."""
+    chars = set()
+    for path in UI_SOURCE_FILES:
+        if not path.exists():
+            print(f"Warning: UI source file not found: {path}", file=sys.stderr)
+            continue
+        for literal in STRING_LITERAL.findall(path.read_text(encoding="utf-8")):
+            decoded = UNICODE_ESCAPE.sub(lambda m: chr(int(m.group(1), 16)), literal)
+            chars.update(ch for ch in decoded if ord(ch) > 127)
+    return chars
 
 
 def download_source_font():
@@ -97,13 +134,18 @@ def make_thai_subset(thai_chars):
     return thai_subset_path
 
 
-def make_latin_subset():
-    """Subset Roboto to Basic Latin characters."""
+def make_latin_subset(extra_chars=frozenset()):
+    """Subset Roboto to Basic Latin, plus any character Noto Sans Thai lacks.
+
+    Noto Sans Thai carries no general punctuation, so a Thai string using an em
+    dash or an ellipsis would lose it silently. Those characters are taken from
+    Roboto instead, which is already being merged in for the Latin range."""
     from fontTools import subset as ftsubset
     from fontTools.ttLib import TTFont
 
     latin_subset_path = Path("/tmp/latin-only.ttf")
-    print(f"Subsetting Basic Latin ({len(BASIC_LATIN)} chars) from Roboto...")
+    wanted = BASIC_LATIN | set(extra_chars)
+    print(f"Subsetting Basic Latin ({len(wanted)} chars) from Roboto...")
 
     options = ftsubset.Options()
     options.name_IDs = [1, 2, 4, 6]
@@ -115,7 +157,7 @@ def make_latin_subset():
 
     tt = TTFont(str(ROBOTO_FONT_PATH))
     subsetter = ftsubset.Subsetter(options=options)
-    subsetter.populate(unicodes=sorted(ord(c) for c in BASIC_LATIN))
+    subsetter.populate(unicodes=sorted(ord(c) for c in wanted))
     subsetter.subset(tt)
     tt.save(str(latin_subset_path))
 
@@ -124,7 +166,7 @@ def make_latin_subset():
     return latin_subset_path
 
 
-def merge_fonts(thai_path, latin_path):
+def merge_fonts(thai_path, latin_path, out_path):
     """Merge Thai and Latin subsets into a single font, naming it 'Noto Sans Thai'."""
     from fontTools.merge import Merger
     from fontTools.ttLib import TTFont
@@ -171,16 +213,18 @@ def merge_fonts(thai_path, latin_path):
         r for r in merged["name"].names if r.platformID == 3
     ]
 
-    merged.save(str(OUTPUT_FONT_PATH))
-    size_kb = OUTPUT_FONT_PATH.stat().st_size // 1024
-    print(f"  Merged font: {size_kb} KB at {OUTPUT_FONT_PATH}")
+    merged.save(str(out_path))
+    size_kb = out_path.stat().st_size // 1024
+    print(f"  Merged font: {size_kb} KB, verifying before installing it...")
 
 
-def verify(thai_chars):
+def verify(thai_chars, font_path):
     from fontTools.ttLib import TTFont
 
-    tt = TTFont(str(OUTPUT_FONT_PATH))
+    tt = TTFont(str(font_path))
     cmap = tt.getBestCmap()
+
+    ok = True
 
     # Check Thai characters
     missing_thai = [c for c in thai_chars if ord(c) not in cmap]
@@ -191,6 +235,7 @@ def verify(thai_chars):
         )
         for c in missing_thai[:20]:
             print(f"  U+{ord(c):04X} ({c})", file=sys.stderr)
+        ok = False
     else:
         print(f"Verified: all {len(thai_chars)} Thai characters present.")
 
@@ -201,6 +246,7 @@ def verify(thai_chars):
             f"Warning: digits missing from output font: {''.join(missing_digits)}",
             file=sys.stderr,
         )
+        ok = False
     else:
         print("Verified: all digits 0–9 present.")
 
@@ -209,6 +255,8 @@ def verify(thai_chars):
         if record.nameID == 1 and record.platformID == 3:
             print(f"Font family name: {record.toUnicode()!r}")
             break
+
+    return ok
 
 
 def main():
@@ -239,10 +287,61 @@ def main():
         print("No Thai characters found — check that translation files exist.")
         sys.exit(1)
 
-    thai_path = make_thai_subset(thai_chars)
-    latin_path = make_latin_subset()
-    merge_fonts(thai_path, latin_path)
-    verify(thai_chars)
+    from fontTools.ttLib import TTFont
+
+    source_cmap = TTFont(str(SOURCE_FONT_PATH)).getBestCmap()
+    roboto_cmap = TTFont(str(ROBOTO_FONT_PATH)).getBestCmap()
+
+    # Text drawn from Rust literals rather than the .ftl files. Only what one of
+    # these two source fonts can supply: the picker also names the CJK
+    # languages, and those are the CJK subset's job. Best-effort, so these are
+    # not part of what `verify` insists on.
+    extra = collect_ui_source_characters()
+    usable = {
+        c for c in extra if ord(c) in source_cmap or ord(c) in roboto_cmap
+    } - thai_chars
+    if usable:
+        print(
+            f"Adding {len(usable)} character(s) from UI source literals: "
+            f"{''.join(sorted(usable))}"
+        )
+    # Neither source font has these. Saying so matters: build.rs may require one
+    # of them, and its remedy is to re-run this script -- which would drop it
+    # again, silently, forever. The CJK script guards the same case.
+    unsuppliable = sorted(extra - usable - thai_chars)
+    if unsuppliable:
+        print(
+            f"  {len(unsuppliable)} character(s) are in neither Noto Sans Thai nor Roboto and "
+            f"were left out: {''.join(unsuppliable)}. Another bundled font must carry them; if "
+            f"this font is asked for one, the text or a source font has to change.",
+            file=sys.stderr,
+        )
+
+    wanted = thai_chars | usable
+    from_thai = {c for c in wanted if ord(c) in source_cmap}
+    from_roboto = wanted - from_thai
+    if from_roboto:
+        print(
+            f"  {len(from_roboto)} character(s) absent from Noto Sans Thai, "
+            f"taking them from Roboto: {''.join(sorted(from_roboto))}"
+        )
+
+    thai_path = make_thai_subset(from_thai)
+    latin_path = make_latin_subset(from_roboto)
+    merge_fonts(thai_path, latin_path, STAGING_FONT_PATH)
+    # Verified against everything we believed a source font could supply, not
+    # just the .ftl characters: a UI literal silently lost in the merge would
+    # otherwise install clean and leave build.rs demanding a character while
+    # telling you to re-run this script, which would lose it again.
+    if not verify(thai_chars | usable, STAGING_FONT_PATH):
+        print(
+            "Font NOT updated cleanly: the output is missing characters the "
+            "translation uses. See the warnings above.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    shutil.move(str(STAGING_FONT_PATH), str(OUTPUT_FONT_PATH))
+    print(f"Saved to {OUTPUT_FONT_PATH}")
     print("Done. Commit refbox/resources/NotoSansThai-Subset.ttf to apply the update.")
 
 

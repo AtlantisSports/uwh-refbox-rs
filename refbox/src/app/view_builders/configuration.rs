@@ -898,6 +898,16 @@ fn make_event_config_page<'a>(
                 // "None provided" rather than the "None selected" the rows below
                 // use: those offer a list refbox fetched, while an address is
                 // typed in, so "selected" describes the wrong action.
+                //
+                // Shown in full, credentials and all, and deliberately so. Every
+                // other place an address appears -- the log file, the game feed --
+                // redacts it, because those travel: a log is shared to diagnose a
+                // problem and the feed reaches the whole pool LAN. This row does
+                // not travel. It answers "which site am I on?" for the operator
+                // who typed the address, on their own console, and redacting the
+                // one row whose job is to say that costs clarity to protect
+                // nothing. Confirmed by Eric on 2026-08-28 after seeing it on
+                // screen. Not an oversight -- please do not "fix" it.
                 let shown = if committed_site_url.is_empty() {
                     fl!("none-provided")
                 } else {
@@ -2286,7 +2296,7 @@ fn make_custom_site_page<'a>(
 
     col = col.push(
         text_input(&fl!("custom-site-placeholder"), &settings.custom_site.url)
-            .on_input(Message::CustomSiteUrlChanged)
+            .on_input(|typed| Message::CustomSiteUrlChanged(typed.into()))
             .padding(PADDING)
             .size(MEDIUM_TEXT)
             .width(Length::Fill),

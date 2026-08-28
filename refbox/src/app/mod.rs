@@ -72,6 +72,7 @@ use languages::*;
 mod power_control;
 
 mod custom_site;
+use custom_site::SiteAddress;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long the operator must hold a used-up team timeout button to revive
@@ -421,7 +422,7 @@ enum SiteKind {
 struct SiteTarget {
     kind: SiteKind,
     /// Base URL with no trailing slash — every request formats its path onto this.
-    base_url: String,
+    base_url: SiteAddress,
     /// `https_only` on the HTTP client. Fixed when the client is built, so a
     /// change here means building a new client rather than editing the old one.
     require_https: bool,
@@ -429,7 +430,64 @@ struct SiteTarget {
     /// event. Carried so that comparing two targets asks "is this a different
     /// address?" rather than only "is this a different host?" — editing just
     /// the event in the URL must meet the same guards as editing the host.
-    address: String,
+    address: SiteAddress,
+}
+
+/// What the game feed publishes as the site the refbox is using, or `None` when there is nothing
+/// safe to publish.
+///
+/// Extracted for the same reason as the log lines, and with more at stake: this feed is
+/// unauthenticated and bound to every interface, so a credential published here reaches every
+/// device on the pool LAN rather than a file on one Pi. Reaching for `expose()` at the call site
+/// used to leave every test green.
+fn published_site_address(site: &SiteTarget) -> Option<String> {
+    custom_site::strip_credentials(site.base_url.expose())
+}
+
+/// The line logged when the HTTP client cannot be built for a site.
+fn client_start_failure_log_line(site: &SiteTarget, error: &impl std::fmt::Display) -> String {
+    format!("Failed to start the client for {}: {error}", site.base_url)
+}
+
+/// The line logged when there is no client to point at a new site.
+fn no_client_log_line(site: &SiteTarget) -> String {
+    format!(
+        "Cannot point the refbox at {}: no client was started",
+        site.base_url
+    )
+}
+
+/// The line logged when the refbox is pointed at a site.
+///
+/// Built here rather than inline at the log site so that the test which pins it against
+/// credentials exercises the real thing. Written inline, that test could only assert about its own
+/// copy of the message, and someone reaching for `expose()` here would leave it green.
+///
+/// Logs the whole address, not just the host: a custom site and the developer override can share a
+/// host, and "which site am I on?" is the first question asked of this line.
+fn repoint_log_line(target: &SiteTarget) -> String {
+    let kind = match target.kind {
+        SiteKind::Portal => "portal",
+        SiteKind::Custom => "custom site",
+    };
+    format!("Pointing the refbox at the {kind}: {}", target.address)
+}
+
+/// The line logged when a saved custom-site address cannot be used, and what follows from it.
+///
+/// Names the reason, never the address. The address is the one value that cannot be shown safely
+/// here -- it is exactly the string that failed to parse, and an unparsed string cannot be shown
+/// to be free of a password; see `custom_site`. The reason is also the more useful half: it says
+/// what to fix, rather than handing back a string that already looked right to whoever typed it.
+///
+/// Both callers share it so neither can drift, and so the test that pins the message exercises the
+/// real thing. Written inline, a test could only assert about its own copy, and someone reaching
+/// for the address at either site would leave it green.
+fn unusable_saved_address_log_line(
+    reason: custom_site::CustomSiteError,
+    consequence: &str,
+) -> String {
+    format!("Saved custom site address is not usable ({reason:?}); {consequence}")
 }
 
 /// The site `source` calls for, or `None` when it asks for no change.
@@ -458,8 +516,8 @@ fn site_target(
                     // lets a plain-http site work without the `--allow-http`
                     // launch flag. Mirrors schedule-processor/src/main.rs:63.
                     require_https: parsed.base_url.starts_with("https://"),
-                    base_url: parsed.base_url,
-                    address: custom_site.url.trim().to_string(),
+                    base_url: parsed.base_url.into(),
+                    address: custom_site.url.trim().to_string().into(),
                 })
         }
     }
@@ -486,16 +544,19 @@ fn portal_target(mode: Mode, require_https: bool) -> SiteTarget {
         .unwrap_or(default_url)
         .trim_end_matches('/')
         .to_string();
+    let address: SiteAddress = base_url.clone().into();
     if url_override.is_some() {
+        // Formatted through the address rather than a free redaction helper, so that printing one
+        // has exactly one route and a future log line cannot quietly take a plainer one.
         info!(
-            "{override_var} active for {} Portal: using {base_url}",
+            "{override_var} active for {} Portal: using {address}",
             portal_name_for_mode(mode)
         );
     }
     SiteTarget {
         kind: SiteKind::Portal,
-        address: base_url.clone(),
-        base_url,
+        address,
+        base_url: base_url.into(),
         require_https,
     }
 }
@@ -522,6 +583,7 @@ fn https_policy_conflict(target: &SiteTarget) -> Option<String> {
     // address that in fact succeeds.
     let is_https = target
         .base_url
+        .expose()
         .get(..8)
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://"));
     (target.require_https && !is_https).then(|| {
@@ -548,14 +610,14 @@ fn build_site_client(target: &SiteTarget, config: &Config) -> Option<UwhPortalCl
         error!("{msg}");
     }
     match UwhPortalClient::new(
-        &target.base_url,
+        target.base_url.expose(),
         token,
         target.require_https,
         REQUEST_TIMEOUT,
     ) {
         Ok(c) => Some(c),
         Err(e) => {
-            error!("Failed to start the client for {}: {e}", target.base_url);
+            error!("{}", client_start_failure_log_line(target, &e));
             None
         }
     }
@@ -759,7 +821,7 @@ impl RefBoxApp {
         // entered as `https://user:password@host/...` would otherwise broadcast the password to
         // everyone on the pool LAN. An address that will not parse reports `None` rather than a
         // guess -- see `strip_credentials`.
-        new_snapshot.portal_base_url = custom_site::strip_credentials(&self.current_site.base_url);
+        new_snapshot.portal_base_url = published_site_address(&self.current_site);
 
         self.maybe_play_sound(&new_snapshot);
         if let Err(e) = self.update_sender.send_snapshot(
@@ -1171,23 +1233,13 @@ impl RefBoxApp {
             // No client at all means the refbox started in degraded mode (only
             // reachable from a bad https-only config). There is no background
             // task to hand a new client to, so this needs a restart, not a swap.
-            error!(
-                "Cannot point the refbox at {}: no client was started",
-                target.base_url
-            );
+            error!("{}", no_client_log_line(&target));
             return;
         };
         let Some(new_client) = build_site_client(&target, &self.config) else {
             return;
         };
-        // Logs the whole address, not just the host: a custom site and the
-        // developer override can share a host, and "which site am I on?" is the
-        // first question asked of this line.
-        let kind = match target.kind {
-            SiteKind::Portal => "portal",
-            SiteKind::Custom => "custom site",
-        };
-        info!("Pointing the refbox at the {kind}: {}", target.address);
+        info!("{}", repoint_log_line(&target));
         // why this cannot panic: the guard is held only for the assignment
         // below, which cannot panic, so the mutex is never poisoned here.
         *shared.lock().unwrap() = new_client;
@@ -1239,7 +1291,7 @@ impl RefBoxApp {
             Err(e) => {
                 // Only reachable from a hand-edited config file: every path that
                 // commits a URL validates it first.
-                error!("Saved custom site address is not usable ({e:?}); no event adopted");
+                error!("{}", unusable_saved_address_log_line(e, "no event adopted"));
                 return Task::none();
             }
         };
@@ -2350,21 +2402,18 @@ impl RefBoxApp {
         // is nothing to restore from the portal link note. Portal mode is still
         // decided by that note further down, exactly as before.
         let startup_source = if config.source == GameSource::Custom {
-            if site_target(
-                GameSource::Custom,
-                config.mode,
-                &config.custom_site,
-                require_https,
-            )
-            .is_some()
-            {
-                GameSource::Custom
-            } else {
-                error!(
-                    "Saved custom site address is not usable ({:?}); starting with manual games",
-                    config.custom_site.url
-                );
-                GameSource::Manual
+            // Asked of the parser directly rather than through `site_target`: that function builds
+            // a Custom target from this very call and returns `None` for no other reason, so the
+            // two cannot disagree -- and only the parser hands back *why* it refused.
+            match custom_site::parse_custom_site(&config.custom_site.url) {
+                Ok(_) => GameSource::Custom,
+                Err(reason) => {
+                    error!(
+                        "{}",
+                        unusable_saved_address_log_line(reason, "starting with manual games")
+                    );
+                    GameSource::Manual
+                }
             }
         } else {
             GameSource::Manual
@@ -4567,7 +4616,8 @@ impl RefBoxApp {
                 // that did was the portal toggle, now Message::SelectGameSource.
                 Task::none()
             }
-            Message::CustomSiteUrlChanged(url) => {
+            Message::CustomSiteUrlChanged(typed) => {
+                let url = typed.into_inner();
                 // why this cannot panic: the URL editor is only reachable from
                 // the Game Options editor, which populates `edited_settings`
                 // before it can be drawn.
@@ -6686,7 +6736,7 @@ mod site_target_tests {
         )
         .unwrap();
         assert_eq!(target.kind, SiteKind::Custom);
-        assert_eq!(target.base_url, "http://scoreboard.local:8099");
+        assert_eq!(target.base_url.expose(), "http://scoreboard.local:8099");
         assert!(!target.require_https);
     }
 
@@ -6699,7 +6749,7 @@ mod site_target_tests {
             false,
         )
         .unwrap();
-        assert_eq!(target.base_url, "https://scoreboard.example");
+        assert_eq!(target.base_url.expose(), "https://scoreboard.example");
         assert!(target.require_https);
     }
 
@@ -6743,6 +6793,120 @@ mod site_target_tests {
         assert_ne!(a, b);
     }
 
+    // ---- Credentials must never reach a log ----
+    //
+    // A custom site address is stored exactly as the operator typed it, so
+    // `https://user:password@host/...` used to reach the log file verbatim --
+    // and on a Pi those logs rotate to disk and get shared when something is
+    // being diagnosed. The redaction itself lives in `custom_site`, and is
+    // tested there; what these pin are the log lines built here.
+
+    const LEAKY: &str = "https://scorekeeper:hunter2@scoreboard.local:8099/api/1234-A";
+
+    /// SiteTarget derives Debug, so dumping a whole target must be safe too.
+    #[test]
+    fn a_whole_site_target_never_prints_credentials() {
+        assert!(!format!("{:?}", custom_target(LEAKY)).contains("hunter2"));
+        assert!(!format!("{:?}", target(LEAKY, true)).contains("hunter2"));
+    }
+
+    /// The exact line Eric saw leak during the PR #2744 walkthrough. It calls the real builder
+    /// rather than re-typing the message, so reaching for `expose()` at the log site turns this
+    /// red -- which is the only reason it is worth having on top of the redaction's own tests.
+    ///
+    /// Both kinds are checked: a custom site is the one an operator types a password into, and it
+    /// is the arm that would otherwise go unexercised.
+    #[test]
+    fn the_repoint_log_line_cannot_carry_credentials() {
+        for target in [custom_target(LEAKY), target(LEAKY, true)] {
+            let line = repoint_log_line(&target);
+            assert!(!line.contains("hunter2"), "leaked: {line}");
+            assert!(!line.contains("scorekeeper"), "leaked: {line}");
+            // Still says which site, or the line is not worth logging.
+            assert!(line.contains("scoreboard.local"), "unusable: {line}");
+        }
+    }
+
+    /// The https-policy explanation formats an address too, and is a plain function, so a
+    /// credentialed target is one line to check and would otherwise be pinned by nothing.
+    #[test]
+    fn the_https_policy_explanation_cannot_carry_credentials() {
+        let mut target = custom_target("http://scorekeeper:hunter2@scoreboard.local:8099");
+        target.require_https = true;
+        let msg = https_policy_conflict(&target).expect("plain http under the https rule");
+        assert!(!msg.contains("hunter2"), "leaked: {msg}");
+    }
+
+    /// The game feed reaches every device on the pool LAN, so it matters more than any log file.
+    #[test]
+    fn the_game_feed_never_publishes_credentials() {
+        let published = published_site_address(&custom_target(LEAKY)).expect("a usable site");
+        assert!(!published.contains("hunter2"), "leaked: {published}");
+        assert!(!published.contains("scorekeeper"), "leaked: {published}");
+        assert_eq!(published, "https://scoreboard.local:8099/api/1234-A");
+    }
+
+    /// ...and publishes nothing at all, rather than a guess, for an address it cannot vouch for.
+    #[test]
+    fn the_game_feed_publishes_nothing_it_cannot_vouch_for() {
+        let target = custom_target(r"https://scoreboard.local\scorekeeper:hunter2@pool");
+        assert_eq!(published_site_address(&target), None);
+    }
+
+    /// The two error lines that also name an address.
+    #[test]
+    fn the_client_failure_lines_cannot_carry_credentials() {
+        let target = custom_target(LEAKY);
+        let started = client_start_failure_log_line(&target, &"connection refused");
+        assert!(!started.contains("hunter2"), "leaked: {started}");
+        let none = no_client_log_line(&target);
+        assert!(!none.contains("hunter2"), "leaked: {none}");
+    }
+
+    /// Every message is Debug-logged at trace level, which runs on every keystroke, so what the
+    /// operator is part-way through typing must not be in it.
+    #[test]
+    fn a_half_typed_address_is_not_traced() {
+        let msg = Message::CustomSiteUrlChanged(LEAKY.to_string().into());
+        assert!(!format!("{msg:?}").contains("hunter2"), "leaked: {msg:?}");
+    }
+
+    /// The startup line names why the address is unusable and never the address itself: the
+    /// address is precisely the string that would not parse, and an unparsed string cannot be
+    /// shown to be free of a password.
+    #[test]
+    fn the_startup_unusable_address_line_cannot_carry_credentials() {
+        for leaky in [
+            "scorekeeper:hunter2@scoreboard.local:8099/api/1234-A",
+            "https://scorekeeper:hunter2@scoreboard.local:8099",
+            r"https://scoreboard.local\scorekeeper:hunter2@pool",
+            "foo:/scorekeeper:hunter2@host",
+        ] {
+            let reason = custom_site::parse_custom_site(leaky).expect_err("unusable");
+            let line = unusable_saved_address_log_line(reason, "starting with manual games");
+            assert!(!line.contains("hunter2"), "leaked: {line}");
+            assert!(!line.contains("scorekeeper"), "leaked: {line}");
+        }
+    }
+
+    /// ...and still says something worth reading. An empty address is much the commonest reason
+    /// this line fires, and naming that beats echoing a blank string back.
+    #[test]
+    fn the_startup_unusable_address_line_says_what_is_wrong() {
+        let reason = custom_site::parse_custom_site("").expect_err("empty is unusable");
+        assert!(
+            unusable_saved_address_log_line(reason, "starting with manual games").contains("Empty"),
+            "should name the reason"
+        );
+        let reason =
+            custom_site::parse_custom_site("https://scoreboard.local:8099").expect_err("no /api/");
+        assert!(
+            unusable_saved_address_log_line(reason, "starting with manual games")
+                .contains("MissingApiSegment"),
+            "should name the reason"
+        );
+    }
+
     /// Manual never repoints: results already queued must keep going to the
     /// site they were queued for, not follow the operator to the portal.
     #[test]
@@ -6758,12 +6922,22 @@ mod site_target_tests {
         );
     }
 
+    /// A custom target -- the kind an operator actually types a password into.
+    fn custom_target(address: &str) -> SiteTarget {
+        SiteTarget {
+            kind: SiteKind::Custom,
+            base_url: address.to_string().into(),
+            require_https: address.starts_with("https://"),
+            address: address.to_string().into(),
+        }
+    }
+
     fn target(base_url: &str, require_https: bool) -> SiteTarget {
         SiteTarget {
             kind: SiteKind::Portal,
-            base_url: base_url.to_string(),
+            base_url: base_url.to_string().into(),
             require_https,
-            address: base_url.to_string(),
+            address: base_url.to_string().into(),
         }
     }
 
@@ -6809,7 +6983,7 @@ mod site_target_tests {
                 site_target(GameSource::Portal, Mode::Hockey6V6, &site, require_https).unwrap();
             assert_eq!(target.kind, SiteKind::Portal);
             assert_eq!(target.require_https, require_https);
-            assert!(!target.base_url.contains("scoreboard.local"));
+            assert!(!target.base_url.expose().contains("scoreboard.local"));
         }
     }
 }

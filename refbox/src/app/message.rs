@@ -151,7 +151,7 @@ pub enum Message {
     SelectGameSource(GameSource),
     /// Every keystroke in the custom site's URL field. Stages the text in
     /// `edited_settings` so Cancel discards it like any other pending edit.
-    CustomSiteUrlChanged(String),
+    CustomSiteUrlChanged(super::custom_site::TypedSiteUrl),
     CycleParameter(CyclingParameter),
     /// Set the team-timeout count directly (team-timeout edit page 0/1 toggle).
     SetTeamTimeoutCount(u32),

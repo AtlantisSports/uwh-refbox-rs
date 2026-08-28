@@ -1156,6 +1156,36 @@ impl RefBoxApp {
         }
     }
 
+    /// Commit a whole [`LinkSelection`].
+    ///
+    /// Every APPLY path that carries the operator's selections forward goes
+    /// through here — including the ones that detour via a confirmation page —
+    /// so that no such path can commit part of the set and silently drop the
+    /// rest.
+    ///
+    /// The one deliberate exception is the `RestartAndApply` arm of a portal
+    /// tenant switch, which commits `source` inline and forces `event_id` to
+    /// `None` rather than carrying the selections over: it is unpinning the old
+    /// tenant, so the court and schedule it would copy belong to an event that
+    /// is being abandoned. That arm always ends in a restart, and `decide_restore`
+    /// refuses a saved note from the other portal, so the dropped fields cannot
+    /// be re-adopted on the way back up. A fifth field added to `LinkSelection`
+    /// would need a decision there rather than an automatic copy.
+    fn commit_link_selection(&mut self, selection: LinkSelection) {
+        let LinkSelection {
+            source,
+            event_id,
+            court,
+            schedule,
+        } = selection;
+        self.commit_source(source);
+        // Route through set_current_event_id so portal_event_id stays in sync
+        // (ADR 011 amendment 2026-04-23 dormant-until-linked).
+        self.set_current_event_id(event_id);
+        self.current_court = court;
+        self.schedule = schedule;
+    }
+
     /// The site an Apply would leave the refbox pointed at, given the source
     /// and saved address it is about to commit. `None` means "no change".
     fn target_after_apply(
@@ -1631,12 +1661,12 @@ impl RefBoxApp {
         // fields, so this mutable borrow and the immutable one above coexist.
         let hide_time_changed = commit_app_toggles(&mut self.config, edited);
 
-        self.commit_source(source);
-        // Route through set_current_event_id so portal_event_id stays in
-        // sync (ADR 011 amendment 2026-04-23 dormant-until-linked).
-        self.set_current_event_id(event_id);
-        self.current_court = current_court;
-        self.schedule = schedule;
+        self.commit_link_selection(LinkSelection {
+            source,
+            event_id,
+            court: current_court,
+            schedule,
+        });
         self.config.mode = mode;
         // `hide_time` is mirrored to the update server, which the pure helper
         // cannot do — so notify here, and only when it actually changed.
@@ -1696,11 +1726,7 @@ impl RefBoxApp {
     /// active game config; pass it in as a snapshot captured before the `edited` borrow
     /// ends (mirrors the borrow choreography of the config-change branch).
     fn clear_portal_selections_to_manual(&mut self, manual_config: GameConfig) {
-        self.commit_source(GameSource::Manual);
-        // Route through set_current_event_id so portal_event_id stays in sync (ADR 011).
-        self.set_current_event_id(None);
-        self.current_court = None;
-        self.schedule = None;
+        self.commit_link_selection(LinkSelection::manual());
         // The Using-UWH-Portal setting is now off, which the player-grid design
         // spec lists as an unconditional number-pad condition. `game_rosters` is
         // otherwise only written at kickoff, so without this the grid would keep
@@ -1805,21 +1831,12 @@ impl RefBoxApp {
             }
 
             std::mem::drop(tm);
-            // Snapshot the fields we need so the immutable borrow on
-            // `edited` ends before we call `set_current_event_id`
-            // (which takes `&mut self`).
-            let source = edited.source;
-            let event_id = edited.current_event_id.clone();
-            let current_court = edited.current_court.clone();
-            let schedule = edited.schedule.clone();
+            // Snapshot the selection so the immutable borrow on `edited` ends
+            // before `commit_link_selection` takes `&mut self`.
+            let link = LinkSelection::from_edited(edited);
 
             self.config.game = new_config;
-            self.commit_source(source);
-            // Route through set_current_event_id so portal_event_id stays in
-            // sync (ADR 011 amendment 2026-04-23 dormant-until-linked).
-            self.set_current_event_id(event_id);
-            self.current_court = current_court;
-            self.schedule = schedule;
+            self.commit_link_selection(link);
             return None;
         }
 
@@ -1855,19 +1872,11 @@ impl RefBoxApp {
         }
 
         std::mem::drop(tm);
-        // Snapshot the fields we need so the immutable borrow on `edited` ends
-        // before we call `set_current_event_id` (which takes `&mut self`).
-        let source = edited.source;
-        let event_id = edited.current_event_id.clone();
-        let current_court = edited.current_court.clone();
-        let schedule = edited.schedule.clone();
+        // Snapshot the selection so the immutable borrow on `edited` ends
+        // before `commit_link_selection` takes `&mut self`.
+        let link = LinkSelection::from_edited(edited);
 
-        self.commit_source(source);
-        // Route through set_current_event_id so portal_event_id stays in sync
-        // for the background health check (ADR 011 amendment 2026-04-23).
-        self.set_current_event_id(event_id);
-        self.current_court = current_court;
-        self.schedule = schedule;
+        self.commit_link_selection(link);
 
         None
     }
@@ -1924,6 +1933,7 @@ impl RefBoxApp {
             ConfirmationOption::EndGameAndApply => {
                 // Safety: *FromApply confirmations are only raised while edited_settings is Some; the invariant is enforced by apply_game_options.
                 let edited = self.edited_settings.as_ref().unwrap();
+                let link = LinkSelection::from_edited(edited);
                 let mut tm = self.tm.lock();
                 let now = Instant::now();
                 tm.reset_game(now);
@@ -1957,23 +1967,90 @@ impl RefBoxApp {
                     self.config.game = config;
                 }
                 self.page_entry_snapshot = None;
-                self.persist_config();
                 // Safety: snapshot generation only fails before the tournament manager is initialised, which happens in RefBoxApp::new().
                 let new_snapshot = self.tm.lock().generate_snapshot(now).unwrap();
+                // `apply_snapshot` FIRST, before the incoming selections are
+                // committed. It processes the OUTGOING game's snapshot — which
+                // includes filing that game's result when the clock has just run
+                // it out — and it files against whatever event is current at the
+                // time. Committing first would file a finished game against the
+                // event the operator is switching TO.
+                //
+                // Both apply arms of THIS handler are ordered this way. The two
+                // in `apply_switch_to_manual_confirmation` still commit first,
+                // inside `clear_portal_selections_to_manual` — there the commit
+                // sets the source to Manual, which makes `handle_game_end` return
+                // early, so nothing is filed either way. That is pre-existing and
+                // unchanged here; this ordering is not a guarantee extending to
+                // them.
+                //
+                // The stale schedule fetch this can leave behind is harmless, but
+                // not because the response is dropped: `RecvSchedule` warns on a
+                // mismatch and still caches the payload under the event it was
+                // fetched for. It is the live `self.schedule` that is guarded by
+                // an event-id check, so the outgoing event's schedule cannot
+                // displace the incoming one.
                 task = self.apply_snapshot(new_snapshot);
+                // Before `persist_config`, which writes the source this sets.
+                self.commit_link_selection(link);
+                self.persist_config();
+                // Paired with `persist_config` exactly as the live Apply path pairs
+                // them. The note is what a relaunch restores from, so committing the
+                // court in memory without writing it here would leave the next
+                // restart re-adopting the old court.
+                //
+                // AFTER `apply_snapshot`, not before: the note takes its game number
+                // from `self.snapshot`, which `apply_snapshot` is what refreshes.
+                // Writing first pairs the incoming court with the OUTGOING game — a
+                // note naming a game that does not exist on the court beside it.
+                self.persist_link_session();
                 AppState::EditGameConfig(ConfigPage::Main)
             }
             ConfirmationOption::KeepGameAndApply => {
                 // Safety: *FromApply confirmations are only raised while edited_settings is Some; the invariant is enforced by apply_game_options.
                 let edited = self.edited_settings.as_ref().unwrap();
+                let link = LinkSelection::from_edited(edited);
                 let mut tm = self.tm.lock();
                 tm.set_game_number(&edited.game_number);
                 // Safety: snapshot generation only fails before the tournament manager is initialised, which happens in RefBoxApp::new().
                 let new_snapshot = tm.generate_snapshot(Instant::now()).unwrap();
                 std::mem::drop(tm);
                 self.page_entry_snapshot = None;
-                self.persist_config();
+                // `apply_snapshot` FIRST, before the incoming selections are
+                // committed. It processes the OUTGOING game's snapshot — which
+                // includes filing that game's result when the clock has just run
+                // it out — and it files against whatever event is current at the
+                // time. Committing first would file a finished game against the
+                // event the operator is switching TO.
+                //
+                // Both apply arms of THIS handler are ordered this way. The two
+                // in `apply_switch_to_manual_confirmation` still commit first,
+                // inside `clear_portal_selections_to_manual` — there the commit
+                // sets the source to Manual, which makes `handle_game_end` return
+                // early, so nothing is filed either way. That is pre-existing and
+                // unchanged here; this ordering is not a guarantee extending to
+                // them.
+                //
+                // The stale schedule fetch this can leave behind is harmless, but
+                // not because the response is dropped: `RecvSchedule` warns on a
+                // mismatch and still caches the payload under the event it was
+                // fetched for. It is the live `self.schedule` that is guarded by
+                // an event-id check, so the outgoing event's schedule cannot
+                // displace the incoming one.
                 task = self.apply_snapshot(new_snapshot);
+                // Before `persist_config`, which writes the source this sets.
+                self.commit_link_selection(link);
+                self.persist_config();
+                // Paired with `persist_config` exactly as the live Apply path pairs
+                // them. The note is what a relaunch restores from, so committing the
+                // court in memory without writing it here would leave the next
+                // restart re-adopting the old court.
+                //
+                // AFTER `apply_snapshot`, not before: the note takes its game number
+                // from `self.snapshot`, which `apply_snapshot` is what refreshes.
+                // Writing first pairs the incoming court with the OUTGOING game — a
+                // note naming a game that does not exist on the court beside it.
+                self.persist_link_session();
                 AppState::EditGameConfig(ConfigPage::Main)
             }
             ConfirmationOption::RestartAndApply => {
@@ -6522,6 +6599,104 @@ mod usable_cap_numbers_tests {
     }
 }
 
+/// The portal-link selections an APPLY carries from the edit buffer to the live
+/// app: the game source, the linked event, the chosen court, and the schedule
+/// fetched for that event.
+///
+/// Grouped into one value, committed by one routine, because committing a
+/// *subset* of the set is a silent failure rather than a visible one. The Game
+/// and App pages commit these directly, but a change made while a game is in
+/// progress defers to a confirmation arm — and those arms committed the game
+/// number while dropping the court. Switching court mid-game therefore left the
+/// refbox still believing it was on the old court, and it went on to offer that
+/// court's games once the operator's own court had run out.
+#[derive(Debug, Clone, PartialEq)]
+struct LinkSelection {
+    source: GameSource,
+    event_id: Option<EventId>,
+    court: Option<String>,
+    schedule: Option<Schedule>,
+}
+
+impl LinkSelection {
+    /// What the operator chose on the Game / App pages.
+    fn from_edited(edited: &EditableSettings) -> Self {
+        Self {
+            source: edited.source,
+            event_id: edited.current_event_id.clone(),
+            court: edited.current_court.clone(),
+            schedule: edited.schedule.clone(),
+        }
+    }
+
+    /// A fresh manual slate: no event, no court, no schedule.
+    fn manual() -> Self {
+        Self {
+            source: GameSource::Manual,
+            event_id: None,
+            court: None,
+            schedule: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod link_selection_tests {
+    use super::*;
+
+    fn event(id: &str) -> EventId {
+        EventId::from_full(id).unwrap()
+    }
+
+    fn schedule_for(id: &str) -> Schedule {
+        Schedule {
+            event_id: event(id),
+            games: Default::default(),
+            non_game_entries: Vec::new(),
+            groups: Vec::new(),
+            timing_rules: Vec::new(),
+            standings_order: None,
+            final_results_order: None,
+            referees_by_game_number: None,
+        }
+    }
+
+    /// Every selection driven away from the `EditableSettings` default, and the
+    /// event and the schedule deliberately given *different* ids, so a field
+    /// taken from the wrong place cannot pass by coincidence.
+    fn edited() -> EditableSettings {
+        EditableSettings {
+            source: GameSource::Custom,
+            current_event_id: Some(event("events/11-A")),
+            current_court: Some("Court 7".to_string()),
+            schedule: Some(schedule_for("events/22-B")),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn from_edited_carries_all_four_selections() {
+        let link = LinkSelection::from_edited(&edited());
+
+        assert_eq!(link.source, GameSource::Custom);
+        assert_eq!(link.event_id, Some(event("events/11-A")));
+        assert_eq!(link.court.as_deref(), Some("Court 7"));
+        // The differing id is the point: this proves the schedule is copied from
+        // `edited.schedule` rather than rebuilt from `current_event_id`.
+        assert_eq!(link.schedule, Some(schedule_for("events/22-B")));
+    }
+
+    #[test]
+    fn manual_clears_every_selection() {
+        let link = LinkSelection::manual();
+
+        assert_eq!(link.source, GameSource::Manual);
+        assert_eq!(link.event_id, None);
+        assert_eq!(link.court, None);
+        assert_eq!(link.schedule, None);
+    }
+}
+
 /// Copy the six plain `Config` toggles owned by the App Options page out of the
 /// staged edits. Returns `true` when `hide_time` changed, which the live Apply
 /// path has to report to the update server.
@@ -6533,9 +6708,10 @@ mod usable_cap_numbers_tests {
 /// arm, which for a long time committed only the mode and silently dropped the
 /// rest.
 ///
-/// `source`, `mode` and the portal selections are deliberately NOT handled here.
-/// Each carries side effects that differ between the two paths — `commit_source`,
-/// `set_current_event_id`, the portal-queue flush — and needs `&mut self`.
+/// `mode` is deliberately NOT handled here: its side effects differ between the
+/// two paths (the portal-queue flush) and it needs `&mut self`. The source,
+/// event, court and schedule are handled by the `&mut self` sibling
+/// [`RefBoxApp::commit_link_selection`], for exactly the same anti-drift reason.
 fn commit_app_toggles(config: &mut Config, edited: &EditableSettings) -> bool {
     config.collect_scorer_cap_num = edited.collect_scorer_cap_num;
     config.track_fouls_and_warnings = edited.track_fouls_and_warnings;

@@ -13,6 +13,10 @@
 //! cannot.
 
 use serde::Serialize;
+use uwh_common::{
+    color::Color,
+    game_snapshot::{GameSnapshot, PenaltySnapshot, PenaltyTime},
+};
 
 use crate::{
     portal::TeamNames,
@@ -109,6 +113,44 @@ pub struct GameFeed {
     pub portal_base_url: Option<String>,
 }
 
+/// Every penalty on the snapshot, ordered exactly as `tables::penalties` orders it so both
+/// consumers agree on which penalty is first (`PenaltyTime` has a deliberate custom `Ord`).
+///
+/// **Neither padded nor truncated**, unlike `/penalties`, which pads to a fixed row count and
+/// keeps only the first ten because a vMix title needs a fixed number of rows to bind to. An
+/// array needs neither: an empty list means there are no penalties, and every penalty is served.
+fn penalties_of(snapshot: &GameSnapshot, rosters: &Rosters) -> Vec<Penalty> {
+    let mut entries: Vec<(Color, &PenaltySnapshot)> = snapshot
+        .penalties
+        .black
+        .iter()
+        .map(|penalty| (Color::Black, penalty))
+        .chain(
+            snapshot
+                .penalties
+                .white
+                .iter()
+                .map(|penalty| (Color::White, penalty)),
+        )
+        .collect();
+    entries.sort_by_key(|(_, penalty)| std::cmp::Reverse(penalty.time));
+
+    entries
+        .into_iter()
+        .map(|(color, penalty)| Penalty {
+            team: color_code(color).to_string(),
+            number: penalty.player_number,
+            player: rosters[color].get(&penalty.player_number).cloned(),
+            secs_remaining: match penalty.time {
+                PenaltyTime::Seconds(secs) => Some(u32::from(secs)),
+                PenaltyTime::TotalDismissal => None,
+            },
+            total_dismissal: matches!(penalty.time, PenaltyTime::TotalDismissal),
+            infraction: penalty.infraction.short_name().to_string(),
+        })
+        .collect()
+}
+
 /// A blanked feed: `connected: false` and every game value `null`.
 fn blanked() -> GameFeed {
     GameFeed {
@@ -151,7 +193,6 @@ pub fn game_feed(
     }
 
     let snapshot = &display.snapshot;
-    let _ = rosters;
 
     GameFeed {
         schema_version: SCHEMA_VERSION,
@@ -174,7 +215,7 @@ pub fn game_feed(
             player,
         }),
         next_period_len_secs: snapshot.next_period_len_secs,
-        penalties: Some(Vec::new()),
+        penalties: Some(penalties_of(snapshot, rosters)),
         event_id: None,
         portal_base_url: None,
     }
@@ -185,7 +226,9 @@ mod tests {
     use uwh_common::{
         bundles::BlackWhiteBundle,
         color::Color,
-        game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot},
+        game_snapshot::{
+            GamePeriod, GameSnapshot, Infraction, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
+        },
     };
 
     use super::*;
@@ -375,5 +418,105 @@ mod tests {
         assert!(json["blackScore"].is_null());
         assert!(json["whiteScore"].is_null());
         assert!(json["secsInPeriod"].is_null());
+    }
+    #[test]
+    fn penalties_are_neither_padded_nor_truncated() {
+        // /penalties pads up to ten rows and takes only the first ten, because a vMix title needs
+        // a fixed row count to bind to. An array needs neither, and the renderer is better served
+        // by the truth -- the same reasoning /scorebug already applies to its untruncated foul
+        // counts.
+        let empty = game_feed(
+            &display_with(GameSnapshot::default()),
+            None,
+            &Rosters::default(),
+            true,
+        );
+        assert_eq!(
+            empty.penalties.as_deref(),
+            Some(&[][..]),
+            "no penalties must serve an empty array, not ten blank rows"
+        );
+
+        let mut snapshot = GameSnapshot::default();
+        snapshot.penalties.black = (1..=12)
+            .map(|n| PenaltySnapshot {
+                player_number: n,
+                time: PenaltyTime::Seconds(u16::from(n) * 10),
+                infraction: Infraction::Unknown,
+            })
+            .collect();
+        let many = game_feed(&display_with(snapshot), None, &Rosters::default(), true);
+        assert_eq!(
+            many.penalties.expect("connected").len(),
+            12,
+            "all twelve must be served, not the first ten"
+        );
+    }
+
+    #[test]
+    fn a_total_dismissal_is_a_flag_and_a_null_never_td_or_zero() {
+        let mut snapshot = GameSnapshot::default();
+        snapshot.penalties.white = vec![PenaltySnapshot {
+            player_number: 4,
+            time: PenaltyTime::TotalDismissal,
+            infraction: Infraction::Unknown,
+        }];
+        let feed = game_feed(&display_with(snapshot), None, &Rosters::default(), true);
+        let penalties = feed.penalties.clone().expect("connected");
+        let penalty = &penalties[0];
+
+        assert_eq!(penalty.team, "WHITE");
+        assert_eq!(penalty.number, 4);
+        assert!(penalty.total_dismissal);
+        assert_eq!(
+            penalty.secs_remaining, None,
+            "a dismissal has no countdown -- 0 would read as about to expire"
+        );
+
+        let json = serde_json::to_value(&feed).expect("serialise");
+        assert!(json["penalties"][0]["secsRemaining"].is_null());
+        assert_eq!(json["penalties"][0]["totalDismissal"].as_bool(), Some(true));
+        assert_ne!(
+            json["penalties"][0]["secsRemaining"].as_str(),
+            Some("TD"),
+            "the vMix string encoding must not leak into the typed feed"
+        );
+    }
+
+    #[test]
+    fn a_penalty_carries_the_roster_name_when_the_cap_number_is_known() {
+        let mut snapshot = GameSnapshot::default();
+        snapshot.penalties.black = vec![
+            PenaltySnapshot {
+                player_number: 7,
+                time: PenaltyTime::Seconds(60),
+                infraction: Infraction::Unknown,
+            },
+            PenaltySnapshot {
+                player_number: 9,
+                time: PenaltyTime::Seconds(30),
+                infraction: Infraction::Unknown,
+            },
+        ];
+        let mut rosters = Rosters::default();
+        rosters.black.insert(7, "Known Player".to_string());
+
+        let feed = game_feed(&display_with(snapshot), None, &rosters, true);
+        let served = feed.penalties.expect("connected");
+
+        let known = served
+            .iter()
+            .find(|penalty| penalty.number == 7)
+            .expect("cap 7 should be served");
+        let unknown = served
+            .iter()
+            .find(|penalty| penalty.number == 9)
+            .expect("cap 9 should be served");
+
+        assert_eq!(known.player.as_deref(), Some("Known Player"));
+        assert_eq!(
+            unknown.player, None,
+            "an unknown cap number serves null, never a placeholder"
+        );
     }
 }

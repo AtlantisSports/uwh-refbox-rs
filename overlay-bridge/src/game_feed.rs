@@ -146,15 +146,37 @@ pub struct GameFeed {
 /// **Returns `None` rather than a best effort.** An address this cannot parse is an address whose
 /// credential this cannot prove it has removed, and serving nothing is always safe where serving
 /// a credential is not.
+/// **Only URL credentials — the userinfo — are removed, and that is the whole guarantee.** A
+/// secret placed anywhere else in the address is not userinfo and cannot be told apart from a
+/// legitimate address: `https://host\user:secret@pool` parses as a *path*, so it is republished.
+/// The refbox's own note on this field says the same of its own stripping. Do not read this
+/// function as making any address safe to publish.
 fn without_credentials(url: &str) -> Option<String> {
     let mut parsed = reqwest::Url::parse(url).ok()?;
-    // Both setters fail only on a cannot-be-a-base URL (`mailto:`, `data:`), which is not an
-    // address the refbox could have been configured with; `None` is the right answer there too.
+
+    // http(s) only. The refbox refuses any other scheme, so anything else did not come from a
+    // refbox worth relaying -- and a `file:` or `data:` address has no business being
+    // republished to the network at all.
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return None;
+    }
+
+    // Both setters fail only on a cannot-be-a-base URL (`mailto:`, `data:`), which the scheme
+    // check above has already excluded; `None` is still the right answer if one ever does.
     parsed.set_username("").ok()?;
     parsed.set_password(None).ok()?;
-    // The parser normalises a bare host to a trailing slash. The refbox's own `base_url`
-    // convention trims it, so match that rather than serve a value it never sent.
-    Some(parsed.as_str().trim_end_matches('/').to_string())
+
+    // Trim only the slash the parser itself adds to a bare host, matching the refbox's own
+    // `base_url` convention. A blanket `trim_end_matches('/')` corrupts a real address instead:
+    // `https://host/?a=1/` would come back as `https://host/?a=1`, losing a character from
+    // inside the query.
+    let serialised = parsed.as_str();
+    let bare_host = parsed.path() == "/" && parsed.query().is_none() && parsed.fragment().is_none();
+    Some(if bare_host {
+        serialised.trim_end_matches('/').to_string()
+    } else {
+        serialised.to_string()
+    })
 }
 
 /// Every penalty on the snapshot, ordered exactly as `tables::penalties` orders it so both
@@ -730,6 +752,113 @@ mod tests {
         let feed = game_feed(&display_with(playing), None, &Rosters::default(), true);
         assert_eq!(feed.game_number.as_deref(), Some("10"));
         assert_eq!(feed.next_game_number.as_deref(), Some("20"));
+    }
+
+    /// A non-http scheme is not an address the refbox would ever report, and a `file:` or `data:`
+    /// address republished to the network is strictly worse than nothing.
+    #[test]
+    fn a_non_http_address_is_not_served() {
+        for raw in [
+            "file:///etc/passwd",
+            "ftp://api.dev.uwhportal.com",
+            "data:text/plain,hello",
+        ] {
+            let snapshot = GameSnapshot {
+                event_id: Some(EventId::from_partial("1889-B")),
+                portal_base_url: Some(raw.to_string()),
+                ..Default::default()
+            };
+            let feed = game_feed(&display_with(snapshot), None, &Rosters::default(), true);
+            assert_eq!(feed.portal_base_url, None, "{raw:?} must not be served");
+            assert_eq!(feed.event_id, None, "and the id goes with it");
+        }
+    }
+
+    /// The trailing slash is trimmed only where the parser itself added one to a bare host.
+    /// A blanket trim corrupts a real address by eating a character from inside a query or path.
+    #[test]
+    fn only_a_bare_host_loses_its_trailing_slash() {
+        for (raw, expected) in [
+            (
+                "https://api.dev.uwhportal.com",
+                "https://api.dev.uwhportal.com",
+            ),
+            (
+                "https://api.dev.uwhportal.com/",
+                "https://api.dev.uwhportal.com",
+            ),
+            (
+                "https://api.dev.uwhportal.com/?a=1/",
+                "https://api.dev.uwhportal.com/?a=1/",
+            ),
+            (
+                "https://api.dev.uwhportal.com/base/",
+                "https://api.dev.uwhportal.com/base/",
+            ),
+        ] {
+            let snapshot = GameSnapshot {
+                event_id: Some(EventId::from_partial("1889-B")),
+                portal_base_url: Some(raw.to_string()),
+                ..Default::default()
+            };
+            let feed = game_feed(&display_with(snapshot), None, &Rosters::default(), true);
+            assert_eq!(
+                feed.portal_base_url.as_deref(),
+                Some(expected),
+                "for {raw:?}"
+            );
+        }
+    }
+
+    /// `/game` and `/penalties` must agree on which penalty is first. The sort is duplicated
+    /// between the two rather than shared, so nothing but this test stops them drifting apart --
+    /// and `PenaltyTime` has a custom `Ord`, so "obviously the same" is not good enough.
+    #[test]
+    fn game_and_the_vmix_table_agree_on_penalty_order() {
+        let mut snapshot = GameSnapshot::default();
+        snapshot.penalties.black = vec![
+            PenaltySnapshot {
+                player_number: 7,
+                time: PenaltyTime::Seconds(60),
+                infraction: Infraction::Unknown,
+            },
+            PenaltySnapshot {
+                player_number: 2,
+                time: PenaltyTime::TotalDismissal,
+                infraction: Infraction::Unknown,
+            },
+        ];
+        snapshot.penalties.white = vec![PenaltySnapshot {
+            player_number: 5,
+            time: PenaltyTime::Seconds(15),
+            infraction: Infraction::Unknown,
+        }];
+
+        let display = display_with(snapshot);
+        let rosters = Rosters::default();
+
+        let typed: Vec<(String, u8)> = game_feed(&display, None, &rosters, true)
+            .penalties
+            .expect("connected")
+            .into_iter()
+            .map(|penalty| (penalty.team, penalty.number))
+            .collect();
+
+        let table: Vec<(String, u8)> = crate::tables::penalties(&display, &rosters, true)
+            .into_iter()
+            .filter(|row| !row["team"].is_empty()) // drop the vMix blank padding rows
+            .map(|row| {
+                (
+                    row["team"].clone(),
+                    row["number"].parse().expect("a number"),
+                )
+            })
+            .collect();
+
+        assert_eq!(
+            typed, table,
+            "/game and /penalties disagree on penalty order"
+        );
     }
 
     /// An address whose credential cannot be provably removed serves **nothing** -- not a best

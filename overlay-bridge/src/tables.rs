@@ -1401,7 +1401,28 @@ mod tests {
     /// logic and therefore no error path. See the design spec's section 3.
     #[test]
     fn the_vmix_tables_column_names_are_frozen() {
-        let display = display_with(GameSnapshot::default());
+        // **Every table below must be given real entries.** Fed an empty snapshot, `/penalties`,
+        // `/fouls` and `/warnings` return nothing but blank padding rows, whose keys come from the
+        // `PENALTY_COLUMNS` / `EVENT_COLUMNS` constants rather than from `penalty_row` and
+        // `infraction_row`. This test then pins the constants against themselves and a column
+        // added to a real row builder sails straight through it -- shipping the very alphabetical
+        // shift the test exists to catch. Found by review, 2026-08-29.
+        let display = display_with(GameSnapshot {
+            penalties: BlackWhiteBundle {
+                black: vec![penalty(7, PenaltyTime::Seconds(60))],
+                white: vec![penalty(4, PenaltyTime::TotalDismissal)],
+            },
+            warnings: BlackWhiteBundle {
+                black: vec![infraction(Some(3))],
+                white: vec![],
+            },
+            fouls: uwh_common::bundles::OptColorBundle {
+                black: vec![infraction(Some(9))],
+                equal: vec![],
+                white: vec![],
+            },
+            ..base_snapshot()
+        });
         let rosters = Rosters::default();
 
         let columns = |rows: &[BTreeMap<String, String>]| -> Vec<String> {

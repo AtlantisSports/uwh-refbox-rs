@@ -4,10 +4,11 @@
 //! renamed REQUIRED field is already a loud failure. What compilation cannot catch is a
 //! change that keeps building while the MEANING of the data moves -- serde ignores unknown
 //! fields, so both sides compile happily through exactly that, and non-Rust consumers such
-//! as the vMix bridge get no compile-time protection at all. So: assert the numbers, and
-//! assert the wire KEY STRINGS, because renaming a key is what silently breaks a consumer
-//! -- the type is unchanged, everything compiles, and the field simply arrives as a
-//! default forever.
+//! as the vMix bridge get no compile-time protection at all. So: assert the decoded
+//! numbers, and round-trip each snapshot back to JSON to check the keys the struct emits
+//! TODAY still match the capture -- renaming an `Option` is what silently breaks a
+//! consumer, because everything compiles, every line still decodes, and the field simply
+//! arrives as None forever.
 //!
 //! KNOWN GAP: this fixture was captured before `portal_base_url` was added to
 //! `GameSnapshot`, so that key is NOT pinned below even though it is an `Option`
@@ -15,8 +16,20 @@
 //! depends on entirely. Closing it needs a FRESH CAPTURE from a refbox carrying
 //! the field; do not hand-add the key to these messages, they are real captures
 //! and their value is that nobody edited them.
+//!
+//! The gap is exactly that and no wider: the round-trip check below covers every key
+//! the capture DOES contain, including `event_id` and `conf_pause_time`, which are null
+//! on all eleven lines and so can never be guarded by a decoded value.
+//!
+//! TO RECAPTURE, when a new REQUIRED field is added to `GameSnapshot` and these lines
+//! stop decoding: run a refbox, connect to its snapshot feed on the port the overlay
+//! uses, and save the raw lines it emits -- one JSON object per line, no edits. Replace
+//! this file wholesale and update the corpus size in `every_captured_line_decodes`. A
+//! hand-patched fixture is worse than a stale one: it stops being evidence of what the
+//! refbox actually sends.
 
-use uwh_common::game_snapshot::{GamePeriod, GameSnapshot};
+use uwh_common::color::Color;
+use uwh_common::game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot};
 
 const CAPTURE: &str = include_str!("fixtures/feed-capture.jsonl");
 
@@ -44,49 +57,55 @@ fn decoded_values_match_the_capture() {
     assert_eq!(s.secs_in_period, 23);
     assert_eq!(s.scores.black, 1);
     assert_eq!(s.scores.white, 0);
+
+    // The Option fields that carry a non-null value ANYWHERE in this corpus, asserted on
+    // the one line each appears on. A rename of an Option is silent -- serde fills in
+    // None and nothing errors -- so these are the only lines where a decoded value can
+    // prove the field still arrives. `event_id` and `conf_pause_time` are null on all
+    // eleven captured lines, so no assertion here can cover them; the round-trip check
+    // below is what guards those two.
+    assert_eq!(snapshots()[7].timeout, Some(TimeoutSnapshot::Black(30)));
+    assert_eq!(snapshots()[2].recent_goal, Some((Color::Black, 6)));
+    assert_eq!(snapshots()[0].next_period_len_secs, Some(90));
 }
 
 #[test]
 fn wire_keys_are_part_of_the_contract() {
-    // TWO FAILURE MODES, and only one of them needs this test.
+    // Re-serialize each decoded snapshot and compare it against the line it came from.
     //
-    // Renaming a REQUIRED field (current_period, secs_in_period, scores, penalties,
-    // warnings, fouls, is_old_game, game_number, next_game_number) makes serde error
-    // with `missing field`, which `every_captured_line_decodes` and
-    // `decoded_values_match_the_capture` already catch loudly.
+    // The obvious form of this check -- `assert!(CAPTURE.contains("\"event_id\""))` --
+    // is CIRCULAR, and it was live in this file until review caught it. CAPTURE is this
+    // test's own input, so such an assertion passes forever no matter what GameSnapshot
+    // does. Demonstrated by putting `#[serde(rename = "eventId")]` on the field: all
+    // three tests stayed green while every consumer would silently have seen None for
+    // good. Mutating the FIXTURE makes it fail, which is what made it look like a guard.
     //
-    // Renaming an OPTION field is SILENT: serde fills in None, nothing errors, and the
-    // overlay simply stops seeing that value forever with no signal anywhere. Those are
-    // the load-bearing entries below. Do NOT "tidy" this list back to the
-    // prominent-looking fields -- that removes the only protection this test adds.
-    // Classified against `GameSnapshot` in this workspace, which the overlay uses by path.
-    for key in [
-        "\"timeout\"",
-        "\"event_id\"",
-        "\"recent_goal\"",
-        "\"next_period_len_secs\"",
-        "\"conf_pause_time\"",
-    ] {
-        assert!(
-            CAPTURE.contains(key),
-            "OPTION wire key {key} vanished -- a rename here defaults to None silently"
-        );
+    // Round-tripping asks the STRUCT what it emits today, so a renamed, removed or
+    // retyped field is visible here even though every line still decodes happily.
+    for (i, line) in CAPTURE.lines().filter(|l| !l.trim().is_empty()).enumerate() {
+        let captured: serde_json::Value =
+            serde_json::from_str(line).expect("captured line must be a JSON object");
+        let produced =
+            serde_json::to_value(&snapshots()[i]).expect("GameSnapshot must re-serialize");
+
+        let captured = captured.as_object().expect("captured line is an object");
+        let produced = produced
+            .as_object()
+            .expect("GameSnapshot serializes as an object");
+
+        for (key, want) in captured {
+            let got = produced.get(key).unwrap_or_else(|| {
+                panic!(
+                    "line {i}: wire key {key:?} is no longer emitted by GameSnapshot -- a \
+                     rename or removal keeps decoding (an Option silently becomes None) \
+                     and breaks every consumer, including non-Rust ones such as the vMix \
+                     bridge"
+                )
+            });
+            assert_eq!(
+                got, want,
+                "line {i}: wire key {key:?} round-trips to a different value"
+            );
+        }
     }
-    // Belt and braces: two required keys as a corpus-shape check. The decode tests are
-    // what really guard these, because a rename makes them hard-fail.
-    for key in ["\"scores\"", "\"current_period\""] {
-        assert!(
-            CAPTURE.contains(key),
-            "wire key {key} vanished from the contract"
-        );
-    }
-    // The score bundle's own colour keys.
-    assert!(
-        CAPTURE.contains("\"black\""),
-        "score bundle key \"black\" vanished"
-    );
-    assert!(
-        CAPTURE.contains("\"white\""),
-        "score bundle key \"white\" vanished"
-    );
 }

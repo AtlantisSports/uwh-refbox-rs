@@ -44,6 +44,41 @@ Steps:
 
 1. With the bump merged on `master`, push the tag: `git tag vX.Y.Z <master-sha> && git push origin vX.Y.Z`.
 2. Wait for `release.yml` to finish; a **draft** release appears under Releases.
-3. Download `refbox.zip` from the draft to test the platform builds (e.g. `Windows/refbox.exe`).
+3. Download `refbox.zip` from the draft and **verify the packaging** — see below. Do not skip
+   this: "test the platform builds" used to be all this step said, and a macOS app that could
+   not launch shipped in five consecutive releases before anyone noticed.
 4. When satisfied, **publish** the draft. (Keep `--draft=true` on any `gh release edit`, or it
    publishes early.)
+
+## Verify the draft before publishing
+
+Passing artifacts between jobs **strips the executable bit** — GitHub stores each artifact as a
+zip and does not preserve file permissions, so everything arrives as `644`. A `chmod` step in
+`release.yml` restores it. That step is the only automated guard: it fails the job if a path ever
+stops matching, but **no PR-time CI covers packaging at all**, because `release.yml` runs only on a
+`v*.*.*` tag. So the draft is the first and last chance to catch a bad build.
+
+Check the zip itself, not just that it downloads:
+
+```bash
+unzip -Z refbox.zip | grep -E 'MacOS/refbox$|Raspberry Pi/refbox$'
+```
+
+- [ ] **Exactly three lines** come back — Arm bundle, Intel bundle, Pi binary. Fewer means a build
+      is missing, and an empty result must not be read as a pass.
+- [ ] Every one of them starts with `-rwxr-xr-x`. If any reads `-rw-r--r--`, the build is broken —
+      **do not publish.**
+- [ ] Folder names read `Mac (Arm processor)` / `Mac (Intel processor)` — no stray backslash.
+- [ ] `Windows/refbox.exe` is a file, not a folder containing another `refbox.exe`.
+- [ ] The release carries `refbox-aarch64-linux` and `refbox-aarch64-linux.sha256` as **loose
+      assets** alongside `refbox.zip`. In-app self-update looks these up by exact name
+      (`BIN_ASSET` / `SUM_ASSET` in `refbox/src/updater/release.rs`) and fails if either is
+      missing or renamed. Copies of the Pi binary and its checksum also appear *inside* the zip
+      under `Raspberry Pi/` and `rpi-sha256/` — that is normal and not a problem.
+- [ ] A macOS user opens `refbox.app` and it launches.
+
+On that last point: macOS will warn about an unidentified developer, because the app is ad-hoc
+signed rather than notarised with a paid Apple certificate. That is expected and unrelated to the
+packaging. Clear it via **System Settings → Privacy & Security → Open Anyway**. What you are
+checking for is the *different* error — *"The application 'refbox' can't be opened."* — which means
+the executable bit is missing.

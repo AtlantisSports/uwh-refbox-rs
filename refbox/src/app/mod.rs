@@ -583,6 +583,55 @@ enum SourceTapOutcome {
 /// settings editor — not on what is committed. The two are identical unless the
 /// operator has picked something and not yet applied it, and in that case the
 /// displayed selection is what they would lose.
+/// The source a site-scoped reply (`RecvSchedule`, `RecvTeamsList`,
+/// `RecvTeamRoster`) should resolve against.
+///
+/// The COMMITTED source, with one exception: when that is `Manual`.
+/// `site_serves` answers false for Manual against every site, so a request is
+/// never issued FOR Manual — which means a reply arriving while Manual is
+/// committed must belong to the remote the operator has staged and is picking
+/// against. Resolving it against `Manual` instead discards it, and because
+/// `EventStore::get_mut(Manual, _)` is unconditionally `None` that discard is
+/// silent: COURT and GAME simply never fill and APPLY never lights.
+///
+/// Deliberately NOT the staged source in general. On a remote-to-remote stage
+/// the reply still belongs to the committed source, and resolving it against
+/// the staged one would file the departed site's data under the new one — the
+/// leak the per-source store exists to prevent.
+fn reply_source(committed: GameSource, staged: Option<GameSource>) -> GameSource {
+    if committed == GameSource::Manual {
+        staged.unwrap_or(committed)
+    } else {
+        committed
+    }
+}
+
+/// What an App-page APPLY should do with the committed event / court / schedule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinkCommit {
+    /// Commit the staged selection: it belongs to the source being applied.
+    Staged,
+    /// Clear the committed link — going manual means there is no link.
+    Clear,
+    /// Leave the committed link exactly as it is.
+    Leave,
+}
+
+/// Decide it. The `Leave` arm is the one that matters: it used to be `Clear`,
+/// which destroyed a restored link whenever the portal event list had not
+/// loaded, because `owns` is a store lookup and answers false for a perfectly
+/// good saved event. Declining to commit keeps an unowned selection out of the
+/// committed state just as effectively, without destroying a correct one.
+fn link_commit(selection_owned: bool, applied_source: GameSource) -> LinkCommit {
+    if selection_owned {
+        LinkCommit::Staged
+    } else if applied_source == GameSource::Manual {
+        LinkCommit::Clear
+    } else {
+        LinkCommit::Leave
+    }
+}
+
 fn source_tap_outcome(
     game_in_progress: bool,
     results_queued: bool,
@@ -1249,6 +1298,15 @@ impl RefBoxApp {
         self.edited_settings
             .as_ref()
             .map_or(self.source, |edited| edited.source)
+    }
+
+    /// The source a site-scoped reply should resolve against. See
+    /// `reply_source` for the rule; this only supplies the two inputs.
+    fn reply_source(&self) -> GameSource {
+        reply_source(
+            self.source,
+            self.edited_settings.as_ref().map(|edited| edited.source),
+        )
     }
 
     /// Commit an applied source: the live field, the saved field so a relaunch
@@ -1935,14 +1993,29 @@ impl RefBoxApp {
         let client_serves_staged = site_serves(self.current_site.kind, source);
         let selection_owned =
             self.events.owns(source, edited.current_event_id.as_ref()) && client_serves_staged;
-        let (event_id, current_court, schedule) = if selection_owned {
-            (
-                edited.current_event_id.clone(),
-                edited.current_court.clone(),
-                edited.schedule.clone(),
-            )
-        } else {
-            (None, None, None)
+        // Three cases, and the last is the fix for a link-losing bug.
+        //
+        //   owned         -> commit the staged selection.
+        //   staged Manual -> clear it; going manual means there is no link.
+        //   otherwise     -> LEAVE THE COMMITTED LINK ALONE.
+        //
+        // That last arm used to null all three fields. `owns` is a store lookup,
+        // so it answers false for a perfectly good saved event whenever the
+        // portal event list has not loaded — a Pi whose wifi comes up after
+        // refbox starts, with a link note restored at startup. An APPLY for any
+        // unrelated App toggle then wiped the committed link, and
+        // `persist_link_session` took its delete branch and removed
+        // portal_link.json with it. Declining to commit keeps an unowned
+        // selection out of the committed state just as effectively, without
+        // destroying one that is already there and correct.
+        //
+        // Built while `edited` is still borrowed, because `commit_link_selection`
+        // takes `&mut self`. `LinkSelection::manual()` fits the Clear arm exactly:
+        // that arm only fires when the source being applied IS Manual.
+        let commit_link = match link_commit(selection_owned, source) {
+            LinkCommit::Staged => Some(LinkSelection::from_edited(edited)),
+            LinkCommit::Clear => Some(LinkSelection::manual()),
+            LinkCommit::Leave => None,
         };
 
         // Committed here, while `edited` is still borrowed, so the six toggles
@@ -1950,12 +2023,13 @@ impl RefBoxApp {
         // fields, so this mutable borrow and the immutable one above coexist.
         let hide_time_changed = commit_app_toggles(&mut self.config, edited);
 
-        self.commit_link_selection(LinkSelection {
-            source,
-            event_id,
-            court: current_court,
-            schedule,
-        });
+        match commit_link {
+            Some(link) => self.commit_link_selection(link),
+            // Leave: commit the source, but do NOT touch the committed link.
+            // Nulling it here destroyed a restored link whenever the portal
+            // event list had not loaded.
+            None => self.commit_source(source),
+        }
         self.config.mode = mode;
         // `hide_time` is mirrored to the update server, which the pure helper
         // cannot do — so notify here, and only when it actually changed.
@@ -5691,9 +5765,10 @@ impl RefBoxApp {
                 // site-scoped reply with its origin, the way `RecvTeamRoster`
                 // now is; that is one mechanism across four handlers and has its
                 // own branch.
-                if let Some(event) = self.events.get_mut(self.source, &event_id) {
+                let source = self.reply_source();
+                if let Some(event) = self.events.get_mut(source, &event_id) {
                     event.teams = Some(teams);
-                } else if self.source == GameSource::Portal && !self.events.portal_list_loaded() {
+                } else if source == GameSource::Portal && !self.events.portal_list_loaded() {
                     error!(
                         "Received teams for event_id {}, but there is no event list yet",
                         event_id.full()
@@ -5717,7 +5792,7 @@ impl RefBoxApp {
                 // re-fetching any team it already holds, so such an entry would
                 // then shadow the new site's numbers for the rest of the
                 // session and survive a REFRESH.
-                if source == self.source {
+                if source == self.reply_source() {
                     self.team_rosters.insert(team_id, numbers);
                 } else {
                     warn!(
@@ -5805,7 +5880,7 @@ impl RefBoxApp {
                 // site-scoped reply with its origin, the way `RecvTeamRoster`
                 // now is; that is one mechanism across four handlers and has its
                 // own branch.
-                let source = self.source;
+                let source = self.reply_source();
                 if let Some(event) = self.events.get_mut(source, &event_id) {
                     event.courts = Some(courts);
                     event.schedule = Some(schedule.clone());
@@ -8447,5 +8522,73 @@ mod source_tap_tests {
                 SourceTapOutcome::RefusedByGame
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod reply_source_tests {
+    use super::{GameSource, LinkCommit, link_commit, reply_source};
+
+    /// A reply arriving after a merely STAGED remote-to-remote change still
+    /// belongs to the committed source. Following the stage instead would file
+    /// the departed site's schedule under the site just arrived at — the leak
+    /// the per-source store exists to close.
+    #[test]
+    fn a_staged_remote_does_not_redirect_a_reply() {
+        assert_eq!(
+            reply_source(GameSource::Portal, Some(GameSource::Custom)),
+            GameSource::Portal
+        );
+        assert_eq!(
+            reply_source(GameSource::Custom, Some(GameSource::Portal)),
+            GameSource::Custom
+        );
+    }
+
+    /// Would have failed before the fix. No site serves Manual, so no request is
+    /// ever issued for it; a reply landing while Manual is committed belongs to
+    /// the remote the operator staged. Resolving it against Manual discarded it
+    /// silently, leaving COURT and GAME unfillable.
+    #[test]
+    fn a_reply_over_committed_manual_resolves_against_the_staged_remote() {
+        assert_eq!(
+            reply_source(GameSource::Manual, Some(GameSource::Portal)),
+            GameSource::Portal
+        );
+        assert_eq!(
+            reply_source(GameSource::Manual, Some(GameSource::Custom)),
+            GameSource::Custom
+        );
+    }
+
+    /// With no editor open there is nothing staged, so Manual stays Manual —
+    /// the fallback must not invent a source.
+    #[test]
+    fn manual_with_nothing_staged_stays_manual() {
+        assert_eq!(reply_source(GameSource::Manual, None), GameSource::Manual);
+        assert_eq!(reply_source(GameSource::Portal, None), GameSource::Portal);
+    }
+
+    #[test]
+    fn an_owned_selection_is_committed_whatever_the_source() {
+        for source in [GameSource::Portal, GameSource::Custom, GameSource::Manual] {
+            assert_eq!(link_commit(true, source), LinkCommit::Staged);
+        }
+    }
+
+    /// Applying Manual means there is no link, so the committed one goes.
+    #[test]
+    fn applying_manual_clears_the_committed_link() {
+        assert_eq!(link_commit(false, GameSource::Manual), LinkCommit::Clear);
+    }
+
+    /// Would have failed before the fix: this returned `Clear`, which wiped the
+    /// committed event/court/schedule and let `persist_link_session` delete
+    /// portal_link.json — reachable with nothing worse than a portal event list
+    /// that had not loaded yet.
+    #[test]
+    fn an_unowned_remote_selection_leaves_the_committed_link_alone() {
+        assert_eq!(link_commit(false, GameSource::Portal), LinkCommit::Leave);
+        assert_eq!(link_commit(false, GameSource::Custom), LinkCommit::Leave);
     }
 }

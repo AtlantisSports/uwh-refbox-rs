@@ -58,15 +58,18 @@ Feature: A court whose schedule is finished
     And the half-time 30-second whistle sounds as usual
     And the same holds for pre-overtime and pre-sudden-death breaks of that game
 
-  # Same session only. After a RESTART into the remembered-finished state the anchor is
-  # gone, so a refresh cannot discover a newly added game and the operator must pick it in
-  # Settings. That residual is known, accepted and deliberately not fixed here.
-  Scenario: A game added later is picked up by a refresh in the same session
-    Given court 1's schedule is finished and the refbox has not been restarted
-    When a new game on court 1 is added in the portal and the schedule is refreshed
+  # Decision 10: a finished court stays finished until the operator asks. Restarting no
+  # longer loses the ability to find a late addition — the anchor survives, so the search
+  # runs again on every REFRESH, in this session or any later one.
+  Scenario: A game added to a finished court is adopted on REFRESH
+    Given court 1's schedule is finished
+    When a new game on court 1 is added in the portal
+    Then nothing changes until the operator presses REFRESH
+    When the operator presses REFRESH
     Then that game becomes the upcoming game
     And the clock counts down toward it again
     And START NOW is available again
+    And the same holds after a restart, because the anchor is remembered
 
   Scenario: A restart comes back to the same finished state
     Given court 1's schedule is finished
@@ -74,6 +77,17 @@ Feature: A court whose schedule is finished
     Then it returns to court 1 in the finished state within one schedule fetch
     And the remembered session file holds the court with no game number
     And that game number never becomes "1"
+
+  # Scenario 2's Critical: with no network the old code fell back to arithmetic,
+  # invented game 1, played it unattended and queued a 0-0 that was delivered on
+  # reconnect.
+  Scenario: A restart with no network comes back finished, not inventing a game
+    Given court 1's schedule is finished
+    When the refbox is closed, the network is switched off, and it is reopened
+    Then it shows the finished state with no upcoming game
+    And no game starts, however long it is left running
+    And nothing is queued for the portal
+    And nothing is posted when the network returns
 
   # Regression guard for the stale remembered-session note: it exists only to restore the
   # operator's place at startup, and must never fire hours later.
@@ -85,13 +99,17 @@ Feature: A court whose schedule is finished
     Then the end-of-game refresh does not re-adopt the remembered game
     And court 1's schedule stays finished
 
-  # The court-aware search has no anchor before the first game of a session starts.
-  Scenario: A fresh launch offers the earliest game on the selected court
-    Given the refbox is launched with court 1 selected and no game started yet
+  # Decision 9 SUPERSEDED. A court the refbox holds no record for is either a fresh
+  # morning or a replacement box brought out mid-day, and it cannot tell them apart.
+  # Offering the earliest game would confidently offer a game played hours ago.
+  Scenario: A court with no recorded history requires an operator pick
+    Given the refbox is launched with court 1 selected and no game played on it yet
     When the schedule arrives
-    Then the earliest game on court 1 is offered as the upcoming game
+    Then no game is offered as the upcoming game
+    And the clock is stopped and START NOW is greyed
     And no game from another court is offered
-    And a court with no games at all offers nothing, rather than reporting the day done
+    When the operator picks a game on court 1 in Settings
+    Then that game becomes the upcoming game
 
   # Regression guard: a refresh must not overrule the operator's own choice.
   Scenario: An out-of-order pick survives a refresh

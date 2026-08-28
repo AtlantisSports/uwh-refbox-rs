@@ -985,16 +985,23 @@ decisions. Run **one** scenario, report the result, and **wait** for the human b
    buzzer sounds. Then close and reopen the refbox. Expect the same finished state within one
    schedule fetch, and `portal_link.json` still holding the court with **no** game number after
    five-plus minutes idling — it must never become `"1"`. *(Also covers Task 5.)*
-2. **Restart in the finished state with no network.** Same, with Wi-Fi off. The phantom game may
-   still appear after the nominal break — a known, parked residual of the un-networked path.
-   Confirm it and decide with the human whether it needs a follow-up issue.
+2. **Restart in the finished state with no network.** Same, with Wi-Fi off. **Once a known, parked
+   residual — the phantom game could appear after the nominal break — this is now CLOSED**: the
+   refbox no longer invents a game number while it is attached to a schedule, so a finished court
+   restarted offline parks the clock at 0:00 and starts nothing, however long it is left running.
+   Confirm: no game starts, nothing is queued for the portal, and nothing is posted when the network
+   returns. *(See the superseding note near the top of this plan, and the offline-restart scenario
+   in the `.feature` file.)*
 3. **Leaving the finished state by refresh, same session.** Add a game to court 1 in the portal and
    wait for the refresh (or tap REFRESH). Expect the table to fill in, the banner to go back to
    `NEXT GAME` with a real time, the clock to start counting down, and START NOW to go live — with
    no operator action. The previous game's score stays visible until the new game starts.
-4. **Leaving the finished state by refresh after a restart.** As above but restart first. Expect the
-   refresh **not** to pick it up (known, parked — the anchor is `"0"` after a restart in the finished
-   state); confirm that picking the game in Settings does recover.
+4. **Leaving the finished state by refresh after a restart.** As above but restart first. **Once a
+   known, parked residual — the anchor was `"0"` after a restart, so refresh could not find a new
+   addition and only picking the game in Settings recovered — this is now CLOSED**: the anchor is
+   persisted, so REFRESH re-runs the search after a restart exactly as it does within the same
+   session, and adopts the new game without needing an operator pick. *(See the superseding note
+   near the top of this plan, and the corrected REFRESH scenario in the `.feature` file.)*
 5. **App-page portal off from the finished state.** Settings → App Options → portal off → APPLY.
    Expect the break counting down, START NOW live immediately, and numbering continuing from the
    last game.

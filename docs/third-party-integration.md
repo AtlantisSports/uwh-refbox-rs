@@ -98,6 +98,45 @@ kept so it can be applied once the condition clears. And the credential is per-s
 issued by your site is stored against your site and is never sent to the UWH Portal, nor the
 reverse.
 
+### Do not ask operators to put credentials in the address (UNRELEASED)
+
+refbox accepts `https://user:password@your-site/api/1234-A` and will send those credentials. Do not
+design your site around it, and do not tell operators to type one.
+
+**It is incompatible with the ACCESS TOKEN row described above, which is the part that matters.**
+refbox hands the whole address to its HTTP client, which lifts `user:password@` out of it and sends
+it as an `Authorization: Basic` header. Once the operator has also linked, refbox adds its own
+`Authorization: Bearer <token>` header — and the two do not merge. The request goes out carrying
+**two** `Authorization` headers (verified against the client refbox uses). `Authorization` is a
+single-valued field; what a server does with two of them is undefined, and most take the first. So
+the bearer token your site issued is never the credential that arrives, and every call that needs
+one fails while linking itself appears to succeed.
+
+In other words the two routes are mutually exclusive in practice: a site behind basic auth cannot
+also use the token mechanism, and the token mechanism is the one this document is built around.
+
+An address typed into the SITE row is stored as typed, in plain text, in the operator's config file,
+and it is displayed in full on the SITE row itself — so it is on screen at the scorer's table, and
+in any screenshot taken of that screen. refbox strips the credentials out of its log file and out of
+the game feed it broadcasts on the pool LAN, but that is a floor rather than a promise about
+everything downstream. A password in a URL is also sent to your site on every single request rather
+than exchanged once, so every one of them carries it.
+
+The mechanism built for this is the **ACCESS TOKEN** row described above: the operator links once
+with a short-lived code, your site issues a token, and refbox sends it as a bearer header from then
+on. It is scoped to your site, it survives a restart, and it never appears in the address.
+
+This section is about the address typed into the app. The environment override below is a
+different route — it is developer-facing, built-in-Portal only, and its value is neither written to
+the operator's config file nor shown on a SITE row — so the storage and display points here do not
+carry over to it.
+
+Be aware, too, of what the stripping covers. It removes a `user:password@` prefix, because that is
+the only part of an address that is *defined* to be a credential and the only place refbox itself
+ever puts one. A secret placed anywhere else — a token in a query string, say — is printed in full
+wherever the address is printed. refbox does not go looking for secrets in an address; it removes
+the one part of it that is one by definition.
+
 ### The environment override (built-in Portal only)
 
 The older route replaces the address of the *built-in Portal*. Set an environment variable before

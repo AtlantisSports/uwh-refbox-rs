@@ -105,6 +105,9 @@ manual-games = 手動試合:
 source-portal = { $portal } PORTAL
 source-custom = カスタム
 access-token = アクセストークン:
+access-token-connected = 接続済み
+access-token-tap-to-connect = タップして接続
+access-token-checking = 確認中...
 custom-site = サイト:
 custom-site-url-title = サイトURL
 custom-site-placeholder = https://your-site/api/1234-A
@@ -192,6 +195,7 @@ portal-enabled = { $portal }Portalが有効な場合、すべての項目を入�
 mode-switch-portal-tenant = アプリのモードを変更すると、{ $from_portal } Portalへのリンクが無効になり、{ $to_portal } Portalに再接続する必要があります。
 mode-switch-custom-site = アプリのモードを変更するには再起動が必要です。カスタムサイトの接続は維持されます。
 source-locked-game = 試合進行中は試合データの取得元を変更できません。
+source-switch-clears-selection = { $source } に切り替えると、選択した大会、コート、試合が消去されます。
 link-locked-game = 試合進行中は試合データの取得元に接続できません。
 source-locked-queue = 送信待ちの試合結果があります。先に送信するか破棄してください。
 uwhportal-token-invalid-code = 無効なコードが入力されました。
@@ -206,6 +210,7 @@ end-current-game-and-apply-changes = 現在の試合を終了して変更を適�
 end-current-game-and-apply-change = 現在の試合を終了して変更を適用
 keep-current-game-and-apply-change = 現在の試合を続けて変更を適用
 ok = OK
+switch-and-clear-selection = 切り替えて選択を消去
 confirm-score = このスコアは正しいですか？
     主審に確認してください。
 

@@ -105,6 +105,9 @@ manual-games = MANUEL MAÇLAR:
 source-portal = { $portal } PORTAL
 source-custom = ÖZEL
 access-token = ERİŞİM TOKENİ:
+access-token-connected = Bağlandı
+access-token-tap-to-connect = Bağlanmak için dokunun
+access-token-checking = Denetleniyor...
 custom-site = SİTE:
 custom-site-url-title = SİTE URL
 custom-site-placeholder = https://siteniz/api/1234-A
@@ -192,6 +195,7 @@ portal-enabled = { $portal }PORTAL etkinleştirildiğinde, tüm alanlar doldurul
 mode-switch-portal-tenant = Uygulama modunu değiştirmek { $from_portal } Portal bağlantısını devre dışı bırakacak ve { $to_portal } Portal'a yeniden bağlanmanız gerekecektir.
 mode-switch-custom-site = Uygulama modunu değiştirmek yeniden başlatma gerektirir. Özel siteniz bağlı kalır.
 source-locked-game = Oyun kaynağı, bir oyun devam ederken değiştirilemez.
+source-switch-clears-selection = { $source } kaynağına geçmek seçtiğiniz etkinliği, sahayı ve oyunu temizleyecektir.
 link-locked-game = Bir oyun devam ederken oyun kaynağına bağlanılamaz.
 source-locked-queue = Gönderilmeyi bekleyen oyun sonuçları var. Önce bunları gönderin veya silin.
 uwhportal-token-invalid-code = Geçersiz kod girildi.
@@ -206,6 +210,7 @@ end-current-game-and-apply-changes = MEVCUT OYUNU BİTİR VE DEĞİŞİKLİKLER�
 end-current-game-and-apply-change = MEVCUT OYUNU BİTİR VE DEĞİŞİKLİĞİ UYGULA
 keep-current-game-and-apply-change = MEVCUT OYUNU DEVAM ETTİR VE DEĞİŞİKLİĞİ UYGULA
 ok = TAMAM
+switch-and-clear-selection = GEÇ VE SEÇİMİ TEMİZLE
 confirm-score = Bu skor doğru mu?
     Başhakem ile onaylayın.
 

@@ -105,6 +105,9 @@ manual-games = PERTANDINGAN MANUAL:
 source-portal = { $portal } PORTAL
 source-custom = KUSTOM
 access-token = TOKEN AKSES:
+access-token-connected = Terhubung
+access-token-tap-to-connect = Ketuk untuk menghubungkan
+access-token-checking = Memeriksa...
 custom-site = SITUS:
 custom-site-url-title = URL SITUS
 custom-site-placeholder = https://situs-anda/api/1234-A
@@ -192,6 +195,7 @@ portal-enabled = Saat { $portal }PORTAL diaktifkan, semua kolom harus diisi.
 mode-switch-portal-tenant = Mengubah mode aplikasi akan menonaktifkan tautan ke { $from_portal } Portal dan Anda harus menghubungkan kembali ke { $to_portal } Portal.
 mode-switch-custom-site = Mengubah mode aplikasi memerlukan mulai ulang. Situs khusus Anda tetap terhubung.
 source-locked-game = Sumber pertandingan tidak dapat diubah saat pertandingan sedang berlangsung.
+source-switch-clears-selection = Beralih ke { $source } akan menghapus acara, lapangan, dan pertandingan yang telah Anda pilih.
 link-locked-game = Tidak dapat terhubung ke sumber pertandingan saat pertandingan sedang berlangsung.
 source-locked-queue = Masih ada hasil pertandingan yang menunggu untuk dikirim. Kirim atau buang terlebih dahulu.
 uwhportal-token-invalid-code = Kode yang dimasukkan tidak valid.
@@ -206,6 +210,7 @@ end-current-game-and-apply-changes = AKHIRI PERTANDINGAN DAN TERAPKAN PERUBAHAN
 end-current-game-and-apply-change = AKHIRI PERTANDINGAN DAN TERAPKAN PERUBAHAN
 keep-current-game-and-apply-change = LANJUTKAN PERTANDINGAN DAN TERAPKAN PERUBAHAN
 ok = OKE
+switch-and-clear-selection = BERALIH DAN HAPUS PILIHAN
 confirm-score = Apakah skor ini sudah benar?
     Konfirmasi dengan wasit kepala.
 

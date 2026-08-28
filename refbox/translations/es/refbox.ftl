@@ -106,6 +106,9 @@ manual-games = PARTIDOS MANUALES:
 source-portal = { $portal } PORTAL
 source-custom = PERSONALIZADO
 access-token = TOKEN DE ACCESO:
+access-token-connected = Conectado
+access-token-tap-to-connect = Toca para conectar
+access-token-checking = Comprobando...
 custom-site = SITIO:
 custom-site-url-title = URL DEL SITIO
 custom-site-placeholder = https://su-sitio/api/1234-A
@@ -201,6 +204,7 @@ portal-enabled = Cuando { $portal }PORTAL está habilitado, todos los campos deb
 mode-switch-portal-tenant = Cambiar el modo de la aplicación desactivará el enlace a { $from_portal } Portal y deberás volver a conectarte a { $to_portal } Portal.
 mode-switch-custom-site = Cambiar el modo de la aplicación requiere reiniciar. Tu sitio personalizado seguirá conectado.
 source-locked-game = La fuente de juegos no se puede cambiar mientras un juego está en progreso.
+source-switch-clears-selection = Cambiar a { $source } borrará el evento, la cancha y el juego que ha seleccionado.
 link-locked-game = No se puede conectar con la fuente de juegos mientras un juego está en progreso.
 source-locked-queue = Todavía hay resultados de juegos esperando a ser enviados. Envíalos o descártalos primero.
 ### Check
@@ -217,6 +221,7 @@ end-current-game-and-apply-changes = TERMINAR EL JUEGO ACTUAL Y APLICAR CAMBIOS
 end-current-game-and-apply-change = TERMINAR EL JUEGO ACTUAL Y APLICAR CAMBIO
 keep-current-game-and-apply-change = MANTENER EL JUEGO ACTUAL Y APLICAR CAMBIO
 ok = OK
+switch-and-clear-selection = CAMBIAR Y BORRAR SELECCIÓN
 confirm-score = ¿Es correcto este puntaje?
     Confirma con el árbitro principal.
 

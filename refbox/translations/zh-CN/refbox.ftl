@@ -105,6 +105,9 @@ manual-games = 手动比赛：
 source-portal = { $portal } PORTAL
 source-custom = 自定义
 access-token = 访问令牌：
+access-token-connected = 已连接
+access-token-tap-to-connect = 点按连接
+access-token-checking = 正在检查...
 custom-site = 站点：
 custom-site-url-title = 站点 URL
 custom-site-placeholder = https://your-site/api/1234-A
@@ -192,6 +195,7 @@ portal-enabled = 启用{ $portal }PORTAL时，所有字段必须填写。
 mode-switch-portal-tenant = 更改应用模式将断开与 { $from_portal } Portal 的连接，您需要重新连接到 { $to_portal } Portal。
 mode-switch-custom-site = 更改应用模式需要重启。您的自定义站点将保持连接。
 source-locked-game = 比赛进行中无法更改比赛来源。
+source-switch-clears-selection = 切换到 { $source } 将清除您已选择的赛事、球场和比赛。
 link-locked-game = 比赛进行中无法连接到比赛来源。
 source-locked-queue = 仍有比赛结果等待发送。请先发送或丢弃它们。
 uwhportal-token-invalid-code = 输入的代码无效。
@@ -206,6 +210,7 @@ end-current-game-and-apply-changes = 结束当前比赛并应用所有更改
 end-current-game-and-apply-change = 结束当前比赛并应用更改
 keep-current-game-and-apply-change = 保留当前比赛并应用更改
 ok = 确定
+switch-and-clear-selection = 切换并清除所选内容
 confirm-score = 此比分是否正确？
     请与主裁判确认。
 

@@ -107,6 +107,9 @@ manual-games = 수동 경기:
 source-portal = { $portal } PORTAL
 source-custom = 사용자 지정
 access-token = 액세스 토큰:
+access-token-connected = 연결됨
+access-token-tap-to-connect = 탭하여 연결
+access-token-checking = 확인 중...
 custom-site = 사이트:
 custom-site-url-title = 사이트 URL
 custom-site-placeholder = https://your-site/api/1234-A
@@ -194,6 +197,7 @@ portal-enabled = { $portal }PORTAL이 활성화된 경우 모든 필드를 입�
 mode-switch-portal-tenant = 앱 모드를 변경하면 { $from_portal } Portal 연결이 끊어지며 { $to_portal } Portal에 다시 연결해야 합니다.
 mode-switch-custom-site = 앱 모드를 변경하려면 재시작이 필요합니다. 사용자 지정 사이트 연결은 유지됩니다.
 source-locked-game = 경기 진행 중에는 경기 출처를 변경할 수 없습니다.
+source-switch-clears-selection = { $source }(으)로 전환하면 선택한 대회, 코트, 경기가 지워집니다.
 link-locked-game = 경기 진행 중에는 경기 출처에 연결할 수 없습니다.
 source-locked-queue = 아직 전송되지 않은 경기 결과가 있습니다. 먼저 전송하거나 삭제하세요.
 uwhportal-token-invalid-code = 잘못된 코드가 입력되었습니다.
@@ -208,6 +212,7 @@ end-current-game-and-apply-changes = 현재 경기 종료 및 변경 사항 적�
 end-current-game-and-apply-change = 현재 경기 종료 및 변경 사항 적용
 keep-current-game-and-apply-change = 현재 경기 유지 및 변경 사항 적용
 ok = 확인
+switch-and-clear-selection = 전환하고 선택 지우기
 confirm-score = 이 점수가 맞습니까?
     주심과 확인하세요.
 

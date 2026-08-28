@@ -406,6 +406,12 @@ enum ConfirmationKind {
     /// ACCESS TOKEN row lives only on the Game config page, so there is one
     /// place to return to.
     LinkLockedByGame,
+    /// Raised by a source-button tap that would clear a fully linked game.
+    /// Carries the destination source so the message can name it — the same
+    /// sentence serves both directions — and so the affirmative knows where to
+    /// switch to. Cancel changes nothing at all: the source buttons never leave
+    /// a staged choice showing, so there is nothing to snap back.
+    SourceSwitchClearsSelection(GameSource),
 }
 
 /// Which of the two kinds of site an address belongs to. Decides which saved
@@ -545,6 +551,51 @@ fn site_serves(kind: SiteKind, source: GameSource) -> bool {
         (_, GameSource::Manual)
         | (SiteKind::Portal, GameSource::Custom)
         | (SiteKind::Custom, GameSource::Portal) => false,
+    }
+}
+
+/// What tapping one of the two source buttons on Game Options does.
+///
+/// Pure, and separate from the handler that acts on it, because the settings
+/// screens and the message loop have no test harness in this crate: this is the
+/// only part of the tap that can be pinned by a test.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SourceTapOutcome {
+    /// A game is in progress. Refuse, and say which reason applies.
+    RefusedByGame,
+    /// Results are queued and unsent. Refuse, and say so.
+    RefusedByQueue,
+    /// A fully linked game would be cleared. Ask before doing it.
+    Confirm,
+    /// Nothing is at stake — move now, with no screen in between.
+    SwitchNow,
+}
+
+/// Decide what a source-button tap does.
+///
+/// The refusals outrank everything else: they exist to stop the refbox being
+/// pointed away from a site that a running game or unsent results still depend
+/// on, and nothing makes that safe. They are the same two conditions
+/// `refuse_repoint` applies to an Apply that would repoint the client; the tap
+/// is now a third way to reach the same move, so it asks the same questions.
+///
+/// `fully_linked` is judged on what is *displayed* — the staged values in the
+/// settings editor — not on what is committed. The two are identical unless the
+/// operator has picked something and not yet applied it, and in that case the
+/// displayed selection is what they would lose.
+fn source_tap_outcome(
+    game_in_progress: bool,
+    results_queued: bool,
+    fully_linked: bool,
+) -> SourceTapOutcome {
+    if game_in_progress {
+        SourceTapOutcome::RefusedByGame
+    } else if results_queued {
+        SourceTapOutcome::RefusedByQueue
+    } else if fully_linked {
+        SourceTapOutcome::Confirm
+    } else {
+        SourceTapOutcome::SwitchNow
     }
 }
 
@@ -1082,6 +1133,12 @@ impl RefBoxApp {
 
     fn request_team_roster(&self, team_id: TeamId) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
+            // The source this request goes out under, carried on the reply so
+            // the handler can tell a roster from the site the refbox is on now
+            // from one still arriving from the site it has left. Read here, at
+            // the moment the request is issued, because that is the only point
+            // at which the answer is known.
+            let source = self.source;
             // why this cannot panic: see `request_event_list` above.
             let request = client.lock().unwrap().get_team_roster(&team_id);
             Task::future(async move {
@@ -1093,7 +1150,7 @@ impl RefBoxApp {
                             team_id.full(),
                             numbers.len()
                         );
-                        Message::RecvTeamRoster(team_id, numbers)
+                        Message::RecvTeamRoster(source, team_id, numbers)
                     }
                     Err(e) => {
                         // A failure must leave whatever is cached untouched, so
@@ -1335,7 +1392,7 @@ impl RefBoxApp {
     ///
     /// Without this the row keeps the verdict it reached about the *previous*
     /// site, which is worse than saying nothing: the credential is per-site, so
-    /// an OK earned from the portal would sit above a third-party site the
+    /// a green verified state earned from the portal would sit above a third-party site the
     /// refbox has never authenticated to. Mirrors the seeding done when the
     /// settings editor is opened.
     fn refresh_token_indicator(&mut self) -> Task<Message> {
@@ -1433,6 +1490,171 @@ impl RefBoxApp {
         ])
     }
 
+    /// Move the refbox onto `target`, clearing the link that belonged to the
+    /// site it is leaving.
+    ///
+    /// The one act behind both paths a source-button tap can take — straight
+    /// through when there is nothing to lose, and through the confirmation when
+    /// a game is fully linked. Keeping it in one place is what stops the two
+    /// from drifting apart.
+    ///
+    /// This applies ADR 017's 2026-06-23 rule — switching the portal off is a
+    /// clean wipe — to a switch between the two remote sources, for the same
+    /// reason: a leftover start time from the site the refbox has left, silently
+    /// driving the countdown, is confusing.
+    ///
+    /// The caller's obligation: `source_tap_outcome` has already cleared this.
+    /// The two refusals are not re-checked here, and the period is therefore
+    /// `BetweenGames`.
+    fn switch_to_source(&mut self, target: GameSource) -> Task<Message> {
+        // 1. The source itself: live, saved so a relaunch comes back here, and
+        //    remembered as the remote to return to from MANUAL.
+        self.commit_source(target);
+
+        // 2. The live client follows. `target_after_apply` answers `None` both
+        //    when the client is already there and when a custom site has no
+        //    usable address saved — the second leaves the client where it is
+        //    rather than pointing it at nothing, and the operator then types an
+        //    address on the SITE page whose APPLY moves it.
+        let mode = self.config.mode;
+        // Cloned so the immutable borrow of `self.config` ends before
+        // `repoint_client` takes `&mut self`. Mirrors the same clone in the
+        // `ConfigPage::CustomSite` arm of `ApplyConfigPage`.
+        let custom_site = self.config.custom_site.clone();
+        if let Some(site) = self.target_after_apply(target, mode, &custom_site) {
+            self.repoint_client(site);
+        }
+
+        // 3. Clear the link on both sides — what is committed and what the
+        //    editor is showing. The selection belonged to the site being left;
+        //    carrying it across is the leak this whole change exists to close.
+        //    Route through set_current_event_id so portal_event_id stays in sync
+        //    for the background health check (ADR 011 amendment 2026-04-23).
+        self.set_current_event_id(None);
+        self.current_court = None;
+        self.schedule = None;
+        // The player-number grid is otherwise only rewritten at kickoff, so
+        // without this it would keep showing the previous site's cap numbers
+        // until the next game starts. `clear_portal_selections_to_manual`
+        // clears it for exactly this reason when the portal is switched off.
+        self.game_rosters = BlackWhiteBundle {
+            black: Vec::new(),
+            white: Vec::new(),
+        };
+        // The roster cache behind that grid has to go with it. It is keyed by
+        // team id, and a team id is whatever text the server chose to send, so
+        // ids collide across sites exactly as event ids do. Two things go wrong
+        // if it survives: `rosters_for_game` can seed the grid at the next
+        // kickoff from the departed site's entry, and `RecvSchedule` skips
+        // fetching any roster it already holds — so the stale entry would
+        // shadow the real one for the rest of the session, surviving a REFRESH.
+        self.team_rosters.clear();
+        // A startup link note that has not been consumed yet named the site the
+        // refbox is leaving. Left set, `RecvEventList` would take
+        // `pending_restore_schedule` and ask for that event through the live
+        // client — the one step 2 has just repointed — sending the old site's
+        // event id to the new site; and `pending_restore_game` would later force
+        // the old site's game number onto whatever the operator picks here, on
+        // the first schedule that arrives once they leave the editor.
+        self.pending_restore_game = None;
+        self.pending_restore_schedule = None;
+        // `commit_source` has already recorded the new remote in `config`; the
+        // editor's copy has to follow or the MANUAL GAMES button still offers to
+        // return to the source the refbox has left, which leaves one source
+        // button highlighted wrongly and the other inert.
+        let remembered = self.config.remembered_remote;
+        if let Some(ref mut edited) = self.edited_settings {
+            edited.source = target;
+            edited.remembered_remote = remembered;
+            // Clears the staged event, court, schedule and game number, and
+            // resets the token indicator to its rejected state. With no event
+            // staged the row renders blank and inert either way
+            // (`token_row_actionable`), but the flag still matters: it keeps
+            // `token_rejected` true, which is what holds the COURT picker
+            // greyed until a credential has actually been checked.
+            edited.clear_for_remote_switch();
+        }
+
+        // 4. The clock and the game number — and NOT the game configuration.
+        //    The portal-off path pairs `reset_to_manual_break` with
+        //    `set_config`, because it is going manual. Here the refbox stays on
+        //    a remote source, so installing a manual game config would silently
+        //    overwrite the operator's settings. Calling only this half is the
+        //    whole point.
+        //
+        //    why this cannot panic: `reset_to_manual_break` takes no fallible
+        //    path — it clears the next-game info, sets the game number and clock
+        //    directly, and starts the clock.
+        //    Safety: Mutex poison only occurs if another thread already
+        //    panicked; the refbox treats that as fatal (matches the 20+
+        //    identical sites in this file).
+        self.tm
+            .lock()
+            .unwrap()
+            .reset_to_manual_break(Instant::now());
+
+        // 5. What the new site owes us.
+        let mut task = match target {
+            // The portal's event list is loaded whatever the source (ADR 017
+            // amendment 2026-08-27), so the picker is usable the moment the
+            // operator lands on it. Refreshed anyway, and deliberately not
+            // conditioned on the previous source: an operator arriving here
+            // wants the current list, and a stale one is what sends them to a
+            // game that no longer exists.
+            //
+            // Guarded for the same reason its sibling below is, and it is the
+            // same guard the APPLY path applies before its own portal fetch
+            // (`moved_to_portal && site_serves(...)`). `repoint_client` returns
+            // WITHOUT assigning `self.current_site` when `build_site_client`
+            // fails, so a Portal-committed source can still be talking to the
+            // custom client — and `RecvEventList` installs whatever answers as
+            // the portal picker's list with no site check of its own.
+            GameSource::Portal => {
+                if site_serves(self.current_site.kind, GameSource::Portal) {
+                    self.request_event_list()
+                } else {
+                    Task::none()
+                }
+            }
+            // A custom site names its event in the URL, so there is nothing to
+            // pick — adopt it and pull its teams and schedule. Guarded because
+            // step 2 leaves the client where it was when there is no usable
+            // address: asking the portal for a custom site's event is the exact
+            // mismatch `site_serves` exists to prevent.
+            GameSource::Custom => {
+                if site_serves(self.current_site.kind, GameSource::Custom) {
+                    self.adopt_custom_event()
+                } else {
+                    Task::none()
+                }
+            }
+            // Not reachable: the two source buttons are the only senders and
+            // neither offers Manual. MANUAL GAMES keeps its own staged path.
+            GameSource::Manual => Task::none(),
+        };
+
+        // 6. The saved credential is per-site, so the verdict the ACCESS TOKEN
+        //    row reached about the old site says nothing about this one. After
+        //    the adoption above, not before: for a custom site the adoption is
+        //    what puts an event there to check the credential against, and
+        //    without one this can only answer rejected.
+        task = Task::batch(vec![task, self.refresh_token_indicator()]);
+
+        self.persist_config();
+        // The note follows whatever the switch left linked. A switch to the
+        // portal adopts no event, so this takes its delete branch and a
+        // relaunch starts dormant rather than silently re-linking the event
+        // that belonged to the site the refbox has left. A switch to a custom
+        // site whose address names an event has just adopted it above, so this
+        // rewrites the note for that event and a relaunch returns there.
+        self.persist_link_session();
+        // The switch is committed and cannot be taken back, so the Game page's
+        // CANCEL must not offer to put the old source and selection back into
+        // the editor. Re-capturing makes the new state that page's baseline.
+        self.capture_snapshot_for(ConfigPage::Game);
+        task
+    }
+
     fn check_uwhportal_auth(&self, event_id: &EventId) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
             // why this cannot panic: see `request_event_list` above.
@@ -1441,8 +1663,8 @@ impl RefBoxApp {
                 // Never ask a site to vouch for a credential we do not hold.
                 // Only the site can enforce a token, and a permissive one
                 // answers an unauthenticated probe with `200` — which arrives
-                // as a green OK painted over nothing. Report FAILED here
-                // instead, without sending the request.
+                // as a green "Connected" painted over nothing. Report the
+                // rejected state here instead, without sending the request.
                 return Task::done(Message::RecvTokenValid(event_id.clone(), false));
             }
             // why this cannot panic: see `request_event_list` above.
@@ -1843,16 +2065,13 @@ impl RefBoxApp {
         // A store hit alone does not prove the selection came from the site the
         // client is actually pointed at — event ids collide across sites — so
         // `selection_owned` also requires the client to currently serve the
-        // staged source. The same bool is `game_apply_blocked`'s override input:
-        // when the client cannot yet serve the staged source, its pickers cannot
-        // be completed before an Apply repoints it, so completeness is not
-        // required to let this Apply through.
+        // staged source.
         let client_serves_staged = site_serves(self.current_site.kind, edited.source);
         let selection_owned = self
             .events
             .owns(edited.source, edited.current_event_id.as_ref())
             && client_serves_staged;
-        if game_apply_blocked(edited, client_serves_staged, selection_owned) {
+        if game_apply_blocked(edited, selection_owned) {
             return Some(ConfirmationKind::UwhPortalIncompleteFromApply);
         }
 
@@ -1882,15 +2101,21 @@ impl RefBoxApp {
             return None;
         }
 
-        // On a bare remote-to-remote switch (uses_remote() but !selection_owned,
-        // let through only by the game_apply_blocked override) `edited.schedule`
-        // still belongs to the site the refbox has not moved to yet. Reading game
-        // timing out of it would commit the other source's period lengths, breaks,
-        // and overtime/sudden-death settings as this game's live config — the same
-        // leak the ownership check exists to stop, just reached through `new_config`
-        // instead of `current_event_id`. Falling back to the unchanged `tm.config()`
-        // keeps a bare switch from changing the config at all; the operator's next
-        // APPLY, after picking the new source's own event/court/game, sets it properly.
+        // The `!selection_owned` arm just below is unreachable today:
+        // `game_apply_blocked` now returns true whenever `uses_remote() &&
+        // !selection_owned`, and this function already returned early on
+        // that a few lines up, so a bare remote-to-remote switch never
+        // reaches here. It stays anyway as a defensive fallback, not dead
+        // code to delete — if that gate is ever loosened, `edited.schedule`
+        // on such a switch still belongs to the site the refbox has not
+        // moved to yet, and reading game timing out of it would commit the
+        // other source's period lengths, breaks, and overtime/sudden-death
+        // settings as this game's live config — the same leak the ownership
+        // check exists to stop, just reached through `new_config` instead of
+        // `current_event_id`. Falling back to the unchanged `tm.config()`
+        // keeps a bare switch from changing the config at all; the operator's
+        // next APPLY, after picking the new source's own event/court/game,
+        // sets it properly.
         let new_config = if edited.uses_remote() {
             if selection_owned {
                 edited
@@ -2318,6 +2543,12 @@ impl RefBoxApp {
                 task = iced::exit();
                 AppState::MainPage
             }
+            ConfirmationOption::SwitchSource => {
+                unreachable!(
+                    "SwitchSource is only offered by the SourceSwitchClearsSelection page, \
+                     which is dispatched before this function is reached."
+                )
+            }
         };
         self.app_state = app_state;
         trace!("AppState changed to {:?}", self.app_state);
@@ -2408,6 +2639,12 @@ impl RefBoxApp {
             ConfirmationOption::GoBack => AppState::EditGameConfig(ConfigPage::Game),
             ConfirmationOption::RestartAndApply => {
                 unreachable!("RestartAndApply is only offered by PortalTenantSwitch pages")
+            }
+            ConfirmationOption::SwitchSource => {
+                unreachable!(
+                    "SwitchSource is only offered by the SourceSwitchClearsSelection page, \
+                     which is dispatched before this function is reached."
+                )
             }
         };
         self.app_state = app_state;
@@ -4096,9 +4333,9 @@ impl RefBoxApp {
                 {
                     task = Task::batch(vec![task, self.adopt_custom_event()]);
                     // Re-seed the token indicator now that an event exists to
-                    // check against. Changing source resets it to FAILED, and
-                    // until this line there was nothing to verify it with, so it
-                    // would have sat on FAILED with a perfectly good saved token
+                    // check against. Changing source resets it to the rejected
+                    // state, and until this line there was nothing to verify it
+                    // with, so it would have sat there with a good saved token
                     // — keeping the court and game pickers greyed and the Game
                     // page's APPLY blocked for a reason that was an artifact.
                     task = Task::batch(vec![task, self.refresh_token_indicator()]);
@@ -4709,12 +4946,18 @@ impl RefBoxApp {
 
                         // Only resolve (or reset) the token indicator when a
                         // fetch will actually follow to settle it. Setting it to
-                        // `None` ("CHECKING...") when the fetch is suppressed
-                        // would promise a check that will not happen until the
-                        // APPLY that repoints the client — the same untruth
+                        // the checking state when the fetch is suppressed would
+                        // promise a check that is not coming — the same untruth
                         // `EditableSettings::clear_for_remote_switch` avoids by
-                        // resetting to FAILED rather than `None`. Here, when
-                        // suppressed, the previous verdict is left standing.
+                        // resetting to the rejected state rather than `None`.
+                        // Here, when suppressed, the previous verdict is left
+                        // standing.
+                        //
+                        // A source button now moves the client at the tap, so
+                        // the suppressed case is no longer "before the APPLY
+                        // that repoints": what remains is a custom site with no
+                        // usable address saved, where the SITE page's APPLY is
+                        // what moves the client, or a repoint that failed.
                         if will_fetch {
                             if let Some(ref client) = self.uwhportal_client {
                                 // why this cannot panic: the guard is held only for a
@@ -4742,9 +4985,13 @@ impl RefBoxApp {
                             }
                         }
                         // Only fetch when the refbox is actually on this
-                        // source's site. Choosing an event before the APPLY
-                        // that moves it there is a staged choice; its schedule
-                        // and teams are fetched by that APPLY instead.
+                        // source's site. The source buttons move the client
+                        // themselves now, so this is no longer the ordinary
+                        // "chosen before the APPLY that moves it there" case —
+                        // it is left for the two states where the client did
+                        // not move: a custom site with no usable address (the
+                        // SITE page's APPLY fetches instead) and a failed
+                        // repoint.
                         if will_fetch {
                             Task::batch(vec![
                                 self.check_uwhportal_auth(&id),
@@ -4957,6 +5204,68 @@ impl RefBoxApp {
                     Task::none()
                 }
             }
+            Message::SwitchGameSource(target) => {
+                // Tapping the source already in use is not a switch: there is
+                // nothing to move, nothing to clear and nothing to confirm.
+                if target == self.source {
+                    return Task::none();
+                }
+                // A game in progress, not merely a running clock: between
+                // games the clock counts down to the next game and is running
+                // by default, which is exactly when an operator sets the source
+                // up. Same test `refuse_repoint` applies.
+                //
+                // Bound to a local rather than inlined into the `match` below:
+                // the lock guard is a temporary that would otherwise live to the
+                // end of the match block, and the switch arm needs `&mut self`
+                // before then.
+                //
+                // Safety: Mutex poison only occurs if another thread already
+                // panicked; the refbox treats that as fatal (matches the 20+
+                // identical sites in this file).
+                let game_in_progress =
+                    self.tm.lock().unwrap().current_period() != GamePeriod::BetweenGames;
+                let results_queued = self.portal_manager.has_queued_items();
+                // Completeness is judged on what is DISPLAYED — the staged
+                // values in the editor. `selection_owned` is the same test the
+                // GAME tile uses to decide whether to show a number at all, so
+                // the prompt cannot fire over a game the operator cannot see.
+                let fully_linked = self.edited_settings.as_ref().is_some_and(|edited| {
+                    let client_serves_staged = site_serves(self.current_site.kind, edited.source);
+                    let selection_owned = self
+                        .events
+                        .owns(edited.source, edited.current_event_id.as_ref())
+                        && client_serves_staged;
+                    selection_owned && !edited.uwhportal_incomplete()
+                });
+                match source_tap_outcome(game_in_progress, results_queued, fully_linked) {
+                    // Both refusals reuse the existing pages, and carry
+                    // `ConfigPage::Game` so their one button returns the
+                    // operator to the page the buttons live on.
+                    SourceTapOutcome::RefusedByGame => {
+                        self.app_state = AppState::ConfirmationPage(
+                            ConfirmationKind::SiteLockedByGame(ConfigPage::Game),
+                        );
+                        trace!("AppState changed to {:?}", self.app_state);
+                        Task::none()
+                    }
+                    SourceTapOutcome::RefusedByQueue => {
+                        self.app_state = AppState::ConfirmationPage(
+                            ConfirmationKind::SiteLockedByQueue(ConfigPage::Game),
+                        );
+                        trace!("AppState changed to {:?}", self.app_state);
+                        Task::none()
+                    }
+                    SourceTapOutcome::Confirm => {
+                        self.app_state = AppState::ConfirmationPage(
+                            ConfirmationKind::SourceSwitchClearsSelection(target),
+                        );
+                        trace!("AppState changed to {:?}", self.app_state);
+                        Task::none()
+                    }
+                    SourceTapOutcome::SwitchNow => self.switch_to_source(target),
+                }
+            }
             Message::CycleParameter(param) => {
                 let settings = &mut self.edited_settings.as_mut().unwrap();
                 match param {
@@ -5098,6 +5407,52 @@ impl RefBoxApp {
                     return Task::none();
                 }
 
+                // The source-switch confirmation is its own two-option page and
+                // is deliberately not routed through `apply_game_confirmation`,
+                // whose options all mean something about a game config this page
+                // never touches. Both buttons land back on the Game page, where
+                // the source buttons are.
+                if let AppState::ConfirmationPage(ConfirmationKind::SourceSwitchClearsSelection(
+                    target,
+                )) = self.app_state
+                {
+                    return match selection {
+                        ConfirmationOption::SwitchSource => {
+                            // The clock kept running while this page was up, and
+                            // the between-games clock starts the next game by
+                            // itself when it expires — so the check made when the
+                            // button was tapped may now be stale. Re-take it here
+                            // or a switch confirmed seconds earlier repoints the
+                            // results client and resets the clock underneath a
+                            // game that has since started. `switch_to_source`
+                            // documents BetweenGames as a precondition, and
+                            // `reset_to_manual_break` does not set the period, so
+                            // it would leave the running period with a
+                            // break-length clock.
+                            match self.refuse_repoint(ConfigPage::Game) {
+                                Some(kind) => {
+                                    self.app_state = AppState::ConfirmationPage(kind);
+                                    trace!("AppState changed to {:?}", self.app_state);
+                                    Task::none()
+                                }
+                                None => {
+                                    self.app_state = AppState::EditGameConfig(ConfigPage::Game);
+                                    trace!("AppState changed to {:?}", self.app_state);
+                                    self.switch_to_source(target)
+                                }
+                            }
+                        }
+                        // Cancel. Nothing was committed, so there is nothing to
+                        // put back — source, link, clock and client are all
+                        // untouched.
+                        _ => {
+                            self.app_state = AppState::EditGameConfig(ConfigPage::Game);
+                            trace!("AppState changed to {:?}", self.app_state);
+                            Task::none()
+                        }
+                    };
+                }
+
                 if matches!(
                     self.app_state,
                     AppState::ConfirmationPage(
@@ -5140,6 +5495,12 @@ impl RefBoxApp {
                         unreachable!(
                             "RestartAndApply is only offered by PortalTenantSwitch pages, \
                              which are dispatched above to apply_game_confirmation."
+                        )
+                    }
+                    ConfirmationOption::SwitchSource => {
+                        unreachable!(
+                            "SwitchSource is only offered by the SourceSwitchClearsSelection \
+                             page, which is dispatched above."
                         )
                     }
                 };
@@ -5331,10 +5692,22 @@ impl RefBoxApp {
                 Task::batch(tasks)
             }
             Message::RecvTeamsList(event_id, teams) => {
-                // Resolves against the COMMITTED source, not the staged one: the
-                // client that issued this reply follows the committed source, so a
-                // reply still arriving after the operator has staged a different
-                // source (but not yet applied it) belongs to the committed one.
+                // Resolves against the COMMITTED source, not the staged one:
+                // staging alone never moves the client, so a reply arriving
+                // after a merely staged source change still belongs to the
+                // committed one.
+                //
+                // KNOWN GAP, deliberately not closed here. A source button now
+                // commits AND repoints at the tap, so the committed source can
+                // change while a request is in flight, and this no longer
+                // identifies the site that answered. The reply carries only an
+                // `EventId` — the URL is gone by the time it gets here — so a
+                // late reply from the departed site is filed under the new one
+                // whenever the two sites use the same event numbering, which
+                // custom sites are required to do. Fixing it means tagging every
+                // site-scoped reply with its origin, the way `RecvTeamRoster`
+                // now is; that is one mechanism across four handlers and has its
+                // own branch.
                 if let Some(event) = self.events.get_mut(self.source, &event_id) {
                     event.teams = Some(teams);
                 } else if self.source == GameSource::Portal && !self.events.portal_list_loaded() {
@@ -5350,8 +5723,28 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
-            Message::RecvTeamRoster(team_id, numbers) => {
-                self.team_rosters.insert(team_id, numbers);
+            Message::RecvTeamRoster(source, team_id, numbers) => {
+                // Resolves against the COMMITTED source, the same way
+                // `RecvTeamsList` and `RecvSchedule` below do — and for a
+                // sharper reason here, because this cache has no event or site
+                // in its key. Roster fetches go out in a batch, one per team in
+                // the schedule, so a switch made while they are in flight would
+                // otherwise let the departed site's replies refill the cache
+                // `switch_to_source` has just cleared. `RecvSchedule` skips
+                // re-fetching any team it already holds, so such an entry would
+                // then shadow the new site's numbers for the rest of the
+                // session and survive a REFRESH.
+                if source == self.source {
+                    self.team_rosters.insert(team_id, numbers);
+                } else {
+                    warn!(
+                        "Discarding the roster for team {}: it was fetched for {:?}, \
+                         and the refbox is now on {:?}",
+                        team_id.full(),
+                        source,
+                        self.source
+                    );
+                }
                 Task::none()
             }
             Message::RecvSchedule(event_id, mut schedule) => {
@@ -5413,10 +5806,22 @@ impl RefBoxApp {
                     }
                 }
 
-                // Resolves against the COMMITTED source, not the staged one: the
-                // client that issued this reply follows the committed source, so a
-                // reply still arriving after the operator has staged a different
-                // source (but not yet applied it) belongs to the committed one.
+                // Resolves against the COMMITTED source, not the staged one:
+                // staging alone never moves the client, so a reply arriving
+                // after a merely staged source change still belongs to the
+                // committed one.
+                //
+                // KNOWN GAP, deliberately not closed here. A source button now
+                // commits AND repoints at the tap, so the committed source can
+                // change while a request is in flight, and this no longer
+                // identifies the site that answered. The reply carries only an
+                // `EventId` — the URL is gone by the time it gets here — so a
+                // late reply from the departed site is filed under the new one
+                // whenever the two sites use the same event numbering, which
+                // custom sites are required to do. Fixing it means tagging every
+                // site-scoped reply with its origin, the way `RecvTeamRoster`
+                // now is; that is one mechanism across four handlers and has its
+                // own branch.
                 let source = self.source;
                 if let Some(event) = self.events.get_mut(source, &event_id) {
                     event.courts = Some(courts);
@@ -7992,5 +8397,72 @@ mod submission_gate_tests {
     fn no_recorded_result_is_not_submitted() {
         // First game of the session, or a fresh restart.
         assert!(!recorded_result_matches_ended_game(None, &"18".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod source_tap_tests {
+    use super::*;
+
+    #[test]
+    fn nothing_selected_switches_at_once() {
+        assert_eq!(
+            source_tap_outcome(false, false, false),
+            SourceTapOutcome::SwitchNow
+        );
+    }
+
+    /// The confirmation appears only when there is something to lose. A partial
+    /// selection is not something to lose: the operator chose fewer
+    /// interruptions over an always-identical button (spec, 2026-08-28).
+    #[test]
+    fn a_fully_linked_game_asks_first() {
+        assert_eq!(
+            source_tap_outcome(false, false, true),
+            SourceTapOutcome::Confirm
+        );
+    }
+
+    #[test]
+    fn a_game_in_progress_refuses() {
+        assert_eq!(
+            source_tap_outcome(true, false, false),
+            SourceTapOutcome::RefusedByGame
+        );
+    }
+
+    #[test]
+    fn queued_results_refuse() {
+        assert_eq!(
+            source_tap_outcome(false, true, false),
+            SourceTapOutcome::RefusedByQueue
+        );
+    }
+
+    /// A refusal outranks a confirmation. Asking "shall I clear your game?"
+    /// about a switch that is going to be refused anyway is worse than useless:
+    /// it offers a choice the refbox will not honour.
+    #[test]
+    fn a_refusal_outranks_a_confirmation() {
+        assert_eq!(
+            source_tap_outcome(true, false, true),
+            SourceTapOutcome::RefusedByGame
+        );
+        assert_eq!(
+            source_tap_outcome(false, true, true),
+            SourceTapOutcome::RefusedByQueue
+        );
+    }
+
+    /// The two refusals have a fixed order between them: a running game is the
+    /// more urgent thing to say.
+    #[test]
+    fn a_game_in_progress_outranks_queued_results() {
+        for fully_linked in [false, true] {
+            assert_eq!(
+                source_tap_outcome(true, true, fully_linked),
+                SourceTapOutcome::RefusedByGame
+            );
+        }
     }
 }

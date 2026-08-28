@@ -105,6 +105,9 @@ manual-games = MANUELLE SPIELE:
 source-portal = { $portal } PORTAL
 source-custom = EIGENE
 access-token = ZUGRIFFSTOKEN:
+access-token-connected = Verbunden
+access-token-tap-to-connect = Zum Verbinden tippen
+access-token-checking = Wird geprüft...
 custom-site = SERVER:
 custom-site-url-title = SERVER-URL
 custom-site-placeholder = https://ihre-seite/api/1234-A
@@ -192,6 +195,7 @@ portal-enabled = Wenn { $portal }PORTAL aktiviert ist, müssen alle Felder ausge
 mode-switch-portal-tenant = Wenn Sie den App-Modus wechseln, wird die Verbindung zu { $from_portal } Portal getrennt und Sie müssen sich erneut mit { $to_portal } Portal verbinden.
 mode-switch-custom-site = Das Wechseln des App-Modus erfordert einen Neustart. Ihre eigene Website bleibt verbunden.
 source-locked-game = Die Spielquelle kann während eines laufenden Spiels nicht geändert werden.
+source-switch-clears-selection = Der Wechsel zu { $source } löscht die ausgewählte Veranstaltung, das Feld und das Spiel.
 link-locked-game = Während eines laufenden Spiels kann keine Verbindung zur Spielquelle hergestellt werden.
 source-locked-queue = Es warten noch Spielergebnisse auf den Versand. Senden oder verwerfen Sie diese zuerst.
 uwhportal-token-invalid-code = Ungültiger Code eingegeben.
@@ -206,6 +210,7 @@ end-current-game-and-apply-changes = AKTUELLES SPIEL BEENDEN UND ÄNDERUNGEN ÜB
 end-current-game-and-apply-change = AKTUELLES SPIEL BEENDEN UND ÄNDERUNG ÜBERNEHMEN
 keep-current-game-and-apply-change = AKTUELLES SPIEL BEHALTEN UND ÄNDERUNG ÜBERNEHMEN
 ok = OK
+switch-and-clear-selection = WECHSELN UND AUSWAHL LÖSCHEN
 confirm-score = Ist dieser Spielstand korrekt?
     Mit dem Hauptschiedsrichter bestätigen.
 

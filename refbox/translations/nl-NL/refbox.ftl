@@ -105,6 +105,9 @@ manual-games = HANDMATIGE WEDSTRIJDEN:
 source-portal = { $portal } PORTAL
 source-custom = AANGEPAST
 access-token = TOEGANGSTOKEN:
+access-token-connected = Verbonden
+access-token-tap-to-connect = Tik om te verbinden
+access-token-checking = Bezig met controleren...
 custom-site = SITE:
 custom-site-url-title = SITE-URL
 custom-site-placeholder = https://uw-site/api/1234-A
@@ -192,6 +195,7 @@ portal-enabled = Als { $portal }PORTAL is ingeschakeld, moeten alle velden worde
 mode-switch-portal-tenant = Het wijzigen van de app-modus verbreekt de verbinding met { $from_portal } Portal en u moet opnieuw verbinding maken met { $to_portal } Portal.
 mode-switch-custom-site = Het wijzigen van de app-modus vereist opnieuw opstarten. Uw eigen site blijft verbonden.
 source-locked-game = De wedstrijdbron kan niet worden gewijzigd terwijl een wedstrijd bezig is.
+source-switch-clears-selection = Overschakelen naar { $source } wist het geselecteerde evenement, de baan en de wedstrijd.
 link-locked-game = Er kan geen verbinding met de wedstrijdbron worden gemaakt terwijl een wedstrijd bezig is.
 source-locked-queue = Er wachten nog wedstrijduitslagen om verzonden te worden. Verzend of verwijder deze eerst.
 uwhportal-token-invalid-code = Ongeldige code ingevoerd.
@@ -206,6 +210,7 @@ end-current-game-and-apply-changes = HUIDIGE WEDSTRIJD BEËINDIGEN EN WIJZIGINGE
 end-current-game-and-apply-change = HUIDIGE WEDSTRIJD BEËINDIGEN EN WIJZIGING TOEPASSEN
 keep-current-game-and-apply-change = HUIDIGE WEDSTRIJD BEWAREN EN WIJZIGING TOEPASSEN
 ok = OK
+switch-and-clear-selection = OVERSCHAKELEN EN SELECTIE WISSEN
 confirm-score = Is deze score correct?
     Bevestig met de hoofdscheidsrechter.
 

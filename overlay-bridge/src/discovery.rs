@@ -38,7 +38,7 @@
 use std::{
     fmt,
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use futures::StreamExt;
@@ -78,8 +78,8 @@ pub struct Found {
 pub enum ProbeError {
     /// Nothing accepted a connection there -- refused, unroutable, or the name did not resolve.
     Unreachable(std::io::Error),
-    /// Something accepted the connection but sent nothing at all within [`PROBE_TIMEOUT`]. A
-    /// refbox never does this: it replays the current game the instant anything connects.
+    /// Something accepted the connection and then sent nothing at all in the time that was
+    /// left. A refbox never does this: it replays the current game the instant anything connects.
     Silent,
     /// Something answered, but not with a game snapshot -- some other service on that port.
     NotARefbox,
@@ -126,40 +126,77 @@ impl std::error::Error for ProbeError {
 /// probe cannot outlive it however it fails; [`PROBE_TIMEOUT`] is the value used everywhere in the
 /// bridge itself, and it is a parameter only so this crate's own tests need not spend two real
 /// seconds proving that a silent port is rejected.
+///
+/// It is spent in two parts, though, rather than as one budget over the whole attempt: getting
+/// connected, and then hearing a snapshot. Which of the two ran out decides what the operator is
+/// told, and the two say opposite things -- see [`read_one_snapshot`].
 pub async fn probe(address: &RefboxAddress, within: Duration) -> Result<Found, ProbeError> {
-    match timeout(within, read_one_snapshot(address)).await {
-        Ok(Ok(snapshot)) => Ok(Found {
+    match read_one_snapshot(address, within).await {
+        Ok(snapshot) => Ok(Found {
             address: address.clone(),
             label: label_for(&snapshot),
         }),
-        Ok(Err(ReadFailure::Connect(e))) => Err(ProbeError::Unreachable(e)),
-        Ok(Err(ReadFailure::NotASnapshot)) => Err(ProbeError::NotARefbox),
-        // Timed out: something accepted the connection (a refused one would have returned
-        // `Connect` well inside the window) but never spoke.
-        Err(_elapsed) => Err(ProbeError::Silent),
+        Err(ReadFailure::Connect(e)) => Err(ProbeError::Unreachable(e)),
+        Err(ReadFailure::Silent) => Err(ProbeError::Silent),
+        Err(ReadFailure::NotASnapshot) => Err(ProbeError::NotARefbox),
     }
 }
 
-/// The failure modes of [`read_one_snapshot`] that are distinguishable without a clock -- running
-/// out of time is decided by [`probe`]'s own `timeout`, not in here.
+/// The failure modes of [`read_one_snapshot`], one for each thing the operator can be told.
 enum ReadFailure {
+    /// Never got connected: refused, unroutable, or unresolvable -- or still trying when the time
+    /// ran out, which from here is indistinguishable from any of them.
     Connect(std::io::Error),
+    /// Connected, and then said nothing in the time that was left. Only reachable once the
+    /// handshake has actually completed, which is what makes it evidence that something is there.
+    Silent,
     /// End-of-stream, a read error, or a line that would not parse: all of them mean the same
     /// thing to a caller, which is that whatever is there is not a refbox.
     NotASnapshot,
 }
 
-async fn read_one_snapshot(address: &RefboxAddress) -> Result<GameSnapshot, ReadFailure> {
-    let stream = TcpStream::connect((address.host.as_str(), address.port))
-        .await
-        .map_err(ReadFailure::Connect)?;
+/// Spends `within` on getting connected and then on hearing a snapshot, in that order, so that
+/// the two are told apart.
+///
+/// One timeout around both would be simpler, and is wrong, because [`ProbeError::Silent`] is a
+/// positive claim: it tells the operator that something *is* listening at the address they typed,
+/// on the evidence that their connection was accepted. Time spent with the handshake still in
+/// flight is not that evidence, and must not be reported as if it were.
+///
+/// The distinction is not academic on Windows, which is where the bridge runs. A connection to a
+/// port with nothing behind it is not refused promptly there -- the attempt is retransmitted
+/// first, and the refusal can arrive later than [`PROBE_TIMEOUT`] -- so one combined timeout
+/// describes the emptiest address on the network as "something is listening there". Linux refuses
+/// on the spot, which is why running the tests on the host machine cannot see this.
+///
+/// The two halves still sum to `within`: the read gets whatever the connection did not spend, so
+/// a probe costs no more time than it ever did.
+async fn read_one_snapshot(
+    address: &RefboxAddress,
+    within: Duration,
+) -> Result<GameSnapshot, ReadFailure> {
+    let started = Instant::now();
+
+    let connecting = TcpStream::connect((address.host.as_str(), address.port));
+    let stream = match timeout(within, connecting).await {
+        Ok(Ok(stream)) => stream,
+        Ok(Err(e)) => return Err(ReadFailure::Connect(e)),
+        Err(_elapsed) => {
+            return Err(ReadFailure::Connect(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("the connection was not accepted within {within:?}"),
+            )));
+        }
+    };
 
     // The same reader, and the same unterminated-input guard, as the live feed -- see the module
     // doc's "No new dependency" section.
     let mut snapshots = SnapshotReader::new(LineLimited::new(stream));
-    match snapshots.next().await {
-        Some(Ok(snapshot)) => Ok(snapshot),
-        Some(Err(_)) | None => Err(ReadFailure::NotASnapshot),
+    let left = within.saturating_sub(started.elapsed());
+    match timeout(left, snapshots.next()).await {
+        Ok(Some(Ok(snapshot))) => Ok(snapshot),
+        Ok(Some(Err(_)) | None) => Err(ReadFailure::NotASnapshot),
+        Err(_elapsed) => Err(ReadFailure::Silent),
     }
 }
 
@@ -507,6 +544,45 @@ mod tests {
         assert!(
             matches!(result, Err(ProbeError::Unreachable(_))),
             "a refused connection should be reported as unreachable, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_connection_that_never_completes_is_unreachable_rather_than_silent() {
+        // "Silent" is a positive claim: it tells the operator that something IS listening at the
+        // address they typed, on the evidence that their connection was accepted. Running out of
+        // time with the handshake still in flight is not that evidence, and must not be dressed
+        // up as it -- the operator would go looking for a misconfigured program on a port with
+        // nothing behind it at all.
+        //
+        // This is the case the bridge meets on Windows, which is where it runs. A port there with
+        // nothing behind it is not refused promptly: the attempt is retransmitted first, and the
+        // refusal can arrive later than PROBE_TIMEOUT. Timing the connection and the snapshot
+        // together therefore reported the emptiest address on the network as an occupied one.
+        // Linux refuses on the spot, which is why no other test here can see it on the host.
+        //
+        // 192.0.2.1 is reserved by RFC 5737 for documentation and routed nowhere, so a connection
+        // to it hangs the same way on every platform. Should this machine's network answer for
+        // that address rather than dropping the attempt, the probe would fail with a connect
+        // error instead of a timeout and prove nothing -- which is what the assertion on
+        // TimedOut below is there to catch, rather than let it pass as a test that tests nothing.
+        let unroutable = RefboxAddress::new("192.0.2.1".to_string(), 8000);
+        let within = Duration::from_millis(300);
+
+        let result = probe(&unroutable, within).await;
+
+        let Err(ProbeError::Unreachable(reason)) = &result else {
+            panic!(
+                "a probe whose time ran out before it was ever connected has no evidence that \
+                 anything is listening, so it must report unreachable, got {result:?}"
+            );
+        };
+        assert_eq!(
+            reason.kind(),
+            std::io::ErrorKind::TimedOut,
+            "the connection attempt should have been abandoned when the probe ran out of time; \
+             any other error means this machine answered for 192.0.2.1 instead of dropping the \
+             attempt, so this test did not exercise what it claims to"
         );
     }
 

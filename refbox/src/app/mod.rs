@@ -1686,6 +1686,15 @@ impl RefBoxApp {
             GameSource::Custom => self.config.remembered_remote = RemoteSource::Custom,
             GameSource::Manual => {}
         }
+        // Keep the engine's view of linkage in step with the app's, at the one
+        // choke point where the live source is committed, so the two cannot
+        // drift. Linked, the engine refuses to name a next game it was never
+        // given; unlinked (manual), it resumes its own numbering.
+        // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
+        self.tm
+            .lock()
+            .unwrap()
+            .set_schedule_linked(self.uses_remote());
     }
 
     /// Commit a whole [`LinkSelection`].
@@ -3758,8 +3767,28 @@ impl RefBoxApp {
                         note.current_game
                     );
                     new.source = GameSource::Portal;
+                    // A restored link never routes through `commit_source`, so the
+                    // engine would otherwise stay unlinked and go on naming games by
+                    // arithmetic. Safety: Mutex poison only occurs if another thread
+                    // already panicked; the refbox treats that as fatal (matches the
+                    // 20+ identical sites in this file).
+                    new.tm.lock().unwrap().set_schedule_linked(true);
                     new.current_court = note.court.clone();
                     new.pending_restore_game = note.current_game.clone();
+                    // Push the remembered game into the engine now rather than
+                    // waiting for a schedule. With the network off no schedule ever
+                    // arrives, and an engine with nothing next used to answer
+                    // `game_number + 1` — the phantom that played a game unattended
+                    // and queued a 0-0. Timing and start time stay unknown until a
+                    // schedule confirms them.
+                    if let Some(ref number) = note.current_game {
+                        // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
+                        new.tm.lock().unwrap().set_next_game(NextGameInfo {
+                            number: number.clone(),
+                            timing: None,
+                            start_time: None,
+                        });
+                    }
                     new.last_played = note.last_played.clone();
                     new.last_played_start = note.last_played_start;
                     new.set_current_event_id(Some(note.event_id.clone()));
@@ -9274,6 +9303,33 @@ mod link_note_game_tests {
             link_note_game(&tm),
             LinkNoteGame::Write(Some("7".to_string()))
         );
+    }
+
+    #[test]
+    fn a_linked_engine_seeded_with_a_remembered_game_reports_it() {
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_schedule_linked(true);
+        // What startup does with a note that holds a current game, before any
+        // schedule has arrived: timing and start time are unknown and stay unknown.
+        tm.set_next_game(NextGameInfo {
+            number: "11".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        assert_eq!(tm.next_game_number(), "11");
+        assert_eq!(
+            link_note_game(&tm),
+            LinkNoteGame::Write(Some("11".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_linked_engine_with_nothing_seeded_reports_no_game() {
+        // The finished-court note: an anchor, no current game, nothing seeded.
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_schedule_linked(true);
+        assert_eq!(tm.next_game_number(), "");
+        assert_eq!(link_note_game(&tm), LinkNoteGame::Write(None));
     }
 }
 

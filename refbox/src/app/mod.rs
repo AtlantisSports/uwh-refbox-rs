@@ -3499,8 +3499,12 @@ impl RefBoxApp {
         // Paint in the saved display mode from the first frame.
         crate::app::theme::set_display_mode(config.display_mode);
 
-        let mut tm = TournamentManager::new(config.game.clone());
-        tm.start_clock(Instant::now());
+        // The clock is deliberately NOT started here. Whether there is anything to
+        // count down to depends on the startup source and the restored link note,
+        // neither of which has been read yet, and a break started now cannot be
+        // taken back: it would count fifteen minutes down toward a game that is
+        // never coming. Started (or parked) once, below, after both are known.
+        let tm = TournamentManager::new(config.game.clone());
 
         // In BeepTest mode, also build a cadence engine. `None` for the
         // ordinary Hockey/Rugby modes — the game `tm` above remains the
@@ -3767,12 +3771,6 @@ impl RefBoxApp {
                         note.current_game
                     );
                     new.source = GameSource::Portal;
-                    // A restored link never routes through `commit_source`, so the
-                    // engine would otherwise stay unlinked and go on naming games by
-                    // arithmetic. Safety: Mutex poison only occurs if another thread
-                    // already panicked; the refbox treats that as fatal (matches the
-                    // 20+ identical sites in this file).
-                    new.tm.lock().unwrap().set_schedule_linked(true);
                     new.current_court = note.court.clone();
                     new.pending_restore_game = note.current_game.clone();
                     // Push the remembered game into the engine now rather than
@@ -3804,6 +3802,33 @@ impl RefBoxApp {
             }
             Ok(None) => {}
             Err(e) => error!("Failed to read portal_link.json: {e}"),
+        }
+
+        // Every decision that can settle the startup source has now been made: the
+        // saved custom site above, and the portal-link note just restored. Tell the
+        // engine once, from the app's own answer, so no startup path can miss it —
+        // neither of those two routes through `commit_source`, and an engine left
+        // unlinked while games come from a site goes on naming them by arithmetic,
+        // which is the invented game this whole change exists to remove. Manual
+        // leaves the flag false: manual mode numbers its games sequentially.
+        //
+        // The break clock is started here, not at construction, because only now is
+        // it known whether a game is coming. Nothing next means nothing to count
+        // down to, so the clock is parked at 0:00 — the same state a court played to
+        // the end of its schedule is left in, so a restart comes back to the state it
+        // left rather than to a fifteen-minute countdown toward nothing.
+        let linked = new.uses_remote();
+        {
+            let mut tm = new.tm.lock();
+            tm.set_schedule_linked(linked);
+            if tm.next_game_number().is_empty() {
+                // why this cannot panic: `TournamentManager::new` leaves the clock
+                // `Stopped` and nothing above starts it, and `set_game_clock_time`
+                // only errors while the clock is running.
+                tm.set_game_clock_time(Duration::ZERO).unwrap();
+            } else {
+                tm.start_clock(Instant::now());
+            }
         }
 
         // The event-list fetch pushed below no longer waits for the operator to

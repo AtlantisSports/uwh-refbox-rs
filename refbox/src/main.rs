@@ -49,7 +49,7 @@ mod translation_consistency;
 pub mod updater;
 
 mod config;
-use app::languages::Language;
+use app::languages::{Language, UiFont};
 use config::{Config, Mode};
 
 const APP_NAME: &str = "refbox";
@@ -93,12 +93,10 @@ fn request_language(loader: &FluentLanguageLoader, requested_languages: &[Langua
 /// actually be displayed. CJK scripts (Korean/Japanese/Mandarin) need the bundled CJK subset and
 /// Thai needs the Thai subset; every other language uses Roboto.
 fn default_font_for(lang: Language) -> (&'static str, iced_core::font::Weight) {
-    match lang {
-        Language::Korean | Language::Japanese | Language::Mandarin => {
-            ("WenQuanYi Zen Hei", iced_core::font::Weight::Normal)
-        }
-        Language::Thai => ("Noto Sans Thai", iced_core::font::Weight::Normal),
-        _ => ("Roboto", iced_core::font::Weight::Medium),
+    match lang.ui_font() {
+        UiFont::Cjk => ("WenQuanYi Zen Hei", iced_core::font::Weight::Normal),
+        UiFont::Thai => ("Noto Sans Thai", iced_core::font::Weight::Normal),
+        UiFont::Latin => ("Roboto", iced_core::font::Weight::Medium),
     }
 }
 

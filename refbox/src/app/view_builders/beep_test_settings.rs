@@ -817,14 +817,10 @@ pub(in super::super) fn build_beep_test_language_picker<'a>(
 
     // Font for Cancel/Done/Restart text so they render in the target
     // language's script regardless of the app's current default font.
-    let selected_font: Option<iced_core::Font> = match selected {
-        Language::Korean | Language::Japanese | Language::Mandarin => Some(CJK_FONT),
-        Language::Thai => Some(THAI_FONT),
-        _ => Some(LATIN_FONT),
-    };
+    let selected_font: Option<iced_core::Font> = Some(font_for(selected));
 
     // A restart is needed when switching between Latin and CJK / Thai font families.
-    let needs_restart = font_family_id(original) != font_family_id(selected);
+    let needs_restart = original.ui_font() != selected.ui_font();
 
     // Cancel / Apply(Restart) footer. The labels use the selected language's
     // own translation of CANCEL / APPLY / RESTART (so a user mid-switch can
@@ -883,17 +879,6 @@ pub(in super::super) fn build_beep_test_language_picker<'a>(
     .spacing(SPACING)
     .height(Length::Fill)
     .into()
-}
-
-/// Same as `font_family_id` in `configuration.rs` / `mod.rs`. Kept inline
-/// here to avoid widening the visibility of either definition just to share
-/// a 5-line mapping; the alternative is an unnecessary cross-module export.
-fn font_family_id(lang: Language) -> u8 {
-    match lang {
-        Language::Korean | Language::Japanese | Language::Mandarin => 1,
-        Language::Thai => 2,
-        _ => 0,
-    }
 }
 
 /// The embedded beep-test preview picture for a layout (white-on-left only —

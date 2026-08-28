@@ -20,6 +20,51 @@ pub enum Language {
     Turkish,
 }
 
+/// Which of the three bundled typefaces draws a language.
+///
+/// refbox chooses one font for the whole UI at startup, so this single grouping
+/// settles three questions at once: which family iced is started with, which
+/// font a widget is handed explicitly, and whether changing language needs a
+/// restart -- only a change of *typeface* does.
+///
+/// This is the only place languages are grouped by typeface. It used to be
+/// written out in six: `default_font_for` in `main.rs`, two copies of
+/// `selected_font`, and three of `font_family_id`. One of those carried a
+/// comment explaining that duplicating five lines beat widening a module's
+/// visibility -- true of any one copy, and how six of them accumulated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UiFont {
+    Latin,
+    Cjk,
+    Thai,
+}
+
+impl Language {
+    /// The bundled typeface this language is drawn in.
+    ///
+    /// Deliberately exhaustive rather than falling back to Latin: a language
+    /// added without a considered answer here should stop the compiler, not
+    /// quietly render as blank boxes on the scoreboard the way an unlisted
+    /// Asian language silently would.
+    pub(crate) fn ui_font(self) -> UiFont {
+        match self {
+            Self::Korean | Self::Japanese | Self::Mandarin => UiFont::Cjk,
+            Self::Thai => UiFont::Thai,
+            Self::English
+            | Self::French
+            | Self::Spanish
+            | Self::Italian
+            | Self::German
+            | Self::Tagalog
+            | Self::Indonesian
+            | Self::Dutch
+            | Self::Malay
+            | Self::Portuguese
+            | Self::Turkish => UiFont::Latin,
+        }
+    }
+}
+
 impl Language {
     pub fn as_lang_id(&self) -> LanguageIdentifier {
         match self {
@@ -161,6 +206,45 @@ impl Language {
 
 #[cfg(test)]
 mod tests {
+    /// Every language, with the typeface it was drawn in before the six copies
+    /// of this decision were collapsed into one. This is what makes the
+    /// collapse provable rather than asserted: moving any language between
+    /// groups fails here, whatever the code that reads it looks like.
+    #[test]
+    fn every_language_keeps_the_typeface_it_shipped_with() {
+        for (lang, expected) in [
+            (Language::English, UiFont::Latin),
+            (Language::French, UiFont::Latin),
+            (Language::Spanish, UiFont::Latin),
+            (Language::Mandarin, UiFont::Cjk),
+            (Language::Korean, UiFont::Cjk),
+            (Language::Italian, UiFont::Latin),
+            (Language::German, UiFont::Latin),
+            (Language::Tagalog, UiFont::Latin),
+            (Language::Indonesian, UiFont::Latin),
+            (Language::Dutch, UiFont::Latin),
+            (Language::Japanese, UiFont::Cjk),
+            (Language::Malay, UiFont::Latin),
+            (Language::Portuguese, UiFont::Latin),
+            (Language::Thai, UiFont::Thai),
+            (Language::Turkish, UiFont::Latin),
+        ] {
+            assert_eq!(lang.ui_font(), expected, "{lang:?} changed typeface");
+        }
+    }
+
+    /// A language change needs a restart only when the typeface changes, which
+    /// is what the three deleted `font_family_id` copies were comparing. Both
+    /// directions, so an implementation that answered the same way every time
+    /// would fail.
+    #[test]
+    fn only_a_change_of_typeface_needs_a_restart() {
+        assert_ne!(Language::English.ui_font(), Language::Japanese.ui_font());
+        assert_ne!(Language::Japanese.ui_font(), Language::Thai.ui_font());
+        assert_eq!(Language::Japanese.ui_font(), Language::Korean.ui_font());
+        assert_eq!(Language::English.ui_font(), Language::Turkish.ui_font());
+    }
+
     use super::*;
 
     #[test]

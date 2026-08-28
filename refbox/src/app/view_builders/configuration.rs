@@ -2195,14 +2195,6 @@ pub(in super::super) fn build_parameter_help_page<'a>(
     .into()
 }
 
-fn font_family_id(lang: Language) -> u8 {
-    match lang {
-        Language::Korean | Language::Japanese | Language::Mandarin => 1,
-        Language::Thai => 2,
-        _ => 0,
-    }
-}
-
 fn make_buzzer_select_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
@@ -2370,14 +2362,10 @@ fn make_language_select_page<'a>(
     // Font to apply to Cancel/Apply/Restart text so they render in the target language's script
     // regardless of the app's current default font. Without an explicit Latin arm, Turkish text
     // like "İPTAL" or "BAŞLAT" renders as tofu when the app is currently in a CJK/Thai locale.
-    let selected_font: Option<iced_core::Font> = match selected {
-        Language::Korean | Language::Japanese | Language::Mandarin => Some(CJK_FONT),
-        Language::Thai => Some(THAI_FONT),
-        _ => Some(LATIN_FONT),
-    };
+    let selected_font: Option<iced_core::Font> = Some(font_for(selected));
 
     // A restart is needed when switching between Latin and CJK font families.
-    let needs_restart = font_family_id(original) != font_family_id(selected);
+    let needs_restart = original.ui_font() != selected.ui_font();
 
     let [lang_row_1, lang_row_2, lang_row_3, lang_row_4] = make_language_grid_rows(selected);
 

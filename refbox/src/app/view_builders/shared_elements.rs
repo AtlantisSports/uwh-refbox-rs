@@ -1287,6 +1287,21 @@ pub(super) const LATIN_FONT: iced_core::Font = iced_core::Font {
     style: iced_core::font::Style::Normal,
 };
 
+/// The face a language is drawn in.
+///
+/// The three constants above are the only things that know what a typeface is
+/// called; `Language::ui_font` is the only thing that knows which language uses
+/// which. This is the seam between them, and the only way a tile gets a font --
+/// so a tile cannot be given one that contradicts its own language, and cannot
+/// be given none at all.
+pub(super) fn font_for(lang: Language) -> iced_core::Font {
+    match lang.ui_font() {
+        UiFont::Cjk => CJK_FONT,
+        UiFont::Thai => THAI_FONT,
+        UiFont::Latin => LATIN_FONT,
+    }
+}
+
 enum NameLines<T> {
     /// Name at the app-default text size. Used for short names like "TÜRKÇE".
     OneLine(T),
@@ -1303,12 +1318,9 @@ enum NameLines<T> {
 /// Callers add the style and the message.
 fn make_lang_button<'a, Message: 'a + Clone>(
     label: &'static str,
-    font: Option<iced_core::Font>,
+    font: iced_core::Font,
 ) -> Button<'a, Message> {
-    let label_widget = {
-        let t = centered_text(label);
-        if let Some(f) = font { t.font(f) } else { t }
-    };
+    let label_widget = centered_text(label).font(font);
     button(label_widget)
         .padding(PADDING)
         .height(Length::Fill)
@@ -1323,13 +1335,13 @@ fn make_lang_button<'a, Message: 'a + Clone>(
 fn make_lang_button_with_note<'a, Message, T>(
     main: NameLines<T>,
     note: T,
-    font: Option<iced_core::Font>,
+    font: iced_core::Font,
 ) -> Button<'a, Message>
 where
     Message: 'a + Clone,
     T: IntoFragment<'a>,
 {
-    let with_font = |t: Text<'a>| -> Text<'a> { if let Some(f) = font { t.font(f) } else { t } };
+    let with_font = |t: Text<'a>| -> Text<'a> { t.font(font) };
     let note_text = with_font(
         text(note)
             .size(SMALL_TEXT)
@@ -1368,16 +1380,13 @@ where
 /// generated: a sixteenth language needs a considered place in the alphabetical
 /// order, not an automatic append.
 pub(super) fn make_language_grid_rows<'a>(selected: Language) -> [Element<'a, Message>; 4] {
-    let lang_btn = |lang: Language,
-                    label: &'static str,
-                    font: Option<iced_core::Font>|
-     -> Element<'a, Message> {
+    let lang_btn = |lang: Language, label: &'static str| -> Element<'a, Message> {
         let style = if lang == selected {
             blue_selected_button
         } else {
             light_gray_button
         };
-        make_lang_button(label, font)
+        make_lang_button(label, font_for(lang))
             .style(style)
             .on_press(Message::SelectLanguage(lang))
             .into()
@@ -1389,15 +1398,14 @@ pub(super) fn make_language_grid_rows<'a>(selected: Language) -> [Element<'a, Me
     // in the operator's current locale — but each button must label itself.
     let lang_btn_note = |lang: Language,
                          main: NameLines<&'static str>,
-                         note: &'static str,
-                         font: Option<iced_core::Font>|
+                         note: &'static str|
      -> Element<'a, Message> {
         let style = if lang == selected {
             blue_selected_button
         } else {
             light_gray_button
         };
-        make_lang_button_with_note(main, note, font)
+        make_lang_button_with_note(main, note, font_for(lang))
             .style(style)
             .on_press(Message::SelectLanguage(lang))
             .into()
@@ -1418,39 +1426,34 @@ pub(super) fn make_language_grid_rows<'a>(selected: Language) -> [Element<'a, Me
                 Language::Indonesian,
                 NameLines::OneLineSmall("BAHASA INDONESIA"),
                 "(BELUM DIVERIFIKASI)",
-                Some(LATIN_FONT),
             ),
             lang_btn_note(
                 Language::Malay,
                 NameLines::OneLineSmall("BAHASA MELAYU"),
                 "(BELUM DISAHKAN)",
-                Some(LATIN_FONT),
             ),
             lang_btn_note(
                 Language::German,
                 NameLines::OneLine("DEUTSCH"),
                 "(NICHT VERIFIZIERT)",
-                Some(LATIN_FONT),
             ),
-            lang_btn(Language::English, "ENGLISH", None),
+            lang_btn(Language::English, "ENGLISH"),
         ]
         .spacing(SPACING)
         .height(Length::Fill)
         .into(),
         row![
-            lang_btn(Language::Spanish, "ESPAÑOL", None),
+            lang_btn(Language::Spanish, "ESPAÑOL"),
             lang_btn_note(
                 Language::Tagalog,
                 NameLines::OneLine("FILIPINO"),
                 "(HINDI PA NA-VERIFY)",
-                Some(LATIN_FONT),
             ),
-            lang_btn(Language::French, "FRANÇAIS", None),
+            lang_btn(Language::French, "FRANÇAIS"),
             lang_btn_note(
                 Language::Korean,
                 NameLines::OneLine("한국어"),
                 "(검증되지 않음)",
-                Some(CJK_FONT),
             ),
         ]
         .spacing(SPACING)
@@ -1461,25 +1464,17 @@ pub(super) fn make_language_grid_rows<'a>(selected: Language) -> [Element<'a, Me
                 Language::Italian,
                 NameLines::OneLine("ITALIANO"),
                 "(NON VERIFICATO)",
-                Some(LATIN_FONT),
             ),
             lang_btn_note(
                 Language::Dutch,
                 NameLines::OneLine("NEDERLANDS"),
                 "(NIET GEVERIFIEERD)",
-                Some(LATIN_FONT),
             ),
-            lang_btn_note(
-                Language::Japanese,
-                NameLines::OneLine("日本語"),
-                "(未検証)",
-                Some(CJK_FONT),
-            ),
+            lang_btn_note(Language::Japanese, NameLines::OneLine("日本語"), "(未検証)"),
             lang_btn_note(
                 Language::Portuguese,
                 NameLines::OneLine("PORTUGUÊS"),
                 "(NÃO VERIFICADO)",
-                Some(LATIN_FONT),
             ),
         ]
         .spacing(SPACING)
@@ -1490,20 +1485,13 @@ pub(super) fn make_language_grid_rows<'a>(selected: Language) -> [Element<'a, Me
                 Language::Thai,
                 NameLines::OneLine("ภาษาไทย"),
                 "(ยังไม่ได้ตรวจสอบ)",
-                Some(THAI_FONT),
             ),
             lang_btn_note(
                 Language::Turkish,
                 NameLines::OneLine("TÜRKÇE"),
                 "(DOĞRULANMAMIŞ)",
-                Some(LATIN_FONT),
             ),
-            lang_btn_note(
-                Language::Mandarin,
-                NameLines::OneLine("中文"),
-                "(未验证)",
-                Some(CJK_FONT),
-            ),
+            lang_btn_note(Language::Mandarin, NameLines::OneLine("中文"), "(未验证)"),
             horizontal_space(),
         ]
         .spacing(SPACING)
@@ -1920,6 +1908,30 @@ pub(super) fn any_pending_change(hints: impl IntoIterator<Item = FormatHint>) ->
 
 #[cfg(test)]
 mod tests {
+    /// The seam between "which typeface" and "what that typeface is called".
+    /// One language per face, and each named family asserted, so a face wired
+    /// to the wrong group -- which no compiler would notice -- fails here.
+    #[test]
+    fn each_language_resolves_to_its_own_bundled_face() {
+        use iced_core::font::Family;
+        for (lang, expected) in [
+            (Language::Japanese, "WenQuanYi Zen Hei"),
+            (Language::Korean, "WenQuanYi Zen Hei"),
+            (Language::Mandarin, "WenQuanYi Zen Hei"),
+            (Language::Thai, "Noto Sans Thai"),
+            (Language::English, "Roboto"),
+            (Language::Spanish, "Roboto"),
+            (Language::French, "Roboto"),
+            (Language::Turkish, "Roboto"),
+        ] {
+            assert_eq!(
+                font_for(lang).family,
+                Family::Name(expected),
+                "{lang:?} resolved to the wrong bundled face"
+            );
+        }
+    }
+
     use super::*;
     use crate::config::Mode;
 

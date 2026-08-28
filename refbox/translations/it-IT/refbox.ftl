@@ -105,6 +105,9 @@ manual-games = PARTITE MANUALI:
 source-portal = { $portal } PORTAL
 source-custom = PERSONALIZZATO
 access-token = TOKEN DI ACCESSO:
+access-token-connected = Connesso
+access-token-tap-to-connect = Tocca per connettere
+access-token-checking = Controllo in corso...
 custom-site = SITO:
 custom-site-url-title = URL DEL SITO
 custom-site-placeholder = https://tuo-sito/api/1234-A
@@ -192,6 +195,7 @@ portal-enabled = Quando { $portal }PORTAL è abilitato, tutti i campi devono ess
 mode-switch-portal-tenant = Cambiare la modalità dell'app disabiliterà il collegamento a { $from_portal } Portal e sarà necessario ricollegarsi a { $to_portal } Portal.
 mode-switch-custom-site = Cambiare la modalità dell'app richiede un riavvio. Il tuo sito personalizzato resta collegato.
 source-locked-game = L'origine delle partite non può essere modificata mentre una partita è in corso.
+source-switch-clears-selection = Il passaggio a { $source } eliminerà l'evento, il campo e la partita selezionati.
 link-locked-game = Non è possibile connettersi all'origine delle partite mentre una partita è in corso.
 source-locked-queue = Ci sono ancora risultati di partite in attesa di essere inviati. Inviali o eliminali prima di procedere.
 uwhportal-token-invalid-code = Codice inserito non valido.
@@ -206,6 +210,7 @@ end-current-game-and-apply-changes = TERMINA PARTITA E APPLICA MODIFICHE
 end-current-game-and-apply-change = TERMINA PARTITA E APPLICA MODIFICA
 keep-current-game-and-apply-change = MANTIENI PARTITA E APPLICA MODIFICA
 ok = OK
+switch-and-clear-selection = CAMBIA ED ELIMINA SELEZIONE
 confirm-score = Il punteggio è corretto?
     Conferma con il capo arbitro.
 

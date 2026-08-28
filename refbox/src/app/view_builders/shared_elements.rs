@@ -460,6 +460,21 @@ pub(crate) fn crosses_portal(old: Mode, new: Mode) -> bool {
     portal_name_for_mode(old) != portal_name_for_mode(new)
 }
 
+/// A game source's display name, as the source buttons on Game Options show it.
+///
+/// One function so that a message naming a source and the button that chooses it
+/// cannot drift apart — the confirmation's sentence has to read as the name of
+/// the button the operator just pressed.
+pub(crate) fn source_display_name(source: GameSource, mode: Mode) -> String {
+    match source {
+        GameSource::Portal => fl!("source-portal", portal = portal_name_for_mode(mode)),
+        GameSource::Custom => fl!("source-custom"),
+        // No source-switch target is ever Manual: MANUAL GAMES is a separate
+        // control with its own label, which this returns for completeness.
+        GameSource::Manual => fl!("manual-games"),
+    }
+}
+
 pub(super) fn make_health_tile<'a>(
     state: PortalIndicatorState,
     tile_size: f32,

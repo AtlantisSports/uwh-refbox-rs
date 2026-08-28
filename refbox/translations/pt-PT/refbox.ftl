@@ -105,6 +105,9 @@ manual-games = JOGOS MANUAIS:
 source-portal = { $portal } PORTAL
 source-custom = PERSONALIZADO
 access-token = TOKEN DE ACESSO:
+access-token-connected = Ligado
+access-token-tap-to-connect = Tocar para ligar
+access-token-checking = A verificar...
 custom-site = SITE:
 custom-site-url-title = URL DO SITE
 custom-site-placeholder = https://o-seu-site/api/1234-A
@@ -192,6 +195,7 @@ portal-enabled = Quando o { $portal }PORTAL está ativado, todos os campos têm 
 mode-switch-portal-tenant = Alterar o modo da aplicação desativará a ligação ao { $from_portal } Portal e terá de se ligar novamente ao { $to_portal } Portal.
 mode-switch-custom-site = Alterar o modo da aplicação exige reiniciar. O seu site personalizado permanece ligado.
 source-locked-game = A origem dos jogos não pode ser alterada enquanto um jogo está em curso.
+source-switch-clears-selection = Mudar para { $source } irá limpar o evento, o campo e o jogo que selecionou.
 link-locked-game = Não é possível ligar à origem dos jogos enquanto um jogo está em curso.
 source-locked-queue = Ainda há resultados de jogos à espera de serem enviados. Envie-os ou elimine-os primeiro.
 uwhportal-token-invalid-code = Código introduzido inválido.
@@ -206,6 +210,7 @@ end-current-game-and-apply-changes = TERMINAR JOGO ATUAL E APLICAR ALTERAÇÕES
 end-current-game-and-apply-change = TERMINAR JOGO ATUAL E APLICAR ALTERAÇÃO
 keep-current-game-and-apply-change = MANTER JOGO ATUAL E APLICAR ALTERAÇÃO
 ok = OK
+switch-and-clear-selection = MUDAR E LIMPAR SELEÇÃO
 confirm-score = Este resultado está correto?
     Confirme com o árbitro principal.
 

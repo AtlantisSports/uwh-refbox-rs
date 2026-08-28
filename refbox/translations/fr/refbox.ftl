@@ -105,6 +105,9 @@ manual-games = MATCHS MANUELS:
 source-portal = { $portal } PORTAL
 source-custom = PERSONNALISÉ
 access-token = JETON D'ACCÈS:
+access-token-connected = Connecté
+access-token-tap-to-connect = Appuyer pour se connecter
+access-token-checking = Vérification...
 custom-site = SITE:
 custom-site-url-title = URL DU SITE
 custom-site-placeholder = https://votre-site/api/1234-A
@@ -194,6 +197,7 @@ portal-enabled = Lorsque { $portal }PORTAL est activé, tous les champs doivent 
 mode-switch-portal-tenant = Changer le mode de l'application désactivera le lien vers { $from_portal } Portal et vous devrez vous reconnecter à { $to_portal } Portal.
 mode-switch-custom-site = Changer le mode de l'application nécessite un redémarrage. Votre site personnalisé reste connecté.
 source-locked-game = La source des matchs ne peut pas être modifiée pendant qu'un match est en cours.
+source-switch-clears-selection = Passer à { $source } effacera l'événement, le terrain et le match que vous avez sélectionnés.
 link-locked-game = Il n'est pas possible de se connecter à la source des matchs pendant qu'un match est en cours.
 source-locked-queue = Des résultats de match attendent encore d'être envoyés. Envoyez-les ou supprimez-les d'abord.
 ### Check
@@ -210,6 +214,7 @@ end-current-game-and-apply-changes = TERMINER LE MATCH EN COURS ET APPLIQUER LES
 end-current-game-and-apply-change = TERMINER LE MATCH EN COURS ET APPLIQUER LE CHANGEMENT
 keep-current-game-and-apply-change = GARDER LE MATCH EN COURS ET APPLIQUER LE CHANGEMENT
 ok = OK
+switch-and-clear-selection = CHANGER ET EFFACER LA SÉLECTION
 confirm-score = Ce score est-il correct ?
     Confirmer avec l'arbitre en chef.
     

@@ -205,6 +205,44 @@ write them — `ConfigPage::Game`'s `apply_game_options` and `ConfigPage::App`'s
 
 See `docs/superpowers/plans/2026-08-27-portal-event-list-source-separation.md`.
 
+### Amendment 2026-08-28 — the clean wipe applies to remote → remote too
+
+The 2026-06-23 amendment made switching the portal **off** a clean wipe. The same
+rule now applies to a switch between the two remote sources, for the same
+reason: a leftover start time from the site the refbox has just left, silently
+driving the countdown, is confusing, and "switch source = clean slate" is more
+predictable for the operator.
+
+**The source buttons are now the commit point for the source change.** Tapping
+the source the refbox is not currently on performs the move rather than staging
+it: the source is committed, the live client is repointed when the new source has
+a usable address, the event, court, game and schedule are cleared on both the committed and the staged side, the
+before-game clock is reset to the nominal break and the game number to the
+fresh-launch default, the access token is re-checked against the new site, and
+the saved link note is rewritten for the newly adopted event, or deleted when
+the switch leaves no event linked. The manual game configuration is **not**
+installed — only the clock-and-game-number half of `reset_to_manual_break`
+applies, because the refbox is staying on a remote source.
+
+**A confirmation appears only when there is something to lose** — a game that is
+fully linked (event *and* court *and* game all set, judged on what the editor is
+displaying). Anything less is discarded without a prompt. The two existing
+refusals (a game in progress, results queued and unsent) outrank the
+confirmation and are unchanged.
+
+The corollary reverses part of the 2026-08-27 amendment: switching source no
+longer leaves the staged `current_event_id` / `current_court` / `schedule`
+uncleared, so Custom → Portal → Custom is no longer lossless. The ownership
+guard on both settings-commit paths is **kept** anyway, as a second line of
+defence, along with the `site_serves` fetch guard — both are what would stop a
+future change from quietly reintroducing a request to the wrong site.
+
+Because the switch is committed at the tap, Game Options' APPLY no longer
+repoints the client and is greyed until event, court and game are all set.
+
+See `docs/superpowers/specs/2026-08-28-source-switch-confirmation-design.md` and
+`docs/superpowers/plans/2026-08-28-source-switch-confirmation.md`.
+
 ### What is not in scope for this ADR
 
 - Persisting `using_uwhportal` across sessions in `config.toml` (currently

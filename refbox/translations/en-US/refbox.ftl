@@ -104,6 +104,9 @@ manual-games = MANUAL GAMES:
 source-portal = { $portal } PORTAL
 source-custom = CUSTOM
 access-token = ACCESS TOKEN:
+access-token-connected = Connected
+access-token-tap-to-connect = Tap to Connect
+access-token-checking = Checking...
 custom-site = SITE:
 custom-site-url-title = SITE URL
 custom-site-placeholder = https://your-site/api/1234-A
@@ -195,6 +198,7 @@ portal-enabled = When { $portal }PORTAL is enabled, all fields must be filled ou
 mode-switch-portal-tenant = Changing the app mode will disable the link to { $from_portal } Portal and you must re-connect to { $to_portal } Portal.
 mode-switch-custom-site = Changing the app mode needs a restart. Your custom site stays connected.
 source-locked-game = The game source can not be changed while a game is in progress.
+source-switch-clears-selection = Switching to { $source } will clear the event, court and game you have selected.
 link-locked-game = You can not connect to the game source while a game is in progress.
 source-locked-queue = Game results are still waiting to be sent. Send or discard them first.
 uwhportal-token-invalid-code = Invalid code entered.
@@ -209,6 +213,7 @@ end-current-game-and-apply-changes = END CURRENT GAME AND APPLY CHANGES
 end-current-game-and-apply-change = END CURRENT GAME AND APPLY CHANGE
 keep-current-game-and-apply-change = KEEP CURRENT GAME AND APPLY CHANGE
 ok = OK
+switch-and-clear-selection = SWITCH AND CLEAR SELECTION
 confirm-score = Is this score correct?
     Confirm with chief referee.
     

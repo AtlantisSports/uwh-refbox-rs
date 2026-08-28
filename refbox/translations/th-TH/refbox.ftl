@@ -105,6 +105,9 @@ manual-games = เกมด้วยตนเอง:
 source-portal = { $portal } PORTAL
 source-custom = กำหนดเอง
 access-token = โทเค็นการเข้าถึง:
+access-token-connected = เชื่อมต่อแล้ว
+access-token-tap-to-connect = แตะเพื่อเชื่อมต่อ
+access-token-checking = กำลังตรวจสอบ...
 custom-site = ไซต์:
 custom-site-url-title = URL ไซต์
 custom-site-placeholder = https://your-site/api/1234-A
@@ -192,6 +195,7 @@ portal-enabled = เมื่อเปิดใช้ { $portal }PORTAL ต้�
 mode-switch-portal-tenant = การเปลี่ยนโหมดแอปจะปิดใช้งานการเชื่อมต่อกับ { $from_portal } Portal และคุณต้องเชื่อมต่อใหม่กับ { $to_portal } Portal
 mode-switch-custom-site = การเปลี่ยนโหมดแอปต้องเริ่มโปรแกรมใหม่ เว็บไซต์ที่กำหนดเองของคุณยังเชื่อมต่ออยู่
 source-locked-game = ไม่สามารถเปลี่ยนแหล่งที่มาของเกมได้ขณะที่เกมกำลังดำเนินอยู่
+source-switch-clears-selection = การเปลี่ยนไปยัง { $source } จะล้างกิจกรรม สนาม และเกมที่คุณเลือกไว้
 link-locked-game = ไม่สามารถเชื่อมต่อกับแหล่งที่มาของเกมได้ขณะที่เกมกำลังดำเนินอยู่
 source-locked-queue = ยังมีผลการแข่งขันที่รอส่งอยู่ ส่งหรือทิ้งผลเหล่านั้นก่อน
 uwhportal-token-invalid-code = รหัสที่ป้อนไม่ถูกต้อง
@@ -206,6 +210,7 @@ end-current-game-and-apply-changes = สิ้นสุดเกมปัจจ�
 end-current-game-and-apply-change = สิ้นสุดเกมปัจจุบันและใช้การเปลี่ยนแปลง
 keep-current-game-and-apply-change = เก็บเกมปัจจุบันและใช้การเปลี่ยนแปลง
 ok = ตกลง
+switch-and-clear-selection = เปลี่ยนและล้างการเลือก
 confirm-score = คะแนนนี้ถูกต้องหรือไม่?
     ยืนยันกับหัวหน้าผู้ตัดสิน
 

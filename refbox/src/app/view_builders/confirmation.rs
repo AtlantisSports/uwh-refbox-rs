@@ -57,6 +57,10 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ConfirmationKind::SiteLockedByGame(_) => fl!("source-locked-game"),
         ConfirmationKind::SiteLockedByQueue(_) => fl!("source-locked-queue"),
         ConfirmationKind::LinkLockedByGame => fl!("link-locked-game"),
+        ConfirmationKind::SourceSwitchClearsSelection(target) => fl!(
+            "source-switch-clears-selection",
+            source = source_display_name(*target, mode)
+        ),
     };
 
     type ButtonStyleFn = fn(&Theme, Status) -> Style;
@@ -151,6 +155,26 @@ pub(in super::super) fn build_confirmation_page<'a>(
                 fl!("restart-to-apply"),
                 blue_button,
                 ConfirmationOption::RestartAndApply,
+            ),
+        ],
+        // Colours and labels follow the other confirmations on this page rather
+        // than a bare CANCEL/OK pair: green is always the way out that changes
+        // nothing, and the destructive option always spells out what it does
+        // (`END CURRENT GAME AND APPLY CHANGES` is the model). An OK coloured
+        // green here would put the app's "safe" colour on the one button that
+        // discards the operator's selection — the reverse of what every other
+        // dialog trains them to expect, at the moment they are least able to
+        // read carefully.
+        ConfirmationKind::SourceSwitchClearsSelection(_) => vec![
+            (
+                fl!("go-back-to-editor"),
+                green_button,
+                ConfirmationOption::GoBack,
+            ),
+            (
+                fl!("switch-and-clear-selection"),
+                red_button,
+                ConfirmationOption::SwitchSource,
             ),
         ],
         // Nothing was committed and nothing is discarded: the single button

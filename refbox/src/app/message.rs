@@ -149,6 +149,12 @@ pub enum Message {
     /// cannot express three states, and naming the target source removes any
     /// question about which one a toggle would land on.
     SelectGameSource(GameSource),
+    /// A tap on one of the two source buttons on Game Options. Unlike
+    /// `SelectGameSource` — which the MANUAL GAMES button sends, and which only
+    /// stages — this one *commits*: it moves the refbox to the other site there
+    /// and then. The two controls need separate messages precisely because they
+    /// no longer mean the same thing.
+    SwitchGameSource(GameSource),
     /// Every keystroke in the custom site's URL field. Stages the text in
     /// `edited_settings` so Cancel discards it like any other pending edit.
     CustomSiteUrlChanged(super::custom_site::TypedSiteUrl),
@@ -189,10 +195,15 @@ pub enum Message {
     AutoConfirmScores(GameSnapshot),
     RecvEventList(Vec<Event>),
     RecvTeamsList(EventId, TeamList),
-    /// A team's roster arrived from the portal, reduced to the cap numbers on
-    /// it. Players with no cap number are dropped at the fetch — there is
+    /// A team's roster arrived from the site in use, reduced to the cap numbers
+    /// on it. Players with no cap number are dropped at the fetch — there is
     /// nothing to tap for them.
-    RecvTeamRoster(TeamId, Vec<u8>),
+    ///
+    /// Tagged with the game source the request went out under. The tag is what
+    /// lets the handler drop a reply that lands after a source switch: the
+    /// roster cache is keyed by team id alone, and a team id is whatever text
+    /// the serving site chose to send.
+    RecvTeamRoster(GameSource, TeamId, Vec<u8>),
     RecvSchedule(EventId, Schedule),
     RecvPortalToken(PortalTokenResponse),
     /// Result of a portal token-validity check for a specific event. Carries
@@ -345,11 +356,12 @@ impl Message {
             | Self::SelectPlayerNumber(_)
             | Self::ToggleBoolParameter(_)
             | Self::SelectGameSource(_)
+            | Self::SwitchGameSource(_)
             | Self::CustomSiteUrlChanged(_)
             | Self::CycleParameter(_)
             | Self::RecvEventList(_)
             | Self::RecvTeamsList(_, _)
-            | Self::RecvTeamRoster(_, _)
+            | Self::RecvTeamRoster(_, _, _)
             | Self::RecvSchedule(_, _)
             | Self::RecvPortalToken(_)
             | Self::RecvTokenValid(_, _)
@@ -653,6 +665,7 @@ impl PartialEq for Message {
             (Self::ParameterSelected(a, b), Self::ParameterSelected(c, d)) => a == c && b == d,
             (Self::ToggleBoolParameter(a), Self::ToggleBoolParameter(b)) => a == b,
             (Self::SelectGameSource(a), Self::SelectGameSource(b)) => a == b,
+            (Self::SwitchGameSource(a), Self::SwitchGameSource(b)) => a == b,
             (Self::CustomSiteUrlChanged(a), Self::CustomSiteUrlChanged(b)) => a == b,
             (Self::CycleParameter(a), Self::CycleParameter(b)) => a == b,
             (Self::EditGameConfigPage(a), Self::EditGameConfigPage(b)) => a == b,
@@ -684,7 +697,9 @@ impl PartialEq for Message {
             (Self::TimeUpdaterStarted(a), Self::TimeUpdaterStarted(b)) => a.same_channel(b),
             (Self::RecvEventList(a), Self::RecvEventList(b)) => a == b,
             (Self::RecvTeamsList(a, b), Self::RecvTeamsList(c, d)) => a == c && b == d,
-            (Self::RecvTeamRoster(a, b), Self::RecvTeamRoster(c, d)) => a == c && b == d,
+            (Self::RecvTeamRoster(a, b, c), Self::RecvTeamRoster(d, e, f)) => {
+                a == d && b == e && c == f
+            }
             (Self::RecvSchedule(a, b), Self::RecvSchedule(c, d)) => a == c && b == d,
             (Self::RecvPortalToken(a), Self::RecvPortalToken(b)) => a == b,
             (Self::RecvTokenValid(a, b), Self::RecvTokenValid(c, d)) => a == c && b == d,
@@ -749,6 +764,7 @@ impl PartialEq for Message {
             | (Self::ParameterSelected(_, _), _)
             | (Self::ToggleBoolParameter(_), _)
             | (Self::SelectGameSource(_), _)
+            | (Self::SwitchGameSource(_), _)
             | (Self::CustomSiteUrlChanged(_), _)
             | (Self::CycleParameter(_), _)
             | (Self::SelectLanguage(_), _)
@@ -770,7 +786,7 @@ impl PartialEq for Message {
             | (Self::AutoConfirmScores(_), _)
             | (Self::RecvEventList(_), _)
             | (Self::RecvTeamsList(_, _), _)
-            | (Self::RecvTeamRoster(_, _), _)
+            | (Self::RecvTeamRoster(_, _, _), _)
             | (Self::RecvSchedule(_, _), _)
             | (Self::RecvPortalToken(_), _)
             | (Self::RecvTokenValid(_, _), _)
@@ -1031,6 +1047,12 @@ pub enum ConfirmationOption {
     // Offered by ConfirmationKind::PortalTenantSwitch — restarts the app on the
     // new Mode/portal. Raised by apply_app_options (Task 9); handled in Task 8.
     RestartAndApply,
+    // Offered by ConfirmationKind::SourceSwitchClearsSelection — performs the
+    // source switch the tap asked for. The existing variants each carry a
+    // specific meaning (DiscardChanges, RestartAndApply, and so on) that would
+    // be wrong here; `GoBack` already carries the "return with nothing
+    // committed" meaning Cancel needs, so only the affirmative is new.
+    SwitchSource,
 }
 
 /// The three actions offered on the operator power page.

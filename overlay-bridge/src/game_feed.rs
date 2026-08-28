@@ -5,6 +5,16 @@
 //! renaming, or changing the meaning of one requires bumping [`SCHEMA_VERSION`]. See the design
 //! spec `docs/superpowers/specs/2026-08-28-overlay-bridge-renderer-feed-design.md`.
 //!
+//! **The beep test is not a case this feed needs to handle, and a review finding to the contrary
+//! has been ruled on.** A beep-test snapshot is relayed like any other, so `connected` reads true
+//! with the lap count sitting in `white_score` and no game number — which looks alarming, because
+//! a lap count in a score field is exactly the "plausible value" this feed otherwise refuses. It
+//! is not a defect: Eric, 2026-08-29 — *"A beep test will not have any overlay associated, this
+//! test is not filmed and certainly isn't broadcasted/streamed."* There is no consumer rendering
+//! anything while a beep test runs, so there is nothing to put a wrong score on. Do not add
+//! beep-test special-casing here to close this; it would be guarding a situation that does not
+//! occur, and the vMix tables have relayed it the same way from the start.
+//!
 //! **Why this is a separate route rather than extra columns on `/scorebug`.** A vMix table's rows
 //! are `BTreeMap`s, so its columns serialize alphabetically; a title left on positional fallback
 //! reads whichever column occupies its position. Adding a column to an existing table therefore

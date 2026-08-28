@@ -4772,7 +4772,7 @@ impl RefBoxApp {
                 if !canceled {
                     if let Some(lang) = settings.pending_language {
                         let original = settings.original_language.unwrap_or(Language::English);
-                        let needs_restart = font_family_id(original) != font_family_id(lang);
+                        let needs_restart = original.ui_font() != lang.ui_font();
                         self.config.language = Some(lang);
                         if let Err(e) = confy::store(crate::APP_NAME, None, &self.config) {
                             error!("Failed to persist config: {e}");
@@ -5752,7 +5752,7 @@ impl RefBoxApp {
                     .and_then(|e| e.original_language)
                     .unwrap_or(Language::English);
                 if let Some(lang) = lang_opt {
-                    let needs_restart = font_family_id(original) != font_family_id(lang);
+                    let needs_restart = original.ui_font() != lang.ui_font();
                     self.config.language = Some(lang);
                     if let Err(e) = confy::store(crate::APP_NAME, None, &self.config) {
                         error!("Failed to persist config: {e}");
@@ -7253,14 +7253,6 @@ mod restore_tests {
         let n = note(now, Mode::Hockey6V6);
         // Rugby uses the UWR portal → must NOT restore a UWH note
         assert!(!decide_restore(&n, now, Mode::Rugby));
-    }
-}
-
-fn font_family_id(lang: Language) -> u8 {
-    match lang {
-        Language::Korean | Language::Japanese | Language::Mandarin => 1,
-        Language::Thai => 2,
-        _ => 0,
     }
 }
 

@@ -543,15 +543,31 @@ fn font_coverage_findings() -> Vec<String> {
          {miscounted:?}. It no longer matches this file, so those labels would go unchecked -- \
          fix `picker_entries`, do not delete it."
     );
-    for (_, labels, font) in &entries {
-        // An entry naming no font is drawn in the app default, which follows
-        // the language the operator is currently in -- so it has to render in
-        // all three.
-        let fonts: Vec<&str> = match font {
-            Some(font) => vec![font],
-            None => vec![CJK_FONT, THAI_FONT, ROBOTO],
+    let font_for_variant: HashMap<&str, &str> = FONTS_BY_LANGUAGE
+        .iter()
+        .map(|(_, variant, font)| (*variant, *font))
+        .collect();
+    for (variant, labels, named) in &entries {
+        // A tile is drawn in its own language's face -- the builders derive it
+        // from the `Language` they are handed, so a tile cannot be given a font
+        // that contradicts itself and cannot be given none.
+        let Some(font) = variant
+            .as_deref()
+            .and_then(|variant| font_for_variant.get(variant).copied())
+        else {
+            continue;
         };
-        for font in fonts {
+        // A call site that still names a font must name that same one, or the
+        // tile is drawn in something other than its own language's face.
+        if let Some(named) = named
+            && *named != font
+        {
+            findings.push(format!(
+                "{PICKER_SOURCE}: a language-picker tile names {named} while its own language \
+                 is drawn in {font}"
+            ));
+        }
+        {
             for label in labels {
                 let missing = uncovered(label, &coverage[font]);
                 if !missing.is_empty() {
@@ -606,7 +622,9 @@ fn font_coverage_findings() -> Vec<String> {
     findings
 }
 
-/// Where the app actually chooses a font, which `FONTS_BY_LANGUAGE` copies.
+/// Where a language's typeface is decided, and where that answer is turned
+/// into a font family iced can be started with.
+const UI_FONT_SOURCE: &str = "src/app/languages.rs";
 const FONT_SELECTOR_SOURCE: &str = "src/main.rs";
 
 /// The font families `default_font_for` can return, and the file each is
@@ -617,115 +635,143 @@ const FAMILY_FILES: &[(&str, &str)] = &[
     ("Roboto", ROBOTO),
 ];
 
-/// Report any language where `FONTS_BY_LANGUAGE` disagrees with
-/// `default_font_for`.
+/// The arms of a `match`, as `(everything before the "=>", everything after)`.
 ///
-/// The table is a copy of a decision made in `src/main.rs`, and a copy is only
-/// worth keeping if it cannot drift: move a language between those match arms
-/// and every check in this file would go on validating it against the font it
-/// used to use, stay green, and let the app draw blanks.
-fn font_selector_findings() -> Vec<String> {
-    println!("cargo:rerun-if-changed={FONT_SELECTOR_SOURCE}");
-    let source = fs::read_to_string(FONT_SELECTOR_SOURCE)
-        .unwrap_or_else(|e| panic!("{FONT_SELECTOR_SOURCE}: could not read: {e}"));
-    let body = source
-        .split("fn default_font_for")
-        .nth(1)
-        .unwrap_or_else(|| {
-            panic!(
-                "{FONT_SELECTOR_SOURCE}: `default_font_for` not found. It is where the app picks \
-                 a font, so without it FONTS_BY_LANGUAGE cannot be held to anything -- point \
-                 this at wherever the choice moved to."
-            )
-        });
-    // Column-zero brace: the arms' own blocks are indented.
-    let body = body.split("\n}").next().unwrap_or(body);
-    // Strip line comments before reading arms. A comment naming `Language::X`
-    // sits inside whichever arm's pattern precedes it, and -- first arm winning
-    // -- would beat the real one, failing the build over a claim that is not
-    // true and whose suggested fix would put the wrong font in the table.
-    let body: String = body
-        .lines()
-        .map(|line| line.split("//").next().unwrap_or(line))
+/// Both functions read here are a single `match` of one-expression arms, so
+/// splitting on the arrow is safe -- unlike a body that could contain one.
+fn match_arms(body: &str) -> Vec<(&str, &str)> {
+    let parts: Vec<&str> = body.split("=>").collect();
+    parts
+        .windows(2)
+        .map(|pair| (pair[0], pair[1]))
         .collect::<Vec<_>>()
-        .join("\n");
-    let body = body.as_str();
+}
+
+/// The body of `function` in `source`, or a panic naming what went missing.
+fn function_body<'a>(source: &'a str, function: &str, path: &str) -> &'a str {
+    let body = source.split(function).nth(1).unwrap_or_else(|| {
+        panic!(
+            "{path}: `{function}` not found. It is part of how a language's font is decided, so \
+             without it FONTS_BY_LANGUAGE cannot be held to anything -- point this at wherever \
+             the decision moved to."
+        )
+    });
+    // Column-zero brace: the arms' own blocks are indented.
+    body.split("\n}").next().unwrap_or(body)
+}
+
+/// Report any language where `FONTS_BY_LANGUAGE` disagrees with the app.
+///
+/// The table is a copy of a decision the app makes in two steps -- which
+/// typeface a language uses (`Language::ui_font`), then what that typeface is
+/// called (`default_font_for`) -- and a copy is only worth keeping if it cannot
+/// drift. Move a language between those arms and every check in this file would
+/// go on validating it against the font it used to use, stay green, and let the
+/// app draw blanks.
+fn font_selector_findings() -> Vec<String> {
+    println!("cargo:rerun-if-changed={UI_FONT_SOURCE}");
+    println!("cargo:rerun-if-changed={FONT_SELECTOR_SOURCE}");
+    let ui_font_source = fs::read_to_string(UI_FONT_SOURCE)
+        .unwrap_or_else(|e| panic!("{UI_FONT_SOURCE}: could not read: {e}"));
+    let selector_source = fs::read_to_string(FONT_SELECTOR_SOURCE)
+        .unwrap_or_else(|e| panic!("{FONT_SELECTOR_SOURCE}: could not read: {e}"));
 
     let mut findings = Vec::new();
-    let mut by_variant: BTreeMap<&str, &str> = BTreeMap::new();
-    let mut catch_all = None;
-    // Arms are found by line, not by splitting on "=>": an arm's body can hold
-    // anything, and a `debug_assert!(lang == Language::Thai)` inside one would
-    // otherwise be read as the next arm's pattern and blame the wrong font.
-    let lines: Vec<&str> = body.lines().collect();
-    let arm_starts: Vec<usize> = lines
-        .iter()
-        .enumerate()
-        .filter(|(_, line)| {
-            let line = line.trim_start();
-            line.starts_with("Language::") || line.starts_with('_')
-        })
-        .map(|(i, _)| i)
-        .collect();
-    for (nth, &start) in arm_starts.iter().enumerate() {
-        let end = arm_starts.get(nth + 1).copied().unwrap_or(lines.len());
-        let arm = lines[start..end].join("\n");
-        let pattern = lines[start];
-        // The family is the arm's first string literal.
-        let Some(family) = arm.split('"').nth(1) else {
+
+    // Step two first: what each typeface is called, so step one can be resolved
+    // straight to a file.
+    let mut file_of_face: BTreeMap<&str, &str> = BTreeMap::new();
+    for (pattern, value) in match_arms(function_body(
+        &selector_source,
+        "fn default_font_for",
+        FONT_SELECTOR_SOURCE,
+    )) {
+        let Some(face) = variant_after(pattern, "UiFont::") else {
             continue;
         };
-        let Some((_, file)) = FAMILY_FILES.iter().find(|(name, _)| *name == family) else {
-            findings.push(format!(
+        let Some(family) = value.split('"').nth(1) else {
+            continue;
+        };
+        match FAMILY_FILES.iter().find(|(name, _)| *name == family) {
+            Some((_, file)) => {
+                file_of_face.entry(face).or_insert(file);
+            }
+            None => findings.push(format!(
                 "{FONT_SELECTOR_SOURCE}: `default_font_for` returns the font family {family:?}, \
                  which is not one of the bundled fonts -- add it to FAMILY_FILES with the file \
                  it ships from"
-            ));
+            )),
+        }
+    }
+    assert!(
+        !file_of_face.is_empty(),
+        "{FONT_SELECTOR_SOURCE}: no `UiFont::` arms were read out of `default_font_for`, so the \
+         typefaces could not be resolved to files -- fix `font_selector_findings`, do not delete \
+         it."
+    );
+
+    // Step one: which typeface each language uses.
+    let mut face_of_language: BTreeMap<String, &str> = BTreeMap::new();
+    let mut catch_all = None;
+    for (pattern, value) in match_arms(function_body(&ui_font_source, "fn ui_font", UI_FONT_SOURCE))
+    {
+        let Some(face) = variant_after(value, "UiFont::") else {
             continue;
         };
         let variants: Vec<&str> = pattern
-            .split("Language::")
+            .split("Self::")
             .skip(1)
-            .map(|rest| {
-                rest.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .filter_map(|rest| {
+                let name: &str = rest
+                    .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
                     .next()
-                    .unwrap_or_default()
+                    .unwrap_or_default();
+                (!name.is_empty()).then_some(name)
             })
             .collect();
         if variants.is_empty() {
-            catch_all = Some(*file);
+            catch_all = Some(face);
         } else {
             for variant in variants {
-                // First arm wins, as `match` does. Inserting unconditionally
-                // would let a later arm mask an earlier one and report the
-                // font the app does not actually use.
-                by_variant.entry(variant).or_insert(file);
+                // First arm wins, as `match` does.
+                face_of_language.entry(variant.to_string()).or_insert(face);
             }
         }
     }
     assert!(
-        !by_variant.is_empty(),
-        "{FONT_SELECTOR_SOURCE}: no `Language::` arms were read out of `default_font_for`, so \
-         FONTS_BY_LANGUAGE would be checked against nothing -- fix `font_selector_findings`, do \
-         not delete it."
+        !face_of_language.is_empty(),
+        "{UI_FONT_SOURCE}: no `Self::` arms were read out of `ui_font`, so FONTS_BY_LANGUAGE \
+         would be checked against nothing -- fix `font_selector_findings`, do not delete it."
     );
 
     for (dir, variant, font) in FONTS_BY_LANGUAGE {
-        let selected = by_variant.get(variant).copied().or(catch_all);
+        let face = face_of_language.get(*variant).copied().or(catch_all);
+        let selected = face.and_then(|face| file_of_face.get(face).copied());
         match selected {
             Some(selected) if selected == *font => {}
             Some(selected) => findings.push(format!(
-                "{FONT_SELECTOR_SOURCE}: `default_font_for` draws {variant} ({dir}) in \
-                 {selected}, but FONTS_BY_LANGUAGE in build.rs says {font}. The check would \
-                 validate that language against the wrong font."
+                "the app draws {variant} ({dir}) in {selected}, but FONTS_BY_LANGUAGE in \
+                 build.rs says {font}. The check would validate that language against the wrong \
+                 font."
             )),
             None => findings.push(format!(
-                "{FONT_SELECTOR_SOURCE}: `default_font_for` names no font for {variant} ({dir}) \
-                 and has no catch-all arm, so what the app would draw it in is unknown."
+                "{UI_FONT_SOURCE}: no typeface is decided for {variant} ({dir}), so what the app \
+                 would draw it in is unknown."
             )),
         }
     }
     findings
+}
+
+/// The identifier following the first `prefix` in `text`.
+fn variant_after<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    text.split(prefix).nth(1).and_then(|rest| {
+        let name = rest
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .next()
+            .unwrap_or_default();
+        (!name.is_empty()).then_some(name)
+    })
 }
 
 /// The file holding the language picker, whose entries name each language in

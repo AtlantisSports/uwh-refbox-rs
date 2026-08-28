@@ -9,6 +9,11 @@ native **Windows**, **macOS** (Arm + Intel), and **Raspberry Pi** binaries and a
 into a **draft** GitHub release (plus the loose Pi binary + `.sha256` for self-update). The
 release is created as a draft — it is not public until someone publishes it.
 
+The same workflow also builds the **overlay** for the Raspberry Pi and attaches it as three
+separate assets — `overlay.zip`, `overlay-aarch64-linux` and its `.sha256`. They are deliberately
+*not* inside `refbox.zip`. The overlay has no self-update, so a person copies the binary to the
+streaming machine by hand.
+
 ## Version bump (do this first, on its own commit/PR)
 
 Bump **every** crate version in lockstep — and this **includes `wireless-remote`**, which is a
@@ -44,9 +49,10 @@ Steps:
 
 1. With the bump merged on `master`, push the tag: `git tag vX.Y.Z <master-sha> && git push origin vX.Y.Z`.
 2. Wait for `release.yml` to finish; a **draft** release appears under Releases.
-3. Download `refbox.zip` from the draft and **verify the packaging** — see below. Do not skip
-   this: "test the platform builds" used to be all this step said, and a macOS app that could
-   not launch shipped in five consecutive releases before anyone noticed.
+3. Download `refbox.zip` **and `overlay.zip`** from the draft and **verify the packaging** —
+   see below, both sections. Do not skip this: "test the platform builds" used to be all this
+   step said, and a macOS app that could not launch shipped in five consecutive releases before
+   anyone noticed.
 4. When satisfied, **publish** the draft. (Keep `--draft=true` on any `gh release edit`, or it
    publishes early.)
 

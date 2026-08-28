@@ -1,0 +1,67 @@
+name: Overlay compatibility canary
+
+# Builds AND TESTS uwh-overlay-rs against THIS repo's uwh-common, so a wire-format
+# change fails in the refbox PR that causes it -- in front of the person who caused it.
+#
+# Runs on every PR, not only at release: today a wire-format break is a loud, immediate
+# compile failure, and running this only at release would trade that for a silent
+# field-day failure discovered weeks later.
+#
+# `cargo test` rather than `cargo build` is load-bearing. A build-only canary is blind
+# to a change that still compiles while the MEANING of the data moves -- which is the
+# failure class this whole split was nearly rejected over. The overlay's
+# overlay/tests/wire_contract.rs asserts DECODED VALUES, so running its tests here is
+# what makes that check bite inside the refbox PR.
+on:
+  pull_request:
+    branches: [ "master" ]
+  merge_group:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  canary:
+    name: uwh-overlay-rs builds and tests against this uwh-common
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out this refbox revision
+      uses: actions/checkout@v5
+      with:
+        path: refbox
+
+    - name: Check out the overlay
+      uses: actions/checkout@v5
+      with:
+        repository: AtlantisSports/uwh-overlay-rs
+        path: overlay-repo
+
+    - run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: overlay-repo -> target
+
+    # Redirect the overlay's tagged uwh-common at this PR's copy. The [patch] key must
+    # match the SOURCE the manifest names -- the git URL, not crates-io.
+    - name: Patch uwh-common to this revision
+      run: |
+        cat >> overlay-repo/Cargo.toml <<'EOF'
+
+        [patch."https://github.com/AtlantisSports/uwh-refbox-rs"]
+        uwh-common = { path = "../refbox/uwh-common" }
+        EOF
+        cd overlay-repo && cargo update -p uwh-common
+
+    - name: Confirm the patch actually applied
+      run: |
+        cd overlay-repo
+        if ! cargo tree --invert uwh-common 2>&1 | grep -q 'refbox/uwh-common'; then
+          echo "::error::The [patch] did not apply -- this canary would pass without ever testing this PR's uwh-common."
+          cargo tree --invert uwh-common || true
+          exit 1
+        fi
+        echo "uwh-common is being taken from this PR."
+
+    - name: Build and test the overlay against it
+      run: cd overlay-repo && cargo build --all && cargo test --all

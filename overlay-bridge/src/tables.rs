@@ -1390,4 +1390,80 @@ mod tests {
 
         assert_eq!(get(row, "player"), "NGUYEN");
     }
+    /// The exact column set every vMix table serves. **Pinned deliberately, and a failure here is a
+    /// question rather than a list to update.**
+    ///
+    /// Rows are `BTreeMap`s, so columns serialize in alphabetical order, and a vMix title left on
+    /// positional fallback reads whichever column now occupies its position rather than the one it
+    /// was bound to. That has already happened for real: a title expecting `blackTeam` received
+    /// `blackFouls`. So adding, removing or renaming any column below silently repoints every
+    /// positionally-bound title after it, on air, with no error anywhere -- a vMix title has no
+    /// logic and therefore no error path. See the design spec's section 3.
+    #[test]
+    fn the_vmix_tables_column_names_are_frozen() {
+        let display = display_with(GameSnapshot::default());
+        let rosters = Rosters::default();
+
+        let columns = |rows: &[BTreeMap<String, String>]| -> Vec<String> {
+            rows.first()
+                .expect("every table serves at least one row")
+                .keys()
+                .cloned()
+                .collect()
+        };
+
+        assert_eq!(
+            columns(&scorebug(&display, None, true)),
+            vec![
+                "blackFouls",
+                "blackScore",
+                "blackTeam",
+                "blackWarnings",
+                "clock",
+                "clockSeconds",
+                "connected",
+                "equalFouls",
+                "period",
+                "timeout",
+                "timeoutClock",
+                "timeoutClockSeconds",
+                "whiteFouls",
+                "whiteScore",
+                "whiteTeam",
+                "whiteWarnings",
+            ],
+            "/scorebug columns"
+        );
+
+        assert_eq!(
+            columns(&next_game(None, true)),
+            vec!["blackTeam", "connected", "court", "startTime", "whiteTeam"],
+            "/nextgame columns"
+        );
+
+        assert_eq!(
+            columns(&penalties(&display, &rosters, true)),
+            vec![
+                "connected",
+                "infraction",
+                "number",
+                "player",
+                "team",
+                "time",
+                "timeSeconds",
+            ],
+            "/penalties columns"
+        );
+
+        for (name, rows) in [
+            ("/fouls", fouls(&display, &rosters, true)),
+            ("/warnings", warnings(&display, &rosters, true)),
+        ] {
+            assert_eq!(
+                columns(&rows),
+                vec!["connected", "infraction", "number", "player", "team"],
+                "{name} columns"
+            );
+        }
+    }
 }

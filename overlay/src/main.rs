@@ -20,9 +20,13 @@ use std::{cmp::Ordering, str::FromStr};
 use std::{net::IpAddr, path::PathBuf};
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot};
 
+#[cfg(feature = "bridge")]
+mod bridge_network;
 mod feed;
 mod flag;
 mod load_images;
+#[cfg(feature = "ndi")]
+mod ndi_output;
 mod network;
 use network::{BLACK_TEAM_NAME, WHITE_TEAM_NAME};
 mod pages;
@@ -36,6 +40,10 @@ pub struct AppConfig {
     refbox_ip: IpAddr,
     refbox_port: u16,
     uwhportal_url: String,
+    /// Address of an `overlay-bridge` instance's `/game` feed, used only when built with
+    /// the `bridge` feature. Harmless when that feature is off -- just an unused setting
+    /// sitting in the config file.
+    bridge_url: String,
 }
 
 impl Default for AppConfig {
@@ -44,6 +52,7 @@ impl Default for AppConfig {
             refbox_ip: IpAddr::from_str("127.0.0.1").unwrap(),
             refbox_port: 8000,
             uwhportal_url: String::from("https://api.uwhportal.com"),
+            bridge_url: String::from("http://127.0.0.1:8099"),
         }
     }
 }
@@ -239,8 +248,13 @@ async fn main() {
 
     let (tx, rx) = bounded::<StateUpdate>(3);
 
+    #[cfg(not(feature = "bridge"))]
     let net_worker = std::thread::spawn(|| {
         network::networking_thread(tx, config);
+    });
+    #[cfg(feature = "bridge")]
+    let net_worker = std::thread::spawn(|| {
+        bridge_network::networking_thread(tx, config);
     });
 
     let assets = load_images::Textures::default();
@@ -274,6 +288,15 @@ async fn main() {
 
     let mut flag_renderer = flag::Renderer::new();
     macroquad::window::miniquad::window::show_mouse(false);
+
+    #[cfg(feature = "ndi")]
+    let mut ndi_output = match ndi_output::NdiOutput::new("UWH Overlay") {
+        Ok(output) => Some(output),
+        Err(e) => {
+            warn!("Failed to start NDI output, continuing without it: {e}");
+            None
+        }
+    };
 
     loop {
         assert!(!net_worker.is_finished(), "Networking thread panikd!");
@@ -332,6 +355,12 @@ async fn main() {
                 flag_renderer.draw();
             }
         }
+
+        #[cfg(feature = "ndi")]
+        if let Some(ndi_output) = ndi_output.as_mut() {
+            ndi_output.send_frame(&get_screen_data());
+        }
+
         next_frame().await;
     }
 }

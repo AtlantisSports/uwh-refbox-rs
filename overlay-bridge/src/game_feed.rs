@@ -99,7 +99,14 @@ pub struct GameFeed {
     pub black_team: Option<String>,
     pub white_team: Option<String>,
     pub timeout: Option<Timeout>,
+    /// From `GameSnapshot::game_number()`, **not** the raw `game_number` field. The accessor is
+    /// period-dependent: during Between Games the upcoming game is the one being reported, so it
+    /// returns `next_game_number` instead. Reading the raw field here would report the finished
+    /// game as current for the whole break.
     pub game_number: Option<String>,
+    /// From `GameSnapshot::next_game_number()`, which is `None` during Between Games -- in that
+    /// state the "next" game is already the current one, so there is no separate next. `null`
+    /// here therefore means "no distinct next game", not "disconnected"; `connected` answers that.
     pub next_game_number: Option<String>,
     pub is_old_game: Option<bool>,
     pub recent_goal: Option<Goal>,
@@ -111,6 +118,31 @@ pub struct GameFeed {
     pub event_id: Option<String>,
     /// Paired with `event_id`, and served credential-stripped.
     pub portal_base_url: Option<String>,
+}
+
+/// The address with any `user:password@` prefix removed, leaving scheme, host and path.
+///
+/// `base_url` is a plain `String` normalised only by trimming a trailing slash
+/// (`uwh-common/src/uwhportal/mod.rs`), and nothing anywhere strips credentials from it. That has
+/// never mattered while the value was only used to build requests, but this one is served over
+/// HTTP to anything on the network.
+///
+/// Splits on the **last** `@` in the authority, so a password containing `@` cannot leave part of
+/// itself behind. Anything without `://` is returned unchanged -- the refbox refuses non-http
+/// schemes upstream, and inventing a repair here would be guessing.
+fn without_credentials(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_string();
+    };
+    let (authority, path) = match rest.find('/') {
+        Some(index) => (&rest[..index], &rest[index..]),
+        None => (rest, ""),
+    };
+    let authority = match authority.rsplit_once('@') {
+        Some((_credentials, host)) => host,
+        None => authority,
+    };
+    format!("{scheme}://{authority}{path}")
 }
 
 /// Every penalty on the snapshot, ordered exactly as `tables::penalties` orders it so both
@@ -194,6 +226,17 @@ pub fn game_feed(
 
     let snapshot = &display.snapshot;
 
+    // Both or neither -- see `without_credentials`. An id without its portal address cannot be
+    // resolved safely, because ids are not unique across portal environments; `server.rs`'s own
+    // `LastSeen` treats the two as a unit for the same reason.
+    let (event_id, portal_base_url) = match (
+        snapshot.event_id.as_ref(),
+        snapshot.portal_base_url.as_deref(),
+    ) {
+        (Some(id), Some(url)) => (Some(id.full().to_string()), Some(without_credentials(url))),
+        _ => (None, None),
+    };
+
     GameFeed {
         schema_version: SCHEMA_VERSION,
         connected: true,
@@ -216,8 +259,8 @@ pub fn game_feed(
         }),
         next_period_len_secs: snapshot.next_period_len_secs,
         penalties: Some(penalties_of(snapshot, rosters)),
-        event_id: None,
-        portal_base_url: None,
+        event_id,
+        portal_base_url,
     }
 }
 
@@ -229,6 +272,7 @@ mod tests {
         game_snapshot::{
             GamePeriod, GameSnapshot, Infraction, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
         },
+        uwhportal::schedule::EventId,
     };
 
     use super::*;
@@ -518,5 +562,134 @@ mod tests {
             unknown.player, None,
             "an unknown cap number serves null, never a placeholder"
         );
+    }
+    /// An event id is useless and unsafe on its own: ids are not unique across portal
+    /// environments, so `1889-B` is one tournament on the development portal and a different one
+    /// on production. A consumer must be able to see which portal the id belongs to, so the two
+    /// travel together -- both or neither, as `server.rs` already treats them.
+    #[test]
+    fn the_event_id_and_portal_address_are_both_or_neither() {
+        let paired = GameSnapshot {
+            event_id: Some(EventId::from_partial("1889-B")),
+            portal_base_url: Some("https://api.dev.uwhportal.com".to_string()),
+            ..Default::default()
+        };
+        let feed = game_feed(&display_with(paired), None, &Rosters::default(), true);
+        assert_eq!(feed.event_id.as_deref(), Some("events/1889-B"));
+        assert_eq!(
+            feed.portal_base_url.as_deref(),
+            Some("https://api.dev.uwhportal.com")
+        );
+
+        let id_only = GameSnapshot {
+            event_id: Some(EventId::from_partial("1889-B")),
+            portal_base_url: None,
+            ..Default::default()
+        };
+        let feed = game_feed(&display_with(id_only), None, &Rosters::default(), true);
+        assert_eq!(
+            feed.event_id, None,
+            "an id with no portal address must not be served -- it cannot be resolved safely"
+        );
+        assert_eq!(feed.portal_base_url, None);
+
+        let url_only = GameSnapshot {
+            event_id: None,
+            portal_base_url: Some("https://api.dev.uwhportal.com".to_string()),
+            ..Default::default()
+        };
+        let feed = game_feed(&display_with(url_only), None, &Rosters::default(), true);
+        assert_eq!(feed.event_id, None);
+        assert_eq!(feed.portal_base_url, None);
+    }
+
+    /// The id must never be rendered through `Display`, which writes "Event ID events/1889-B" --
+    /// a human label, not an id.
+    #[test]
+    fn the_event_id_is_not_its_display_label() {
+        let snapshot = GameSnapshot {
+            event_id: Some(EventId::from_partial("1889-B")),
+            portal_base_url: Some("https://api.dev.uwhportal.com".to_string()),
+            ..Default::default()
+        };
+        let feed = game_feed(&display_with(snapshot), None, &Rosters::default(), true);
+        let served = feed.event_id.expect("paired, so served");
+        assert!(
+            !served.contains("Event ID"),
+            "served {served:?} -- Display was used instead of .full()"
+        );
+    }
+
+    /// `/game` is readable by anything on the network, and the portal address is normalised only
+    /// by trimming a trailing slash -- nothing strips a `user:password@` prefix. Serving it raw
+    /// would put a credential an operator typed into a custom site address onto the network.
+    #[test]
+    fn a_credential_in_the_portal_address_is_not_served() {
+        for (raw, expected) in [
+            (
+                "https://someone:s3cret@api.dev.uwhportal.com",
+                "https://api.dev.uwhportal.com",
+            ),
+            (
+                "https://someone:p%40ss@api.dev.uwhportal.com/base",
+                "https://api.dev.uwhportal.com/base",
+            ),
+            // A password containing `@` must not leave part of itself behind -- the split is on
+            // the LAST `@` in the authority, not the first.
+            (
+                "https://someone:has@at@api.dev.uwhportal.com/base",
+                "https://api.dev.uwhportal.com/base",
+            ),
+            (
+                "https://api.dev.uwhportal.com/base",
+                "https://api.dev.uwhportal.com/base",
+            ),
+        ] {
+            let snapshot = GameSnapshot {
+                event_id: Some(EventId::from_partial("1889-B")),
+                portal_base_url: Some(raw.to_string()),
+                ..Default::default()
+            };
+            let feed = game_feed(&display_with(snapshot), None, &Rosters::default(), true);
+            assert_eq!(
+                feed.portal_base_url.as_deref(),
+                Some(expected),
+                "stripping {raw:?}"
+            );
+        }
+    }
+    /// The two game-number fields go through period-dependent accessors, not raw fields: during
+    /// Between Games the upcoming game *is* the current one. Locked in here because the obvious
+    /// "simplification" -- reading `snapshot.game_number` directly -- would report the finished
+    /// game as current for the whole break, and would still pass every other test in this file.
+    #[test]
+    fn between_games_the_upcoming_game_is_reported_as_the_current_one() {
+        let between = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            is_old_game: false,
+            game_number: "10".to_string(),
+            next_game_number: "20".to_string(),
+            ..Default::default()
+        };
+        let feed = game_feed(&display_with(between), None, &Rosters::default(), true);
+        assert_eq!(
+            feed.game_number.as_deref(),
+            Some("20"),
+            "between games, the upcoming game is the one being reported"
+        );
+        assert_eq!(
+            feed.next_game_number, None,
+            "there is no separate next game while the next game is the current one"
+        );
+
+        let playing = GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            game_number: "10".to_string(),
+            next_game_number: "20".to_string(),
+            ..Default::default()
+        };
+        let feed = game_feed(&display_with(playing), None, &Rosters::default(), true);
+        assert_eq!(feed.game_number.as_deref(), Some("10"));
+        assert_eq!(feed.next_game_number.as_deref(), Some("20"));
     }
 }

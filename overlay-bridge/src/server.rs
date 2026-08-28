@@ -6,7 +6,14 @@
 //!
 //! `GET /scorebug`, `/penalties`, `/fouls`, `/warnings`, `/nextgame` each serve exactly what
 //! [`tables`] builds for them -- a JSON array of objects, every row carrying a `connected`
-//! column, as documented on those functions. `GET /status.json` reports, in the same
+//! column, as documented on those functions.
+//!
+//! `GET /game` is the one route that is **not** a table: a single JSON object of real values
+//! (numbers as numbers, a nested penalty list) for a consumer that reads values rather than the
+//! display strings vMix needs, carrying its own `schemaVersion` -- see [`game_feed`]'s module doc
+//! for why it is a separate route and not extra columns on `/scorebug`.
+//!
+//! `GET /status.json` reports, in the same
 //! "always a JSON array" shape (its columns are this module's own invention, not a `tables`
 //! shape), whether the refbox is currently in contact ([`feed::Connection`]), the current game
 //! number and period, how long the connection has been down (Task 7, only while it is down --

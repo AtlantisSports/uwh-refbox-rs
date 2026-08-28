@@ -524,7 +524,7 @@ fn finish_table(
 /// `"BLACK"` / `"WHITE"` -- the literal team identifiers used in every table's `team` column,
 /// matching the overlay's own convention (`overlay/src/network.rs`, `BLACK_TEAM_NAME` /
 /// `WHITE_TEAM_NAME`).
-fn color_code(color: Color) -> &'static str {
+pub(crate) fn color_code(color: Color) -> &'static str {
     match color {
         Color::Black => "BLACK",
         Color::White => "WHITE",
@@ -539,7 +539,7 @@ fn clock_string(total_secs: u32) -> String {
 }
 
 /// The remaining seconds carried by any [`TimeoutSnapshot`] variant.
-fn timeout_seconds(timeout: TimeoutSnapshot) -> u16 {
+pub(crate) fn timeout_seconds(timeout: TimeoutSnapshot) -> u16 {
     match timeout {
         TimeoutSnapshot::Black(secs)
         | TimeoutSnapshot::White(secs)
@@ -559,7 +559,7 @@ fn timeout_seconds(timeout: TimeoutSnapshot) -> u16 {
 /// variants -- harmless where nothing ever put it in front of an audience, but this bridge would
 /// be the first thing that did, so it gets its own labels instead of inheriting that
 /// inconsistency onto a live broadcast.
-fn timeout_label(timeout: TimeoutSnapshot) -> &'static str {
+pub(crate) fn timeout_label(timeout: TimeoutSnapshot) -> &'static str {
     match timeout {
         TimeoutSnapshot::Black(_) => "Black Timeout",
         TimeoutSnapshot::White(_) => "White Timeout",

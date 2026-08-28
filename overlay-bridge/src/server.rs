@@ -111,6 +111,7 @@ use uwh_common::{
 use crate::{
     config, discovery,
     feed::{Connection, ConnectionState, ConnectionStatus, FeedMessage, FeedTarget, RefboxAddress},
+    game_feed,
     portal::{Directory, TeamNames},
     state::{Display, LiveState},
     status::{self, Notice, ScanOutcome},
@@ -344,6 +345,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/fouls", get(get_fouls))
         .route("/warnings", get(get_warnings))
         .route("/nextgame", get(get_next_game))
+        .route("/game", get(get_game))
         .route("/status.json", get(get_status))
         .route("/", get(get_status_page))
         .route("/page.json", get(get_page_json))
@@ -358,6 +360,22 @@ async fn get_scorebug(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<S
     Json(tables::scorebug(
         &display,
         names.as_ref(),
+        is_connected(&state),
+    ))
+}
+
+/// The typed feed for a consumer that reads values rather than display strings -- see
+/// `game_feed`'s module doc. Deliberately a separate route rather than extra columns on
+/// `/scorebug`: a vMix title bound by position reads whichever column occupies its position, so
+/// adding one to an existing table silently repoints every title after it.
+async fn get_game(State(state): State<Arc<AppState>>) -> Json<game_feed::GameFeed> {
+    let display = current_display(&state);
+    let names = names_for_game(&state, display.snapshot.game_number());
+    let rosters = current_rosters(&state, &display.snapshot);
+    Json(game_feed::game_feed(
+        &display,
+        names.as_ref(),
+        &rosters,
         is_connected(&state),
     ))
 }
@@ -1151,6 +1169,9 @@ mod tests {
 
     // ---------------------------------------------------------------- routes, generally
 
+    /// **`/game` is deliberately absent from the list below.** It serves a single JSON object,
+    /// not the array every vMix table serves, so adding it here would fail the `is_array` check.
+    /// Its own shape is covered by `the_game_route_serves_a_typed_object_not_a_table`.
     #[tokio::test]
     async fn every_route_returns_200_json_content_type_and_a_json_array() {
         let state = Arc::new(AppState::new(config::Resolved::default()));
@@ -1202,6 +1223,58 @@ mod tests {
         // 404 didn't take the process down with it.
         let body = get_json(addr, "/scorebug").await;
         assert!(body.is_array());
+    }
+
+    // ---------------------------------------------------------------- /game
+
+    #[tokio::test]
+    async fn the_game_route_serves_a_typed_object_not_a_table() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        mark_connected(&state);
+        *write_lock(&state.live) = LiveState::new(
+            GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                secs_in_period: 431,
+                scores: BlackWhiteBundle { black: 3, white: 2 },
+                game_number: "10".to_string(),
+                ..Default::default()
+            },
+            Instant::now(),
+        );
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        let body = get_json(addr, "/game").await;
+
+        // An object, not the array every vMix table serves -- there is no positional consumer
+        // here to protect, so there is no table shape to preserve.
+        assert!(
+            body.is_object(),
+            "/game should serve one object, got {body:?}"
+        );
+        assert_eq!(body["connected"].as_bool(), Some(true));
+        assert_eq!(body["blackScore"].as_u64(), Some(3));
+        assert_eq!(body["secsInPeriod"].as_u64(), Some(431));
+        assert_eq!(body["schemaVersion"].as_u64(), Some(1));
+    }
+
+    /// A bridge that has never connected serves nulls, not zeros -- the same case
+    /// `a_never_connected_bridge_serves_connected_false_and_blank_tables` covers for the vMix
+    /// tables.
+    #[tokio::test]
+    async fn a_never_connected_bridge_serves_a_null_game_feed() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let addr = spawn_test_server(state).await;
+
+        let body = get_json(addr, "/game").await;
+
+        assert_eq!(body["connected"].as_bool(), Some(false));
+        assert_eq!(body["schemaVersion"].as_u64(), Some(1));
+        assert!(
+            body["blackScore"].is_null(),
+            "a blank score must not read as 0"
+        );
+        assert!(body["period"].is_null());
+        assert!(body["penalties"].is_null());
     }
 
     // ---------------------------------------------------------------- /nextgame picks the right game

@@ -41,9 +41,6 @@ pub struct GameSnapshotNoHeap {
 #[derive(Debug, PartialEq, Eq, Default, Clone, Serialize, Deserialize)]
 pub struct GameSnapshot {
     pub current_period: GamePeriod,
-    // DELIBERATE BREAK -- proves the overlay canary catches a wire-format change that
-    // compiles cleanly on BOTH sides. Reverted in the next commit.
-    #[serde(rename = "seconds_in_period")]
     pub secs_in_period: u32,
     pub timeout: Option<TimeoutSnapshot>,
     pub scores: BlackWhiteBundle<u8>,

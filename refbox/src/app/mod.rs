@@ -1596,20 +1596,14 @@ impl RefBoxApp {
             // wants the current list, and a stale one is what sends them to a
             // game that no longer exists.
             //
-            // Guarded for the same reason its sibling below is, and it is the
-            // same guard the APPLY path applies before its own portal fetch
-            // (`moved_to_portal && site_serves(...)`). `repoint_client` returns
-            // WITHOUT assigning `self.current_site` when `build_site_client`
-            // fails, so a Portal-committed source can still be talking to the
-            // custom client — and `RecvEventList` installs whatever answers as
-            // the portal picker's list with no site check of its own.
-            GameSource::Portal => {
-                if site_serves(self.current_site.kind, GameSource::Portal) {
-                    self.request_event_list()
-                } else {
-                    Task::none()
-                }
-            }
+            // Deliberately NOT guarded on the live client's site, unlike the
+            // Custom arm below: `request_event_list` builds its own portal
+            // client from `portal_target` rather than using the live one, so it
+            // always reaches the portal and cannot be misrouted. Guarding it
+            // would only suppress a refresh that would have worked — and it
+            // would defeat the ADR 017 amendment above, whose whole point is
+            // that this list loads whatever the source.
+            GameSource::Portal => self.request_event_list(),
             // A custom site names its event in the URL, so there is nothing to
             // pick — adopt it and pull its teams and schedule. Guarded because
             // step 2 leaves the client where it was when there is no usable

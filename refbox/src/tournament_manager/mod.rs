@@ -286,14 +286,24 @@ impl TournamentManager {
     }
 
     /// Return to the fresh-manual-launch before-game state: forget any loaded next-game
-    /// info and the Game Block grid slot, reset the game number, and start the break
-    /// clock counting down from the nominal break. Mirrors the app's startup sequence
-    /// (`TournamentManager::new` leaves the clock stopped, then `start_clock` runs), so
-    /// the before-game time counts down like a fresh launch rather than sitting frozen.
-    /// Precondition: called only in `BetweenGames` (the apply path and the
-    /// EndGameAndApply confirmation guarantee this).
+    /// info and the Game Block grid slot, drop the schedule link, reset the game number,
+    /// and start the break clock counting down from the nominal break. Mirrors the app's
+    /// startup sequence (`TournamentManager::new` leaves the clock stopped, then
+    /// `start_clock` runs), so the before-game time counts down like a fresh launch
+    /// rather than sitting frozen.
+    /// Precondition: called only in `BetweenGames`, and only where the app is committing
+    /// to `GameSource::Manual` (the apply path and the EndGameAndApply confirmation
+    /// guarantee both; each calls `commit_source(GameSource::Manual)` on the same Apply,
+    /// so the app's view of linkage and the engine's agree either way).
     pub fn reset_to_manual_break(&mut self, now: Instant) {
         self.clear_portal_next_game();
+        // A manual break is by definition not tied to anyone's schedule. Both halves of
+        // `no_startable_next_game` have to go, not just one: `clear_portal_next_game`
+        // above drops `no_next_game`, and leaving `schedule_linked` standing would make
+        // the `start_clock` at the end of this very method refuse — the break would sit
+        // frozen and the next game would go unnamed, which is the finished-court state
+        // this reset exists to leave.
+        self.set_schedule_linked(false);
         // Reset to the fresh-launch default so the game selection clears, matching TournamentManager::new.
         self.game_number = "0".to_string();
         self.clock_state = ClockState::Stopped {
@@ -9358,6 +9368,55 @@ mod test {
             tm.game_clock_time(now + Duration::from_secs(10)),
             Some(Duration::from_secs(170)),
             "the break clock should count down",
+        );
+    }
+
+    /// Regression test for the switch-to-manual path out of a finished court.
+    ///
+    /// The operator's escape from "this court has no more games" is to turn the
+    /// site off. That path resets the engine to a manual break — which must
+    /// actually start counting down. While the engine still believes a schedule
+    /// owns it, `start_clock` refuses (there is no next game a schedule has
+    /// named), so the break would sit frozen and START NOW would stay greyed:
+    /// the very trap the operator switched the portal off to escape.
+    #[test]
+    fn test_reset_to_manual_break_starts_the_break_when_schedule_linked() {
+        initialize();
+        let config = GameConfig {
+            nominal_break: Duration::from_secs(180),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        // The state a court that has played its last game is left in: linked to a
+        // site's schedule, with no next game named and the break clock stopped.
+        tm.set_schedule_linked(true);
+        tm.set_game_number("5");
+        assert!(
+            tm.next_game_number().is_empty(),
+            "fixture check: a schedule-linked engine with no next game names none",
+        );
+
+        let now = Instant::now();
+        tm.reset_to_manual_break(now);
+
+        assert!(
+            tm.clock_is_running(),
+            "the break clock should be running (counting down) even when the engine was schedule-linked",
+        );
+        assert_eq!(
+            tm.game_clock_time(now),
+            Some(Duration::from_secs(180)),
+            "the break clock should start at the nominal break",
+        );
+        assert_eq!(
+            tm.game_clock_time(now + Duration::from_secs(10)),
+            Some(Duration::from_secs(170)),
+            "the break clock should count down",
+        );
+        assert_eq!(
+            tm.next_game_number(),
+            "1",
+            "manual numbering should resume from the fresh-launch default",
         );
     }
 

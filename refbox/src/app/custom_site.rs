@@ -161,8 +161,10 @@ pub fn strip_credentials(base_url: &str) -> Option<String> {
         return None;
     }
 
-    // Both fail only on a URL that cannot have credentials (a cannot-be-a-base URL), which the
-    // scheme check above has already excluded.
+    // These two `?`s are load-bearing, not defensive. `set_username`/`set_password` return Err
+    // when the URL has no host or an empty domain host -- which is exactly how `https://user@`
+    // ends up reporting nothing -- and also for the `file` scheme, which the check above already
+    // excluded. Do not assume the scheme check alone makes them infallible.
     url.set_username("").ok()?;
     url.set_password(None).ok()?;
 
@@ -441,11 +443,41 @@ mod test {
     }
 
     /// Adding credentials to a site must not change anything else about the reported address.
+    ///
+    /// Both sides are asserted against a literal, not against each other: comparing
+    /// `strip_credentials(a)` with `strip_credentials(b)` passes on `None == None`, so it would
+    /// stay green if the function returned nothing at all.
     #[test]
     fn adding_credentials_does_not_change_the_rest_of_the_address() {
         assert_eq!(
-            strip_credentials("https://Scoreboard.Local:443/x"),
-            strip_credentials("https://user:pw@Scoreboard.Local:443/x")
+            strip_credentials("https://Scoreboard.Local:443/x").as_deref(),
+            Some("https://scoreboard.local/x")
+        );
+        assert_eq!(
+            strip_credentials("https://user:pw@Scoreboard.Local:443/x").as_deref(),
+            Some("https://scoreboard.local/x")
+        );
+    }
+
+    /// The three normalisations the public field doc promises consumers. Asserted explicitly,
+    /// because a change that stopped doing any of them would alter every consumer's resolved
+    /// address while leaving the rest of this suite green.
+    #[test]
+    fn the_documented_normalisations_are_applied() {
+        // Host lower-cased.
+        assert_eq!(
+            strip_credentials("https://Scoreboard.LOCAL/x").as_deref(),
+            Some("https://scoreboard.local/x")
+        );
+        // Default port dropped.
+        assert_eq!(
+            strip_credentials("https://scoreboard.local:443/x").as_deref(),
+            Some("https://scoreboard.local/x")
+        );
+        // International name punycoded.
+        assert_eq!(
+            strip_credentials("https://schöne.example/api").as_deref(),
+            Some("https://xn--schne-lua.example/api")
         );
     }
 

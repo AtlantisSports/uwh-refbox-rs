@@ -208,6 +208,18 @@ pub struct RefBoxApp {
     /// One-shot: the game number to re-select once the schedule arrives during
     /// a startup link restore; cleared on first use. `None` in normal operation.
     pending_restore_game: Option<GameNumber>,
+    /// The game most recently played to a recorded result on this court: the
+    /// anchor the schedule search starts from. Advanced only in `handle_game_end`,
+    /// and only when the result that was recorded belongs to the game that just
+    /// ended — an abandoned or interrupted game leaves it alone. Cleared whenever
+    /// it stops being valid for the live event/court (portal switched off, or the
+    /// Apply paths that repoint `current_event_id`/`current_court`): a carried-over
+    /// anchor points at a real but wrong game and looks entirely plausible.
+    last_played: Option<GameNumber>,
+    /// The anchor's scheduled start, persisted alongside `last_played` so the
+    /// search still works when the anchor game itself has been removed from the
+    /// schedule.
+    last_played_start: Option<time::OffsetDateTime>,
     /// One-shot: the restored session remembered a court but no game, which is how
     /// a court whose schedule is finished is written down. Distinct from "no note at
     /// all": it is a recorded fact, not an absence, and without it the fresh engine
@@ -1145,6 +1157,26 @@ fn picker_roster_game(snapshot: &GameSnapshot) -> Option<&GameNumber> {
     }
 }
 
+/// The anchor after a game leaves the clock: advanced only when the result that
+/// was recorded belongs to the game that just ended.
+///
+/// `recorded` is the game number the newest recorded result belongs to, or `None`
+/// when no result was recorded at all. Both non-matching cases mean the game was
+/// abandoned or interrupted, and the anchor must not move — the same game is
+/// offered again, which is recoverable, where skipping it is not.
+fn anchor_after_game_end(
+    recorded: Option<&GameNumber>,
+    ended: &GameNumber,
+    scheduled_start: Option<time::OffsetDateTime>,
+    current: (Option<GameNumber>, Option<time::OffsetDateTime>),
+) -> (Option<GameNumber>, Option<time::OffsetDateTime>) {
+    if recorded_result_matches_ended_game(recorded, ended) {
+        (Some(ended.clone()), scheduled_start)
+    } else {
+        current
+    }
+}
+
 /// `true` when the break now on screen will start nothing when it expires: we are
 /// between games and the next-game number is blank, which is how the refbox reports
 /// that the selected court has no further scheduled games.
@@ -1684,6 +1716,14 @@ impl RefBoxApp {
             court,
             schedule,
         } = selection;
+        // The anchor describes the last game played on one particular event and
+        // court (decision 25), so it cannot outlive a change to either. Cleared
+        // here rather than at each caller because this is the one funnel every
+        // APPLY path goes through, and it must read the outgoing event/court
+        // before the writes below replace them. `LinkSelection::manual()` carries
+        // `None`/`None` — the portal going off entirely — which compares unequal
+        // whenever there was a live event or court for the anchor to describe.
+        self.clear_anchor_if_event_or_court_changing(&event_id, &court);
         self.commit_source(source);
         // Route through set_current_event_id so portal_event_id stays in sync
         // (ADR 011 amendment 2026-04-23 dormant-until-linked).
@@ -2254,6 +2294,20 @@ impl RefBoxApp {
                 {
                     info!("Game ended, scores: {scores:?} stats were: {stats:?}");
 
+                    let scheduled_start = self
+                        .schedule
+                        .as_ref()
+                        .and_then(|s| s.games.get(game_number))
+                        .map(|g| g.start_time);
+                    let (anchor, anchor_start) = anchor_after_game_end(
+                        Some(&recorded_game),
+                        game_number,
+                        scheduled_start,
+                        (self.last_played.clone(), self.last_played_start),
+                    );
+                    self.last_played = anchor;
+                    self.last_played_start = anchor_start;
+
                     if let Some(ref event_id) = self.current_event_id {
                         let event_id_str = event_id.full().to_string();
                         tasks.push(self.request_schedule(event_id.clone()));
@@ -2286,6 +2340,14 @@ impl RefBoxApp {
                     );
                 }
             }
+
+            // Write the anchor down now. Acceptance criterion 2 closes and reopens
+            // the app seconds after the last game ends; the health-tick heartbeat
+            // that normally refreshes the note is ~5 minutes away. Kept inside
+            // `uses_remote()`: outside it, manual mode would reach
+            // `persist_link_session`, whose not-linked branch deletes the note —
+            // a delete reachable from the game-clock path for no benefit.
+            self.persist_link_session();
         }
 
         Task::batch(tasks)
@@ -2365,7 +2427,7 @@ impl RefBoxApp {
                 // The game the operator is on, taken from the live engine — see
                 // `link_note_game` for why the cached snapshot cannot be trusted
                 // here, and why "I don't know yet" must not be written down.
-                let game_number = match link_note_game(&self.tm.lock().unwrap()) {
+                let game_number = match link_note_game(&self.tm.lock()) {
                     LinkNoteGame::Write(game_number) => game_number,
                     // Nothing is known yet, so there is nothing worth saying.
                     // Returning leaves the existing note untouched — including a
@@ -2378,9 +2440,8 @@ impl RefBoxApp {
                     event_id,
                     court: self.current_court.clone(),
                     current_game: game_number,
-                    // Task 4 fills these in from the engine's recorded results.
-                    last_played: None,
-                    last_played_start: None,
+                    last_played: self.last_played.clone(),
+                    last_played_start: self.last_played_start,
                     mode: self.config.mode,
                     last_active: time::OffsetDateTime::now_utc(),
                 };
@@ -2392,6 +2453,22 @@ impl RefBoxApp {
         }
         if let Err(e) = link_session::delete(&self.config_dir) {
             error!("Failed to delete portal_link.json: {e}");
+        }
+    }
+
+    /// Clear the last-played anchor when an Apply is about to repoint the live
+    /// event or court. Must be called against the live values, before the new
+    /// ones are committed: the anchor is per-event and per-court, and a
+    /// carried-over anchor points at a real but wrong game and looks entirely
+    /// plausible (decision 25).
+    fn clear_anchor_if_event_or_court_changing(
+        &mut self,
+        new_event_id: &Option<EventId>,
+        new_court: &Option<String>,
+    ) {
+        if self.current_event_id != *new_event_id || self.current_court != *new_court {
+            self.last_played = None;
+            self.last_played_start = None;
         }
     }
 
@@ -3619,6 +3696,8 @@ impl RefBoxApp {
             pending_restore_game: None,
             pending_restore_court_finished: false,
             pending_restore_schedule: None,
+            last_played: None,
+            last_played_start: None,
             sound,
             sim_children,
             sim_spawn_config,
@@ -3686,6 +3765,8 @@ impl RefBoxApp {
                     // auto-start it when the break ran out.
                     new.pending_restore_court_finished =
                         note.court.is_some() && note.current_game.is_none();
+                    new.last_played = note.last_played.clone();
+                    new.last_played_start = note.last_played_start;
                     new.set_current_event_id(Some(note.event_id.clone()));
                     // Defer the schedule fetch to RecvEventList (after the event
                     // list populates self.events) so it can't race ahead of the
@@ -9161,6 +9242,63 @@ mod link_note_game_tests {
             link_note_game(&tm),
             LinkNoteGame::Write(Some("7".to_string()))
         );
+    }
+}
+
+#[cfg(test)]
+mod anchor_tests {
+    use super::anchor_after_game_end;
+    use time::macros::datetime;
+
+    #[test]
+    fn a_recorded_result_advances_the_anchor() {
+        let start = datetime!(2026-08-17 14:00:00 UTC);
+        let got = anchor_after_game_end(
+            Some(&"6".to_string()),
+            &"6".to_string(),
+            Some(start),
+            (None, None),
+        );
+        assert_eq!(got, (Some("6".to_string()), Some(start)));
+    }
+
+    #[test]
+    fn an_abandoned_game_leaves_the_anchor_alone() {
+        // No result was recorded, so as far as the tournament is concerned the
+        // game has not happened. Re-offering it costs seconds; skipping it loses
+        // the result and only surfaces at reconciliation.
+        let prev_start = datetime!(2026-08-17 13:00:00 UTC);
+        let current = (Some("5".to_string()), Some(prev_start));
+        let got = anchor_after_game_end(
+            None,
+            &"6".to_string(),
+            Some(datetime!(2026-08-17 14:00:00 UTC)),
+            current.clone(),
+        );
+        assert_eq!(got, current);
+    }
+
+    #[test]
+    fn a_result_recorded_for_a_different_game_leaves_the_anchor_alone() {
+        let prev_start = datetime!(2026-08-17 13:00:00 UTC);
+        let current = (Some("5".to_string()), Some(prev_start));
+        let got = anchor_after_game_end(
+            Some(&"5".to_string()),
+            &"6".to_string(),
+            Some(datetime!(2026-08-17 14:00:00 UTC)),
+            current.clone(),
+        );
+        assert_eq!(got, current);
+    }
+
+    #[test]
+    fn an_unscheduled_game_still_advances_the_number() {
+        // A game the schedule does not know still counts as played. The search
+        // then falls back to looking the anchor's time up, and answers Unknown if
+        // it cannot — never a guess.
+        let got =
+            anchor_after_game_end(Some(&"6".to_string()), &"6".to_string(), None, (None, None));
+        assert_eq!(got, (Some("6".to_string()), None));
     }
 }
 

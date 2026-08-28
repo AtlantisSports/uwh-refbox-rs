@@ -98,6 +98,17 @@ impl Directory {
     /// whatever owns this `Directory`) before [`names_for`] or [`player_name`] have anything to
     /// return.
     ///
+    /// **`portal_url` comes from the refbox feed ([`GameSnapshot::portal_base_url`]), and must
+    /// not be defaulted, derived or guessed at here.** There is deliberately no default and no
+    /// convenience constructor that supplies one: event ids are not unique across portal
+    /// environments -- `1889-B` is one tournament on the development portal and a different one on
+    /// production -- so a directory built for an address the refbox did not report will happily
+    /// fetch real team and player names for the wrong tournament and put them on the stream, with
+    /// nothing failing anywhere to say so. That is the incident of 2026-08-26. If a caller has no
+    /// address from the feed, the correct behaviour is to build no directory at all and leave the
+    /// names blank.
+    ///
+    /// [`GameSnapshot::portal_base_url`]: uwh_common::game_snapshot::GameSnapshot::portal_base_url
     /// [`refresh_schedule`]: Directory::refresh_schedule
     /// [`refresh_roster`]: Directory::refresh_roster
     /// [`names_for`]: Directory::names_for

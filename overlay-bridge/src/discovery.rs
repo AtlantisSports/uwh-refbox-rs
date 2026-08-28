@@ -65,6 +65,15 @@ pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 /// How many addresses a scan covers: the usable hosts of a /24, `.1` through `.254`.
 pub const HOSTS_PER_SUBNET: usize = 254;
 
+/// The longest budget [`probe`] will honour, whatever it is handed.
+///
+/// Not a policy about probing -- a day is absurd for a check the bridge itself gives two seconds
+/// to, and nothing depends on this figure. It exists only so the deadline can be worked out by
+/// addition without that addition being able to overflow: a day past any instant a running process
+/// can hold is still a representable instant, where `Duration::MAX` past it is not, and overflow
+/// there is a panic. See the clamp in [`read_one_snapshot`].
+const LONGEST_PROBE: Duration = Duration::from_secs(24 * 60 * 60);
+
 /// A confirmed refbox: where it is, and what it is showing right now.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Found {
@@ -136,6 +145,10 @@ impl std::error::Error for ProbeError {
 /// Which half of the attempt was still running when that deadline passed is what decides which
 /// failure the operator is told about, and the two say opposite things -- see
 /// [`read_one_snapshot`].
+///
+/// `within` is capped at [`LONGEST_PROBE`]; a budget beyond that is treated as that. Nothing in
+/// the bridge comes close, and the cap exists to keep the deadline arithmetic safe rather than to
+/// limit anyone.
 pub async fn probe(address: &RefboxAddress, within: Duration) -> Result<Found, ProbeError> {
     let connecting = TcpStream::connect((address.host.as_str(), address.port));
     probe_connecting(connecting, address, within).await
@@ -150,6 +163,11 @@ pub async fn probe(address: &RefboxAddress, within: Duration) -> Result<Found, P
 /// a budget each -- and neither can be observed from below. Proving them with real connections
 /// would mean finding an address that hangs on demand, which makes a test hostage to the network
 /// of whatever machine runs it; handing in the attempt costs one line at the caller instead.
+/// `connecting` must be the attempt on `address`. Nothing here can check that -- the future is
+/// opaque -- and a [`Found`] naming an address that was never reached would be believed by
+/// `choose_refbox` and pointed at by the supervisor. [`probe`] is the only caller, and builds both
+/// from the same address on adjacent lines; a test may pair a stand-in with any address it likes,
+/// because it asserts on the failure and never on a `Found`.
 async fn probe_connecting(
     connecting: impl std::future::Future<Output = std::io::Result<TcpStream>>,
     address: &RefboxAddress,
@@ -223,9 +241,8 @@ async fn read_one_snapshot(
     // passes anything but `PROBE_TIMEOUT`, but `probe` is public. Clamping rather than catching the
     // overflow afterwards keeps one figure in play, so the deadline and the "gave up after ..."
     // text can never disagree about how long the probe actually waited.
-    let within = within.min(Duration::from_secs(86_400));
-    let now = tokio::time::Instant::now();
-    let deadline = now + within;
+    let within = within.min(LONGEST_PROBE);
+    let deadline = tokio::time::Instant::now() + within;
 
     let stream = match timeout_at(deadline, connecting).await {
         Ok(Ok(stream)) => stream,
@@ -632,7 +649,8 @@ mod tests {
         // What it does NOT cover, and no test here can: `probe`'s own two lines. Wrap those in a
         // single timer reporting `Silent` and this test still passes, because it enters below
         // them. `probe` is kept to supplying the connection and delegating for exactly that
-        // reason, and the by-hand test at the end of this section is the check on it.
+        // reason, and `a_real_unroutable_address_is_unreachable_rather_than_silent` -- ignored,
+        // run by hand -- is the check on it.
         //
         // `started` is taken before the deadline it is compared against, never after: measuring
         // from a moment later than the deadline's own base makes `elapsed` undershoot `within`,
@@ -690,7 +708,7 @@ mod tests {
         });
 
         let within = Duration::from_millis(1000);
-        let connecting_takes = Duration::from_millis(500);
+        let connecting_takes = Duration::from_millis(900);
         let started = Instant::now();
         let slow_connect = async move {
             tokio::time::sleep(connecting_takes).await;
@@ -713,10 +731,114 @@ mod tests {
             elapsed < within + connecting_takes / 2,
             "the read must inherit only what the connection left, so the whole probe stays inside \
              its {within:?} budget. Two budgets -- {connecting_takes:?} connecting and then a \
-             fresh {within:?} reading -- would take about 1.5s. This took {elapsed:?}"
+             fresh {within:?} reading -- would take about 1.9s. This took {elapsed:?}"
         );
 
         silent.abort();
+    }
+
+    #[tokio::test]
+    #[ignore = "makes a real outbound connection to 192.0.2.1, so it goes red on correct code on \
+                any network that answers for that address (no route, an egress firewall rejecting \
+                rather than dropping, or a proxy that accepts everything). It is kept out of \
+                automatic runs for that reason and NOT because it is redundant: it is the only \
+                test that reaches the connect-timeout path through `probe` itself -- the others \
+                that call `probe` all get a prompt answer from loopback -- and the only one whose \
+                hanging connection is a real OS socket rather than a stand-in future that cancels \
+                cleanly on drop. Run it by hand with --ignored when changing how a probe is \
+                timed."]
+    async fn a_real_unroutable_address_is_unreachable_rather_than_silent() {
+        // The same rule as the deterministic test above, against a genuinely unroutable address
+        // and through the public entry point. Two things only this can see: that `probe`'s own
+        // wiring still hands the whole budget to one shared deadline rather than wrapping it in a
+        // timer of its own, and that abandoning a real half-open connection -- which owns an OS
+        // socket, and is dropped rather than politely cancelled -- behaves the same way.
+        //
+        // 192.0.2.1 is reserved by RFC 5737 for documentation and routed nowhere, so the
+        // connection hangs on any machine with a default route to hang it on. Where the network
+        // answers instead, the assertions below fail loudly and name the cause rather than
+        // quietly passing without having tested anything.
+        let unroutable = RefboxAddress::new("192.0.2.1", 8000);
+        let within = Duration::from_millis(300);
+
+        let started = Instant::now();
+        let result = probe(&unroutable, within).await;
+        let elapsed = started.elapsed();
+
+        let Err(ProbeError::Unreachable(reason)) = &result else {
+            panic!(
+                "a probe whose time ran out before it was ever connected has no evidence that \
+                 anything is listening, so it must report unreachable, got {result:?}"
+            );
+        };
+        assert_eq!(
+            reason.kind(),
+            std::io::ErrorKind::TimedOut,
+            "the attempt should have been abandoned when the probe ran out of time; any other \
+             error means this machine answered for 192.0.2.1 instead of dropping the attempt, so \
+             this run did not exercise what it claims to"
+        );
+        assert!(
+            elapsed >= within,
+            "the probe returned before its {within:?} budget was up, so the deadline had already \
+             passed and this run proved nothing about a connection being abandoned. Took \
+             {elapsed:?}"
+        );
+        assert!(
+            elapsed < within * 4,
+            "the probe must be bounded by the {within:?} it was handed and not by PROBE_TIMEOUT's \
+             two seconds. Took {elapsed:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_absurd_budget_is_capped_rather_than_crashing_the_probe() {
+        // `probe` is public, and works out its deadline by adding the budget to the current
+        // instant -- an addition that PANICS on overflow. The clamp that prevents it is one line
+        // with no other test touching it: delete it and every test here still passes, because
+        // nothing else passes a budget anywhere near large enough to reach it.
+        //
+        // The clock is paused, so the day-long capped deadline is reached by the runtime
+        // advancing virtual time rather than by waiting, and this costs no real seconds. A
+        // deleted clamp panics here instead of returning, and this test fails.
+        //
+        // One slip it does NOT turn into a clean failure, so that the next person recognises it:
+        // `min` written as `max` gives every probe a twenty-four hour budget, and while this test
+        // does fail, the real-clock timing tests around it simply stop finishing. The symptom is
+        // a test run that hangs rather than one that reports -- verified. If the suite ever hangs
+        // after a change to the line below, that is where to look first.
+        let address = RefboxAddress::new("192.0.2.1", 8000);
+
+        let result = probe_connecting(std::future::pending(), &address, Duration::MAX).await;
+
+        let Err(ProbeError::Unreachable(reason)) = &result else {
+            panic!("an absurd budget should still end as an ordinary failure, got {result:?}");
+        };
+        assert_eq!(
+            reason.kind(),
+            std::io::ErrorKind::TimedOut,
+            "the capped budget should run out like any other, got {reason:?}"
+        );
+    }
+
+    #[test]
+    fn a_silent_port_is_not_called_a_refbox_more_certainly_than_the_evidence_allows() {
+        // A refbox on a slow link can be reported silent -- the handshake eats the budget and
+        // leaves the read none -- so this sentence must not tell the operator flatly that what
+        // they typed is not a refbox. Asserting on "it did not send a game" alone would not hold
+        // that line: the wording this replaced contains it too.
+        let shown = ProbeError::Silent.to_string();
+
+        assert!(
+            shown.contains("did not send a game in time"),
+            "the sentence must say the game did not arrive IN TIME, since that is all that is \
+             known, got {shown:?}"
+        );
+        assert!(
+            shown.contains("probably not a refbox"),
+            "the verdict must stay hedged: a real refbox can land here on a slow link, got \
+             {shown:?}"
+        );
     }
 
     // ---------------------------------------------------------------------------- scan_targets
@@ -784,51 +906,6 @@ mod tests {
         assert!(
             found.is_empty(),
             "nothing was listening anywhere, so nothing should be reported, got {found:?}"
-        );
-    }
-
-    #[tokio::test]
-    #[ignore = "makes a real outbound connection to 192.0.2.1, so it goes red on correct code on \
-                any network that answers for that address (no route, an egress firewall rejecting \
-                rather than dropping, or a proxy that accepts everything). It is kept out of \
-                automatic runs for that reason and NOT because it is redundant: it is the only \
-                test that enters at `probe` itself, and the only one whose hanging connection is \
-                a real OS socket rather than a stand-in future that cancels cleanly on drop. Run \
-                it by hand with --ignored when changing how a probe is timed."]
-    async fn a_real_unroutable_address_is_unreachable_rather_than_silent() {
-        // The same rule as the deterministic test above, against a genuinely unroutable address
-        // and through the public entry point. Two things only this can see: that `probe`'s own
-        // wiring still hands the whole budget to one shared deadline rather than wrapping it in a
-        // timer of its own, and that abandoning a real half-open connection -- which owns an OS
-        // socket, and is dropped rather than politely cancelled -- behaves the same way.
-        //
-        // 192.0.2.1 is reserved by RFC 5737 for documentation and routed nowhere, so the
-        // connection hangs on any machine with a default route to hang it on. Where the network
-        // answers instead, the assertions below fail loudly and name the cause rather than
-        // quietly passing without having tested anything.
-        let unroutable = RefboxAddress::new("192.0.2.1", 8000);
-        let within = Duration::from_millis(300);
-
-        let started = Instant::now();
-        let result = probe(&unroutable, within).await;
-        let elapsed = started.elapsed();
-
-        let Err(ProbeError::Unreachable(reason)) = &result else {
-            panic!(
-                "a probe whose time ran out before it was ever connected has no evidence that \
-                 anything is listening, so it must report unreachable, got {result:?}"
-            );
-        };
-        assert_eq!(
-            reason.kind(),
-            std::io::ErrorKind::TimedOut,
-            "the attempt should have been abandoned when the probe ran out of time; any other \
-             error means this machine answered for 192.0.2.1 instead of dropping the attempt, so \
-             this run did not exercise what it claims to"
-        );
-        assert!(
-            elapsed >= within && elapsed < within * 4,
-            "the probe must spend its {within:?} budget and be bounded by it, took {elapsed:?}"
         );
     }
 

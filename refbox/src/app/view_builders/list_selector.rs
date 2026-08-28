@@ -98,9 +98,13 @@ pub(in super::super) fn build_list_selector_page<'a>(
             (num_items, make_buttons!(iter, transform))
         }
         ListableParameter::Court => {
-            // pool_btn_msg (configuration.rs:794-801) gates the Court tile's
-            // press action on this same events.get(*source, id)?.courts chain, so
-            // all three unwraps below are `Some` whenever this arm is reachable.
+            // `pool_btn_msg` in `configuration.rs` — the `token_rejected` guard —
+            // gates the Court tile's press action on this same
+            // events.get(*source, id)?.courts chain, so all three unwraps below
+            // are `Some` whenever this arm is reachable. Cited by name, not line:
+            // the previous line citation had already drifted onto a different
+            // button.
+
             let list = events
                 .get(settings.source, settings.current_event_id.as_ref().unwrap())
                 .unwrap()

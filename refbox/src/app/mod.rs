@@ -1161,7 +1161,11 @@ impl RefBoxApp {
 
     fn request_teams_list(&self, event_id: EventId) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
-            // why this cannot panic: see `request_event_list` above.
+            // why this cannot panic: the guard is held only long enough to build
+            // the request and is dropped before the await, and no writer panics
+            // while holding it. `request_event_list` used to carry this note and
+            // the sites below pointed at it, but it builds its own client now and
+            // takes no lock at all — so the justification lives here instead.
             let request = client.lock().unwrap().get_event_teams(&event_id);
             Task::future(async move {
                 match request.await {
@@ -1188,7 +1192,7 @@ impl RefBoxApp {
             // the moment the request is issued, because that is the only point
             // at which the answer is known.
             let source = self.source;
-            // why this cannot panic: see `request_event_list` above.
+            // why this cannot panic: see `request_teams_list` above.
             let request = client.lock().unwrap().get_team_roster(&team_id);
             Task::future(async move {
                 match request.await {
@@ -1216,7 +1220,7 @@ impl RefBoxApp {
 
     fn request_schedule(&self, event_id: EventId) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
-            // why this cannot panic: see `request_event_list` above.
+            // why this cannot panic: see `request_teams_list` above.
             let guard = client.lock().unwrap();
             let schedule_req = guard.get_event_schedule_privileged(&event_id);
             let names_req = guard.get_event_referee_name_map_from_referees(&event_id);
@@ -1260,7 +1264,7 @@ impl RefBoxApp {
 
     fn request_uwhportal_token(&self, event_id: &EventId, code: u32) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
-            // why this cannot panic: see `request_event_list` above.
+            // why this cannot panic: see `request_teams_list` above.
             let request = client.lock().unwrap().login_to_portal(event_id, code);
             let portal_name = portal_name_for_mode(self.config.mode);
             Task::future(async move {
@@ -1703,7 +1707,7 @@ impl RefBoxApp {
 
     fn check_uwhportal_auth(&self, event_id: &EventId) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
-            // why this cannot panic: see `request_event_list` above.
+            // why this cannot panic: see `request_teams_list` above.
             let has_token = client.lock().unwrap().has_token();
             if !has_token {
                 // Never ask a site to vouch for a credential we do not hold.
@@ -1713,7 +1717,7 @@ impl RefBoxApp {
                 // rejected state here instead, without sending the request.
                 return Task::done(Message::RecvTokenValid(event_id.clone(), false));
             }
-            // why this cannot panic: see `request_event_list` above.
+            // why this cannot panic: see `request_teams_list` above.
             let request = client.lock().unwrap().verify_token(event_id);
             // Tag the result with the event it was checked for so the handler
             // can drop a late reply for a previously-selected event.
@@ -1979,11 +1983,13 @@ impl RefBoxApp {
         }
 
         // This is the second commit site for `current_event_id` / `current_court`
-        // / `schedule` — `apply_game_options` is the first. Switching source
-        // deliberately leaves those fields staged in `edited_settings` instead of
-        // clearing them, so Custom -> Portal -> Custom stays lossless; the
-        // corollary is that every site committing them must independently check
-        // ownership before trusting them. Without this guard: commit Custom, stage
+        // / `schedule` — `apply_game_options` is the first. The ownership check
+        // is NOT here because a switch leaves those fields staged: it no longer
+        // does, `switch_to_source` clears them. It is here because more than one
+        // site commits these fields and each must vouch for them independently,
+        // and because `owns` alone cannot prove provenance — custom sites are
+        // required to reuse portal event numbering, so the same id resolves in
+        // either store, which is why it is ANDed with `site_serves`. Without this guard: commit Custom, stage
         // Portal on the Game page, APPLY there (which correctly nulls the commit
         // because the selection isn't owned), then reopen App Options and APPLY
         // again — that second Apply would re-commit the still-staged custom event

@@ -740,11 +740,13 @@ fn make_event_config_page<'a>(
     // Game-number picker — placed in the centre cell of the action row
     // (Cancel | Game | Apply) in both portal modes per ADR-009 Task 14 layout.
     //
-    // A staged source switch deliberately leaves `current_event_id` /
-    // `current_court` / `schedule` unchanged in `edited_settings` (see
-    // `EventStore`), so on a bare switch these can still resolve against the
-    // OTHER source's schedule. `event_label` and `pool_label` below already
-    // gate on ownership through `events.get`; this tile has to as well, or it
+    // Gated on ownership because `owns` is an id lookup and custom sites are
+    // required to reuse portal event numbering, so the same id resolves in
+    // either store — a staged selection is not proof of provenance. (It is no
+    // longer true that a source switch leaves these fields staged;
+    // `switch_to_source` clears them. The guard stays because the check has to
+    // hold wherever the tile is drawn, not because of that.) `event_label` and
+    // `pool_label` below gate the same way; this tile has to as well, or it
     // would keep showing — and let the operator open — the other source's
     // games and team names.
     let selection_owned = events.owns(*source, current_event_id.as_ref());

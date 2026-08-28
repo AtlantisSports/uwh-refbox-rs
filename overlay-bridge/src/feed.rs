@@ -1017,6 +1017,7 @@ mod tests {
             game_number: "1".to_string(),
             next_game_number: "2".to_string(),
             event_id: None,
+            portal_base_url: None,
             recent_goal: None,
             next_period_len_secs: Some(20),
             conf_pause_time: None,

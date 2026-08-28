@@ -992,10 +992,15 @@ decisions. Run **one** scenario, report the result, and **wait** for the human b
    Confirm: no game starts, nothing is queued for the portal, and nothing is posted when the network
    returns. *(See the superseding note near the top of this plan, and the offline-restart scenario
    in the `.feature` file.)*
-3. **Leaving the finished state by refresh, same session.** Add a game to court 1 in the portal and
-   wait for the refresh (or tap REFRESH). Expect the table to fill in, the banner to go back to
-   `NEXT GAME` with a real time, the clock to start counting down, and START NOW to go live — with
-   no operator action. The previous game's score stays visible until the new game starts.
+3. **Leaving the finished state by refresh, same session.** Add a game to court 1 in the portal.
+   **This item originally said to "wait for the refresh (or tap REFRESH)... with no operator
+   action" — that is WRONG under Decision 10.** No automatic or periodic schedule re-fetch runs
+   while a court sits idle-finished (only game-end, REFRESH, event/court selection and re-login
+   trigger a schedule arrival), so nothing happens until the operator presses REFRESH. Press
+   REFRESH and expect the table to fill in, the banner to go back to `NEXT GAME` with a real time,
+   the clock to start counting down, and START NOW to go live. The previous game's score stays
+   visible until the new game starts. *(See the superseding note near the top of this plan, item 4
+   above, and the corrected REFRESH scenario in the `.feature` file.)*
 4. **Leaving the finished state by refresh after a restart.** As above but restart first. **Once a
    known, parked residual — the anchor was `"0"` after a restart, so refresh could not find a new
    addition and only picking the game in Settings recovered — this is now CLOSED**: the anchor is

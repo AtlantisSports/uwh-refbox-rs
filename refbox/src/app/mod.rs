@@ -1585,13 +1585,7 @@ impl RefBoxApp {
         //    why this cannot panic: `reset_to_manual_break` takes no fallible
         //    path — it clears the next-game info, sets the game number and clock
         //    directly, and starts the clock.
-        //    Safety: Mutex poison only occurs if another thread already
-        //    panicked; the refbox treats that as fatal (matches the 20+
-        //    identical sites in this file).
-        self.tm
-            .lock()
-            .unwrap()
-            .reset_to_manual_break(Instant::now());
+        self.tm.lock().reset_to_manual_break(Instant::now());
 
         // 5. What the new site owes us.
         let mut task = match target {
@@ -5219,12 +5213,7 @@ impl RefBoxApp {
                 // the lock guard is a temporary that would otherwise live to the
                 // end of the match block, and the switch arm needs `&mut self`
                 // before then.
-                //
-                // Safety: Mutex poison only occurs if another thread already
-                // panicked; the refbox treats that as fatal (matches the 20+
-                // identical sites in this file).
-                let game_in_progress =
-                    self.tm.lock().unwrap().current_period() != GamePeriod::BetweenGames;
+                let game_in_progress = self.tm.lock().current_period() != GamePeriod::BetweenGames;
                 let results_queued = self.portal_manager.has_queued_items();
                 // Completeness is judged on what is DISPLAYED — the staged
                 // values in the editor. `selection_owned` is the same test the
@@ -5837,7 +5826,7 @@ impl RefBoxApp {
                         if *id == event_id {
                             self.schedule = Some(schedule);
                             if self.edited_settings.is_none() {
-                                let mut tm = self.tm.lock().unwrap();
+                                let mut tm = self.tm.lock();
                                 if tm.current_period() == GamePeriod::BetweenGames {
                                     // On a startup link restore, re-select the
                                     // remembered game; otherwise pick the default

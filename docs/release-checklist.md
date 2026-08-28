@@ -82,3 +82,22 @@ signed rather than notarised with a paid Apple certificate. That is expected and
 packaging. Clear it via **System Settings → Privacy & Security → Open Anyway**. What you are
 checking for is the *different* error — *"The application 'refbox' can't be opened."* — which means
 the executable bit is missing.
+
+### The overlay assets
+
+The overlay ships on this same release as separate assets. It has no self-update, so someone copies
+the binary to the streaming machine by hand.
+
+```bash
+unzip -Z overlay.zip | grep -E 'Raspberry Pi/overlay$'
+```
+
+- [ ] **Exactly one line** comes back. An empty result is a FAILURE, not a pass.
+- [ ] It starts with `-rwxr-xr-x`. If it reads `-rw-r--r--`, do not publish.
+- [ ] `file` on the extracted binary reports `ELF 64-bit LSB ... ARM aarch64`.
+- [ ] Its SHA-256 matches `overlay-aarch64-linux.sha256`.
+- [ ] `overlay-aarch64-linux` and `overlay-aarch64-linux.sha256` are present as loose assets.
+      **These always download non-executable** — GitHub serves release assets with no Unix mode, so
+      whoever installs one runs `chmod +x`. Expected, not a defect. `overlay.zip` is the copy that
+      arrives runnable.
+- [ ] `refbox.zip` contains **no** overlay files. The overlay is deliberately separate.

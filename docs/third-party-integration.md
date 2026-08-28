@@ -51,13 +51,21 @@ one, the event ID is what follows it. This is why `https://your-site/api/events/
 `/api/`**, and the event ID is what follows that. Anything before the marker is kept as the base
 URL, so a site under a path prefix works — `https://club.example/scoreboard/api/1234-A` gives a base
 of `https://club.example/scoreboard`. An address with no host at all is refused rather than
-accepted. 4. Whatever follows the marker stops at the next `/`, or at the end of the string if there
+accepted, and so is one whose host is not text a URL parser reads as a host: the part before the
+first `/` may not contain a backslash, whitespace, a `?` or a `#`, and must parse as a bare
+`host[:port]` (credentials before it are fine). `https://your-site\api/1234-A` and
+`https://your-site /api/1234-A` are both refused for that reason. This matters because a URL parser
+reads `\` as `/`, so such an address is not the address it appears to be — the refbox would call a
+host nobody named, and any password in it would end up in the path where it cannot be redacted.
+Refusing it costs nothing: it could not have worked, it would only have failed later and less
+clearly. The app shows one generic message for every refusal, so an integrator diagnosing a
+rejected address should check this rule rather than expect the app to name it. 4. Whatever follows the marker stops at the next `/`, or at the end of the string if there
 is none. A trailing slash after the event ID — `https://your-site/api/1234-A/` — does not become
 part of it: this is the same rule that would also cut off a real path segment after the ID, and it
-yields `1234-A`, not `1234-A/` (`refbox/src/app/custom_site.rs:102`). The base URL half is trimmed
+yields `1234-A`, not `1234-A/` (`refbox/src/app/custom_site.rs:115`). The base URL half is trimmed
 of trailing slashes too, the same way the environment-variable route is below: the typed address is
-trimmed where it is parsed (`refbox/src/app/custom_site.rs:112-117`), the environment variable's
-value is trimmed where it is read (`refbox/src/app/mod.rs:485`), and the client trims whatever it is
+trimmed where it is parsed (`refbox/src/app/custom_site.rs:128-130`), the environment variable's
+value is trimmed where it is read (`refbox/src/app/mod.rs:543`), and the client trims whatever it is
 handed a second time either way (`uwh-common/src/uwhportal/mod.rs:179`). All three use
 `trim_end_matches('/')`, which removes *every* trailing slash rather than just one, so
 `https://your-site///` is as safe as `https://your-site/`. A typed address is not actually a gap
@@ -102,7 +110,7 @@ launching:
 
 Set it to your site's base URL — every path in this document is appended
 to it directly. A trailing slash is fine rather than forbidden: refbox trims any it finds
-(`refbox/src/app/mod.rs:485`), so leaving one off is tidiness, not a requirement. Which of the two
+(`refbox/src/app/mod.rs:543`), so leaving one off is tidiness, not a requirement. Which of the two
 variables applies depends on the mode refbox is configured for,
 so setting the hockey variable while refbox is in rugby mode leaves it pointed at the real Portal,
 with nothing to indicate the override was ignored.
@@ -289,8 +297,8 @@ reuses it for the life of that portal client (`uwh-common/src/uwhportal/mod.rs:2
 is never zero-padded, so do not validate it as a six-digit string. **It is also regenerated every
 time refbox restarts — and, on the in-app route, whenever an APPLY actually moves the refbox to a
 different site**, because the number lives on the portal client and pointing it somewhere new builds
-a fresh one (`refbox/src/app/mod.rs:1161`). Applying an address that has not changed does nothing at
-all (`refbox/src/app/mod.rs:1086`). So if an admin has already registered a pending link and the
+a fresh one (`refbox/src/app/mod.rs:1223`). Applying an address that has not changed does nothing at
+all (`refbox/src/app/mod.rs:1148`). So if an admin has already registered a pending link and the
 operator then *edits* the address and applies it, the number the admin was given is stale and call 1
 answers `NoPendingLink`. Treat it as a one-time pairing number, not a device identity: you cannot
 pre-register boxes the night before, and you cannot use it to trace which box pushed which result.
@@ -441,7 +449,7 @@ event has been selected, so a code has to be obtainable for an event the operato
 chosen.
 
 **A successful call 1 is trusted without being verified.** On receiving an `accessKey`, refbox
-marks the token valid immediately (`refbox/src/app/mod.rs:5180-5182`) rather than confirming it with
+marks the token valid immediately (`refbox/src/app/mod.rs:5230-5232`) rather than confirming it with
 call 2. The portal indicator turns green on the strength of your response alone. If your site issues
 a key it will not subsequently honour, refbox will show a healthy green portal until the standing
 health check notices — up to five minutes later.
@@ -564,7 +572,7 @@ whenever the operator turns "Use UWH Portal" on from off in Game Options.
 **Query parameters:** `limit` (always the literal string `"100"`), `filter` (`"Past"` or
 `"InProgressOrUpcoming"` — **not** an in-app setting: it comes from the `--all-events` / `-a` flag
 given on the command line when refbox is launched (`refbox/src/main.rs:158-160`), carried through
-startup (`refbox/src/main.rs:669`) to the call itself (`refbox/src/app/mod.rs:890`), so there is
+startup (`refbox/src/main.rs:669`) to the call itself (`refbox/src/app/mod.rs:952`), so there is
 nothing in Game Options to switch it with and an operator who wants `Past` has to relaunch refbox),
 and `isSchedulePublished` (always `"true"` — refbox only ever asks for events whose schedule has
 been published).
@@ -643,7 +651,7 @@ picking.
 
 **Size this the same way you size call 9's roster burst.** Call 3's `limit` is fixed at `100` (see
 that call's query parameters), and every event in the returned list gets its own concurrent request
-here (`refbox/src/app/mod.rs:4964-4970`) — so an event list at its cap means up to 100 of these
+here (`refbox/src/app/mod.rs:5014-5020`) — so an event list at its cap means up to 100 of these
 requests can be in flight at once, right after Portal mode turns on and before the operator has
 picked a tournament at all. Call 9's entry below covers the comparable burst its roster fetch
 produces; this one is sized by the event list instead of a single event's schedule.
@@ -881,15 +889,15 @@ call's response, as above.
 this call and never sees it happen. First, whenever a schedule arrives: once for every distinct
 team assigned anywhere in that schedule, skipping any team whose roster is already cached. On a
 full tournament schedule that is a burst — a comment on the call warns against re-firing "~40
-concurrent GETs" (`refbox/src/app/mod.rs:5045`), so expect a few dozen near-simultaneous requests
+concurrent GETs" (`refbox/src/app/mod.rs:5095`), so expect a few dozen near-simultaneous requests
 on first load and size your site accordingly. (Call 4's teams fetch, above, produces a comparable
 burst at startup, sized by the event list instead.) Second, a refresh for the two teams of the
 upcoming game, fired at the kickoff of the previous game so the fetch has the whole game plus the
-break to land rather than the instant of the next start (`refbox/src/app/mod.rs:1392-1395`).
+break to land rather than the instant of the next start (`refbox/src/app/mod.rs:1444-1447`).
 
 **"Upcoming" is decided by schedule position, not by game number.** refbox takes the game that
 just started, restricts the search to games on that same court, and picks whichever of those has
-the soonest `startsOn` strictly after it (`refbox/src/app/mod.rs:1355-1360`) — game numbers never
+the soonest `startsOn` strictly after it (`refbox/src/app/mod.rs:1407-1412`) — game numbers never
 enter the comparison, so a non-monotonic numbering scheme has no effect on this. Two games on the
 same court sharing an identical `startsOn` are resolved by whichever one appears first in your
 `games` object, an ordering with no rule of its own documented anywhere else in this contract. A
@@ -927,7 +935,7 @@ grid — someone who coaches and plays is still a player. Only a member with no 
 
 The second filter is on the number: of the entries that survive the role test, refbox keeps only
 cap numbers in the range **1 to 99**; a `capNumber` of `0`, or of `100` up to `255`, is silently
-discarded (`refbox/src/app/mod.rs:6410`). Above `255` it is worse than discarded: the number is cut
+discarded (`refbox/src/app/mod.rs:6460`). Above `255` it is worse than discarded: the number is cut
 down to a single byte before that filter ever sees it
 (`uwh-common/src/uwhportal/mod.rs:87-88`), so a `capNumber` of `300` becomes `44` and appears on
 the grid as cap 44 — a goal tapped there is credited to the wrong player rather than to nobody.
@@ -947,14 +955,14 @@ would for a field that's absent (`uwh-common/src/uwhportal/mod.rs:87`), so nothi
 nothing is logged. If the entry still has a name, it's kept — but as an **unnumbered** player,
 sorted after every numbered one — and an unnumbered player never becomes a button: refbox skips
 any roster entry with no cap number when it builds the grid, because there is nothing to tap
-(`refbox/src/app/mod.rs:6410`). A string `capNumber` — the shape a naive CSV export produces by
+(`refbox/src/app/mod.rs:6460`). A string `capNumber` — the shape a naive CSV export produces by
 default — therefore never surfaces as an error. It quietly removes one player from the grid, the
 same way the whole call failing removes all of them.
 
 **On failure:** **nothing visible happens.** Any non-`200` response, or a body that doesn't parse,
 is written to the log and otherwise discarded, and the failure deliberately leaves any previously
 cached roster untouched rather than replacing it with an empty one
-(`refbox/src/app/mod.rs:976`). There is no retry, no queued item, no indicator change, and no
+(`refbox/src/app/mod.rs:1038`). There is no retry, no queued item, no indicator change, and no
 message to the operator.
 
 What the operator loses is the **player-number grid**. Given a roster, the pages that attribute an
@@ -1132,7 +1140,7 @@ documented either way.
 
 **Nothing in any request says which sport is asking.** UWH (6v6, 3v3) and UWR (rugby) are told apart
 only by which base URL refbox is pointed at — a different environment variable and a different
-real-Portal tenant per mode (`refbox/src/app/mod.rs:475-480`) — never by a header, a query
+real-Portal tenant per mode (`refbox/src/app/mod.rs:533-538`) — never by a header, a query
 parameter, or a path segment on any of the eighteen calls. A site standing in for both sports at the
 same address has no way to tell which is asking, even if it wanted to serve them differently: the
 fifteen `TimingRule` fields under [Data formats](#data-formats)
@@ -1247,7 +1255,7 @@ ever want those features, their shapes are not described anywhere here and you w
 | Field | Required? | Contents |
 |---|---|---|
 | `eventId` | required | The event ID, long form (`events/1234-A`) |
-| `games` | required (may be `{}`) | **An object**, not an array — keys are game numbers as strings, values are `Game` objects (see below). **Each key must be exactly the `number` of the `Game` it points at.** refbox does carry `Game.number` around as the game's number: the game picker shown to the operator stores `Game.number`, not the key (`refbox/src/app/view_builders/list_selector.rs:124`); refbox's auto-advance to the next game carries `Game.number` forward as that game's number (`refbox/src/app/mod.rs:1366`, `refbox/src/tournament_manager/mod.rs:201-203`); and that same value is what later gets sent back to you as `{gameNumber}` when a score is pushed (`refbox/src/tournament_manager/mod.rs:1177`, `uwh-common/src/uwhportal/mod.rs:374`). But every use refbox makes of that number is a lookup straight back into this object, **by key** — so the number it holds and the key it looks up are the same value only if you made them the same. Get that wrong and the operator cannot start a single game: picking a game from the list stores `Game.number` (`refbox/src/app/mod.rs:4436-4437`), the settings screen looks that value up as a key, finds nothing, and declares the whole portal configuration incomplete (`refbox/src/app/view_builders/configuration.rs:94-97`) — which greys out **APPLY** (`refbox/src/app/view_builders/configuration.rs:1066`) and refuses the commit even if it is reached another way (`refbox/src/app/mod.rs:1668-1670`). That is every game in the tournament, every time, with nothing on screen naming the key as the cause. Three more things fail behind the same lookup: the game's timing rule is never found (`uwh-common/src/uwhportal/schedule.rs:547`, `uwh-common/src/uwhportal/schedule.rs:554`), so a game that did start would run on whatever timing configuration was already loaded — exactly the silent failure the `timingRules` row below describes; the player-number grid comes up empty (`refbox/src/app/mod.rs:1323`); and the auto-advance to the next game returns early, leaving no next game at all (`refbox/src/app/mod.rs:1347`). |
+| `games` | required (may be `{}`) | **An object**, not an array — keys are game numbers as strings, values are `Game` objects (see below). **Each key must be exactly the `number` of the `Game` it points at.** refbox does carry `Game.number` around as the game's number: the game picker shown to the operator stores `Game.number`, not the key (`refbox/src/app/view_builders/list_selector.rs:124`); refbox's auto-advance to the next game carries `Game.number` forward as that game's number (`refbox/src/app/mod.rs:1418`, `refbox/src/tournament_manager/mod.rs:201-203`); and that same value is what later gets sent back to you as `{gameNumber}` when a score is pushed (`refbox/src/tournament_manager/mod.rs:1177`, `uwh-common/src/uwhportal/mod.rs:374`). But every use refbox makes of that number is a lookup straight back into this object, **by key** — so the number it holds and the key it looks up are the same value only if you made them the same. Get that wrong and the operator cannot start a single game: picking a game from the list stores `Game.number` (`refbox/src/app/mod.rs:4485-4486`), the settings screen looks that value up as a key, finds nothing, and declares the whole portal configuration incomplete (`refbox/src/app/view_builders/configuration.rs:94-97`) — which greys out **APPLY** (`refbox/src/app/view_builders/configuration.rs:1076`) and refuses the commit even if it is reached another way (`refbox/src/app/mod.rs:1720-1722`). That is every game in the tournament, every time, with nothing on screen naming the key as the cause. Three more things fail behind the same lookup: the game's timing rule is never found (`uwh-common/src/uwhportal/schedule.rs:547`, `uwh-common/src/uwhportal/schedule.rs:554`), so a game that did start would run on whatever timing configuration was already loaded — exactly the silent failure the `timingRules` row below describes; the player-number grid comes up empty (`refbox/src/app/mod.rs:1375`); and the auto-advance to the next game returns early, leaving no next game at all (`refbox/src/app/mod.rs:1399`). |
 | `nonGameEntries` | required (may be `[]`) | Calendar entries (breaks, ceremonies) that aren't games. Not needed to run a game — a stub can always send `[]`. |
 | `groups` | required (may be `[]`) | Pool/division structure and standings rules. Not needed to run a game — a stub can always send `[]`. |
 | `timingRules` | required | Array of `TimingRule` objects (see below). Every game's `timingRule.name` must match one of these by name. **A name that matches nothing is not a parse failure and produces no error** — refbox simply runs that game on whatever timing configuration it already had loaded, silently. A typo here costs the right period lengths at a real game, and says nothing to the operator. **This is not verifiable from your side of the contract.** Nothing in any response refbox sends you, and nothing on the operator's screen, distinguishes "your `timingRule` applied" from "a stale one did" — there is no verification method to reach for here. The only way anyone finds out is watching a real game run and noticing the period lengths are wrong. |

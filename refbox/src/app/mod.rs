@@ -6527,7 +6527,10 @@ impl RefBoxApp {
                                         NextGameFromSchedule::Game(ref number) => {
                                             schedule.get_game_and_timing(number)
                                         }
-                                        _ => (None, None),
+                                        NextGameFromSchedule::CourtFinished
+                                        | NextGameFromSchedule::NothingScheduled
+                                        | NextGameFromSchedule::NeedsPick
+                                        | NextGameFromSchedule::Unknown => (None, None),
                                     };
 
                                     if let (Some(game), Some(timing)) = found {
@@ -9011,6 +9014,7 @@ mod refresh_next_game_tests {
 
     #[test]
     fn the_anchor_finds_the_next_game_on_this_court() {
+        // Game 10 starts at the same moment on the other court and must be ignored.
         let schedule = two_court_schedule();
         assert_eq!(
             next_game_from_schedule(
@@ -9042,23 +9046,36 @@ mod refresh_next_game_tests {
     }
 
     #[test]
-    fn the_same_answer_however_many_times_it_is_asked() {
-        // Scenario 4's Critical: the old one-shot flag was consumed on the first
-        // refresh and the second re-adopted game 1. Nothing is consumed here.
+    fn a_consumed_restore_still_answers_finished() {
+        // Scenario 4's Critical, as the two calls the call site actually makes.
+        // First refresh: the restored game 11 is re-selected, and the one-shot is
+        // spent doing it. Second refresh, after game 11 has been played: the
+        // restore is gone and the engine holds no next game, which is exactly the
+        // state the old code fell into — and it answered with the earliest game on
+        // the court. The anchor must carry the answer instead.
         let schedule = two_court_schedule();
-        for _ in 0..5 {
-            assert_eq!(
-                next_game_from_schedule(
-                    &schedule,
-                    None,
-                    None,
-                    Some(&"11".to_string()),
-                    None,
-                    Some("Court 1")
-                ),
-                NextGameFromSchedule::CourtFinished
-            );
-        }
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                Some(&"11".to_string()),
+                None,
+                None,
+                None,
+                Some("Court 1")
+            ),
+            NextGameFromSchedule::Game("11".to_string())
+        );
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                None,
+                None,
+                Some(&"11".to_string()),
+                None,
+                Some("Court 1")
+            ),
+            NextGameFromSchedule::CourtFinished
+        );
     }
 
     #[test]
@@ -9118,6 +9135,25 @@ mod refresh_next_game_tests {
                 None,
                 Some(&"absent".to_string()),
                 Some(time::macros::datetime!(2026-08-05 09:00 UTC)),
+                Some("Court 1"),
+            ),
+            NextGameFromSchedule::Game("11".to_string())
+        );
+    }
+
+    #[test]
+    fn the_schedules_copy_of_the_anchor_start_beats_the_remembered_one() {
+        // The anchor is in this schedule, so ITS start time (09:00) sets the search
+        // window. A remembered 10:00 must not win: it would look straight past game
+        // 11 and park a court that still has a game to play.
+        let schedule = two_court_schedule();
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                None,
+                None,
+                Some(&"9".to_string()),
+                Some(time::macros::datetime!(2026-08-05 10:00 UTC)),
                 Some("Court 1"),
             ),
             NextGameFromSchedule::Game("11".to_string())

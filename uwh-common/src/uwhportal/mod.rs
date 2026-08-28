@@ -914,11 +914,50 @@ pub fn check_access_key(key: &str) -> Result<(), UnsendableAccessKey> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// What a site answered when the refbox tried to link to it.
+///
+/// **`Success` holds the operator's access key, and this type is printed.** refbox traces every
+/// message it handles (`trace!("Handling message: {message:?}")`) and every app-state change
+/// (`trace!("AppState changed to {:?}")`), and this type reaches both: `Message::RecvPortalToken`
+/// carries it, and so does `ConfirmationKind::UwhPortalLinkFailed` inside `AppState`. A derived
+/// `Debug` therefore wrote the key straight into the log file. `-vv` is what someone is asked to
+/// run while a problem is being diagnosed, which is exactly when that log gets shared.
+///
+/// So `Debug` is hand-written below and elides the key. Before adding a variant, a `Display`, or a
+/// new field, note that anything readable from this type can reach that log by a path nobody had
+/// to remember.
+///
+/// `Serialize`/`Deserialize` are left alone. Nothing in this workspace uses them -- the value is
+/// built by hand from `body["accessKey"]` above, and refbox destructures the inner `String` out
+/// and stores that -- but this is a `pub` type in a shared crate, so its serde representation is
+/// public API and redacting it would be a silent breaking change for anyone outside who does. A
+/// test pins that, so a later "make Serialize consistent with Debug" cannot quietly land.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PortalTokenResponse {
     Success(String),
     NoPendingLink,
     InvalidCode,
+}
+
+/// Hand-written so the access key cannot be printed. See [`PortalTokenResponse`] for why.
+impl std::fmt::Debug for PortalTokenResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        /// Stands in for the key, and prints without the quotes a `&str` would add.
+        struct Elided;
+        impl std::fmt::Debug for Elided {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("<token not logged>")
+            }
+        }
+
+        match self {
+            // `debug_tuple` rather than `write_str`, so `{:#?}` still pretty-prints and indents
+            // with whatever encloses it -- the shape the derive used to provide.
+            Self::Success(_) => f.debug_tuple("Success").field(&Elided).finish(),
+            Self::NoPendingLink => f.write_str("NoPendingLink"),
+            Self::InvalidCode => f.write_str("InvalidCode"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1149,5 +1188,60 @@ mod access_key_tests {
         let mut client = test_client(None).unwrap();
         assert_eq!(client.set_token("abc\n123").unwrap_err().character, '\n');
         assert!(!client.has_token());
+    }
+}
+
+#[cfg(test)]
+mod token_response_tests {
+    use super::*;
+
+    const SECRET: &str = "s3cret-access-key";
+
+    /// The refbox traces every message it handles when run with `-vv`, and `RecvPortalToken`
+    /// carries this type, so a derived `Debug` wrote the operator's Portal access key into the log
+    /// file -- which is exactly the file that gets shared when something is being diagnosed.
+    #[test]
+    fn a_portal_token_never_debugs_its_secret() {
+        let response = PortalTokenResponse::Success(SECRET.to_string());
+        assert!(
+            !format!("{response:?}").contains(SECRET),
+            "leaked: {response:?}"
+        );
+        assert_eq!(format!("{response:?}"), "Success(<token not logged>)");
+    }
+
+    /// The other two variants carry nothing secret, and a log that cannot tell them apart is
+    /// useless -- a failed link and a wrong code are different problems.
+    #[test]
+    fn the_other_outcomes_still_say_which_they_are() {
+        assert_eq!(
+            format!("{:?}", PortalTokenResponse::NoPendingLink),
+            "NoPendingLink"
+        );
+        assert_eq!(
+            format!("{:?}", PortalTokenResponse::InvalidCode),
+            "InvalidCode"
+        );
+    }
+
+    /// Redacting `Debug` must not redact the wire representation.
+    ///
+    /// Nothing in this workspace serialises this type -- refbox destructures the inner `String`
+    /// out and stores that -- but it is `pub` in a shared crate, so the serde representation is
+    /// public API. This exists so that a later "make Serialize consistent with Debug" fails here
+    /// rather than silently changing what an outside consumer receives.
+    ///
+    /// Compared as JSON rather than with `assert_eq!` on the values: both sides would format
+    /// through the redacted `Debug` and the failure would read
+    /// `left: Success(<token not logged>) right: Success(<token not logged>)`, which diagnoses
+    /// nothing.
+    #[test]
+    fn a_portal_token_still_serialises_intact() {
+        let response = PortalTokenResponse::Success(SECRET.to_string());
+        let json = serde_json::to_string(&response).expect("serialises");
+        assert!(json.contains(SECRET), "the token must still travel: {json}");
+        let back: PortalTokenResponse = serde_json::from_str(&json).expect("deserialises");
+        let round_tripped = serde_json::to_string(&back).expect("re-serialises");
+        assert_eq!(round_tripped, json);
     }
 }

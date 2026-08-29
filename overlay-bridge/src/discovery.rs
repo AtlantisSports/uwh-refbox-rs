@@ -502,7 +502,17 @@ mod tests {
         let addr = probe_listener.local_addr().expect("local_addr");
         drop(probe_listener); // nothing is listening there any more
 
-        let result = probe(&addr.into(), PROBE_TIMEOUT).await;
+        // NOT `PROBE_TIMEOUT`, deliberately: on Windows, connecting to a refused loopback
+        // port takes the OS itself about 2.0-2.05s to report `ConnectionRefused` (Windows
+        // retries the SYN internally rather than sending an immediate RST the way
+        // Linux/macOS do) -- measured directly on a Windows machine, not a guess. That is
+        // *just* longer than `PROBE_TIMEOUT` (`Duration::from_secs(2)`), so this test's own
+        // `timeout()` always won the race first on Windows, hiding the real
+        // `ConnectionRefused` behind a `Silent` instead. Every other test in this file picks
+        // its own short, test-appropriate window rather than reusing the production
+        // constant (see `a_port_that_accepts_but_sends_nothing_is_not_a_refbox` two tests
+        // up) -- this one is fixed to do the same, with margin past the measured OS latency.
+        let result = probe(&addr.into(), Duration::from_secs(3)).await;
 
         assert!(
             matches!(result, Err(ProbeError::Unreachable(_))),

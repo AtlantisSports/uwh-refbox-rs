@@ -44,15 +44,15 @@ use crate::feed::RefboxAddress;
 pub const APP_NAME: &str = "overlay-bridge";
 
 /// Built-in defaults, used only once neither an explicit CLI argument nor a stored setting
-/// supplies a value. Match the values `main.rs`'s CLI flags used before this task added
-/// persistence (`--refbox-host` `127.0.0.1`, `--refbox-port` `8000`), so a first-ever run with
-/// no flags and no settings file behaves the same as before.
+/// supplies a value. `--refbox-port` matches the refbox's own `--json-port` default: a refbox and
+/// a bridge both left alone must find each other, so those two numbers move together or not at
+/// all. `--port` is the bridge's own HTTP port and has nothing to do with the refbox.
 ///
 /// The HTTP port is **8098**. It used to be 8099, but vMix's TCP API permanently listens on 8099
 /// (hard-coded, not configurable), so on a streaming PC running vMix the bridge couldn't start.
 /// 8088 is vMix's web controller and 8090 is stream-manager's control page, so neither of those.
 pub const DEFAULT_REFBOX_HOST: &str = "127.0.0.1";
-pub const DEFAULT_REFBOX_PORT: u16 = 8000;
+pub const DEFAULT_REFBOX_PORT: u16 = 19540;
 pub const DEFAULT_PORT: u16 = 8098;
 /// The old default HTTP port, which always collides with vMix (see [`DEFAULT_PORT`]). A saved 8099
 /// written before the move is from a run before the change, not a deliberate choice, so it goes
@@ -135,13 +135,13 @@ pub struct Overrides {
 /// This shape is deliberate, and it is the fix for a class of bug rather than an instance of one
 /// (Task 8 review, Important 3). The settings used to reach `server::AppState` through optional
 /// builder methods, so deleting one line in `main.rs` left the bridge running with a *default*
-/// where a configured value belonged -- silently connecting to `127.0.0.1:8000` no matter what
+/// where a configured value belonged -- silently connecting to the built-in address no matter what
 /// `--refbox-host` or the saved settings said, with every test still green, because nothing about
 /// a missing builder call is visible to a compiler or to a test of anything else. A plain struct
 /// with no optional fields makes that impossible: a setting can be wrong, but it can no longer be
 /// *absent*, and [`resolve_all`] is the single place any of them is decided.
 ///
-/// [`Default`] is the bridge's built-in configuration (`127.0.0.1:8000`, HTTP on 8098, nothing
+/// [`Default`] is the bridge's built-in configuration (`127.0.0.1:19540`, HTTP on 8098, nothing
 /// remembered anywhere) -- genuinely what a first-ever run with no
 /// flags and no settings file uses, which is also what makes it the honest starting point for a
 /// test that cares about only one field.

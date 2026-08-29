@@ -105,7 +105,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             refbox_ip: IpAddr::from_str("127.0.0.1").unwrap(),
-            refbox_port: 8000,
+            refbox_port: 19540,
             uwhportal_url: String::from("https://api.uwhportal.com"),
             bridge_url: String::from("http://127.0.0.1:8098"),
             // A new settings file never held the old port, so there is nothing to move.

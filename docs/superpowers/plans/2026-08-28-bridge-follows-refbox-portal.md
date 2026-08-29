@@ -631,7 +631,7 @@ walkthrough silently exercises an older binary.
 1. Start refbox against the **development** portal and select an event with teams:
    `WAYLAND_DISPLAY= UWH_PORTAL_URL_OVERRIDE=https://api.dev.uwhportal.com ./target/debug/refbox --allow-http`
 2. Start the bridge with **no portal flag at all**:
-   `./target/debug/overlay-bridge --port 8123 --refbox-host 127.0.0.1 --refbox-port 8000`
+   `./target/debug/overlay-bridge --port 8123 --refbox-host 127.0.0.1 --refbox-port 19540`
 3. Confirm the team names the bridge serves are the development portal's — the tournament actually
    selected in refbox, not another one with the same event id.
 4. Confirm `./target/debug/overlay-bridge --portal-url https://api.uwhportal.com` is refused with a

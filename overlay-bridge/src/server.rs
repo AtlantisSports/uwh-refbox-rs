@@ -3621,8 +3621,8 @@ mod tests {
     async fn the_bridge_reads_the_refbox_its_settings_name() {
         // The whole chain, in one test: resolved settings -> `AppState`'s feed target -> the
         // supervisor -> a served table. This is the wiring that used to live in `main.rs`, where
-        // nothing could reach it and deleting one line silently pointed the bridge at
-        // 127.0.0.1:8000 no matter what the operator configured (Task 8 review, Important 3).
+        // nothing could reach it and deleting one line silently pointed the bridge at the
+        // built-in address no matter what the operator configured (Task 8 review, Important 3).
         //
         // Deliberately end-to-end rather than a field-by-field check of `AppState`: the point is
         // not that each setting is copied somewhere, it is that the refbox actually read is the

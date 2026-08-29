@@ -609,7 +609,7 @@ impl From<SocketAddr> for RefboxAddress {
 pub enum AddressError {
     /// Nothing was typed at all.
     Empty,
-    /// Something was typed, but there is no host in front of the port (`:8000`).
+    /// Something was typed, but there is no host in front of the port (`:19540`).
     MissingHost,
     /// The text after the last colon is not a usable TCP port.
     BadPort(String),
@@ -619,22 +619,28 @@ pub enum AddressError {
 
 impl fmt::Display for AddressError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The port is interpolated, never typed in: `server.rs` renders the very same "most
+        // refboxes use ..." sentence from `DEFAULT_REFBOX_PORT`, and two hand-kept copies of one
+        // number are two chances to tell a volunteer to type a port no refbox serves.
+        let port = crate::config::DEFAULT_REFBOX_PORT;
         match self {
             AddressError::Empty => write!(
                 f,
-                "type the refbox's address, for example 192.168.1.50 or 192.168.1.50:19540"
+                "type the refbox's address, for example 192.168.1.50 or 192.168.1.50:{port}"
             ),
             AddressError::MissingHost => write!(
                 f,
-                "there is no address in front of the port — type something like 192.168.1.50:19540"
+                "there is no address in front of the port — type something like \
+                 192.168.1.50:{port}"
             ),
             AddressError::BadPort(text) => write!(
                 f,
-                "\"{text}\" is not a port number between 1 and 65535 — most refboxes use 19540"
+                "\"{text}\" is not a port number between 1 and 65535 — most refboxes use {port}"
             ),
             AddressError::Malformed => write!(
                 f,
-                "that is not an address the bridge can read — type something like 192.168.1.50:19540"
+                "that is not an address the bridge can read — type something like \
+                 192.168.1.50:{port}"
             ),
         }
     }
@@ -1612,9 +1618,13 @@ mod tests {
         ] {
             let text = error.to_string();
             assert!(text.len() > 20, "{error:?} produced {text:?}");
+            // Every one of them, not "either an address or a port": three of these four carry an
+            // example address, so a disjunction would let a stale port survive in three of them
+            // unnoticed. Asserting on the constant rather than a literal also means the next port
+            // move cannot leave this test agreeing with a message it no longer matches.
             assert!(
-                text.contains("192.168.1.50") || text.contains("19540"),
-                "{error:?} should show an example of what to type, got {text:?}"
+                text.contains(&crate::config::DEFAULT_REFBOX_PORT.to_string()),
+                "{error:?} should name the port a refbox actually serves on, got {text:?}"
             );
         }
     }

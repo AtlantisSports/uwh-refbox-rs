@@ -23,7 +23,11 @@ struct Cli {
     #[clap(long)]
     refbox_host: Option<String>,
 
-    /// TCP port the refbox serves its game-state feed on. Same precedence as `--refbox-host`.
+    /// TCP port the refbox serves its game-state feed on. Same precedence as `--refbox-host`,
+    /// falling back to 19540 -- the refbox's own `--json-port` default -- if nothing has ever
+    /// been saved. Stated here because `clap` shows no `[default: ...]` for these flags: they
+    /// carry no `default_value`, so that "not passed" stays distinguishable from "passed the
+    /// default", and an operator would otherwise have no way to learn the number.
     #[clap(long)]
     refbox_port: Option<u16>,
 

@@ -289,8 +289,10 @@ pub fn render_page(data: &PageData) -> String {
         "The refbox address and the bridge's own port can also be set with a command-line flag \
          (--refbox-host, --refbox-port, --port) and are remembered automatically for next time. \
          The refbox address is the only one this page can change; to fix a mistyped port, edit \
-         or delete the settings file: {}",
-        data.settings_file
+         or delete the settings file ({}). A refbox serves its game feed on port {} unless it \
+         was started with --json-port.",
+        data.settings_file,
+        crate::config::DEFAULT_REFBOX_PORT
     ));
 
     let notice_html = data

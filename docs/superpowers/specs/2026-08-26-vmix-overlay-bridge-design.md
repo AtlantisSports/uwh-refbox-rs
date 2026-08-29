@@ -46,8 +46,8 @@ the calls the refbox **makes to a website**. This work is the mirror image: the 
 Every claim here was verified against the source. Citations in §11.
 
 **The refbox is already a live data server on the local network.** It listens on two TCP ports:
-a binary feed for the LED panel (default 8001) and **a plain-JSON feed for the overlay
-(default 8000)**. Anything on the same network can connect to the JSON port today, with no
+a binary feed for the LED panel (default 19541) and **a plain-JSON feed for the overlay
+(default 19540)**. Anything on the same network can connect to the JSON port today, with no
 password and no Portal involvement.
 
 **Each update is one JSON object followed by a newline.** A consumer should read to the newline.
@@ -671,7 +671,7 @@ here only as an observation.
 
 | Claim | Source |
 |---|---|
-| JSON feed default port 8000, binary 8001 | `refbox/src/main.rs:138-144` |
+| JSON feed default port 19540, binary 19541 | `refbox/src/main.rs:137-143` |
 | Both listeners bound on IPv4 and IPv6 | `refbox/src/app/update_sender.rs:721-742` |
 | Payload is the game state as JSON plus a newline | `refbox/src/app/update_sender.rs:494-496` |
 | Current state replayed to a new connection | `refbox/src/app/update_sender.rs:606-630` |

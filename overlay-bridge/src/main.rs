@@ -24,10 +24,12 @@ struct Cli {
     refbox_host: Option<String>,
 
     /// TCP port the refbox serves its game-state feed on. Same precedence as `--refbox-host`,
-    /// falling back to 19540 -- the refbox's own `--json-port` default -- if nothing has ever
-    /// been saved. Stated here because `clap` shows no `[default: ...]` for these flags: they
-    /// carry no `default_value`, so that "not passed" stays distinguishable from "passed the
-    /// default", and an operator would otherwise have no way to learn the number.
+    /// falling back to the refbox's own `--json-port` default if nothing has ever been saved.
+    // Everything above is printed verbatim by `--help`, so it says what an operator needs and
+    // stops. Two things deliberately absent: the number itself, which would be a fifth hand-kept
+    // copy -- the status page names it, read from `DEFAULT_REFBOX_PORT` -- and any `default_value`,
+    // whose absence is what keeps "not passed" distinguishable from "passed the default" in
+    // `config::resolve`.
     #[clap(long)]
     refbox_port: Option<u16>,
 

@@ -622,19 +622,19 @@ impl fmt::Display for AddressError {
         match self {
             AddressError::Empty => write!(
                 f,
-                "type the refbox's address, for example 192.168.1.50 or 192.168.1.50:8000"
+                "type the refbox's address, for example 192.168.1.50 or 192.168.1.50:19540"
             ),
             AddressError::MissingHost => write!(
                 f,
-                "there is no address in front of the port — type something like 192.168.1.50:8000"
+                "there is no address in front of the port — type something like 192.168.1.50:19540"
             ),
             AddressError::BadPort(text) => write!(
                 f,
-                "\"{text}\" is not a port number between 1 and 65535 — most refboxes use 8000"
+                "\"{text}\" is not a port number between 1 and 65535 — most refboxes use 19540"
             ),
             AddressError::Malformed => write!(
                 f,
-                "that is not an address the bridge can read — type something like 192.168.1.50:8000"
+                "that is not an address the bridge can read — type something like 192.168.1.50:19540"
             ),
         }
     }
@@ -1613,7 +1613,7 @@ mod tests {
             let text = error.to_string();
             assert!(text.len() > 20, "{error:?} produced {text:?}");
             assert!(
-                text.contains("192.168.1.50") || text.contains("8000"),
+                text.contains("192.168.1.50") || text.contains("19540"),
                 "{error:?} should show an example of what to type, got {text:?}"
             );
         }

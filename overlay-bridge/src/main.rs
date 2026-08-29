@@ -177,7 +177,7 @@ mod tests {
         );
         assert_eq!(
             config::resolve(cli.refbox_port, None, config::DEFAULT_REFBOX_PORT),
-            8000
+            19540
         );
     }
 
@@ -202,7 +202,7 @@ mod tests {
 
         assert_eq!(
             settings.refbox,
-            overlay_bridge::feed::RefboxAddress::new("192.168.1.50", 8000),
+            overlay_bridge::feed::RefboxAddress::new("192.168.1.50", 19540),
             "the typed address must beat the stored one and arrive intact"
         );
     }

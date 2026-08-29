@@ -134,11 +134,11 @@ struct Cli {
     /// Make the app fullscreen
     fullscreen: bool,
 
-    #[clap(long, default_value = "8001")]
+    #[clap(long, default_value = "19541")]
     /// Port to listen on for TCP connections with a binary send type
     binary_port: u16,
 
-    #[clap(long, default_value = "8000")]
+    #[clap(long, default_value = "19540")]
     /// Port to listen on for TCP connections with a JSON send type
     json_port: u16,
 

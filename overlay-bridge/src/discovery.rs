@@ -504,9 +504,16 @@ mod tests {
 
         let result = probe(&addr.into(), PROBE_TIMEOUT).await;
 
+        // On Linux a refused port returns a connection-refused error immediately
+        // (ProbeError::Unreachable). On Windows the OS may instead let the connect call time out,
+        // which surfaces as ProbeError::Silent. Either way the probe must not hang and must not
+        // report the address as a refbox.
         assert!(
-            matches!(result, Err(ProbeError::Unreachable(_))),
-            "a refused connection should be reported as unreachable, got {result:?}"
+            matches!(
+                result,
+                Err(ProbeError::Unreachable(_)) | Err(ProbeError::Silent)
+            ),
+            "a refused connection should be reported as unreachable or silent, got {result:?}"
         );
     }
 

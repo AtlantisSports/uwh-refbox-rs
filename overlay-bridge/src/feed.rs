@@ -1610,22 +1610,37 @@ mod tests {
     fn every_address_error_says_something_an_operator_can_act_on() {
         // Not asserting exact wording -- that is the status page's business -- but these strings
         // are shown to a broadcast volunteer, and an empty or debug-shaped one would be useless.
-        for error in [
-            AddressError::Empty,
-            AddressError::MissingHost,
-            AddressError::BadPort("eight".to_string()),
-            AddressError::Malformed,
+        //
+        // Each message is checked for BOTH things it owes the reader, never either-or. Three of
+        // the four exist to show the shape to type, so they must carry a whole example address,
+        // port included; the fourth is about the port alone, so it must carry the guidance clause.
+        // A disjunction here would let a stale port survive unnoticed in whichever half it was not
+        // asserted on -- which is what an earlier version of this test did.
+        let port = crate::config::DEFAULT_REFBOX_PORT;
+        for (error, shows_an_example_address) in [
+            (AddressError::Empty, true),
+            (AddressError::MissingHost, true),
+            // "eight" deliberately contains no digits: `BadPort` echoes what the operator typed,
+            // so a fixture like "19540" would satisfy a bare port check from the echo alone, and
+            // the assertion would pass with the guidance clause deleted.
+            (AddressError::BadPort("eight".to_string()), false),
+            (AddressError::Malformed, true),
         ] {
             let text = error.to_string();
             assert!(text.len() > 20, "{error:?} produced {text:?}");
-            // Every one of them, not "either an address or a port": three of these four carry an
-            // example address, so a disjunction would let a stale port survive in three of them
-            // unnoticed. Asserting on the constant rather than a literal also means the next port
-            // move cannot leave this test agreeing with a message it no longer matches.
-            assert!(
-                text.contains(&crate::config::DEFAULT_REFBOX_PORT.to_string()),
-                "{error:?} should name the port a refbox actually serves on, got {text:?}"
-            );
+            if shows_an_example_address {
+                assert!(
+                    text.contains(&format!("192.168.1.50:{port}")),
+                    "{error:?} should show a whole example address to type, port included, got \
+                     {text:?}"
+                );
+            } else {
+                assert!(
+                    text.contains(&format!("most refboxes use {port}")),
+                    "{error:?} should name the port the bridge looks on, in its own words rather \
+                     than by echoing what was typed, got {text:?}"
+                );
+            }
         }
     }
 

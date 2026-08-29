@@ -288,9 +288,11 @@ pub fn render_page(data: &PageData) -> String {
     let settings_hint = escape_html(&format!(
         "The refbox address and the bridge's own port can also be set with a command-line flag \
          (--refbox-host, --refbox-port, --port) and are remembered automatically for next time. \
-         The refbox address is the only one this page can change; to fix a mistyped port, edit \
-         or delete the settings file ({}). A refbox serves its game feed on port {} unless it \
-         was started with --json-port.",
+         A wrong port is fixed here, not in a file: type the address with the port on it, like \
+         192.168.1.50:{}, and it is saved with the address. Only the bridge's own port needs the \
+         settings file ({}). A refbox serves its game feed on port {} unless it was started with \
+         the refbox's own --json-port flag.",
+        crate::config::DEFAULT_REFBOX_PORT,
         data.settings_file,
         crate::config::DEFAULT_REFBOX_PORT
     ));
@@ -1133,6 +1135,24 @@ mod tests {
         assert!(
             html.contains("/home/operator/.config/overlay-bridge/default-config.toml"),
             "missing settings file path in:\n{html}"
+        );
+        // Both places the hint names the port, not just "the number appears somewhere": with two
+        // mentions, asserting on the bare number passes even after one of them is deleted --
+        // checked, and it did.
+        //
+        // What no test of rendered output can tell is whether the number was interpolated or
+        // typed in: a literal `19540` produces byte-identical HTML. That distinction is a review
+        // matter, not a testable one, and claiming otherwise here would be a comment that reads
+        // like a guarantee and is not one. What this does catch is the port going missing or
+        // disagreeing with what the bridge will actually dial.
+        let port = crate::config::DEFAULT_REFBOX_PORT;
+        assert!(
+            html.contains(&format!("192.168.1.50:{port}")),
+            "the hint must show the address form that fixes a wrong port, in:\n{html}"
+        );
+        assert!(
+            html.contains(&format!("serves its game feed on port {port}")),
+            "the hint must name the port a refbox listens on, in:\n{html}"
         );
     }
 

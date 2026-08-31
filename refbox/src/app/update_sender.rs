@@ -680,10 +680,21 @@ impl Drop for Server {
 /// Time budget + initial backoff for retrying a transient (port-in-use) bind.
 /// The budget bounds when a new attempt may *start*; the final backoff sleep
 /// runs to completion, so worst-case wall time is up to one extra backoff beyond
-/// the budget.
+/// the budget — about 3.1s at these values.
+///
+/// That is per *bind*. A port pays it twice only when its IPv6 bind fails and the
+/// IPv4 bind is therefore retried as well, so a fully contested port can take
+/// twice that before it is reported. The two ports bind concurrently, so a second
+/// port adds nothing.
 /// 🔧 PI: confirm/tune on the spare Pi during the 5×-restart test.
 const TCP_BIND_RETRY_BUDGET: Duration = Duration::from_millis(2000);
 const TCP_BIND_RETRY_INITIAL: Duration = Duration::from_millis(100);
+
+/// The address family a bind address belongs to, for log lines that would
+/// otherwise be indistinguishable between the two binds made for one port.
+fn family_of(addr: &str) -> &'static str {
+    if addr.contains(':') { "IPv6" } else { "IPv4" }
+}
 
 /// A bind failure is worth retrying only when the address is momentarily still
 /// in use (e.g. held by the exiting process during a restart).
@@ -692,56 +703,296 @@ fn is_transient_bind_error(e: &io::Error) -> bool {
 }
 
 /// Bind a TCP listener, retrying an `AddrInUse` failure within `budget` (with
-/// exponential backoff from `initial`) before giving up and returning `None`.
+/// exponential backoff from `initial`) before giving up and returning the error.
 /// Any non-transient error gives up immediately. Never panics.
+///
+/// Failure is logged at debug level only. On some platforms one address family
+/// failing is routine, so whether it deserves an error is not knowable here;
+/// [`bind_report`] sees both attempts and owns the error-level log.
 async fn bind_with_retry(
     addr: (&str, u16),
     label: &str,
     budget: Duration,
     initial: Duration,
-) -> Option<TcpListener> {
+) -> Result<TcpListener, io::Error> {
     let deadline = Instant::now() + budget;
     let mut backoff = initial;
+    let mut retried = false;
     loop {
         match TcpListener::bind(addr).await {
-            Ok(listener) => return Some(listener),
+            Ok(listener) => {
+                // Contention that resolved itself is the signal the restart
+                // testing on the Pi looks for, so report it once at the default
+                // level — without the per-attempt noise below.
+                if retried {
+                    info!(
+                        "{label} port {} on {} was in use, and was claimed after retrying",
+                        addr.1,
+                        family_of(addr.0)
+                    );
+                }
+                return Ok(listener);
+            }
             Err(e) => {
                 if is_transient_bind_error(&e) && Instant::now() < deadline {
-                    warn!("{label} port {} in use, retrying in {backoff:?}", addr.1);
+                    // Say once, at the default level, that the start is waiting
+                    // on a busy port; the rest of the attempts stay at debug.
+                    if !retried {
+                        info!(
+                            "{label} port {} is in use on {}; retrying",
+                            addr.1,
+                            family_of(addr.0)
+                        );
+                    }
+                    retried = true;
+                    debug!("{label} port {} in use, retrying in {backoff:?}", addr.1);
                     sleep(backoff).await;
                     backoff = (backoff * 2).min(budget);
                     continue;
                 }
-                error!("Failed to bind {label} port {}: {e:?}", addr.1);
-                return None;
+                debug!(
+                    "Failed to bind {label} port {} on {}: {e}",
+                    addr.1,
+                    family_of(addr.0)
+                );
+                return Err(e);
             }
         }
     }
 }
 
+/// One port's two bind attempts: `Ok(())` where a listener was created, or the
+/// reason, in the operating system's own words, why there is none.
+#[derive(Debug)]
+struct PortBinds {
+    label: &'static str,
+    port: u16,
+    v6: Result<(), String>,
+    v4: Result<(), String>,
+}
+
+impl PortBinds {
+    /// Whether this port ended up with any listener at all.
+    fn is_live(&self) -> bool {
+        self.v6.is_ok() || self.v4.is_ok()
+    }
+
+    /// What the operating system said about whichever attempts failed, quoted
+    /// rather than interpreted: a guessed cause sends the operator hunting for
+    /// the wrong thing.
+    fn reasons(&self) -> String {
+        match (&self.v6, &self.v4) {
+            (Err(v6), Err(v4)) => format!("IPv6: {v6}; IPv4: {v4}"),
+            (Err(v6), Ok(())) => format!("IPv6: {v6}"),
+            (Ok(()), Err(v4)) => format!("IPv4: {v4}"),
+            (Ok(()), Ok(())) => String::new(),
+        }
+    }
+}
+
+/// What a completed round of binds should be written to the log as.
+#[derive(Debug, Default)]
+struct BindReport {
+    /// Logged at error level: a port with no listener at all, which means that
+    /// feed is not served.
+    errors: Vec<String>,
+    /// Logged at info level: one address family's listener was not created while
+    /// the other was.
+    ///
+    /// Stated as a fact with no verdict attached. Whether it matters depends on
+    /// whether this system's IPv6 listener already serves IPv4 clients — a
+    /// runtime kernel setting that refbox deliberately does not try to work out.
+    /// The note must not say this is normal, either: on a system where the two
+    /// families are separate, this line appears *only* when something really is
+    /// holding the other address, and calling that normal would hide the exact
+    /// failure this reporting exists to surface.
+    notes: Vec<String>,
+    /// The listeners that were created. `None` when none were, so that refbox
+    /// never claims listeners started when none have.
+    started: Option<String>,
+}
+
+/// Group ports by the reason their listener was missing, so that the ordinary
+/// case — every port failing the same way — is one line rather than one each.
+fn group_by_reason(entries: Vec<(String, String)>) -> Vec<(String, Vec<String>)> {
+    let mut grouped: Vec<(String, Vec<String>)> = Vec::new();
+    for (reason, port) in entries {
+        match grouped.iter_mut().find(|(r, _)| *r == reason) {
+            Some((_, ports)) => ports.push(port),
+            None => grouped.push((reason, vec![port])),
+        }
+    }
+    grouped
+}
+
+/// Turn the outcome of the bind attempts into exactly what belongs in the log.
+/// This function owns every message about binding, so that one failure produces
+/// one line rather than several.
+fn bind_report(ports: &[PortBinds]) -> BindReport {
+    let mut report = BindReport::default();
+    let mut live = Vec::new();
+    let mut no_v4 = Vec::new();
+    let mut no_v6 = Vec::new();
+
+    for (i, p) in ports.iter().enumerate() {
+        let (label, port) = (p.label, p.port);
+        match (p.v6.is_ok(), p.v4.is_ok()) {
+            (true, true) => live.push(format!("{label} port {port} (IPv6, IPv4)")),
+            (true, false) => {
+                if let Err(reason) = &p.v4 {
+                    no_v4.push((reason.clone(), format!("{label} port {port}")));
+                }
+                live.push(format!("{label} port {port} (IPv6)"));
+            }
+            (false, true) => {
+                if let Err(reason) = &p.v6 {
+                    no_v6.push((reason.clone(), format!("{label} port {port}")));
+                }
+                live.push(format!("{label} port {port} (IPv4)"));
+            }
+            (false, false) => {
+                // A port number configured for two feeds cannot serve both. Say
+                // that, rather than quoting an "address in use" the operator
+                // would go hunting for. The other feed is only to blame if it
+                // actually got a listener — when a third party holds the port,
+                // both feeds lose it and neither took it from the other. Port 0
+                // means "any free port", so two of those do not clash.
+                let claimed_first = (port != 0)
+                    .then(|| {
+                        ports
+                            .iter()
+                            .enumerate()
+                            .find(|(j, q)| *j != i && q.port == port && q.is_live())
+                            .map(|(_, q)| q.label)
+                    })
+                    .flatten();
+
+                report.errors.push(match claimed_first {
+                    Some(other) => format!(
+                        "No listener on {label} port {port}: the {other} feed is configured \
+                         on the same port and claimed it first, so the {label} feed cannot \
+                         be served. Give the two feeds different port numbers. The system \
+                         reported {}.",
+                        p.reasons()
+                    ),
+                    None => format!(
+                        "No listener on {label} port {port}: refbox will not serve the \
+                         {label} feed at all. The system reported {}.",
+                        p.reasons()
+                    ),
+                });
+            }
+        }
+    }
+
+    for (reason, labels) in group_by_reason(no_v4) {
+        report.notes.push(format!(
+            "No separate IPv4 listener for {} ({reason}). If an IPv4 client cannot \
+             connect to one of those ports, this is why.",
+            labels.join(", ")
+        ));
+    }
+    for (reason, labels) in group_by_reason(no_v6) {
+        report.notes.push(format!(
+            "No IPv6 listener for {} ({reason}). If an IPv6 client cannot connect to \
+             one of those ports, this is why.",
+            labels.join(", ")
+        ));
+    }
+
+    report.started = (!live.is_empty()).then(|| format!("Listeners started: {}", live.join(", ")));
+    report
+}
+
+/// The listeners obtained for one port, with the record of what happened.
+struct BoundPort {
+    v6: Option<TcpListener>,
+    v4: Option<TcpListener>,
+    binds: PortBinds,
+}
+
+/// Claim both address families for one port.
+///
+/// IPv6 goes first and is always retried: on a dual-stack host its socket claims
+/// the IPv4 address too, so binding IPv4 first would cost the IPv6 listener.
+///
+/// The IPv4 bind is retried only when the IPv6 bind failed, which is the one case
+/// where IPv4 is certainly the only route left. Retrying it unconditionally would
+/// spend the whole budget on every dual-stack start, where that bind is expected
+/// to fail against refbox's own IPv6 socket.
+async fn bind_port(label: &'static str, port: u16) -> BoundPort {
+    let v6 = bind_with_retry(
+        ("::", port),
+        label,
+        TCP_BIND_RETRY_BUDGET,
+        TCP_BIND_RETRY_INITIAL,
+    )
+    .await;
+
+    let v4 = if v6.is_ok() {
+        TcpListener::bind(("0.0.0.0", port)).await
+    } else {
+        bind_with_retry(
+            ("0.0.0.0", port),
+            label,
+            TCP_BIND_RETRY_BUDGET,
+            TCP_BIND_RETRY_INITIAL,
+        )
+        .await
+    };
+
+    let binds = PortBinds {
+        label,
+        port,
+        v6: v6.as_ref().map(|_| ()).map_err(|e| e.to_string()),
+        v4: v4.as_ref().map(|_| ()).map_err(|e| e.to_string()),
+    };
+
+    BoundPort {
+        v6: v6.ok(),
+        v4: v4.ok(),
+        binds,
+    }
+}
+
 async fn listener_loop(tx: mpsc::Sender<ServerMessage>, binary_port: u16, json_port: u16) {
     info!("Starting Listeners for JSON (port {json_port}) and binary (port {binary_port})");
-    let binary_listener_v6 = bind_with_retry(
-        ("::", binary_port),
-        "binary",
-        TCP_BIND_RETRY_BUDGET,
-        TCP_BIND_RETRY_INITIAL,
-    )
-    .await;
-    let json_listener_v6 = bind_with_retry(
-        ("::", json_port),
-        "JSON",
-        TCP_BIND_RETRY_BUDGET,
-        TCP_BIND_RETRY_INITIAL,
-    )
-    .await;
 
     // On some OSs, we must separately listen on IPv4, but on other OSs that
-    // that isn't allowed, so we just try to listen on IPv4
-    let binary_listener_v4 = TcpListener::bind(("0.0.0.0", binary_port)).await.ok();
-    let json_listener_v4 = TcpListener::bind(("0.0.0.0", json_port)).await.ok();
+    // isn't allowed. Rather than trying to work out which this is — a runtime
+    // kernel setting that four attempts at inferring all got wrong — each port
+    // is claimed on both families and the log simply says which listeners were
+    // created and what the system said about any that were not.
+    //
+    // The two ports are independent, so claim them at the same time: a contested
+    // port can spend its retry budget, and running the ports in sequence would
+    // add those budgets together before anything at all is reported.
+    let (
+        BoundPort {
+            v6: binary_listener_v6,
+            v4: binary_listener_v4,
+            binds: binary_binds,
+        },
+        BoundPort {
+            v6: json_listener_v6,
+            v4: json_listener_v4,
+            binds: json_binds,
+        },
+    ) = tokio::join!(
+        bind_port("binary", binary_port),
+        bind_port("JSON", json_port)
+    );
 
-    info!("Listeners started");
+    let report = bind_report(&[binary_binds, json_binds]);
+    for message in &report.errors {
+        error!("{message}");
+    }
+    for message in &report.notes {
+        info!("{message}");
+    }
+    if let Some(started) = &report.started {
+        info!("{started}");
+    }
 
     loop {
         type ListenResult = std::io::Result<(TcpStream, SocketAddr)>;
@@ -771,9 +1022,9 @@ async fn listener_loop(tx: mpsc::Sender<ServerMessage>, binary_port: u16, json_p
                     .await
                     .unwrap();
             }
-            Err(addr) => match send_type {
-                SendType::Binary => error!("New binary connection to {addr:?} failed"),
-                SendType::Json => error!("New JSON connection to {addr:?} failed"),
+            Err(e) => match send_type {
+                SendType::Binary => error!("Failed to accept a binary connection: {e}"),
+                SendType::Json => error!("Failed to accept a JSON connection: {e}"),
             },
         };
 
@@ -1254,8 +1505,8 @@ mod test {
     #[tokio::test]
     async fn bind_with_retry_gives_up_on_held_port_within_budget() {
         // Hold an ephemeral port, then try to bind it again: the second bind
-        // fails AddrInUse, so bind_with_retry must retry then give up (None)
-        // within roughly its budget — never hang or panic.
+        // fails AddrInUse, so bind_with_retry must retry then give up, returning
+        // the error within roughly its budget — never hang or panic.
         let held = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
         let port = held.local_addr().unwrap().port();
         let start = Instant::now();
@@ -1267,12 +1518,264 @@ mod test {
         )
         .await;
         assert!(
-            result.is_none(),
-            "a held port must yield None, not a listener"
+            result.is_err(),
+            "a held port must yield an error, not a listener"
         );
         assert!(
             start.elapsed() < Duration::from_secs(1),
             "must give up within roughly the budget"
+        );
+    }
+
+    #[tokio::test]
+    async fn bind_with_retry_claims_a_port_the_holder_releases_mid_budget() {
+        // The restart-overlap case: the exiting process still holds the port
+        // when the new one starts, then lets go. The retry must ride that out.
+        let held = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = held.local_addr().unwrap().port();
+        task::spawn(async move {
+            sleep(Duration::from_millis(150)).await;
+            drop(held);
+        });
+        let result = bind_with_retry(
+            ("127.0.0.1", port),
+            "test",
+            Duration::from_millis(2000),
+            Duration::from_millis(50),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "a port released within the budget must be claimed, not given up on"
+        );
+    }
+
+    /// `bind_port` owns the family ordering and decides whether the IPv4 bind is
+    /// worth a retry budget. A free port must cost neither.
+    #[tokio::test]
+    async fn bind_port_claims_a_free_port_without_spending_a_retry_budget() {
+        // No usable IPv6 stack (containers, ipv6.disable=1) means there is
+        // nothing here to check; that is the environment, not a defect.
+        let Ok(scout) = TcpListener::bind(("::", 0)).await else {
+            return;
+        };
+        let port = scout.local_addr().unwrap().port();
+        drop(scout);
+
+        let start = Instant::now();
+        let bound = bind_port("test", port).await;
+
+        // The port is released before it is re-claimed, so another process can
+        // take it in between. That is a lost race, not a failure of bind_port.
+        if bound.v6.is_none() {
+            return;
+        }
+        assert!(
+            bound.binds.is_live(),
+            "a free port must end up with a listener"
+        );
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "a free port must not spend a retry budget on either family"
+        );
+    }
+
+    /// One port's bind outcome, in the terms `bind_report` judges.
+    fn port_binds(label: &'static str, port: u16, v6: bool, v4: bool) -> PortBinds {
+        let taken = || Err("Address already in use (os error 98)".to_string());
+        PortBinds {
+            label,
+            port,
+            v6: if v6 { Ok(()) } else { taken() },
+            v4: if v4 { Ok(()) } else { taken() },
+        }
+    }
+
+    /// Both families created on both ports: nothing to report but the summary.
+    #[test]
+    fn bind_report_lists_every_listener_that_was_created() {
+        let report = bind_report(&[
+            port_binds("binary", 8001, true, true),
+            port_binds("JSON", 8000, true, true),
+        ]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert!(report.notes.is_empty(), "{:?}", report.notes);
+        assert_eq!(
+            report.started.as_deref(),
+            Some("Listeners started: binary port 8001 (IPv6, IPv4), JSON port 8000 (IPv6, IPv4)")
+        );
+    }
+
+    /// The common case on Linux and the Pi, where the IPv6 listener already
+    /// serves IPv4. It is stated, never called a failure — refbox does not know
+    /// whether it is one, and a false alarm on every start would train the
+    /// operator to ignore the log.
+    #[test]
+    fn bind_report_notes_a_missing_ipv4_listener_without_calling_it_a_failure() {
+        let report = bind_report(&[port_binds("JSON", 8000, true, false)]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(report.notes.len(), 1, "{:?}", report.notes);
+        assert!(
+            report.notes[0].contains("If an IPv4 client cannot connect"),
+            "the note must tell the operator what to check: {}",
+            report.notes[0]
+        );
+        assert!(
+            report.notes[0].contains("Address already in use (os error 98)"),
+            "and carry what the system said: {}",
+            report.notes[0]
+        );
+        assert_eq!(
+            report.started.as_deref(),
+            Some("Listeners started: JSON port 8000 (IPv6)")
+        );
+    }
+
+    /// The ordinary Linux/Pi start: both ports miss their separate IPv4 listener
+    /// for the same reason, and that must be one line, not one per port.
+    #[test]
+    fn bind_report_groups_ports_that_are_missing_a_listener_for_the_same_reason() {
+        let report = bind_report(&[
+            port_binds("binary", 8001, true, false),
+            port_binds("JSON", 8000, true, false),
+        ]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(
+            report.notes.len(),
+            1,
+            "one reason, so one line: {:?}",
+            report.notes
+        );
+        assert!(
+            report.notes[0].contains("binary port 8001, JSON port 8000"),
+            "{}",
+            report.notes[0]
+        );
+    }
+
+    /// The mirror case, on a host with IPv6 disabled.
+    #[test]
+    fn bind_report_notes_a_missing_ipv6_listener_without_calling_it_a_failure() {
+        let report = bind_report(&[port_binds("JSON", 8000, false, true)]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(report.notes.len(), 1, "{:?}", report.notes);
+        assert!(report.notes[0].contains("If an IPv6 client cannot connect"));
+        assert_eq!(
+            report.started.as_deref(),
+            Some("Listeners started: JSON port 8000 (IPv4)")
+        );
+    }
+
+    /// A port nothing could claim is named as an error, and the port that did
+    /// come up is still reported.
+    #[test]
+    fn bind_report_names_a_port_that_got_no_listener() {
+        let report = bind_report(&[
+            port_binds("binary", 8001, false, false),
+            port_binds("JSON", 8000, true, true),
+        ]);
+        assert_eq!(report.errors.len(), 1, "{:?}", report.errors);
+        assert!(report.errors[0].starts_with("No listener on binary port 8001:"));
+        assert_eq!(
+            report.started.as_deref(),
+            Some("Listeners started: JSON port 8000 (IPv6, IPv4)")
+        );
+    }
+
+    /// The bug this branch exists for: refbox logged "Listeners started" even
+    /// when every bind had failed, so it looked healthy while serving nothing.
+    #[test]
+    fn bind_report_reports_nothing_started_when_every_bind_fails() {
+        let report = bind_report(&[
+            port_binds("binary", 8001, false, false),
+            port_binds("JSON", 8000, false, false),
+        ]);
+        assert_eq!(report.errors.len(), 2, "{:?}", report.errors);
+        assert_eq!(
+            report.started, None,
+            "nothing came up, so nothing may claim to have started"
+        );
+    }
+
+    /// Two feeds on one port: the loser is told which feed took it, and the
+    /// winner may be listed either side of it.
+    #[test]
+    fn bind_report_blames_the_winning_feed_wherever_it_is_listed() {
+        for (first, second, expected) in [
+            (
+                port_binds("binary", 8000, true, true),
+                port_binds("JSON", 8000, false, false),
+                "the binary feed is configured on the same port",
+            ),
+            (
+                port_binds("binary", 8000, false, false),
+                port_binds("JSON", 8000, true, true),
+                "the JSON feed is configured on the same port",
+            ),
+        ] {
+            let report = bind_report(&[first, second]);
+            assert_eq!(report.errors.len(), 1, "{:?}", report.errors);
+            assert!(
+                report.errors[0].contains(expected),
+                "expected {expected:?} in {}",
+                report.errors[0]
+            );
+            assert!(
+                report.errors[0].contains("Address already in use"),
+                "the clash is named, but what the system said is still carried, so a \
+                 failure that was not contention is not misdiagnosed as one: {}",
+                report.errors[0]
+            );
+        }
+    }
+
+    /// Two feeds on one port that a *third party* holds: neither took it from
+    /// the other, so neither may be blamed for it.
+    #[test]
+    fn bind_report_does_not_blame_the_other_feed_when_a_third_party_holds_the_port() {
+        let report = bind_report(&[
+            port_binds("binary", 8000, false, false),
+            port_binds("JSON", 8000, false, false),
+        ]);
+        assert_eq!(report.errors.len(), 2, "{:?}", report.errors);
+        for e in &report.errors {
+            assert!(
+                !e.contains("claimed it first"),
+                "neither feed got the port, so neither took it from the other: {e}"
+            );
+            assert!(e.contains("Address already in use"), "{e}");
+        }
+    }
+
+    /// Port 0 means "any free port", so two feeds both on 0 do not clash.
+    #[test]
+    fn bind_report_does_not_treat_two_ephemeral_ports_as_a_clash() {
+        let report = bind_report(&[
+            port_binds("binary", 0, true, true),
+            port_binds("JSON", 0, true, true),
+        ]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+    }
+
+    /// The message carries what the system said and never guesses a cause: a
+    /// confident wrong guess sends the operator after a problem that isn't there.
+    #[test]
+    fn bind_report_quotes_the_system_error_instead_of_guessing_a_cause() {
+        let report = bind_report(&[PortBinds {
+            label: "JSON",
+            port: 80,
+            v6: Err("Permission denied (os error 13)".to_string()),
+            v4: Err("Permission denied (os error 13)".to_string()),
+        }]);
+        assert!(
+            report.errors[0].contains("Permission denied (os error 13)"),
+            "{}",
+            report.errors[0]
+        );
+        assert!(
+            !report.errors[0].contains("probably"),
+            "must not guess at a cause: {}",
+            report.errors[0]
         );
     }
 }

@@ -21,6 +21,7 @@
 //! (it counts laps completed by the engine, including the warmup). The
 //! within-level lap is derived from it and the level config below.
 
+use super::fit_text::fit_text;
 use super::*;
 use crate::beep_test::snapshot::{BeepTestPeriod, BeepTestSnapshot};
 use crate::config::BeepTest;
@@ -70,8 +71,16 @@ pub(in super::super) fn build_beep_test_page<'a>(
 
     let lap_value: String = snapshot.lap_count.to_string();
 
+    // During the count-in the clock is not measuring a lap, it is counting down
+    // to the first beep, and "TIME 0:10" does not say which. Level 0 is both the
+    // count-in and the state before START, and the label suits either.
+    let time_label = match snapshot.current_period {
+        BeepTestPeriod::Level(0) => fl!("beep-test-top-start-in-label"),
+        BeepTestPeriod::Level(_) => fl!("beep-test-top-time-label"),
+    };
+
     let top_row = row![
-        beep_test_value_tile(fl!("beep-test-top-time-label"), time_value),
+        beep_test_value_tile(time_label, time_value),
         beep_test_value_tile(fl!("beep-test-top-level-label"), level_value),
         beep_test_value_tile(fl!("beep-test-top-lap-label"), lap_value),
     ]
@@ -148,10 +157,15 @@ pub(in super::super) fn build_beep_test_page<'a>(
 pub(super) fn beep_test_value_tile<'a>(label: String, value: String) -> Container<'a, Message> {
     container(
         row![
-            text(label)
+            // `fit_text` with `no_wrap`, not plain `text`: this label is no longer
+            // always a short word like TIME, and a label wider than its share of
+            // the tile would otherwise break onto a second line that the tile has
+            // no room to draw. Shrinking is the visible failure; clipping is not.
+            fit_text(label)
                 .size(MEDIUM_TEXT)
-                .height(Length::Fill)
-                .align_y(Vertical::Center),
+                .no_wrap()
+                .width(Length::Shrink)
+                .height(Length::Fill),
             horizontal_space(),
             text(value)
                 .size(MEDIUM_TEXT)
@@ -254,9 +268,23 @@ enum CellState {
     /// Future or stopped — render in the default cell style.
     Default,
     /// The currently-running lap within the active level (clock ticking).
+    /// Rendered blue: the yellow that used to mark it now marks the active
+    /// level's header instead, so the two say different things — the header
+    /// which level, the cell which lap within it.
     Active,
     /// The active lap while the clock is paused mid-run. Same position as
-    /// `Active` would occupy; rendered blue to match the RESUME button.
+    /// `Active` would occupy, and deliberately the same blue.
+    ///
+    /// It used to be the one blue cell, distinguishing paused from a running
+    /// yellow. The table now says position rather than state — yellow for which
+    /// level, blue for which lap — and whether the clock is running is carried by
+    /// the PAUSE / RESUME button and the ticking TIME readout, both far more
+    /// legible across a pool deck than a table cell.
+    ///
+    /// Kept as its own variant rather than merged into `Active`: the two are
+    /// different things to the engine, and the state is computed anyway, so
+    /// giving the paused lap its own look again is a one-line change here rather
+    /// than a re-derivation.
     ActivePaused,
     /// A lap within the active level that has already completed.
     Completed,
@@ -276,7 +304,8 @@ enum ColumnState {
 /// Compute the column state for a given 1-based level number.
 ///
 /// - `active_level == None` means the engine is in warmup (Level 0); every
-///   column is treated as Future.
+///   column is treated as Future. The count-in says what it is doing with the
+///   START IN label instead of by marking a level that is not running yet.
 /// - A column whose 1-based index is less than the active level is Past.
 /// - A column whose index equals the active level is Active.
 /// - All other columns (index greater than active level) are Future.
@@ -290,6 +319,11 @@ fn compute_column_state(active_level: Option<usize>, column_one_based: usize) ->
 }
 
 /// A column-header cell showing a level number.
+///
+/// Green for a level still to come, yellow for the level running now, and the
+/// disabled look once it is finished — so the table says which level is live
+/// without the operator having to read the LEVEL readout above it. The Edit
+/// Levels editor marks the level being edited the same way.
 fn header_cell<'a>(label: String, state: ColumnState) -> Element<'a, Message> {
     let inner = text(label)
         .size(SMALL_TEXT)
@@ -304,7 +338,15 @@ fn header_cell<'a>(label: String, state: ColumnState) -> Element<'a, Message> {
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .into(),
-        ColumnState::Active | ColumnState::Future => container(inner)
+        ColumnState::Active => container(inner)
+            .style(yellow_container)
+            .padding(TABLE_CELL_SPACING)
+            .width(Length::Fill)
+            .height(Length::Fixed(TABLE_CELL_HEIGHT))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into(),
+        ColumnState::Future => container(inner)
             .style(green_container)
             .padding(TABLE_CELL_SPACING)
             .width(Length::Fill)
@@ -331,7 +373,7 @@ fn value_cell<'a>(value: String, state: CellState) -> Element<'a, Message> {
             .center_y(Length::Fill)
             .into(),
         CellState::Active => container(inner)
-            .style(yellow_container)
+            .style(blue_container)
             .padding(TABLE_CELL_SPACING)
             .width(Length::Fill)
             .height(Length::Fixed(TABLE_CELL_HEIGHT))

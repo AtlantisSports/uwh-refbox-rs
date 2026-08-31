@@ -388,6 +388,7 @@ beep-test = PRUEBA DE PITIDOS
 
 # Pantalla de prueba de pitidos
 beep-test-top-time-label = TIEMPO
+beep-test-top-start-in-label = EMPIEZA EN
 beep-test-top-level-label = NIVEL
 beep-test-top-lap-label = VUELTA
 beep-test-start = INICIAR
@@ -397,6 +398,7 @@ beep-test-reset = REINICIAR
 beep-test-edit-time = TIEMPO
 beep-test-edit-count = CANTIDAD
 beep-test-preset-ref = ÁRB
+beep-test-preset-heading = PREAJUSTE
 
 # Infractions
 stick-foul = Infracción con el palo

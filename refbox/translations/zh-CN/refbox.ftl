@@ -375,6 +375,7 @@ beep-test = 蜂鸣测试
 
 # Beep-test screen
 beep-test-top-time-label = 时间
+beep-test-top-start-in-label = 开始倒计时
 beep-test-top-level-label = 级别
 beep-test-top-lap-label = 圈数
 beep-test-start = 开始
@@ -384,6 +385,7 @@ beep-test-reset = 重置
 beep-test-edit-time = 时间
 beep-test-edit-count = 次数
 beep-test-preset-ref = 裁判
+beep-test-preset-heading = 预设
 
 # 违规类型
 stick-foul = 球棍犯规

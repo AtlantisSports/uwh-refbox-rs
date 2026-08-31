@@ -407,6 +407,7 @@ beep-test = BEEP TEST
 
 # Beep-test screen
 beep-test-top-time-label = TIME
+beep-test-top-start-in-label = START IN
 beep-test-top-level-label = LEVEL
 beep-test-top-lap-label = LAP
 beep-test-start = START
@@ -416,6 +417,7 @@ beep-test-reset = RESET
 beep-test-edit-time = TIME
 beep-test-edit-count = COUNT
 beep-test-preset-ref = REF
+beep-test-preset-heading = PRESET
 
 # Infractions
 stick-foul = Stick Foul

@@ -380,6 +380,7 @@ beep-test = TEST DE BIP
 
 # Écran de test de bip
 beep-test-top-time-label = TEMPS
+beep-test-top-start-in-label = DÉBUT DANS
 beep-test-top-level-label = NIVEAU
 beep-test-top-lap-label = TOUR
 beep-test-start = DÉMARRER
@@ -389,6 +390,7 @@ beep-test-reset = RÉINITIALISER
 beep-test-edit-time = TEMPS
 beep-test-edit-count = NOMBRE
 beep-test-preset-ref = ARB
+beep-test-preset-heading = PRÉRÉGLAGE
 
 # Infractions
 stick-foul = Faute de crosse

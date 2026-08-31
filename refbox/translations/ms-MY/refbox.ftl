@@ -376,6 +376,7 @@ beep-test = BEEP TEST
 
 # Beep-test screen
 beep-test-top-time-label = MASA
+beep-test-top-start-in-label = MULA DALAM
 beep-test-top-level-label = TAHAP
 beep-test-top-lap-label = PUSINGAN
 beep-test-start = MULA
@@ -385,6 +386,7 @@ beep-test-reset = SET SEMULA
 beep-test-edit-time = MASA
 beep-test-edit-count = BILANGAN
 beep-test-preset-ref = REF
+beep-test-preset-heading = PRATETAPAN
 
 # Pelanggaran
 stick-foul = Kesalahan Kayu

@@ -376,6 +376,7 @@ beep-test = BEEP TEST
 
 # Beep-test screen
 beep-test-top-time-label = TEMPO
+beep-test-top-start-in-label = COMEÇA EM
 beep-test-top-level-label = NÍVEL
 beep-test-top-lap-label = VOLTA
 beep-test-start = INICIAR
@@ -385,6 +386,7 @@ beep-test-reset = REINICIAR
 beep-test-edit-time = TEMPO
 beep-test-edit-count = CONT
 beep-test-preset-ref = ÁRB
+beep-test-preset-heading = PREDEFINIÇÃO
 
 # Infrações
 stick-foul = Falta de Taco

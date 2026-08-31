@@ -376,6 +376,7 @@ beep-test = BEEP TEST
 
 # Beep-test screen
 beep-test-top-time-label = ZEIT
+beep-test-top-start-in-label = BEGINNT IN
 beep-test-top-level-label = STUFE
 beep-test-top-lap-label = RUNDE
 beep-test-start = START
@@ -385,6 +386,7 @@ beep-test-reset = ZURÜCKSETZEN
 beep-test-edit-time = ZEIT
 beep-test-edit-count = ANZAHL
 beep-test-preset-ref = SR
+beep-test-preset-heading = VOREINSTELLUNG
 
 # Vergehen
 stick-foul = Schläger-Foul

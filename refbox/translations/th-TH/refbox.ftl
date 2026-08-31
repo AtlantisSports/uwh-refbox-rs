@@ -375,6 +375,7 @@ beep-test = ทดสอบบี๊พ
 
 # Beep-test screen
 beep-test-top-time-label = เวลา
+beep-test-top-start-in-label = เริ่มใน
 beep-test-top-level-label = ระดับ
 beep-test-top-lap-label = รอบ
 beep-test-start = เริ่ม
@@ -384,6 +385,7 @@ beep-test-reset = รีเซ็ต
 beep-test-edit-time = เวลา
 beep-test-edit-count = จำนวน
 beep-test-preset-ref = ผู้ตัดสิน
+beep-test-preset-heading = พรีเซ็ต
 
 # การฝ่าฝืน
 stick-foul = ฟาวล์ด้วยไม้

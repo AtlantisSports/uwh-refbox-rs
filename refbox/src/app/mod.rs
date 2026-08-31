@@ -6621,7 +6621,7 @@ impl RefBoxApp {
                     let sel = edited.selected_level;
                     if let Some(ref mut levels) = edited.beep_test_levels {
                         if let Some(level) = levels.get_mut(sel) {
-                            if level.count < 5 {
+                            if level.count < MAX_LAPS_PER_LEVEL {
                                 level.count = level.count.saturating_add(1);
                             }
                         }

@@ -382,11 +382,8 @@ beep-test-start = MULA
 beep-test-pause = JEDA
 beep-test-resume = SAMBUNG
 beep-test-reset = SET SEMULA
-beep-test-edit-selected = Tahap { $level }
 beep-test-edit-time = MASA
 beep-test-edit-count = BILANGAN
-beep-test-edit-new = TAMBAH TAHAP
-beep-test-edit-remove = BUANG TAHAP
 beep-test-preset-ref = REF
 
 # Pelanggaran

@@ -382,11 +382,8 @@ beep-test-start = BAŞLAT
 beep-test-pause = DURAKLAT
 beep-test-resume = DEVAM ET
 beep-test-reset = SIFIRLA
-beep-test-edit-selected = Seviye { $level }
 beep-test-edit-time = SÜRE
 beep-test-edit-count = ADET
-beep-test-edit-new = SEVİYE EKLE
-beep-test-edit-remove = SEVİYE KALDIR
 beep-test-preset-ref = HKM
 
 # İhlaller

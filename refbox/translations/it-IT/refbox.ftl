@@ -382,11 +382,8 @@ beep-test-start = AVVIA
 beep-test-pause = PAUSA
 beep-test-resume = RIPRENDI
 beep-test-reset = AZZERA
-beep-test-edit-selected = Livello { $level }
 beep-test-edit-time = TEMPO
 beep-test-edit-count = NUMERO
-beep-test-edit-new = AGGIUNGI LIVELLO
-beep-test-edit-remove = RIMUOVI LIVELLO
 beep-test-preset-ref = ARB
 
 # Infrazioni

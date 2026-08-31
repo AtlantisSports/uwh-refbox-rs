@@ -381,11 +381,8 @@ beep-test-start = 开始
 beep-test-pause = 暂停
 beep-test-resume = 继续
 beep-test-reset = 重置
-beep-test-edit-selected = 级别 { $level }
 beep-test-edit-time = 时间
 beep-test-edit-count = 次数
-beep-test-edit-new = 添加级别
-beep-test-edit-remove = 删除级别
 beep-test-preset-ref = 裁判
 
 # 违规类型

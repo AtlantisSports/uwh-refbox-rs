@@ -384,11 +384,8 @@ beep-test-start = 시작
 beep-test-pause = 일시정지
 beep-test-resume = 재개
 beep-test-reset = 리셋
-beep-test-edit-selected = 레벨 { $level }
 beep-test-edit-time = 시간
 beep-test-edit-count = 카운트
-beep-test-edit-new = 레벨 추가
-beep-test-edit-remove = 레벨 제거
 beep-test-preset-ref = 심판
 
 # 위반 항목

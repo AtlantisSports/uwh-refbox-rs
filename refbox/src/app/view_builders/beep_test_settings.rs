@@ -14,8 +14,9 @@
 //! a RESTART TO APPLY button appears on the landing's bottom row when the
 //! staged mode differs from the live mode.
 
+use super::beep_test::beep_test_value_tile;
 use super::*;
-use crate::config::{Config, Level};
+use crate::config::{BeepTestPreset, Config, Level};
 use crate::sim_frame::{FrontDisplayLayout, effective_beep_layout};
 use iced::{
     Element, Length,
@@ -297,17 +298,35 @@ pub(in super::super) fn build_beep_test_sound_settings_page<'a>(
     .into()
 }
 
-/// Maximum number of levels a schedule may contain. The table reserves
-/// exactly this many columns; the court-length preset strip is a separate,
-/// fixed-width column beside it (see `table_and_presets` in
-/// `build_beep_test_edit_levels_page`) and does not grow or shrink with this
-/// cap. This value matches the Full presets' level count (10) — see
-/// `BeepTestPreset::FULL_LAP_COUNTS` in `config.rs`.
+/// Maximum number of levels a schedule may contain. The table reserves exactly
+/// this many columns; the court-length preset strip is a separate, fixed-width
+/// column beside it (see `body` in `build_beep_test_edit_levels_page`) and does
+/// not grow or shrink with this cap. This value matches the Full presets' level
+/// count (10) — see `BeepTestPreset::FULL_LAP_COUNTS` in `config.rs`.
 pub(in super::super) const MAX_LEVELS: usize = 10;
 
-/// Spacing between cells in the editor's transposed table. Matches the
-/// main view's TABLE_CELL_SPACING so the editor reads as a tight grid.
+/// Padding inside each cell of the editor's transposed table, between the cell
+/// edge and its number. Matches the main view's TABLE_CELL_SPACING so the two
+/// tables read alike. This is NOT the spacing between cells: that is the
+/// standard `SPACING`, which is what makes two stacked cells plus their gap
+/// come to exactly one `MIN_BUTTON_SIZE` row.
 const EDIT_TABLE_CELL_SPACING: f32 = 2.0;
+
+/// Most laps one level may be given from this screen. The COUNT `+` disables at
+/// this value and `Message::BeepTestEditCountInc` enforces the same cap, both
+/// reading this constant so the two cannot drift apart. The height budget the
+/// page is guarded against depends on it: one more lap is one more table layer.
+pub(in super::super) const MAX_LAPS_PER_LEVEL: u8 = 5;
+
+/// Vertical room the Edit Levels page has for its own content: the default
+/// configured window height (`HardwareConfig::screen_y`) less the root layout's
+/// padding above and below it.
+///
+/// Every row on the page is a fixed height, so whether the page fits is
+/// arithmetic rather than something the renderer reports — see
+/// `edit_levels_page_fits_the_window_at_the_worst_lap_count`.
+#[cfg(test)]
+const DEFAULT_PAGE_HEIGHT_BUDGET: f32 = 691.0 - 2.0 * PADDING;
 
 /// Height of one editor-table cell layer (header or lap row). Sized so
 /// that two stacked layers plus the standard SPACING between them equal
@@ -316,27 +335,29 @@ const EDIT_TABLE_CELL_HEIGHT: f32 = (MIN_BUTTON_SIZE - SPACING) / 2.0;
 
 /// Edit Levels sub-page.
 ///
-/// Standard refbox column layout: the transposed levels table (with the
-/// court-length preset buttons in the strip to its right) + per-level edit
-/// panel in the middle (sized proportionally), and a Cancel / Apply footer
-/// at the bottom. Apply disables when the staged levels match the live
-/// config.
+/// Two columns over a Cancel / Apply footer, with Apply disabled while the
+/// staged levels match the live config.
 ///
-/// Top middle: the same transposed level table from the main view, plus
-/// an extra `[+NEW]` header at the end. Every header and every cell is
-/// tappable: tapping any element in a column selects that level. The
-/// selected column is highlighted with a distinct (blue) style to
-/// distinguish it from the main view's yellow "active lap" highlight. The
-/// table reserves `MAX_LEVELS` columns (10, matching the Full presets),
-/// beside a fixed strip that holds the six preset buttons (a referee and a
-/// full schedule per court length — 8 and 10 levels respectively — in a
-/// 2-column by 3-row grid); that strip's width does not depend on
-/// `MAX_LEVELS`. The preset whose schedule matches the staged levels
-/// renders highlighted; see `build_preset_panel`.
+/// Left column, top: the transposed level table from the main view. Every
+/// header and every cell is tappable, and tapping any element in a column
+/// selects that level. The selected column is highlighted blue, distinguishing
+/// it from the main view's yellow "active lap" highlight. The table reserves
+/// `MAX_LEVELS` columns (10, matching the Full presets).
 ///
-/// Bottom middle: a per-level edit panel showing the selected level's
-/// duration and count, each with `[-]` `[+]` buttons, and a `REMOVE
-/// LEVEL` button (disabled when only one level remains).
+/// Left column, beneath it: the per-level edit panel — one row each for LEVEL,
+/// TIME and COUNT, each a read-only tile with `[-]` and `[+]` beside it. See
+/// `build_edit_panel`.
+///
+/// Right column: the ten court-length preset buttons, running down the full
+/// height of the page beside both of the above. That is what lets them keep a
+/// full row height: ten buttons cannot fit beside the table alone. The preset
+/// matching the staged levels renders highlighted; see `build_preset_panel`.
+///
+/// Every row on the page is one `MIN_BUTTON_SIZE` tall with the standard
+/// `SPACING` between rows, and two stacked table cells plus their gap come to
+/// the same height, so the table, the editor and the preset strip all share one
+/// rhythm. That is arithmetic rather than something the renderer enforces, so it
+/// is pinned by `edit_levels_page_fits_the_window_at_the_worst_lap_count`.
 pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
     config: &Config,
     levels: &'a [Level],
@@ -350,31 +371,39 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
 
     let has_changes = config.beep_test.levels.as_slice() != levels;
 
-    // ----- Transposed table, with the preset buttons in the strip to its right -----
-    let table_and_presets = row![
-        container(build_editor_levels_table(levels, selected)).width(Length::FillPortion(10)),
-        container(build_preset_panel(levels))
-            .width(Length::FillPortion(5))
-            .padding(EDIT_TABLE_CELL_SPACING),
+    // ----- Left column: the table, with the per-level editor beneath it -----
+    //
+    // The editor sits in a *filling* container rather than above a spacer row of
+    // its own. A spacer would be a third child of this column and so cost one
+    // more SPACING gap, and at the worst lap count (ten levels of
+    // MAX_LAPS_PER_LEVEL, which reserves six table layers) the page has no gap
+    // to spare. A filling container puts the slack in the same place — below the
+    // editor, pushing nothing — for free.
+    let schedule_column = column![
+        container(build_editor_levels_table(levels, selected))
+            .width(Length::Fill)
+            .height(Length::Shrink),
+        container(build_edit_panel(levels, selected))
+            .width(Length::Fill)
+            .height(Length::Fill),
     ]
-    .spacing(SPACING);
+    .spacing(SPACING)
+    .height(Length::Fill);
 
-    // ----- Per-level edit panel -----
-    let edit_panel = build_edit_panel(levels, selected);
+    // ----- Body: that column, with the preset strip down its full height -----
+    //
+    // The strip runs beside the table *and* the editor. Beside the table alone
+    // it could not hold ten preset buttons at a full row height without
+    // outgrowing the window.
+    let body = row![
+        container(schedule_column).width(Length::FillPortion(10)),
+        container(build_preset_panel(levels)).width(Length::FillPortion(5)),
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill);
 
-    // Content stacks at the top with the standard SPACING between every row;
-    // the slack sits below it so the footer stays pinned to the bottom. This
-    // mirrors `build_beep_test_sound_settings_page`. Putting the spacer between
-    // the table and the edit panel instead would widen that one seam to three
-    // times the spacing used everywhere else on the page.
     column![
-        container(table_and_presets)
-            .width(Length::Fill)
-            .height(Length::Shrink),
-        container(edit_panel)
-            .width(Length::Fill)
-            .height(Length::Shrink),
-        row![horizontal_space()].height(Length::Fill),
+        body,
         make_beep_test_cancel_apply_footer(
             Message::BeepTestEditLevelsCancel,
             Message::BeepTestEditLevelsSave,
@@ -386,10 +415,33 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
     .into()
 }
 
-/// The court-length preset buttons, arranged in a 2-column by 3-row grid in
-/// the strip to the right of the levels table: the referee (26-lap) preset
-/// on the left, the full (37-lap) preset on the right, one row per court
-/// length, ordered 25 / 23 / 21.
+/// The preset rows as they appear in the strip, longest pool first: the referee
+/// (26-lap) schedule on the left of each row, the full (37-lap) one on the
+/// right.
+///
+/// 25yd sits between 23m and 22m because 25 yards is 22.86m — the order is by
+/// real pool length, not by the number printed on the label.
+///
+/// Written out rather than derived from `BeepTestPreset::ALL` because this is a
+/// display decision: which schedule shares a row with which, and in what order.
+/// `preset_rows_cover_every_preset_exactly_once` checks the list against `ALL`,
+/// so a new court length cannot be added to the config and quietly go missing
+/// from this screen.
+const PRESET_ROWS: [(BeepTestPreset, BeepTestPreset); 5] = [
+    (BeepTestPreset::Ref25, BeepTestPreset::Full25),
+    (BeepTestPreset::Ref23, BeepTestPreset::Full23),
+    (BeepTestPreset::Ref25Yd, BeepTestPreset::Full25Yd),
+    (BeepTestPreset::Ref22, BeepTestPreset::Full22),
+    (BeepTestPreset::Ref21, BeepTestPreset::Full21),
+];
+
+/// The court-length preset buttons: a 2-column grid in the strip down the right
+/// of the page, one row per pool length, ordered by `PRESET_ROWS`.
+///
+/// Each button is one `MIN_BUTTON_SIZE` tall, the same as an editor row and the
+/// same as two stacked table cells plus the gap between them, so the strip and
+/// the table sit on one shared row rhythm: preset row 1 spans table layers 1
+/// and 2, preset row 2 spans layers 3 and 4, and so on.
 ///
 /// The preset whose schedule matches the staged levels is highlighted with the
 /// same blue the selected-level column uses, so the screen reads back which
@@ -397,8 +449,6 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
 /// levels stop matching, and the highlight drops on the next render — that is
 /// the whole mechanism, no separate "edited" flag is needed.
 fn build_preset_panel(levels: &[Level]) -> Element<'_, Message> {
-    use crate::config::BeepTestPreset;
-
     let active = BeepTestPreset::detect_levels(levels);
 
     let preset_button = move |preset: BeepTestPreset| {
@@ -408,38 +458,28 @@ fn build_preset_panel(levels: &[Level]) -> Element<'_, Message> {
             light_gray_button
         };
         let label = if preset.is_ref() {
-            format!("{} {}M", fl!("beep-test-preset-ref"), preset.metres())
+            format!(
+                "{} {}",
+                fl!("beep-test-preset-ref"),
+                preset.distance_label()
+            )
         } else {
-            format!("{}M", preset.metres())
+            preset.distance_label().to_string()
         };
         button(centered_text(label))
             .style(style)
             .padding(PADDING)
             .width(Length::Fill)
-            .height(Length::Fixed(XS_BUTTON_SIZE))
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
             .on_press(Message::BeepTestEditSelectPreset(preset))
     };
 
-    column![
-        row![
-            preset_button(BeepTestPreset::Ref25),
-            preset_button(BeepTestPreset::Full25),
-        ]
-        .spacing(SPACING),
-        row![
-            preset_button(BeepTestPreset::Ref23),
-            preset_button(BeepTestPreset::Full23),
-        ]
-        .spacing(SPACING),
-        row![
-            preset_button(BeepTestPreset::Ref21),
-            preset_button(BeepTestPreset::Full21),
-        ]
-        .spacing(SPACING),
-    ]
-    .spacing(SPACING)
-    .width(Length::Fill)
-    .into()
+    let mut strip = Column::new().spacing(SPACING).width(Length::Fill);
+    for (ref_preset, full_preset) in PRESET_ROWS {
+        strip = strip
+            .push(row![preset_button(ref_preset), preset_button(full_preset)].spacing(SPACING));
+    }
+    strip.into()
 }
 
 /// Build the editor's transposed levels table. Mirrors the main view's
@@ -490,8 +530,12 @@ fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, M
         rows = rows.push(cell_row);
     }
 
+    // No padding on this container: the table and the preset strip must both
+    // start at the very top of the body for preset row N to line up with table
+    // layers 2N-1 and 2N. Insetting one and not the other puts the two grids
+    // permanently out of step, and insetting both spends height the page does
+    // not have at the worst lap count.
     container(rows)
-        .padding(EDIT_TABLE_CELL_SPACING)
         .width(Length::Fill)
         .center_x(Length::Fill)
         .into()
@@ -563,176 +607,104 @@ fn filler_cell<'a>() -> Element<'a, Message> {
     Space::new(Length::Fill, Length::Fixed(EDIT_TABLE_CELL_HEIGHT)).into()
 }
 
-/// Build the per-level edit panel: a top management row with
-/// `[+NEW]`, the `Selected: Level N` indicator, and `[REMOVE LEVEL]`,
-/// followed by the Time and Count rows (each with current value and
-/// `[-]` `[+]`).
+/// One `[-]` or `[+]` button. Grey and inert exactly when `message` is `None`,
+/// so "unavailable" is a property of having nothing to do rather than something
+/// each call site has to remember to style.
+fn step_button<'a>(label: &'static str, message: Option<Message>) -> Element<'a, Message> {
+    let mut b = make_chrome_button(label).style(if message.is_some() {
+        blue_button
+    } else {
+        gray_button
+    });
+    if let Some(message) = message {
+        b = b.on_press(message);
+    }
+    b.into()
+}
+
+/// One row of the per-level editor: a read-only tile carrying the parameter's
+/// name and its current value, then that parameter's `[-]` and `[+]`.
+///
+/// Every row is one `MIN_BUTTON_SIZE` tall, matching a preset button and
+/// matching two stacked table cells plus the gap between them, so the whole page
+/// sits on one row rhythm. The 2:1:1 width split gives the tile the width the
+/// old label column had and leaves both buttons the width they already had.
+fn edit_panel_row<'a>(
+    label: String,
+    value: String,
+    dec: Element<'a, Message>,
+    inc: Element<'a, Message>,
+) -> Element<'a, Message> {
+    row![
+        container(beep_test_value_tile(label, value)).width(Length::FillPortion(2)),
+        container(dec)
+            .width(Length::FillPortion(1))
+            .height(Length::Fixed(MIN_BUTTON_SIZE)),
+        container(inc)
+            .width(Length::FillPortion(1))
+            .height(Length::Fixed(MIN_BUTTON_SIZE)),
+    ]
+    .spacing(SPACING)
+    .into()
+}
+
+/// Build the per-level edit panel: three identical rows, one per parameter.
+///
+/// LEVEL's `[-]` and `[+]` remove and add a level rather than stepping the
+/// selection — which level is being edited is chosen by tapping its column in
+/// the table above.
+///
+/// The readout still moves when they are pressed, which is worth knowing because
+/// it makes the row read like navigation when it is not: `[+]` copies the level
+/// being edited, inserts the copy directly after it and selects the copy, so the
+/// tile goes from LEVEL 1 to LEVEL 2 while a level has in fact been added.
+/// `[-]` deletes the level being edited and selects the one before it. They carry the same styling as TIME's and COUNT's, so
+/// nothing on this row is coloured to mark it destructive. Nothing here reaches
+/// the config until APPLY, and re-tapping a preset restores the whole schedule,
+/// so a mis-tap costs an edit in progress rather than a saved setup.
+///
+/// A button is grey and inert exactly when its action is unavailable: REMOVE at
+/// one level, ADD at `MAX_LEVELS`, TIME `-` at one second, COUNT `-` at one lap,
+/// COUNT `+` at `MAX_LAPS_PER_LEVEL`.
 fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
-    // The ADD LEVEL button is disabled when the number of staged levels is
-    // already at the cap. Mirrors the existing remove_disabled +
-    // count_inc_disabled patterns; defense-in-depth in the handler at
-    // Message::BeepTestEditAddLevel.
-    let add_disabled = levels.len() >= MAX_LEVELS;
+    let add = (levels.len() < MAX_LEVELS).then_some(Message::BeepTestEditAddLevel);
+    let remove = (levels.len() > 1).then_some(Message::BeepTestEditRemoveLevel);
 
-    // Safe to index because the caller already clamped `selected` to be
-    // in range. If the list is empty we fall through to a placeholder
-    // with just an [ADD LEVEL] button.
-    let Some(level) = levels.get(selected) else {
-        let add_button = if add_disabled {
-            make_smaller_button(fl!("beep-test-edit-new")).style(gray_button)
-        } else {
-            make_smaller_button(fl!("beep-test-edit-new"))
-                .style(green_button)
-                .on_press(Message::BeepTestEditAddLevel)
-        };
-        return container(add_button)
-            .padding(PADDING)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .into();
-    };
+    // `selected` is already clamped by the caller, so `None` here means the
+    // schedule is empty. The screen cannot reach that state (REMOVE is inert at
+    // one level), but a render against a stale snapshot could: every value then
+    // reads as a dash and only ADD stays live, rather than the panel vanishing.
+    let level = levels.get(selected);
+    let dash = || "-".to_string();
+    let secs = level.map_or(0, |l| l.duration.as_secs());
+    let count = level.map_or(0, |l| l.count);
 
-    // Top management row: [ADD LEVEL] | Selected: Level N | [REMOVE LEVEL]
-    let add_button = if add_disabled {
-        make_smaller_button(fl!("beep-test-edit-new")).style(gray_button)
-    } else {
-        make_smaller_button(fl!("beep-test-edit-new"))
-            .style(green_button)
-            .on_press(Message::BeepTestEditAddLevel)
-    };
-
-    let remove_disabled = levels.len() <= 1;
-    let remove_button = if remove_disabled {
-        make_smaller_button(fl!("beep-test-edit-remove")).style(gray_button)
-    } else {
-        make_smaller_button(fl!("beep-test-edit-remove"))
-            .style(red_button)
-            .on_press(Message::BeepTestEditRemoveLevel)
-    };
-
-    let selected_label = container(
-        text(fl!(
-            "beep-test-edit-selected",
-            level = (selected + 1).to_string()
-        ))
-        .size(MEDIUM_TEXT)
-        .align_x(Horizontal::Center)
-        .width(Length::Fill),
-    )
-    .style(light_gray_container)
-    .padding(PADDING)
-    .width(Length::Fill)
-    .height(Length::Fixed(XS_BUTTON_SIZE))
-    .align_x(Horizontal::Center)
-    .align_y(Vertical::Center);
-
-    let management_row = row![add_button, selected_label, remove_button].spacing(SPACING);
-
-    // Time row: label, value, [-] [+]
-    let duration_secs = level.duration.as_secs();
-    let time_dec_disabled = duration_secs <= 1;
-    let time_dec = {
-        let mut b = make_smaller_button("-").style(if time_dec_disabled {
-            gray_button
-        } else {
-            blue_button
-        });
-        if !time_dec_disabled {
-            b = b.on_press(Message::BeepTestEditDurationDec);
-        }
-        b
-    };
-    let time_inc = make_smaller_button("+")
-        .style(blue_button)
-        .on_press(Message::BeepTestEditDurationInc);
-    let time_row = row![
-        container(
-            text(fl!("beep-test-edit-time"))
-                .size(MEDIUM_TEXT)
-                .align_x(Horizontal::Left)
-                .width(Length::Fill),
-        )
-        .padding(PADDING)
-        .width(Length::FillPortion(2))
-        .height(Length::Fixed(XS_BUTTON_SIZE)),
-        container(
-            text(duration_secs.to_string())
-                .size(MEDIUM_TEXT)
-                .align_x(Horizontal::Center)
-                .width(Length::Fill),
-        )
-        .style(light_gray_container)
-        .padding(PADDING)
-        .width(Length::FillPortion(2))
-        .height(Length::Fixed(XS_BUTTON_SIZE)),
-        container(time_dec)
-            .width(Length::FillPortion(1))
-            .height(Length::Fixed(XS_BUTTON_SIZE)),
-        container(time_inc)
-            .width(Length::FillPortion(1))
-            .height(Length::Fixed(XS_BUTTON_SIZE)),
+    column![
+        edit_panel_row(
+            fl!("beep-test-top-level-label"),
+            level.map_or_else(dash, |_| (selected + 1).to_string()),
+            step_button("-", remove),
+            step_button("+", add),
+        ),
+        edit_panel_row(
+            fl!("beep-test-edit-time"),
+            level.map_or_else(dash, |l| l.duration.as_secs().to_string()),
+            step_button("-", (secs > 1).then_some(Message::BeepTestEditDurationDec)),
+            step_button("+", level.map(|_| Message::BeepTestEditDurationInc)),
+        ),
+        edit_panel_row(
+            fl!("beep-test-edit-count"),
+            level.map_or_else(dash, |l| l.count.to_string()),
+            step_button("-", (count > 1).then_some(Message::BeepTestEditCountDec)),
+            step_button(
+                "+",
+                (level.is_some() && count < MAX_LAPS_PER_LEVEL)
+                    .then_some(Message::BeepTestEditCountInc),
+            ),
+        ),
     ]
-    .spacing(SPACING);
-
-    // Count row: label, value, [-] [+]
-    let count_dec_disabled = level.count <= 1;
-    let count_dec = {
-        let mut b = make_smaller_button("-").style(if count_dec_disabled {
-            gray_button
-        } else {
-            blue_button
-        });
-        if !count_dec_disabled {
-            b = b.on_press(Message::BeepTestEditCountDec);
-        }
-        b
-    };
-    let count_inc_disabled = level.count >= 5;
-    let count_inc = {
-        let mut b = make_smaller_button("+").style(if count_inc_disabled {
-            gray_button
-        } else {
-            blue_button
-        });
-        if !count_inc_disabled {
-            b = b.on_press(Message::BeepTestEditCountInc);
-        }
-        b
-    };
-    let count_row = row![
-        container(
-            text(fl!("beep-test-edit-count"))
-                .size(MEDIUM_TEXT)
-                .align_x(Horizontal::Left)
-                .width(Length::Fill),
-        )
-        .padding(PADDING)
-        .width(Length::FillPortion(2))
-        .height(Length::Fixed(XS_BUTTON_SIZE)),
-        container(
-            text(level.count.to_string())
-                .size(MEDIUM_TEXT)
-                .align_x(Horizontal::Center)
-                .width(Length::Fill),
-        )
-        .style(light_gray_container)
-        .padding(PADDING)
-        .width(Length::FillPortion(2))
-        .height(Length::Fixed(XS_BUTTON_SIZE)),
-        container(count_dec)
-            .width(Length::FillPortion(1))
-            .height(Length::Fixed(XS_BUTTON_SIZE)),
-        container(count_inc)
-            .width(Length::FillPortion(1))
-            .height(Length::Fixed(XS_BUTTON_SIZE)),
-    ]
-    .spacing(SPACING);
-
-    column![management_row, time_row, count_row]
-        .spacing(SPACING)
-        .into()
+    .spacing(SPACING)
+    .into()
 }
 
 /// Buzzer picker sub-page for the BeepTest hierarchy.
@@ -939,8 +911,104 @@ fn make_beep_test_cancel_apply_footer<'a>(
 
 #[cfg(test)]
 mod test {
-    use super::MAX_LEVELS;
+    use super::{
+        DEFAULT_PAGE_HEIGHT_BUDGET, EDIT_TABLE_CELL_HEIGHT, MAX_LAPS_PER_LEVEL, MAX_LEVELS,
+        MIN_BUTTON_SIZE, PRESET_ROWS, SPACING,
+    };
     use crate::config::BeepTestPreset;
+
+    // The whole page is built on one claim: two stacked table cells plus the
+    // standard gap between them come to exactly one button row, so the levels
+    // table, the editor rows and the preset strip share a single rhythm. It is
+    // arithmetic between three separate constants and nothing in the renderer
+    // checks it, so it is pinned here.
+    #[test]
+    fn two_table_cells_plus_their_gap_make_one_button_row() {
+        assert_eq!(2.0 * EDIT_TABLE_CELL_HEIGHT + SPACING, MIN_BUTTON_SIZE);
+    }
+
+    // PRESET_ROWS is the display order, written out by hand. A court length
+    // added to the config but forgotten here would simply never appear on the
+    // screen, with every config test still green.
+    #[test]
+    fn preset_rows_cover_every_preset_exactly_once() {
+        let listed: Vec<BeepTestPreset> = PRESET_ROWS
+            .iter()
+            .flat_map(|(left, right)| [*left, *right])
+            .collect();
+
+        assert_eq!(
+            listed.len(),
+            BeepTestPreset::ALL.len(),
+            "PRESET_ROWS shows {} presets but there are {}",
+            listed.len(),
+            BeepTestPreset::ALL.len()
+        );
+        for preset in BeepTestPreset::ALL {
+            assert_eq!(
+                listed.iter().filter(|p| **p == preset).count(),
+                1,
+                "{preset:?} should appear exactly once in PRESET_ROWS"
+            );
+        }
+
+        // Each row is one court length: the referee schedule on the left, the
+        // full one on the right. Getting this the wrong way round would pair
+        // REF 25M with the 23M button and read as a labelling bug.
+        for (left, right) in PRESET_ROWS {
+            assert!(
+                left.is_ref(),
+                "{left:?} is on the left, so it must be a ref"
+            );
+            assert!(
+                !right.is_ref(),
+                "{right:?} is on the right, so it must be a full schedule"
+            );
+            assert_eq!(
+                left.distance_label(),
+                right.distance_label(),
+                "a row must pair one court length with itself"
+            );
+        }
+    }
+
+    // Every row on the Edit Levels page is a fixed height, so whether the page
+    // fits the window is arithmetic — the renderer will not report an overflow,
+    // it will simply draw BACK and APPLY off the bottom of the screen.
+    //
+    // This pins that arithmetic at the worst case the editor can reach: a level
+    // given MAX_LAPS_PER_LEVEL laps, which reserves one more table layer than
+    // any preset does. It fails if a preset row, an editor row, the lap cap or
+    // the row height grows, which is how such a change gets caught here rather
+    // than on the Pi at a tournament.
+    //
+    // The budget is the DEFAULT window height. A screen configured shorter than
+    // that has less to give, and this test cannot know it — see the layout notes
+    // on `build_beep_test_edit_levels_page`.
+    #[test]
+    fn edit_levels_page_fits_the_window_at_the_worst_lap_count() {
+        let layers = f32::from(MAX_LAPS_PER_LEVEL) + 1.0; // + the header layer
+        let table = layers * EDIT_TABLE_CELL_HEIGHT + (layers - 1.0) * SPACING;
+        let editor = 3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING;
+        let footer = MIN_BUTTON_SIZE;
+        // One gap inside the left column, one between the body and the footer.
+        let used = table + SPACING + editor + SPACING + footer;
+
+        assert!(
+            used <= DEFAULT_PAGE_HEIGHT_BUDGET,
+            "Edit Levels needs {used}pt of a {DEFAULT_PAGE_HEIGHT_BUDGET}pt budget"
+        );
+
+        // The preset strip shares the body's height with the left column rather
+        // than adding to it, so it only has to fit what the footer leaves.
+        let presets =
+            PRESET_ROWS.len() as f32 * MIN_BUTTON_SIZE + (PRESET_ROWS.len() as f32 - 1.0) * SPACING;
+        let body = DEFAULT_PAGE_HEIGHT_BUDGET - SPACING - footer;
+        assert!(
+            presets <= body,
+            "the preset strip needs {presets}pt of the {body}pt body"
+        );
+    }
 
     // BeepTestEditAddLevel enforces this cap at runtime (see
     // Message::BeepTestEditAddLevel in app/mod.rs), but BeepTestEditSelectPreset

@@ -71,9 +71,9 @@ pub(in super::super) fn build_beep_test_page<'a>(
     let lap_value: String = snapshot.lap_count.to_string();
 
     let top_row = row![
-        top_row_tile(fl!("beep-test-top-time-label"), time_value),
-        top_row_tile(fl!("beep-test-top-level-label"), level_value),
-        top_row_tile(fl!("beep-test-top-lap-label"), lap_value),
+        beep_test_value_tile(fl!("beep-test-top-time-label"), time_value),
+        beep_test_value_tile(fl!("beep-test-top-level-label"), level_value),
+        beep_test_value_tile(fl!("beep-test-top-lap-label"), lap_value),
     ]
     .spacing(SPACING);
 
@@ -136,13 +136,16 @@ pub(in super::super) fn build_beep_test_page<'a>(
     .into()
 }
 
-/// Non-interactive info tile for the top row.
+/// Non-interactive label-and-value readout tile, one `MIN_BUTTON_SIZE` row tall.
 ///
-/// Renders a small label on the left and a value on the right, using
-/// `light_gray_container` styling. This deliberately avoids
-/// `make_value_button` with `message: None`, which iced renders in the
-/// disabled (gray-on-gray) style.
-fn top_row_tile<'a>(label: String, value: String) -> Container<'a, Message> {
+/// Renders the label on the left and the value on the right, using
+/// `light_gray_container` styling. This deliberately avoids `make_value_button`
+/// with `message: None`, which iced renders in the disabled (gray-on-gray)
+/// style.
+///
+/// Used by this view's top row and by the Edit Levels editor's LEVEL / TIME /
+/// COUNT rows, which need the same read-only tile at the same height.
+pub(super) fn beep_test_value_tile<'a>(label: String, value: String) -> Container<'a, Message> {
     container(
         row![
             text(label)

@@ -382,11 +382,8 @@ beep-test-start = SIMULAN
 beep-test-pause = IHINTO
 beep-test-resume = IPAGPATULOY
 beep-test-reset = IBALIK
-beep-test-edit-selected = Antas { $level }
 beep-test-edit-time = ORAS
 beep-test-edit-count = BILANG
-beep-test-edit-new = MAGDAGDAG NG ANTAS
-beep-test-edit-remove = ALISIN ANG ANTAS
 beep-test-preset-ref = REF
 
 # Mga Paglabag

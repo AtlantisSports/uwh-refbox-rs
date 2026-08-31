@@ -386,11 +386,8 @@ beep-test-start = DÉMARRER
 beep-test-pause = PAUSE
 beep-test-resume = REPRENDRE
 beep-test-reset = RÉINITIALISER
-beep-test-edit-selected = Niveau { $level }
 beep-test-edit-time = TEMPS
 beep-test-edit-count = NOMBRE
-beep-test-edit-new = AJOUTER NIVEAU
-beep-test-edit-remove = SUPPRIMER NIVEAU
 beep-test-preset-ref = ARB
 
 # Infractions

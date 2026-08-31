@@ -382,11 +382,8 @@ beep-test-start = START
 beep-test-pause = PAUSE
 beep-test-resume = FORTSETZEN
 beep-test-reset = ZURÜCKSETZEN
-beep-test-edit-selected = Stufe { $level }
 beep-test-edit-time = ZEIT
 beep-test-edit-count = ANZAHL
-beep-test-edit-new = STUFE HINZUFÜGEN
-beep-test-edit-remove = STUFE ENTFERNEN
 beep-test-preset-ref = SR
 
 # Vergehen

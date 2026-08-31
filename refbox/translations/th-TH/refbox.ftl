@@ -381,11 +381,8 @@ beep-test-start = เริ่ม
 beep-test-pause = หยุดชั่วคราว
 beep-test-resume = เล่นต่อ
 beep-test-reset = รีเซ็ต
-beep-test-edit-selected = ระดับ { $level }
 beep-test-edit-time = เวลา
 beep-test-edit-count = จำนวน
-beep-test-edit-new = เพิ่มระดับ
-beep-test-edit-remove = ลบระดับ
 beep-test-preset-ref = ผู้ตัดสิน
 
 # การฝ่าฝืน

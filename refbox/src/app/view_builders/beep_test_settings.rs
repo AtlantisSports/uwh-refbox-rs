@@ -4,7 +4,9 @@
 //! function builds one sub-page: the 2x2 landing, the Sound Settings
 //! page, the Edit Levels page, and the Language picker.
 //!
-//! All sub-pages use `make_value_button` for controls, and editor
+//! Most sub-pages use `make_value_button` for controls -- Edit Levels is the
+//! exception, built on read-only tiles with their own `[-]` / `[+]` beside
+//! them. Editor
 //! sub-pages end in a Cancel / Apply footer that disables Apply when the
 //! staged edits match the live config. This parallels `configuration.rs`'s
 //! `make_user_config_page`, `make_sound_config_page`, and
@@ -338,8 +340,8 @@ const LAYERS_PER_ROW: usize = 2;
 ///
 /// `MAX_LAPS_PER_LEVEL` has to be odd for this to divide evenly — an even lap
 /// cap makes `TABLE_LAYER_SLOTS` odd and leaves the table half a row tall, which
-/// no amount of alignment can rescue. Pinned by
-/// `the_table_is_a_whole_number_of_page_rows`.
+/// no amount of alignment can rescue. Pinned by the second `const _: () =
+/// assert!` below.
 const TABLE_ROWS: usize = TABLE_LAYER_SLOTS / LAYERS_PER_ROW;
 
 /// Page rows the parameter editor occupies: LEVEL, TIME and COUNT.
@@ -377,18 +379,23 @@ const _: () = assert!(TABLE_ROWS * LAYERS_PER_ROW == TABLE_LAYER_SLOTS);
 ///
 /// Left column, beneath it: the per-level edit panel — one row each for LEVEL,
 /// TIME and COUNT, each a read-only tile with `[-]` and `[+]` beside it. See
-/// `build_edit_panel`.
+/// `build_parameter_rows`.
 ///
 /// Right column: the ten court-length preset buttons, running down the full
 /// height of the page beside both of the above. That is what lets them keep a
 /// full row height: ten buttons cannot fit beside the table alone. The preset
 /// matching the staged levels renders highlighted; see `build_preset_panel`.
 ///
-/// Every row on the page is one `MIN_BUTTON_SIZE` tall with the standard
-/// `SPACING` between rows, and two stacked table cells plus their gap come to
-/// the same height, so the table, the editor and the preset strip all share one
-/// rhythm. That is arithmetic rather than something the renderer enforces, so it
-/// is pinned by `edit_levels_page_fits_the_window_at_the_worst_lap_count`.
+/// Every row on the page fills, so they all come out at whatever height the
+/// screen divides into, and two stacked table cells plus their gap come to the
+/// same height as one of them -- so the table, the editor and the preset strip
+/// all share one rhythm.
+///
+/// What the renderer cannot enforce is that the two columns divide that height
+/// into the *same number* of rows; the `const _: () = assert!` pair above pins
+/// that at compile time, and
+/// `a_table_cell_stays_tall_enough_to_read_at_the_default_screen_height` pins
+/// the size those rows actually come out at on the default screen.
 pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
     config: &Config,
     levels: &'a [Level],
@@ -415,7 +422,7 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
     //
     // Those two totals must be equal, or the columns divide the same height into
     // different numbers of rows and nothing lines up. That is the page's one
-    // invariant, and `the_two_columns_hold_the_same_number_of_rows` pins it.
+    // invariant, and the first `const _: () = assert!` above pins it.
     let mut schedule_column = Column::new().spacing(SPACING).height(Length::Fill);
     for table_row in build_editor_levels_table(levels, selected) {
         schedule_column = schedule_column.push(table_row);
@@ -502,7 +509,18 @@ fn build_preset_panel(levels: &[Level]) -> Element<'_, Message> {
         } else {
             preset.distance_label().to_string()
         };
-        button(centered_text(label))
+        // `fit_text` with `no_wrap`, not `centered_text`: a preset button is one
+        // page row tall, so there is no room for the second line plain text wraps
+        // to -- and these labels are long. "REF 25YD" all but fills the button in
+        // English, and the translations run past it ("WASIT 25YD", "SR 25YD" and
+        // the Thai and Korean forms). Shrinking is legible; a clipped second line
+        // is not, and it hides which pool the button is for.
+        //
+        // Not `make_tile_button`, which is otherwise exactly this: it cannot say
+        // `no_wrap`, and on this row grid that is the property that matters.
+        // `centered_text` also pairs `align_y(Center)` with `height(Fill)`, the
+        // stale-anchor combination `portal_detail::row_text_centered` warns about.
+        button(fit_text(label).no_wrap())
             .style(style)
             .padding(PADDING)
             .width(Length::Fill)
@@ -749,8 +767,10 @@ fn edit_panel_row<'a>(
 ///
 /// `[-]` deletes the level being edited. The selection then lands on the level
 /// before it — except on the first level, where the index cannot go below zero
-/// and the selection lands on what was the level after it instead. They carry the same styling as TIME's and COUNT's, so
-/// nothing on this row is coloured to mark it destructive. Nothing here reaches
+/// and the selection lands on what was the level after it instead.
+///
+/// Both buttons carry the same styling as TIME's and COUNT's, so nothing on this
+/// row is coloured to mark it destructive. Nothing here reaches
 /// the config until APPLY, and re-tapping a preset restores the whole schedule,
 /// so a mis-tap costs an edit in progress rather than a saved setup.
 ///
@@ -1078,17 +1098,18 @@ mod test {
 
     // The other half of the pair guarded by every_preset_fits_within_max_levels.
     // BeepTestEditSelectPreset stages a preset's levels wholesale and applies no
-    // lap cap, while the page's height is only guaranteed up to
-    // MAX_LAPS_PER_LEVEL. A preset carrying a level of more laps than that would
-    // draw one more table layer than there is room for and push BACK and APPLY
-    // off the screen, with the height test below still passing.
+    // lap cap, while the table only reserves MAX_LAPS_PER_LEVEL lap layers. A
+    // preset carrying a level of more laps than that would have those laps
+    // silently not drawn -- the operator would load a schedule and see less of it
+    // than they staged, with the height test below still passing.
     #[test]
     fn every_preset_stays_within_the_lap_cap() {
         for preset in BeepTestPreset::ALL {
             for (i, level) in preset.config().levels.iter().enumerate() {
                 assert!(
                     level.count <= MAX_LAPS_PER_LEVEL,
-                    "{preset:?} level {} has {} laps, over the {MAX_LAPS_PER_LEVEL} the page's                      height is guarded against",
+                    "{preset:?} level {} has {} laps, over the {MAX_LAPS_PER_LEVEL} lap layers \
+                     the table reserves",
                     i + 1,
                     level.count
                 );
@@ -1096,15 +1117,14 @@ mod test {
         }
     }
 
-    // Every row on the Edit Levels page is a fixed height, so whether the page
-    // fits the window is arithmetic — the renderer will not report an overflow,
-    // it will simply draw BACK and APPLY off the bottom of the screen.
+    // Filling rows cannot push the footer off the screen — they shrink instead,
+    // which is the whole reason this page no longer needs a height budget. What
+    // they can do is get too short to read, and nothing in the layout notices.
     //
-    // This pins that arithmetic at the worst case the editor can reach: a level
-    // given MAX_LAPS_PER_LEVEL laps, which reserves one more table layer than
-    // any preset does. It fails if a preset row, an editor row, the lap cap or
-    // the row height grows, which is how such a change gets caught here rather
-    // than on the Pi at a tournament.
+    // So pin the size the default screen actually yields: a table cell layer has
+    // to hold one line of SMALL_TEXT plus the cell's own padding. Adding a row to
+    // either column shows up here as cells dropping under that, which is how such
+    // a change gets caught here rather than on the Pi at a tournament.
     //
     // Two things this does NOT cover, both pre-existing and neither fixable from
     // this page:
@@ -1112,16 +1132,10 @@ mod test {
     // * The budget is the DEFAULT window height. A screen configured shorter has
     //   less to give, and this test cannot know it.
     // * `Level::migrate` validates nothing, so a hand-edited config file can
-    //   carry a level of any lap count. That draws more table layers than any
-    //   cap allows and can push the footer, and with it the way out of the page,
-    //   off the screen. The fix belongs in config validation, not here.
-    // Filling rows cannot push the footer off the screen — they shrink instead,
-    // which is the whole reason this page no longer needs a height budget. What
-    // they can do is get too short to read, and nothing in the layout notices.
-    //
-    // So pin the size the default screen actually yields: a table cell layer has
-    // to hold one line of SMALL_TEXT plus the cell's own padding. Adding rows to
-    // either column shows up here as cells dropping under that.
+    //   carry a level of any lap count. Those laps are simply not drawn now that
+    //   the table reserves a fixed number of lap layers (see
+    //   `build_editor_levels_table`), and nothing tells the operator they are
+    //   missing. The fix belongs in config validation, not here.
     #[test]
     fn a_table_cell_stays_tall_enough_to_read_at_the_default_screen_height() {
         // The window is not resizable: its height comes from Hardware::screen_y.

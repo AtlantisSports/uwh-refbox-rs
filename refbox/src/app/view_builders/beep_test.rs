@@ -9,8 +9,9 @@
 //! ## Cadence semantics
 //!
 //! - `BeepTestPeriod::Level(0)` is the 10-second warmup (1 lap). The
-//!   TIME tile shows the countdown; LEVEL shows "0"; LAP shows "1". The
-//!   table has no highlighted cell.
+//!   first tile is labelled START IN rather than TIME and shows the
+//!   countdown; LEVEL shows "0"; LAP shows "1". The table has no
+//!   highlighted cell.
 //! - `BeepTestPeriod::Level(i)` for `i in 1..=config.levels.len()` is the
 //!   i-th user-defined level (reading `config.levels[i-1]`). LEVEL shows
 //!   `i`; LAP shows the within-level lap; column `i` of the table is the
@@ -27,7 +28,7 @@ use crate::beep_test::snapshot::{BeepTestPeriod, BeepTestSnapshot};
 use crate::config::BeepTest;
 use iced::{
     Alignment, Element, Length,
-    alignment::{Horizontal, Vertical},
+    alignment::Horizontal,
     widget::{Column, Container, Row, Space, column, container, horizontal_space, row, text},
 };
 use matrix_drawing::secs_to_long_time_string;
@@ -157,23 +158,41 @@ pub(in super::super) fn build_beep_test_page<'a>(
 pub(super) fn beep_test_value_tile<'a>(label: String, value: String) -> Container<'a, Message> {
     container(
         row![
-            // `fit_text` with `no_wrap`, not plain `text`: this label is no longer
-            // always a short word like TIME, and a label wider than its share of
-            // the tile would otherwise break onto a second line that the tile has
-            // no room to draw. Shrinking is the visible failure; clipping is not.
+            // Label and value each get a guaranteed share of the width -- the same
+            // 3:2 split `make_value_button` uses -- and `fit_text` shrinks whichever
+            // one outgrows its share.
+            //
+            // A `Shrink`-width label laid out first takes whatever it wants and
+            // leaves the value the remainder, which is how the countdown got
+            // squeezed out: "START IN" is about 189pt of the 272pt inside a top
+            // tile, and its translations run past 260pt ("MAGSISIMULA", "MULAI
+            // DALAM", "BEGINT OVER"), leaving "0:10" a few pixels and drawing it
+            // over the LEVEL tile beside it. Shrinking a label is the visible
+            // failure; a value overflowing its tile is not.
+            //
+            // `no_wrap` on both: a tile one row tall has no room for a second line.
+            //
+            // Do NOT pair `align_y(Center)` with `height(Fill)` on either -- that
+            // caches a paragraph-position anchor that bleeds across renders (iced
+            // 0.13 bug; see `portal_detail::row_text_centered`), and the value here
+            // changes ten times a second. The row's own `height(Fill)` does the
+            // vertical centring instead, exactly as it does in `make_value_button`.
             fit_text(label)
                 .size(MEDIUM_TEXT)
                 .no_wrap()
-                .width(Length::Shrink)
-                .height(Length::Fill),
-            horizontal_space(),
-            text(value)
+                .align_x(Horizontal::Left)
+                .width(Length::FillPortion(3))
+                .height(Length::Shrink),
+            fit_text(value)
                 .size(MEDIUM_TEXT)
-                .height(Length::Fill)
-                .align_y(Vertical::Center),
+                .no_wrap()
+                .align_x(Horizontal::Right)
+                .width(Length::FillPortion(2))
+                .height(Length::Shrink),
         ]
         .spacing(SPACING)
         .align_y(Alignment::Center)
+        .height(Length::Fill)
         .padding(PADDING),
     )
     .style(light_gray_container)
@@ -208,7 +227,8 @@ fn build_levels_table(
     let mut rows = Column::new().spacing(SPACING);
 
     // Header row: level numbers (1-indexed). Past columns are grayed
-    // out (disabled look); active and future columns use green headers.
+    // out (disabled look); the active column's header is yellow and
+    // future columns are green.
     let mut header_row = Row::new().spacing(SPACING);
     for (col_idx, _level) in levels.iter().enumerate() {
         header_row = header_row.push(header_cell(
@@ -372,15 +392,11 @@ fn value_cell<'a>(value: String, state: CellState) -> Element<'a, Message> {
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .into(),
-        CellState::Active => container(inner)
-            .style(blue_container)
-            .padding(TABLE_CELL_SPACING)
-            .width(Length::Fill)
-            .height(Length::Fixed(TABLE_CELL_HEIGHT))
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .into(),
-        CellState::ActivePaused => container(inner)
+        // Deliberately one arm rather than two identical ones: the two states are
+        // different things to the engine and the same thing on screen, and writing
+        // them separately invites an edit to one that silently diverges from the
+        // other. Splitting this arm is the one-line change `ActivePaused` promises.
+        CellState::Active | CellState::ActivePaused => container(inner)
             .style(blue_container)
             .padding(TABLE_CELL_SPACING)
             .width(Length::Fill)

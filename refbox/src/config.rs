@@ -229,6 +229,26 @@ impl BeepTestPreset {
         }
     }
 
+    /// The court length in millimetres — a pool's identity, independent of how
+    /// a button spells it. 25 yards is 22860mm, which is why it sorts between
+    /// 23m and 22m.
+    ///
+    /// Deliberately separate from `distance_label`: that is display text and may
+    /// be reworded or translated, while this is what pairs each referee schedule
+    /// with the full schedule for the same pool. Test-only, because pairing them
+    /// is something only the tests need to do — the screen names both halves of
+    /// a row explicitly.
+    #[cfg(test)]
+    pub fn court_millimetres(self) -> u32 {
+        match self {
+            Self::Ref25 | Self::Full25 => 25_000,
+            Self::Ref23 | Self::Full23 => 23_000,
+            Self::Ref25Yd | Self::Full25Yd => 22_860,
+            Self::Ref22 | Self::Full22 => 22_000,
+            Self::Ref21 | Self::Full21 => 21_000,
+        }
+    }
+
     /// Whether this is the shorter, 26-lap referee schedule, as opposed to
     /// the full, 37-lap player schedule.
     pub fn is_ref(self) -> bool {
@@ -672,7 +692,7 @@ mod test {
         for ref_preset in BeepTestPreset::ALL.into_iter().filter(|p| p.is_ref()) {
             let full_preset = BeepTestPreset::ALL
                 .into_iter()
-                .find(|p| !p.is_ref() && p.distance_label() == ref_preset.distance_label())
+                .find(|p| !p.is_ref() && p.court_millimetres() == ref_preset.court_millimetres())
                 .expect("every ref preset has a full counterpart at its court length");
             let ref_levels = ref_preset.config().levels;
             let full_levels = full_preset.config().levels;
@@ -795,12 +815,18 @@ mod test {
             }
         }
 
-        let full_count = BeepTestPreset::ALL.iter().filter(|p| !p.is_ref()).count();
-        assert_eq!(
-            ratios.len() + 1,
-            full_count,
-            "every full preset except the 25m base needs a ratio listed here"
-        );
+        // Coverage, not a row count: counting rows passes if one preset is
+        // listed twice and another omitted, leaving a court length unchecked.
+        for preset in BeepTestPreset::ALL {
+            if preset.is_ref() || preset == BeepTestPreset::Full25 {
+                continue;
+            }
+            assert_eq!(
+                ratios.iter().filter(|(p, _)| *p == preset).count(),
+                1,
+                "{preset:?} needs exactly one ratio listed here"
+            );
+        }
     }
 
     // detect_levels is the inverse of config().levels: it recognises each of
@@ -838,8 +864,13 @@ mod test {
     //
     // These are checks against a real external document, not incidental
     // restatements of the lap-count/derivation tests above — do not "simplify"
-    // them away as redundant. The completeness assertion at the end means a new
-    // court length cannot be added without its two times from the sheet.
+    // them away as redundant. What makes each one independent: the derivation
+    // test compares a table against the RATIO written in this file, so a wrong
+    // ratio with a table built to match it passes there. These totals compare
+    // against the SHEET, so that pair fails here. Both halves are needed.
+    //
+    // The coverage assertion at the end means a new court length cannot be added
+    // without its two times from the sheet.
     #[test]
     fn preset_totals_match_the_official_sheets() {
         fn total_secs(config: &BeepTest) -> u64 {
@@ -873,11 +904,15 @@ mod test {
             );
         }
 
-        assert_eq!(
-            sheet.len(),
-            BeepTestPreset::ALL.len(),
-            "every preset needs its time from the sheet checked here"
-        );
+        // Coverage rather than a row count, for the same reason as the ratio
+        // list above.
+        for preset in BeepTestPreset::ALL {
+            assert_eq!(
+                sheet.iter().filter(|(p, _, _)| *p == preset).count(),
+                1,
+                "{preset:?} needs exactly one time from the sheet checked here"
+            );
+        }
     }
 
     // ALL is a hand-written list and `is_ref` a hand-written pattern; unlike
@@ -908,15 +943,16 @@ mod test {
         );
 
         for preset in all {
+            let pool = preset.court_millimetres();
             let label = preset.distance_label();
             assert_eq!(
-                all.iter().filter(|p| p.distance_label() == label).count(),
+                all.iter().filter(|p| p.court_millimetres() == pool).count(),
                 2,
                 "court length {label} should appear exactly twice in ALL"
             );
             assert_eq!(
                 all.iter()
-                    .filter(|p| p.distance_label() == label && p.is_ref())
+                    .filter(|p| p.court_millimetres() == pool && p.is_ref())
                     .count(),
                 1,
                 "court length {label} needs exactly one referee schedule"

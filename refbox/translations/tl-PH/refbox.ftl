@@ -376,6 +376,7 @@ beep-test = BEEP TEST
 
 # Beep-test screen
 beep-test-top-time-label = ORAS
+beep-test-top-start-in-label = MAGSISIMULA
 beep-test-top-level-label = ANTAS
 beep-test-top-lap-label = IKOT
 beep-test-start = SIMULAN
@@ -385,6 +386,7 @@ beep-test-reset = IBALIK
 beep-test-edit-time = ORAS
 beep-test-edit-count = BILANG
 beep-test-preset-ref = REF
+beep-test-preset-heading = PRESET
 
 # Mga Paglabag
 stick-foul = Poul sa Stick

@@ -223,7 +223,7 @@ impl BeepTestPreset {
         match self {
             Self::Ref25 | Self::Full25 => "25M",
             Self::Ref23 | Self::Full23 => "23M",
-            Self::Ref25Yd | Self::Full25Yd => "25Y",
+            Self::Ref25Yd | Self::Full25Yd => "25YD",
             Self::Ref22 | Self::Full22 => "22M",
             Self::Ref21 | Self::Full21 => "21M",
         }

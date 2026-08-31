@@ -376,6 +376,7 @@ beep-test = ビープテスト
 
 # Beep-test screen
 beep-test-top-time-label = 時間
+beep-test-top-start-in-label = 開始まで
 beep-test-top-level-label = レベル
 beep-test-top-lap-label = 周回
 beep-test-start = スタート
@@ -385,6 +386,7 @@ beep-test-reset = リセット
 beep-test-edit-time = 時間
 beep-test-edit-count = 回数
 beep-test-preset-ref = 審判
+beep-test-preset-heading = プリセット
 
 # 反則種別
 stick-foul = スティック反則

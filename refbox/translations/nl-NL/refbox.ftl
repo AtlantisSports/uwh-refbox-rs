@@ -376,6 +376,7 @@ beep-test = PIEPTEST
 
 # Beep-test screen
 beep-test-top-time-label = TIJD
+beep-test-top-start-in-label = BEGINT OVER
 beep-test-top-level-label = NIVEAU
 beep-test-top-lap-label = RONDE
 beep-test-start = START
@@ -385,6 +386,7 @@ beep-test-reset = RESET
 beep-test-edit-time = TIJD
 beep-test-edit-count = AANTAL
 beep-test-preset-ref = SR
+beep-test-preset-heading = VOORINSTELLING
 
 # Overtredingen
 stick-foul = Stokfout

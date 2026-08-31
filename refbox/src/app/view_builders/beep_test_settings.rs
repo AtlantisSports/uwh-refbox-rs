@@ -15,6 +15,7 @@
 //! staged mode differs from the live mode.
 
 use super::beep_test::beep_test_value_tile;
+use super::fit_text::fit_text;
 use super::*;
 use crate::config::{BeepTestPreset, Config, Level};
 use crate::sim_frame::{FrontDisplayLayout, effective_beep_layout};
@@ -319,10 +320,48 @@ const EDIT_TABLE_CELL_SPACING: f32 = 2.0;
 /// page is guarded against depends on it: one more lap is one more table layer.
 pub(in super::super) const MAX_LAPS_PER_LEVEL: u8 = 5;
 
-/// Height of one editor-table cell layer (header or lap row). Sized so
-/// that two stacked layers plus the standard SPACING between them equal
-/// one MIN_BUTTON_SIZE row, matching the main view's TABLE_CELL_HEIGHT.
-const EDIT_TABLE_CELL_HEIGHT: f32 = (MIN_BUTTON_SIZE - SPACING) / 2.0;
+/// Cell layers the table reserves: one header layer plus one lap layer per lap
+/// at the cap.
+///
+/// Fixed rather than following the tallest staged level. The table therefore
+/// always occupies the same number of page rows, which is what lets the preset
+/// strip beside it share one row grid — a table that shrank with the lap count
+/// would put everything below it on a half-row boundary half the time. The cost
+/// is that the bottom lap layer sits empty whenever no level uses every lap.
+const TABLE_LAYER_SLOTS: usize = MAX_LAPS_PER_LEVEL as usize + 1;
+
+/// Cell layers stacked inside one page row. Two of them plus the standard gap
+/// between them make a table row exactly as tall as a button row.
+const LAYERS_PER_ROW: usize = 2;
+
+/// Page rows the levels table occupies.
+///
+/// `MAX_LAPS_PER_LEVEL` has to be odd for this to divide evenly — an even lap
+/// cap makes `TABLE_LAYER_SLOTS` odd and leaves the table half a row tall, which
+/// no amount of alignment can rescue. Pinned by
+/// `the_table_is_a_whole_number_of_page_rows`.
+const TABLE_ROWS: usize = TABLE_LAYER_SLOTS / LAYERS_PER_ROW;
+
+/// Page rows the parameter editor occupies: LEVEL, TIME and COUNT.
+const EDITOR_ROWS: usize = 3;
+
+/// Page rows the preset strip occupies: the PRESET heading over one row per
+/// court length.
+const PRESET_STRIP_ROWS: usize = PRESET_ROWS.len() + 1;
+
+// The page's alignment invariant, checked at compile time.
+//
+// Both columns divide the same body height by their own number of filling rows,
+// so if the two counts differ the rows come out different heights and nothing
+// lines up. That is not something the renderer can report — it just looks
+// subtly wrong — so a build error is the right place to catch it: add a court
+// length without a row for it on the other side and the crate stops compiling.
+const _: () = assert!(TABLE_ROWS + EDITOR_ROWS == PRESET_STRIP_ROWS);
+
+// TABLE_ROWS is an integer division, so an odd number of layer slots would
+// silently lose one. A lap cap of 4 gives exactly that: 5 slots, two rows, and
+// the last lap invisible. The cap has to stay odd.
+const _: () = assert!(TABLE_ROWS * LAYERS_PER_ROW == TABLE_LAYER_SLOTS);
 
 /// Edit Levels sub-page.
 ///
@@ -331,9 +370,10 @@ const EDIT_TABLE_CELL_HEIGHT: f32 = (MIN_BUTTON_SIZE - SPACING) / 2.0;
 ///
 /// Left column, top: the transposed level table from the main view. Every
 /// header and every cell is tappable, and tapping any element in a column
-/// selects that level. The selected column is highlighted blue, distinguishing
-/// it from the main view's yellow "active lap" highlight. The table reserves
-/// `MAX_LEVELS` columns (10, matching the Full presets).
+/// selects that level. The level headers are green and the selected one yellow,
+/// matching the main beep-test screen's table; the lap times below stay light
+/// gray, with the selected column's blue. The table reserves `MAX_LEVELS`
+/// columns (10, matching the Full presets).
 ///
 /// Left column, beneath it: the per-level edit panel — one row each for LEVEL,
 /// TIME and COUNT, each a read-only tile with `[-]` and `[+]` beside it. See
@@ -362,33 +402,37 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
 
     let has_changes = config.beep_test.levels.as_slice() != levels;
 
-    // ----- Left column: the table, with the per-level editor beneath it -----
+    // ----- The page's row grid -----
     //
-    // The editor sits in a *filling* container rather than above a spacer row of
-    // its own. A spacer would be a third child of this column and so cost one
-    // more SPACING gap, and at the worst lap count (ten levels of
-    // MAX_LAPS_PER_LEVEL, which reserves six table layers) the page has no gap
-    // to spare. A filling container puts the slack in the same place — below the
-    // editor, pushing nothing — for free.
-    let schedule_column = column![
-        container(build_editor_levels_table(levels, selected))
-            .width(Length::Fill)
-            .height(Length::Shrink),
-        container(build_edit_panel(levels, selected))
-            .width(Length::Fill)
-            .height(Length::Fill),
-    ]
-    .spacing(SPACING)
-    .height(Length::Fill);
+    // Refbox's standard body layout: the page is a whole number of equal filling
+    // rows over a fixed-height footer, and every cell in a row takes an equal
+    // share of it (see `make_tile_button`). Nothing here computes a height. Rows
+    // are whatever the screen allows, which is what makes the page fit a Pi panel
+    // of any height without arithmetic, and what makes the two columns line up:
+    //
+    //   left column  = TABLE_ROWS + EDITOR_ROWS  filling rows
+    //   right column = PRESET_STRIP_ROWS         filling rows
+    //
+    // Those two totals must be equal, or the columns divide the same height into
+    // different numbers of rows and nothing lines up. That is the page's one
+    // invariant, and `the_two_columns_hold_the_same_number_of_rows` pins it.
+    let mut schedule_column = Column::new().spacing(SPACING).height(Length::Fill);
+    for table_row in build_editor_levels_table(levels, selected) {
+        schedule_column = schedule_column.push(table_row);
+    }
+    for parameter_row in build_parameter_rows(levels, selected) {
+        schedule_column = schedule_column.push(parameter_row);
+    }
 
-    // ----- Body: that column, with the preset strip down its full height -----
-    //
-    // The strip runs beside the table *and* the editor. Beside the table alone
-    // it could not hold ten preset buttons at a full row height without
-    // outgrowing the window.
+    // The strip runs beside the table *and* the parameters. Beside the table
+    // alone it could not hold ten preset buttons at a full row height.
     let body = row![
-        container(schedule_column).width(Length::FillPortion(10)),
-        container(build_preset_panel(levels)).width(Length::FillPortion(5)),
+        container(schedule_column)
+            .width(Length::FillPortion(10))
+            .height(Length::Fill),
+        container(build_preset_panel(levels))
+            .width(Length::FillPortion(5))
+            .height(Length::Fill),
     ]
     .spacing(SPACING)
     .height(Length::Fill);
@@ -426,8 +470,9 @@ const PRESET_ROWS: [(BeepTestPreset, BeepTestPreset); 5] = [
     (BeepTestPreset::Ref21, BeepTestPreset::Full21),
 ];
 
-/// The court-length preset buttons: a 2-column grid in the strip down the right
-/// of the page, one row per pool length, ordered by `PRESET_ROWS`.
+/// The court-length preset buttons: a PRESET heading over a 2-column grid in the
+/// strip down the right of the page, one row per pool length, ordered by
+/// `PRESET_ROWS`.
 ///
 /// Each button is one `MIN_BUTTON_SIZE` tall, the same as an editor row and the
 /// same as two stacked table cells plus the gap between them, so the strip and
@@ -461,80 +506,128 @@ fn build_preset_panel(levels: &[Level]) -> Element<'_, Message> {
             .style(style)
             .padding(PADDING)
             .width(Length::Fill)
-            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .height(Length::Fill)
             .on_press(Message::BeepTestEditSelectPreset(preset))
     };
 
-    let mut strip = Column::new().spacing(SPACING).width(Length::Fill);
+    // The heading is one of the strip's rows, not decoration above them, so the
+    // buttons below it land on the page's row grid. Plain text rather than a
+    // tile, so it reads as a title and not as another control; `no_wrap`, so a
+    // long translation shrinks instead of breaking onto a second line and
+    // overflowing its row.
+    let mut strip = Column::new()
+        .spacing(SPACING)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .push(
+            container(
+                fit_text(fl!("beep-test-preset-heading"))
+                    .size(MEDIUM_TEXT)
+                    .no_wrap(),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill),
+        );
+
     for (ref_preset, full_preset) in PRESET_ROWS {
-        strip = strip
-            .push(row![preset_button(ref_preset), preset_button(full_preset)].spacing(SPACING));
+        strip = strip.push(
+            row![preset_button(ref_preset), preset_button(full_preset)]
+                .spacing(SPACING)
+                .height(Length::Fill),
+        );
     }
     strip.into()
 }
 
-/// Build the editor's transposed levels table. Mirrors the main view's table,
-/// but every header and value cell is a button that fires
-/// `Message::BeepTestEditSelectLevel(i)` and the selected column uses a blue
-/// highlight. Levels are added and removed from the LEVEL row of
-/// `build_edit_panel`, not from anything in this table.
-fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, Message> {
-    let max_count = levels.iter().map(|l| l.count as usize).max().unwrap_or(0);
+/// Build the editor's transposed levels table, as the `TABLE_ROWS` page rows it
+/// occupies.
+///
+/// Returns the rows rather than one element so the caller can push them as
+/// siblings of the parameter rows: both columns of the page then hold the same
+/// number of filling children with the same number of gaps between them, which
+/// is what makes every row boundary shared. Wrapping the table in a single
+/// element instead would give the left column four children to the strip's six,
+/// and the two would divide the same height differently.
+///
+/// Mirrors the main view's table, but every header and value cell is a button
+/// that fires `Message::BeepTestEditSelectLevel(i)` and the selected column uses
+/// a blue highlight. Levels are added and removed from the LEVEL row of
+/// `build_parameter_rows`, not from anything in this table.
+fn build_editor_levels_table(levels: &[Level], selected: usize) -> Vec<Element<'_, Message>> {
+    // Every layer the table reserves, header first, as a flat list. Each is a
+    // filling row of cells, so two of them stacked in a page row split it evenly.
+    let mut layers: Vec<Element<'_, Message>> = Vec::with_capacity(TABLE_LAYER_SLOTS);
 
-    let mut rows = Column::new().spacing(SPACING);
-
-    // Header row: column headers (1-indexed for the operator).
-    let mut header_row = Row::new().spacing(SPACING);
-    for (col_idx, _level) in levels.iter().enumerate() {
-        let is_selected = col_idx == selected;
-        header_row = header_row.push(editor_header_cell(
+    let mut header = Row::new().spacing(SPACING).height(Length::Fill);
+    for col_idx in 0..levels.len() {
+        header = header.push(editor_header_cell(
             (col_idx + 1).to_string(),
             col_idx,
-            is_selected,
+            col_idx == selected,
         ));
     }
     for _ in levels.len()..MAX_LEVELS {
-        header_row = header_row.push(filler_cell());
+        header = header.push(filler_cell());
     }
-    rows = rows.push(header_row);
+    layers.push(header.into());
 
-    // Cell rows: stacked vertically. Each cell is a tappable button that
-    // selects the column it belongs to. Empty rows beyond a column's count
-    // render as filler.
-    for row_idx in 0..max_count {
-        let mut cell_row = Row::new().spacing(SPACING);
+    // One layer per reserved lap slot, not per lap actually staged: the table
+    // keeps its height so the preset strip can keep its row grid. A level with
+    // fewer laps draws filler in the slots it does not reach.
+    //
+    // Laps beyond the cap are not drawn. The screen cannot stage them (COUNT's
+    // `+` stops at the cap and the handler enforces it), but `Level::migrate`
+    // validates nothing, so a hand-edited config file still can — and those laps
+    // are then invisible here. Clamping on load is the proper fix and belongs in
+    // config validation; before this page reserved a fixed height, such a config
+    // pushed the footer off the screen instead, which was worse.
+    for lap in 0..usize::from(MAX_LAPS_PER_LEVEL) {
+        let mut cells = Row::new().spacing(SPACING).height(Length::Fill);
         for (col_idx, level) in levels.iter().enumerate() {
-            if row_idx < level.count as usize {
-                let is_selected = col_idx == selected;
-                cell_row = cell_row.push(editor_value_cell(
+            if lap < usize::from(level.count) {
+                cells = cells.push(editor_value_cell(
                     level.duration.as_secs().to_string(),
                     col_idx,
-                    is_selected,
+                    col_idx == selected,
                 ));
             } else {
-                cell_row = cell_row.push(filler_cell());
+                cells = cells.push(filler_cell());
             }
         }
         for _ in levels.len()..MAX_LEVELS {
-            cell_row = cell_row.push(filler_cell());
+            cells = cells.push(filler_cell());
         }
-        rows = rows.push(cell_row);
+        layers.push(cells.into());
     }
 
-    // No padding on this container: the table and the preset strip must both
-    // start at the very top of the body for preset row N to line up with table
-    // layers 2N-1 and 2N. Insetting one and not the other puts the two grids
-    // permanently out of step, and insetting both spends height the page does
-    // not have at the worst lap count.
-    container(rows)
-        .width(Length::Fill)
-        .center_x(Length::Fill)
-        .into()
+    // Group the layers into page rows, LAYERS_PER_ROW at a time.
+    let mut layers = layers.into_iter();
+    let mut rows = Vec::with_capacity(TABLE_ROWS);
+    for _ in 0..TABLE_ROWS {
+        let mut page_row = Column::new().spacing(SPACING).height(Length::Fill);
+        for _ in 0..LAYERS_PER_ROW {
+            if let Some(layer) = layers.next() {
+                page_row = page_row.push(layer);
+            }
+        }
+        rows.push(page_row.into());
+    }
+    rows
 }
 
-/// A tappable column-header cell showing a level number. Highlighted
-/// blue when the column is selected; light-gray otherwise. Firing
-/// `BeepTestEditSelectLevel(zero_based)` selects the column.
+/// A tappable column-header cell showing a level number. Green, turning yellow
+/// for the level being edited. Firing `BeepTestEditSelectLevel(zero_based)`
+/// selects the column.
+///
+/// Green rather than the light gray the value cells use, because a row of level
+/// numbers in the same colour as the lap times beneath them is hard to pick out
+/// as a header at a glance. This matches the main beep-test screen, whose level
+/// headers are green (`green_container`) and whose live cell is yellow
+/// (`yellow_container`), so the two tables read the same way.
+///
+/// Yellow means different things on the two screens — "the level you are
+/// editing" here, "the lap running now" there — but they never appear together,
+/// and both are the one thing on their table that the operator is looking for.
 fn editor_header_cell<'a>(
     label: String,
     zero_based: usize,
@@ -545,9 +638,9 @@ fn editor_header_cell<'a>(
         .align_x(Horizontal::Center)
         .width(Length::Fill);
     let style = if is_selected {
-        blue_button
+        yellow_button
     } else {
-        light_gray_button
+        green_button
     };
     button(
         container(inner)
@@ -557,7 +650,7 @@ fn editor_header_cell<'a>(
     .style(style)
     .padding(EDIT_TABLE_CELL_SPACING)
     .width(Length::Fill)
-    .height(Length::Fixed(EDIT_TABLE_CELL_HEIGHT))
+    .height(Length::Fill)
     .on_press(Message::BeepTestEditSelectLevel(zero_based))
     .into()
 }
@@ -586,7 +679,7 @@ fn editor_value_cell<'a>(
     .style(style)
     .padding(EDIT_TABLE_CELL_SPACING)
     .width(Length::Fill)
-    .height(Length::Fixed(EDIT_TABLE_CELL_HEIGHT))
+    .height(Length::Fill)
     .on_press(Message::BeepTestEditSelectLevel(zero_based))
     .into()
 }
@@ -595,14 +688,14 @@ fn editor_value_cell<'a>(
 /// partially filled or a column's count is shorter than the band's
 /// tallest column.
 fn filler_cell<'a>() -> Element<'a, Message> {
-    Space::new(Length::Fill, Length::Fixed(EDIT_TABLE_CELL_HEIGHT)).into()
+    Space::new(Length::Fill, Length::Fill).into()
 }
 
 /// One `[-]` or `[+]` button. Grey and inert exactly when `message` is `None`,
 /// so "unavailable" is a property of having nothing to do rather than something
 /// each call site has to remember to style.
 fn step_button<'a>(label: &'static str, message: Option<Message>) -> Element<'a, Message> {
-    let mut b = make_chrome_button(label).style(if message.is_some() {
+    let mut b = make_tile_button(label).style(if message.is_some() {
         blue_button
     } else {
         gray_button
@@ -627,15 +720,23 @@ fn edit_panel_row<'a>(
     inc: Element<'a, Message>,
 ) -> Element<'a, Message> {
     row![
-        beep_test_value_tile(label, value).width(Length::FillPortion(2)),
-        container(dec).width(Length::FillPortion(1)),
-        container(inc).width(Length::FillPortion(1)),
+        beep_test_value_tile(label, value)
+            .width(Length::FillPortion(2))
+            .height(Length::Fill),
+        container(dec)
+            .width(Length::FillPortion(1))
+            .height(Length::Fill),
+        container(inc)
+            .width(Length::FillPortion(1))
+            .height(Length::Fill),
     ]
     .spacing(SPACING)
+    .height(Length::Fill)
     .into()
 }
 
-/// Build the per-level edit panel: three identical rows, one per parameter.
+/// Build the parameter rows: `EDITOR_ROWS` identical page rows, one each for
+/// LEVEL, TIME and COUNT.
 ///
 /// LEVEL's `[-]` and `[+]` remove and add a level rather than stepping the
 /// selection — which level is being edited is chosen by tapping its column in
@@ -656,23 +757,24 @@ fn edit_panel_row<'a>(
 /// A button is grey and inert exactly when its action is unavailable: REMOVE at
 /// one level, ADD at `MAX_LEVELS`, TIME `-` at one second, COUNT `-` at one lap,
 /// COUNT `+` at `MAX_LAPS_PER_LEVEL`.
-fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
+fn build_parameter_rows(levels: &[Level], selected: usize) -> Vec<Element<'_, Message>> {
     let add = (levels.len() < MAX_LEVELS).then_some(Message::BeepTestEditAddLevel);
     let remove = (levels.len() > 1).then_some(Message::BeepTestEditRemoveLevel);
 
-    // `selected` is already clamped by the caller, so `None` here means the
-    // schedule is empty. The screen cannot reach that state (REMOVE is inert at
-    // one level), but a render against a stale snapshot could: every value then
-    // reads as a dash and only ADD stays live, rather than the panel vanishing.
     // One source per value: the string on the tile and the rule that greys the
     // button beside it both read the same Option, so a display cannot drift away
     // from the guard that belongs to it.
+    //
+    // `selected` is already clamped by the caller, so `None` here means the
+    // schedule is empty. The screen cannot reach that state (REMOVE is inert at
+    // one level), but a render against a stale snapshot could: every value then
+    // reads as a dash and only ADD stays live, rather than the rows vanishing.
     let level = levels.get(selected);
     let dash = || "-".to_string();
     let secs = level.map(|l| l.duration.as_secs());
     let laps = level.map(|l| l.count);
 
-    column![
+    vec![
         edit_panel_row(
             fl!("beep-test-top-level-label"),
             level.map_or_else(dash, |_| (selected + 1).to_string()),
@@ -704,8 +806,6 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
             ),
         ),
     ]
-    .spacing(SPACING)
-    .into()
 }
 
 /// Buzzer picker sub-page for the BeepTest hierarchy.
@@ -913,29 +1013,10 @@ fn make_beep_test_cancel_apply_footer<'a>(
 #[cfg(test)]
 mod test {
     use super::{
-        EDIT_TABLE_CELL_HEIGHT, MAX_LAPS_PER_LEVEL, MAX_LEVELS, MIN_BUTTON_SIZE, PADDING,
-        PRESET_ROWS, SPACING,
+        EDIT_TABLE_CELL_SPACING, EDITOR_ROWS, LAYERS_PER_ROW, MAX_LAPS_PER_LEVEL, MAX_LEVELS,
+        MIN_BUTTON_SIZE, PADDING, PRESET_ROWS, SMALL_TEXT, SPACING, TABLE_ROWS,
     };
     use crate::config::BeepTestPreset;
-
-    // The whole page is built on one claim: two stacked table cells plus the
-    // standard gap between them come to exactly one button row, so the levels
-    // table, the editor rows and the preset strip share a single rhythm. It is
-    // arithmetic between three separate constants and nothing in the renderer
-    // checks it, so it is pinned here.
-    #[test]
-    fn two_table_cells_plus_their_gap_make_one_button_row() {
-        // Compared with a tolerance, not for equality: the cell height is itself
-        // derived from these two constants, so a SPACING that does not halve
-        // exactly would leave a rounding tail and fail this on a layout that
-        // renders identically.
-        let stacked = 2.0 * EDIT_TABLE_CELL_HEIGHT + SPACING;
-        assert!(
-            (stacked - MIN_BUTTON_SIZE).abs() < 0.01,
-            "two cells plus their gap come to {stacked}pt, not the {MIN_BUTTON_SIZE}pt row \
-             the page's rhythm is built on"
-        );
-    }
 
     // PRESET_ROWS is the display order, written out by hand. A court length
     // added to the config but forgotten here would simply never appear on the
@@ -1034,34 +1115,32 @@ mod test {
     //   carry a level of any lap count. That draws more table layers than any
     //   cap allows and can push the footer, and with it the way out of the page,
     //   off the screen. The fix belongs in config validation, not here.
+    // Filling rows cannot push the footer off the screen — they shrink instead,
+    // which is the whole reason this page no longer needs a height budget. What
+    // they can do is get too short to read, and nothing in the layout notices.
+    //
+    // So pin the size the default screen actually yields: a table cell layer has
+    // to hold one line of SMALL_TEXT plus the cell's own padding. Adding rows to
+    // either column shows up here as cells dropping under that.
     #[test]
-    fn edit_levels_page_fits_the_window_at_the_worst_lap_count() {
-        let layers = f32::from(MAX_LAPS_PER_LEVEL) + 1.0; // + the header layer
-        let table = layers * EDIT_TABLE_CELL_HEIGHT + (layers - 1.0) * SPACING;
-        let editor = 3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING;
-        let footer = MIN_BUTTON_SIZE;
-        // One gap inside the left column, one between the body and the footer.
-        let used = table + SPACING + editor + SPACING + footer;
-
-        // The window is not resizable: its height comes from Hardware::screen_y,
-        // so the page gets that less the root layout's padding above and below.
-        // Read from the type rather than restated here, or changing the default
-        // would leave this test guarding a height nothing runs at.
+    fn a_table_cell_stays_tall_enough_to_read_at_the_default_screen_height() {
+        // The window is not resizable: its height comes from Hardware::screen_y.
+        // Read from the type rather than restated, or changing the default would
+        // leave this guarding a height nothing runs at.
         let budget = crate::config::Hardware::default().screen_y as f32 - 2.0 * PADDING;
+        let body = budget - SPACING - MIN_BUTTON_SIZE; // less the gap and the footer
 
-        assert!(
-            used <= budget,
-            "Edit Levels needs {used}pt of a {budget}pt budget"
-        );
+        let rows = (TABLE_ROWS + EDITOR_ROWS) as f32;
+        let row = (body - (rows - 1.0) * SPACING) / rows;
+        // Two layers and the gap between them share a page row.
+        let layer = (row - SPACING) / LAYERS_PER_ROW as f32;
 
-        // The preset strip shares the body's height with the left column rather
-        // than adding to it, so it only has to fit what the footer leaves.
-        let presets =
-            PRESET_ROWS.len() as f32 * MIN_BUTTON_SIZE + (PRESET_ROWS.len() as f32 - 1.0) * SPACING;
-        let body = budget - SPACING - footer;
+        // iced lays a line of text out at 1.3x its size.
+        let needed = SMALL_TEXT * 1.3 + 2.0 * EDIT_TABLE_CELL_SPACING;
         assert!(
-            presets <= body,
-            "the preset strip needs {presets}pt of the {body}pt body"
+            layer >= needed,
+            "with {rows} page rows a table cell comes out {layer}pt on the default screen, \
+             under the {needed}pt a line of SMALL_TEXT needs"
         );
     }
 

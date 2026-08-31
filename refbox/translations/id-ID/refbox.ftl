@@ -376,6 +376,7 @@ beep-test = BEEP TEST
 
 # Beep-test screen
 beep-test-top-time-label = WAKTU
+beep-test-top-start-in-label = MULAI DALAM
 beep-test-top-level-label = LEVEL
 beep-test-top-lap-label = PUTARAN
 beep-test-start = MULAI
@@ -385,6 +386,7 @@ beep-test-reset = ATUR ULANG
 beep-test-edit-time = WAKTU
 beep-test-edit-count = JUMLAH
 beep-test-preset-ref = WASIT
+beep-test-preset-heading = PRASETEL
 
 # Pelanggaran
 stick-foul = Pelanggaran Stik

@@ -378,6 +378,7 @@ beep-test = 비프 테스트
 
 # Beep-test screen
 beep-test-top-time-label = 시간
+beep-test-top-start-in-label = 시작까지
 beep-test-top-level-label = 레벨
 beep-test-top-lap-label = 랩
 beep-test-start = 시작
@@ -387,6 +388,7 @@ beep-test-reset = 리셋
 beep-test-edit-time = 시간
 beep-test-edit-count = 카운트
 beep-test-preset-ref = 심판
+beep-test-preset-heading = 프리셋
 
 # 위반 항목
 stick-foul = 스틱 반칙

@@ -376,6 +376,7 @@ beep-test = BEEP TEST
 
 # Beep-test screen
 beep-test-top-time-label = SÜRE
+beep-test-top-start-in-label = BAŞLIYOR
 beep-test-top-level-label = SEVİYE
 beep-test-top-lap-label = TUR
 beep-test-start = BAŞLAT
@@ -385,6 +386,7 @@ beep-test-reset = SIFIRLA
 beep-test-edit-time = SÜRE
 beep-test-edit-count = ADET
 beep-test-preset-ref = HKM
+beep-test-preset-heading = ÖN AYAR
 
 # İhlaller
 stick-foul = Sopa Faulü

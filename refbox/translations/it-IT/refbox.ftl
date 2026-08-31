@@ -376,6 +376,7 @@ beep-test = BEEP TEST
 
 # Beep-test screen
 beep-test-top-time-label = TEMPO
+beep-test-top-start-in-label = INIZIO TRA
 beep-test-top-level-label = LIVELLO
 beep-test-top-lap-label = GIRO
 beep-test-start = AVVIA
@@ -385,6 +386,7 @@ beep-test-reset = AZZERA
 beep-test-edit-time = TEMPO
 beep-test-edit-count = NUMERO
 beep-test-preset-ref = ARB
+beep-test-preset-heading = PREIMPOSTAZIONE
 
 # Infrazioni
 stick-foul = Fallo di Mazzetta

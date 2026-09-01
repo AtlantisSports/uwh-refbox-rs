@@ -603,6 +603,13 @@ enum SourceTapOutcome {
 /// the reply still belongs to the committed source, and resolving it against
 /// the staged one would file the departed site's data under the new one — the
 /// leak the per-source store exists to prevent.
+///
+/// A different question from the site-generation guard: `reply_is_current` decides whether a
+/// reply is accepted; this decides which bucket it lands in. `switch_to_source` commits the
+/// source before `repoint_client` runs, and `repoint_client` can decline to move the client
+/// — no usable target, or `build_site_client` fails — leaving the source moved but the
+/// generation unchanged, so an in-flight reply is filed under the new source. Needs a colliding
+/// stale entry there to do harm. Narrow, and deliberately not closed here.
 fn reply_source(committed: GameSource, staged: Option<GameSource>) -> GameSource {
     if committed == GameSource::Manual {
         staged.unwrap_or(committed)

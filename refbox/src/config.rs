@@ -62,6 +62,11 @@ impl Hardware {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UwhPortal {
+    /// Legacy single-slot key. Read on load so a settings file written before
+    /// the per-event store can be adopted once (see `adopt_legacy_access_key`),
+    /// then blanked. Never written back: rolling back to an older refbox means
+    /// logging in again, which Eric ruled acceptable on 2026-09-01.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub token: String,
 }
 
@@ -79,6 +84,11 @@ impl UwhPortal {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CustomSite {
     pub url: String,
+    /// Legacy single-slot key. Read on load so a settings file written before
+    /// the per-event store can be adopted once (see `adopt_legacy_access_key`),
+    /// then blanked. Never written back: rolling back to an older refbox means
+    /// logging in again, which Eric ruled acceptable on 2026-09-01.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub token: String,
 }
 
@@ -1088,6 +1098,36 @@ mod test {
         let c = CustomSite::migrate(&old);
         assert_eq!(c.url, "http://scoreboard.local:8099/api/events/1234-A");
         assert_eq!(c.token, "custom-token");
+    }
+
+    #[test]
+    fn legacy_token_slots_are_read_but_never_written_back() {
+        let old = r#"
+            [uwhportal]
+            token = "LEGACY-PORTAL"
+            [custom_site]
+            url = "https://scores.example.org"
+            token = "LEGACY-CUSTOM"
+        "#;
+        let table: toml::Table = toml::from_str(old).unwrap();
+        let config = Config::migrate(&table);
+        // Still read, so Task 3 can adopt them.
+        assert_eq!(config.uwhportal.token, "LEGACY-PORTAL");
+        assert_eq!(config.custom_site.token, "LEGACY-CUSTOM");
+        // The address is not a credential and stays.
+        assert_eq!(config.custom_site.url, "https://scores.example.org");
+
+        // Once adopted and blanked, they leave the file entirely.
+        let mut adopted = config.clone();
+        adopted.uwhportal.token.clear();
+        adopted.custom_site.token.clear();
+        let text = toml::to_string(&adopted).unwrap();
+        assert!(!text.contains("LEGACY-PORTAL"));
+        assert!(
+            !text.contains("token"),
+            "no empty token key should be written:\n{text}"
+        );
+        assert!(text.contains("https://scores.example.org"));
     }
 
     /// A config file written before a key existed: serialise today's default,

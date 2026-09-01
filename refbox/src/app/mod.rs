@@ -804,17 +804,17 @@ fn https_policy_conflict(target: &SiteTarget) -> Option<String> {
     })
 }
 
-/// Build a client for `target`, using the credential that belongs to that site.
+/// Build a client for `target`. Carries no credential yet -- see `apply_access_key`.
 ///
 /// `None` when the client cannot be built at all, which leaves the refbox in
 /// its existing degraded mode (red indicator, nothing sent) rather than holding
 /// a client pointed somewhere unintended.
-fn build_site_client(target: &SiteTarget, config: &Config) -> Option<UwhPortalClient> {
-    let token = match target.kind {
-        SiteKind::Portal => config.uwhportal.token.as_str(),
-        SiteKind::Custom => config.custom_site.token.as_str(),
-    };
-    let token = (!token.is_empty()).then_some(token);
+fn build_site_client(target: &SiteTarget, _config: &Config) -> Option<UwhPortalClient> {
+    // No key here on purpose. Keys are filed per (site, event) and the event is
+    // not known when the client is built at startup, so `apply_access_key` is
+    // the one place that decides which key is loaded — called whenever the
+    // event or the site changes.
+    let token = None;
     if let Some(msg) = https_policy_conflict(target) {
         error!("{msg}");
     }
@@ -1562,6 +1562,40 @@ impl RefBoxApp {
         // and must NOT be invalidated. (Same asymmetry `1f4bdc62` fixed for the
         // portal fetch; keep the two consistent.)
         self.site_generation = self.site_generation.wrapping_add(1);
+        self.apply_access_key();
+    }
+
+    /// Load the key for the site and event the refbox is currently on, or clear
+    /// the client's key when none is held. The single owner of "which key is
+    /// loaded", so the client can never be left holding a key belonging to a
+    /// different event.
+    fn apply_access_key(&mut self) {
+        let Some(shared) = self.uwhportal_client.as_ref() else {
+            return;
+        };
+        let key = self
+            .current_event_id
+            .as_ref()
+            .and_then(|event| {
+                self.config
+                    .access_key_for(self.current_site.base_url.expose(), event)
+            })
+            .map(str::to_owned);
+        // why this cannot panic: the guard is held only across the synchronous
+        // set_token/clear_token calls below, neither of which panics.
+        let mut guard = shared.lock().unwrap();
+        match key {
+            Some(key) => {
+                if let Err(why) = guard.set_token(&key) {
+                    // Only reachable from a hand-edited settings file: a key is
+                    // refused before it is ever stored. Clear rather than keep,
+                    // so no request goes out with a broken credential.
+                    warn!("A saved access key cannot be sent and was not loaded: {why}");
+                    guard.clear_token();
+                }
+            }
+            None => guard.clear_token(),
+        }
     }
 
     /// Re-seed the ACCESS TOKEN indicator after the refbox has been pointed at
@@ -2043,6 +2077,7 @@ impl RefBoxApp {
             }
             self.scramble_token_pending = false;
         }
+        self.apply_access_key();
     }
 
     /// Write or delete `portal_link.json` to reflect the current live link.
@@ -8118,6 +8153,25 @@ mod site_target_tests {
         // Manual fetches nothing, so no site serves it.
         assert!(!site_serves(SiteKind::Portal, GameSource::Manual));
         assert!(!site_serves(SiteKind::Custom, GameSource::Manual));
+    }
+
+    fn ev(id: &str) -> EventId {
+        EventId::from_full(format!("events/{id}")).unwrap()
+    }
+
+    /// At startup `current_event_id` is `None` and is only filled later by the
+    /// link restore, so the event simply is not known yet when the client is
+    /// built -- no key can be chosen at that point even though one is on file.
+    #[test]
+    fn a_client_is_built_with_no_key_because_the_event_is_not_known_yet() {
+        let mut config = Config::default();
+        config.store_access_key("https://api.uwhportal.com", &ev("abc"), "KEY-A".into());
+        let target = portal_target(Mode::Hockey6V6, false);
+        let client = build_site_client(&target, &config).unwrap();
+        assert!(
+            !client.has_token(),
+            "the event is unknown at build time, so no key can be chosen"
+        );
     }
 }
 

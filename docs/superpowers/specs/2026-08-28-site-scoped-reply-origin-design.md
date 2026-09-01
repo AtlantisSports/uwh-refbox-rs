@@ -139,9 +139,14 @@ the code, never reproduced at the time — and fixed on its own branch,
 silently: a log line and nothing on screen, so the cost of switching mid-login is one re-login
 rather than a credential on the wrong server.
 
-With that stamped, the title above holds for the message group: every site-scoped reply carries its
-origin except `RecvEventList`, which is deliberately unstamped because it does not use the live
-client at all. The reason is recorded on `request_event_list`.
+With that stamped, the claim holds for the *replies to requests the refbox issues*: every one of
+them carries its origin except `RecvEventList`, which is deliberately unstamped because it does not
+use the live client at all. The reason is recorded on `request_event_list`.
+
+It does **not** hold for the whole message group, and an audit reading the paragraph above as if it
+did would stop too early. `Message::PortalEvent` still delivers `PortalEvent::TokenStatus` and
+`PortalEvent::TokenUnreachable` unstamped — site-scoped token verdicts travelling as messages, not
+merely as `portal_manager` state.
 
 Still open, same family: the background health probe re-checks the token on a cadence through the
 shared client and applies the verdict to `portal_manager` state, which carries no site

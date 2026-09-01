@@ -490,6 +490,55 @@ fn repoint_log_line(target: &SiteTarget) -> String {
     format!("Pointing the refbox at the {kind}: {}", target.address)
 }
 
+/// How a login attempt names the site it went to.
+///
+/// `portal_name_for_mode` answers a different question — which sport's portal this build is
+/// configured for — so on a custom site it labels the exchange "UWH Portal", and in BeepTest mode
+/// it labels it nothing at all. On this path that is wrong twice over: what is being logged is a
+/// credential exchange, and attributing one site's credential to another is the exact fault the
+/// site stamp exists to prevent.
+///
+/// Deliberately carries no address. `repoint_log_line` can afford one because it is pinned by a
+/// test against credential leakage; here the kind is enough to tell a Portal login from a
+/// custom-site one, and the address is already logged when the refbox is pointed at the site.
+fn login_site_name(kind: SiteKind, mode: Mode) -> String {
+    match kind {
+        SiteKind::Custom => "the custom site".to_string(),
+        SiteKind::Portal => match portal_name_for_mode(mode) {
+            "" => "the portal".to_string(),
+            name => format!("the {name} Portal"),
+        },
+    }
+}
+
+/// File a login answer's access key against the site it was issued to.
+///
+/// Returns `false` when the answer is stale — the refbox has moved to another site since the login
+/// went out — in which case nothing is written.
+///
+/// The `RecvPortalToken` handler already drops a stale answer whole, before reading it, so in
+/// normal flow this check never fires. It is here anyway, on purpose: this is the single line that
+/// puts one site's credential into a config slot, and re-checking at the point of the write means a
+/// later edit that moves or loses the handler's guard cannot silently reopen the leak. Extracted
+/// rather than written inline for the same reason `repoint_log_line` is a function — so the test
+/// exercises the real decision and not a copy of it.
+fn file_login_key(
+    config: &mut Config,
+    kind: SiteKind,
+    issued_at: u64,
+    now: u64,
+    token: String,
+) -> bool {
+    if !reply_is_current(issued_at, now) {
+        return false;
+    }
+    match kind {
+        SiteKind::Portal => config.uwhportal.token = token,
+        SiteKind::Custom => config.custom_site.token = token,
+    }
+    true
+}
+
 /// The line logged when a saved custom-site address cannot be used, and what follows from it.
 ///
 /// Names the reason, never the address. The address is the one value that cannot be shown safely
@@ -1327,15 +1376,15 @@ impl RefBoxApp {
             let issued_at = self.site_generation;
             // why this cannot panic: see `request_teams_list` above.
             let request = client.lock().unwrap().login_to_portal(event_id, code);
-            let portal_name = portal_name_for_mode(self.config.mode);
+            let site = login_site_name(self.current_site.kind, self.config.mode);
             Task::future(async move {
                 match request.await {
                     Ok(token) => {
-                        info!("Got a response from {portal_name} Portal token request");
+                        info!("Got a response from a login request to {site}");
                         Message::RecvPortalToken(token, issued_at)
                     }
                     Err(e) => {
-                        error!("Failed to get {portal_name} portal token: {e}");
+                        error!("Failed to get an access key from {site}: {e}");
                         Message::NoAction
                     }
                 }
@@ -6084,9 +6133,18 @@ impl RefBoxApp {
                             // to the portal's slot regardless would both destroy the
                             // operator's real Portal login and leave the custom site
                             // with no saved credential for the next launch.
-                            match self.current_site.kind {
-                                SiteKind::Portal => self.config.uwhportal.token = token,
-                                SiteKind::Custom => self.config.custom_site.token = token,
+                            if !file_login_key(
+                                &mut self.config,
+                                self.current_site.kind,
+                                issued_at,
+                                self.site_generation,
+                                token,
+                            ) {
+                                // Unreachable in normal flow — the guard at the top of this
+                                // handler has already returned. Logged rather than ignored so
+                                // that if it ever does fire, the reason a login silently failed
+                                // to stick is in the log rather than nowhere.
+                                warn!("A login answer went stale before its key could be filed");
                             }
                             if let Some(ref mut settings) = self.edited_settings {
                                 settings.uwhportal_token_valid = Some(true);
@@ -7786,6 +7844,65 @@ mod site_target_tests {
     ///
     /// Both kinds are checked: a custom site is the one an operator types a password into, and it
     /// is the arm that would otherwise go unexercised.
+    #[test]
+    fn a_stale_login_answer_files_no_key_anywhere() {
+        // Before the site stamp there was no `issued_at` to compare and the key was written
+        // unconditionally, so this assertion had nothing to hold on to.
+        let mut config = Config::default();
+        config.uwhportal.token = "PORTAL-KEY".to_string();
+        config.custom_site.token = "CUSTOM-KEY".to_string();
+        assert!(!file_login_key(
+            &mut config,
+            SiteKind::Portal,
+            3,
+            4,
+            "FROM-A-SITE-WE-LEFT".to_string()
+        ));
+        assert_eq!(config.uwhportal.token, "PORTAL-KEY");
+        assert_eq!(config.custom_site.token, "CUSTOM-KEY");
+    }
+
+    #[test]
+    fn a_current_login_answer_is_filed_against_its_own_site_only() {
+        let mut config = Config::default();
+        config.uwhportal.token = "PORTAL-KEY".to_string();
+        assert!(file_login_key(
+            &mut config,
+            SiteKind::Custom,
+            4,
+            4,
+            "CUSTOM-KEY".to_string()
+        ));
+        assert_eq!(config.custom_site.token, "CUSTOM-KEY");
+        assert_eq!(
+            config.uwhportal.token, "PORTAL-KEY",
+            "a custom-site login must never overwrite the operator's Portal login"
+        );
+    }
+
+    #[test]
+    fn a_login_log_line_never_calls_a_custom_site_the_portal() {
+        assert_eq!(
+            login_site_name(SiteKind::Portal, Mode::Hockey6V6),
+            "the UWH Portal"
+        );
+        assert_eq!(
+            login_site_name(SiteKind::Portal, Mode::Rugby),
+            "the UWR Portal"
+        );
+        // BeepTest has no portal name; the line must not degrade to "the  Portal".
+        assert_eq!(
+            login_site_name(SiteKind::Portal, Mode::BeepTest),
+            "the portal"
+        );
+        let custom = login_site_name(SiteKind::Custom, Mode::Hockey6V6);
+        assert_eq!(custom, "the custom site");
+        assert!(
+            !custom.contains("Portal"),
+            "a third-party login must not be reported as a Portal login"
+        );
+    }
+
     #[test]
     fn the_repoint_log_line_cannot_carry_credentials() {
         for target in [custom_target(LEAKY), target(LEAKY, true)] {

@@ -606,10 +606,12 @@ enum SourceTapOutcome {
 ///
 /// A different question from the site-generation guard: `reply_is_current` decides whether a
 /// reply is accepted; this decides which bucket it lands in. `switch_to_source` commits the
-/// source before `repoint_client` runs, and `repoint_client` can decline to move the client
-/// — no usable target, or `build_site_client` fails — leaving the source moved but the
-/// generation unchanged, so an in-flight reply is filed under the new source. Needs a colliding
-/// stale entry there to do harm. Narrow, and deliberately not closed here.
+/// source first, and the client may then not move at all — either `target_after_apply` answers
+/// `None` so `repoint_client` is never called (a custom site with no usable address saved), or
+/// `repoint_client` returns early itself (no client at all in degraded mode, or
+/// `build_site_client` fails). Any of those leaves the source moved while the generation is
+/// unchanged, so an in-flight reply is filed under the new source. Needs a colliding stale
+/// entry there to do harm. Narrow, and deliberately not closed here.
 fn reply_source(committed: GameSource, staged: Option<GameSource>) -> GameSource {
     if committed == GameSource::Manual {
         staged.unwrap_or(committed)

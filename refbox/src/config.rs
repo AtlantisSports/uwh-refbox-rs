@@ -543,8 +543,6 @@ impl Config {
     /// The key held for this exact site and event, if any. `None` means the
     /// operator has never logged in to this event on this site, or the key was
     /// replaced by a later login elsewhere.
-    /// Has no production caller until the store is wired into the portal client in a later task.
-    #[allow(dead_code)]
     pub fn access_key_for(&self, site: &str, event: &EventId) -> Option<&str> {
         self.access_keys
             .iter()

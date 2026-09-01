@@ -177,6 +177,11 @@ pub struct RefBoxApp {
     /// rebuild. Read to decide whether an Apply would repoint the refbox at a
     /// different site (and so needs the clock and queue guards).
     current_site: SiteTarget,
+    /// Bumped every time the client is actually pointed at a different site.
+    /// Site-scoped requests carry the value current when they were issued, and
+    /// their handlers drop a reply whose stamp no longer matches — see
+    /// [`reply_is_current`].
+    site_generation: u64,
     /// `--allow-http` inverted, as passed at launch. Governs the built-in
     /// portal only — a custom site derives TLS from the scheme that was typed.
     require_https: bool,
@@ -604,6 +609,27 @@ fn reply_source(committed: GameSource, staged: Option<GameSource>) -> GameSource
     } else {
         committed
     }
+}
+
+/// Whether a site-scoped reply still belongs to the site the refbox is on.
+///
+/// Every request that goes to a *site* reads `site_generation` as it is issued
+/// and carries that value on its reply; `repoint_client` bumps the counter when
+/// it moves the client. Equal means the refbox has not moved since; anything
+/// else means the answer came from a site it has left, and applying it would
+/// attribute one site's data to another.
+///
+/// Why a counter and not the site address: an address would let
+/// `portal -> custom -> portal` accept a reply issued on the first portal
+/// visit, because the address matches again. That reply is *correct* data, so
+/// an address is strictly more precise — but it costs a heap `String` on every
+/// one of the dozens of messages an event fires, and the cost of rejecting it
+/// is one wasted fetch (a fresh fetch always follows a switch), not a wrong
+/// answer. Erring toward dropping is the right default for a guard whose whole
+/// purpose is to refuse data of uncertain origin. This is a deliberate
+/// trade-off, not an oversight.
+fn reply_is_current(issued_at: u64, now: u64) -> bool {
+    issued_at == now
 }
 
 /// What an App-page APPLY should do with the committed event / court / schedule.
@@ -1447,6 +1473,11 @@ impl RefBoxApp {
         // below, which cannot panic, so the mutex is never poisoned here.
         *shared.lock().unwrap() = new_client;
         self.current_site = target;
+        // Only here. The two early returns above leave the client exactly where
+        // it was, so replies in flight are still from the site the refbox is on
+        // and must NOT be invalidated. (Same asymmetry `1f4bdc62` fixed for the
+        // portal fetch; keep the two consistent.)
+        self.site_generation = self.site_generation.wrapping_add(1);
     }
 
     /// Re-seed the ACCESS TOKEN indicator after the refbox has been pointed at
@@ -3108,6 +3139,7 @@ impl RefBoxApp {
             uwhportal_client,
             portal_event_id,
             current_site,
+            site_generation: 0,
             require_https,
             source: startup_source,
             events: EventStore::default(),
@@ -8528,6 +8560,27 @@ mod source_tap_tests {
                 SourceTapOutcome::RefusedByGame
             );
         }
+    }
+
+    #[test]
+    fn reply_from_the_current_site_is_accepted() {
+        assert!(reply_is_current(0, 0));
+        assert!(reply_is_current(7, 7));
+    }
+
+    #[test]
+    fn reply_from_a_departed_site_is_rejected() {
+        // The refbox has moved on since the request went out.
+        assert!(!reply_is_current(0, 1));
+        assert!(!reply_is_current(3, 9));
+    }
+
+    #[test]
+    fn a_stamp_from_the_future_is_also_rejected() {
+        // Cannot happen today, but the rule is equality, not "not older than".
+        // Anything but an exact match is data of uncertain origin, which this
+        // guard exists to refuse.
+        assert!(!reply_is_current(5, 2));
     }
 }
 

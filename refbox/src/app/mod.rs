@@ -588,8 +588,8 @@ enum SourceTapOutcome {
 /// settings editor — not on what is committed. The two are identical unless the
 /// operator has picked something and not yet applied it, and in that case the
 /// displayed selection is what they would lose.
-/// The source a site-scoped reply (`RecvSchedule`, `RecvTeamsList`,
-/// `RecvTeamRoster`) should resolve against.
+/// The source a site-scoped reply (`RecvSchedule`, `RecvTeamsList`)
+/// should resolve against.
 ///
 /// The COMMITTED source, with one exception: when that is `Manual`.
 /// `site_serves` answers false for Manual against every site, so a request is
@@ -1214,12 +1214,15 @@ impl RefBoxApp {
 
     fn request_team_roster(&self, team_id: TeamId) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
-            // The source this request goes out under, carried on the reply so
+            // The site this request goes out against, carried on the reply so
             // the handler can tell a roster from the site the refbox is on now
             // from one still arriving from the site it has left. Read here, at
             // the moment the request is issued, because that is the only point
-            // at which the answer is known.
-            let source = self.source;
+            // at which the answer is known. This was a `GameSource` until the
+            // reply-origin work: a source tag cannot distinguish one custom
+            // site from another, and rosters are exactly where that bites,
+            // because the cache is keyed by team id alone.
+            let issued_at = self.site_generation;
             // why this cannot panic: see `request_teams_list` above.
             let request = client.lock().unwrap().get_team_roster(&team_id);
             Task::future(async move {
@@ -1231,7 +1234,7 @@ impl RefBoxApp {
                             team_id.full(),
                             numbers.len()
                         );
-                        Message::RecvTeamRoster(source, team_id, numbers)
+                        Message::RecvTeamRoster(team_id, numbers, issued_at)
                     }
                     Err(e) => {
                         // A failure must leave whatever is cached untouched, so
@@ -5827,26 +5830,23 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
-            Message::RecvTeamRoster(source, team_id, numbers) => {
-                // Resolves against the COMMITTED source, the same way
-                // `RecvTeamsList` and `RecvSchedule` below do — and for a
-                // sharper reason here, because this cache has no event or site
-                // in its key. Roster fetches go out in a batch, one per team in
-                // the schedule, so a switch made while they are in flight would
+            Message::RecvTeamRoster(team_id, numbers, issued_at) => {
+                // Roster fetches go out in a batch, one per team in the
+                // schedule, so a switch made while they are in flight would
                 // otherwise let the departed site's replies refill the cache
                 // `switch_to_source` has just cleared. `RecvSchedule` skips
                 // re-fetching any team it already holds, so such an entry would
                 // then shadow the new site's numbers for the rest of the
                 // session and survive a REFRESH.
-                if source == self.reply_source() {
+                if reply_is_current(issued_at, self.site_generation) {
                     self.team_rosters.insert(team_id, numbers);
                 } else {
                     warn!(
-                        "Discarding the roster for team {}: it was fetched for {:?}, \
-                         and the refbox is now on {:?}",
+                        "Discarding the roster for team {}: it was fetched from site \
+                         generation {}, and the refbox is now on {}",
                         team_id.full(),
-                        source,
-                        self.source
+                        issued_at,
+                        self.site_generation
                     );
                 }
                 Task::none()

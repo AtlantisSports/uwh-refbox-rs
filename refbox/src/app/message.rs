@@ -202,11 +202,12 @@ pub enum Message {
     /// on it. Players with no cap number are dropped at the fetch — there is
     /// nothing to tap for them.
     ///
-    /// Tagged with the game source the request went out under. The tag is what
-    /// lets the handler drop a reply that lands after a source switch: the
+    /// Tagged with the site generation the request went out under. The tag is
+    /// what lets the handler drop a reply that lands after a source switch: the
     /// roster cache is keyed by team id alone, and a team id is whatever text
-    /// the serving site chose to send.
-    RecvTeamRoster(GameSource, TeamId, Vec<u8>),
+    /// the serving site chose to send. This used to be a `GameSource`, which
+    /// could not tell one custom site from another — the generation can.
+    RecvTeamRoster(TeamId, Vec<u8>, u64),
     /// An event's schedule. Carries the site generation it was fetched under so
     /// a reply from a site the refbox has left cannot fill the court and game
     /// pickers of the site it is on now.

@@ -208,8 +208,10 @@ pub enum Message {
     RecvPortalToken(PortalTokenResponse),
     /// Result of a portal token-validity check for a specific event. Carries
     /// the `EventId` it was checked for so a late reply for a previously
-    /// selected event can be dropped instead of overwriting the current one.
-    RecvTokenValid(EventId, bool),
+    /// selected event can be dropped instead of overwriting the current one,
+    /// and the site generation it was issued under so a reply from a site the
+    /// refbox has left cannot paint a verdict about the site it is on now.
+    RecvTokenValid(EventId, bool, u64),
     StopClock,
     StartClock,
     /// Operator pressed Start in BeepTest mode.
@@ -364,7 +366,7 @@ impl Message {
             | Self::RecvTeamRoster(_, _, _)
             | Self::RecvSchedule(_, _)
             | Self::RecvPortalToken(_)
-            | Self::RecvTokenValid(_, _)
+            | Self::RecvTokenValid(_, _, _)
             | Self::TimeUpdaterStarted(_)
             | Self::PortalEvent(_)
             | Self::PortalUiTick
@@ -702,7 +704,9 @@ impl PartialEq for Message {
             }
             (Self::RecvSchedule(a, b), Self::RecvSchedule(c, d)) => a == c && b == d,
             (Self::RecvPortalToken(a), Self::RecvPortalToken(b)) => a == b,
-            (Self::RecvTokenValid(a, b), Self::RecvTokenValid(c, d)) => a == c && b == d,
+            (Self::RecvTokenValid(a, b, c), Self::RecvTokenValid(d, e, f)) => {
+                a == d && b == e && c == f
+            }
             (Self::SetTeamTimeoutCount(a), Self::SetTeamTimeoutCount(b)) => a == b,
             (Self::SetTeamTimeoutLength(a), Self::SetTeamTimeoutLength(b)) => a == b,
             (Self::UpdatesCheckDone(a), Self::UpdatesCheckDone(b)) => a == b,
@@ -789,7 +793,7 @@ impl PartialEq for Message {
             | (Self::RecvTeamRoster(_, _, _), _)
             | (Self::RecvSchedule(_, _), _)
             | (Self::RecvPortalToken(_), _)
-            | (Self::RecvTokenValid(_, _), _)
+            | (Self::RecvTokenValid(_, _, _), _)
             | (Self::StopClock, _)
             | (Self::StartClock, _)
             | (Self::BeepTestStart, _)

@@ -1738,7 +1738,12 @@ impl RefBoxApp {
 
     fn check_uwhportal_auth(&self, event_id: &EventId) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
-            // why this cannot panic: see `request_teams_list` above.
+            // The site this check goes out against, carried on the reply. Read
+            // here, at the moment of issue, because that is the only point at
+            // which the answer is known.
+            let issued_at = self.site_generation;
+            // why this cannot panic: the guard is held only for a synchronous
+            // `has_token()` call and dropped immediately.
             let has_token = client.lock().unwrap().has_token();
             if !has_token {
                 // Never ask a site to vouch for a credential we do not hold.
@@ -1746,7 +1751,7 @@ impl RefBoxApp {
                 // answers an unauthenticated probe with `200` — which arrives
                 // as a green "Connected" painted over nothing. Report the
                 // rejected state here instead, without sending the request.
-                return Task::done(Message::RecvTokenValid(event_id.clone(), false));
+                return Task::done(Message::RecvTokenValid(event_id.clone(), false, issued_at));
             }
             // why this cannot panic: see `request_teams_list` above.
             let request = client.lock().unwrap().verify_token(event_id);
@@ -1757,11 +1762,11 @@ impl RefBoxApp {
                 match request.await {
                     Ok(()) => {
                         info!("Portal token validated");
-                        Message::RecvTokenValid(event_id, true)
+                        Message::RecvTokenValid(event_id, true, issued_at)
                     }
                     Err(e) => {
                         error!("Portal token validity check failed: {e}");
-                        Message::RecvTokenValid(event_id, false)
+                        Message::RecvTokenValid(event_id, false, issued_at)
                     }
                 }
             })
@@ -6066,7 +6071,17 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 task
             }
-            Message::RecvTokenValid(event_id, valid) => {
+            Message::RecvTokenValid(event_id, valid, issued_at) => {
+                if !reply_is_current(issued_at, self.site_generation) {
+                    warn!(
+                        "Discarding the token verdict for event {}: it was checked \
+                         against site generation {}, and the refbox is now on {}",
+                        event_id.full(),
+                        issued_at,
+                        self.site_generation
+                    );
+                    return Task::none();
+                }
                 if let Some(ref mut settings) = self.edited_settings {
                     // Drop a stale reply for an event the operator has since
                     // switched away from, so a late "valid" for a previous

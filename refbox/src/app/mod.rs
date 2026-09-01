@@ -537,36 +537,6 @@ fn file_login_key(
     true
 }
 
-/// Move a pre-upgrade single-slot key into the per-event store, filing it against the event the
-/// refbox is linked to.
-///
-/// A settings file written before the per-event store holds one key with no event attached, so it
-/// cannot be found by a `(site, event)` lookup and would be silently ignored — sending the operator
-/// back to the portal website for a fresh code even though they already hold a working key.
-///
-/// Runs once. The legacy slot is emptied either way, so a key that could not be attributed is not
-/// offered again on the next launch. Returns whether the config changed and should be saved.
-fn adopt_legacy_access_key(
-    config: &mut Config,
-    kind: SiteKind,
-    site: &str,
-    event: &EventId,
-) -> bool {
-    let legacy = match kind {
-        SiteKind::Portal => std::mem::take(&mut config.uwhportal.token),
-        SiteKind::Custom => std::mem::take(&mut config.custom_site.token),
-    };
-    if legacy.is_empty() {
-        return false;
-    }
-    // A key already in the store was written by this version, so it is both known-good and
-    // known-attributed. A legacy one is neither, and must never displace it.
-    if config.access_key_for(site, event).is_none() {
-        config.store_access_key(site, event, legacy);
-    }
-    true
-}
-
 /// The line logged when a saved custom-site address cannot be used, and what follows from it.
 ///
 /// Names the reason, never the address. The address is the one value that cannot be shown safely
@@ -3366,24 +3336,6 @@ impl RefBoxApp {
                     new.source = GameSource::Portal;
                     new.current_court = note.court.clone();
                     new.pending_restore_game = note.game_number.clone();
-                    // The only point at startup where the event a pre-upgrade key belongs to is
-                    // known. Must run BEFORE `set_current_event_id`, whose `apply_access_key`
-                    // reads the store — adopting afterwards would load nothing this launch.
-                    if adopt_legacy_access_key(
-                        &mut new.config,
-                        new.current_site.kind,
-                        new.current_site.base_url.expose(),
-                        &note.event_id,
-                    ) {
-                        // Names the event so a mis-attribution is diagnosable: the note
-                        // records the last LINKED event, which is not necessarily the event
-                        // the pre-upgrade key was issued for.
-                        info!(
-                            "Adopted a pre-upgrade access key, attributing it to event {}",
-                            note.event_id.full()
-                        );
-                        new.persist_config();
-                    }
                     new.set_current_event_id(Some(note.event_id.clone()));
                     // Defer the schedule fetch to RecvEventList (after the event
                     // list populates self.events) so it can't race ahead of the
@@ -7950,85 +7902,6 @@ mod site_target_tests {
     ///
     /// Both kinds are checked: a custom site is the one an operator types a password into, and it
     /// is the arm that would otherwise go unexercised.
-    #[test]
-    fn a_legacy_portal_key_is_adopted_for_the_linked_event_and_then_blanked() {
-        let mut config = Config::default();
-        config.uwhportal.token = "LEGACY-PORTAL".to_string();
-        assert!(adopt_legacy_access_key(
-            &mut config,
-            SiteKind::Portal,
-            "https://api.uwhportal.com",
-            &ev("abc")
-        ));
-        assert_eq!(
-            config.access_key_for("https://api.uwhportal.com", &ev("abc")),
-            Some("LEGACY-PORTAL"),
-            "an upgrading operator keeps the key they already hold"
-        );
-        assert!(
-            config.uwhportal.token.is_empty(),
-            "the legacy slot is emptied so it is not offered again next launch"
-        );
-    }
-
-    #[test]
-    fn adopting_never_displaces_a_key_already_in_the_store() {
-        let mut config = Config::default();
-        config.store_access_key("https://api.uwhportal.com", &ev("abc"), "CURRENT".into());
-        config.uwhportal.token = "LEGACY-PORTAL".to_string();
-        assert!(
-            adopt_legacy_access_key(
-                &mut config,
-                SiteKind::Portal,
-                "https://api.uwhportal.com",
-                &ev("abc")
-            ),
-            "the legacy slot is still cleared"
-        );
-        assert_eq!(
-            config.access_key_for("https://api.uwhportal.com", &ev("abc")),
-            Some("CURRENT"),
-            "the store wins: it was written by this version and is known-attributed"
-        );
-        assert!(config.uwhportal.token.is_empty());
-    }
-
-    #[test]
-    fn nothing_is_adopted_when_the_legacy_slot_is_empty() {
-        let mut config = Config::default();
-        assert!(!adopt_legacy_access_key(
-            &mut config,
-            SiteKind::Portal,
-            "https://api.uwhportal.com",
-            &ev("abc")
-        ));
-        assert!(
-            config.access_keys.is_empty(),
-            "no empty key is filed for a fresh install"
-        );
-    }
-
-    #[test]
-    fn a_custom_site_legacy_key_is_adopted_from_its_own_slot() {
-        // The two slots are independent: adopting one must not touch the other.
-        let mut config = Config::default();
-        config.uwhportal.token = "PORTAL-KEY".to_string();
-        config.custom_site.token = "CUSTOM-KEY".to_string();
-        assert!(adopt_legacy_access_key(
-            &mut config,
-            SiteKind::Custom,
-            "https://scores.example.org",
-            &ev("abc")
-        ));
-        assert_eq!(
-            config.access_key_for("https://scores.example.org", &ev("abc")),
-            Some("CUSTOM-KEY")
-        );
-        assert_eq!(
-            config.uwhportal.token, "PORTAL-KEY",
-            "adopting the custom key must not disturb the Portal slot"
-        );
-    }
 
     #[test]
     fn a_stale_login_answer_files_no_key_anywhere() {

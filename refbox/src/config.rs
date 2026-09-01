@@ -62,10 +62,15 @@ impl Hardware {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UwhPortal {
-    /// Legacy single-slot key. Read on load so a settings file written before
-    /// the per-event store can be adopted once (see `adopt_legacy_access_key`),
-    /// then blanked. Never written back: rolling back to an older refbox means
-    /// logging in again, which Eric ruled acceptable on 2026-09-01.
+    /// Legacy single-slot key from before the per-event store. Still parsed so an
+    /// existing settings file loads, and still written while non-empty so rolling back
+    /// to an older refbox keeps working — but nothing in this version reads it.
+    ///
+    /// Adopting it into the per-event store was built and then dropped: the only event
+    /// it could be attributed to at startup is the last LINKED event, which is not
+    /// necessarily the event that issued the key. Mis-attributing it consumed a key that
+    /// would otherwise still have worked, so Eric ruled on 2026-09-01 that one login
+    /// after upgrading is the better trade.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub token: String,
 }
@@ -84,10 +89,15 @@ impl UwhPortal {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CustomSite {
     pub url: String,
-    /// Legacy single-slot key. Read on load so a settings file written before
-    /// the per-event store can be adopted once (see `adopt_legacy_access_key`),
-    /// then blanked. Never written back: rolling back to an older refbox means
-    /// logging in again, which Eric ruled acceptable on 2026-09-01.
+    /// Legacy single-slot key from before the per-event store. Still parsed so an
+    /// existing settings file loads, and still written while non-empty so rolling back
+    /// to an older refbox keeps working — but nothing in this version reads it.
+    ///
+    /// Adopting it into the per-event store was built and then dropped: the only event
+    /// it could be attributed to at startup is the last LINKED event, which is not
+    /// necessarily the event that issued the key. Mis-attributing it consumed a key that
+    /// would otherwise still have worked, so Eric ruled on 2026-09-01 that one login
+    /// after upgrading is the better trade.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub token: String,
 }

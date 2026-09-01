@@ -630,3 +630,28 @@ Claude launches the app; Eric performs these and reports back. Needs the dev por
 - **The mode-switch warning may become pessimistic.** `mode-switch-portal-tenant` says "you must re-connect to {$to_portal} Portal". Each mode has its own portal base URL (`portal_target`, `app/mod.rs:474-494`), so once keys are filed per site, switching back to a tenant you have used will re-establish on its own and the warning will overstate. Copy change needs Eric's ruling.
 - **A queued result for an old event.** Queue items carry an event but no site, and the client holds one key at a time. A result queued for event A and sent while linked to event B already goes out with B's key today; this branch does not change that, but it does make it fixable.
 - **`post_game_stats` is not event-scoped in its URL** (`/api/admin/events/stats`, `uwh-common/src/uwhportal/mod.rs:344`) while every other authenticated refbox call is. Worth confirming which key it expects before branch 2.
+
+---
+
+## Deviations from this plan (recorded during execution, 2026-09-01)
+
+1. **Task 4 was retargeted.** The plan was written against master before PR #3082 merged, which
+   replaced the inline `match self.current_site.kind { … }` credential write with a guarded
+   `file_login_key()`. Task 4 extended that function instead of reintroducing an inline match.
+2. **Task 4 also stamps the login reply with its `EventId`.** The plan filed the key under
+   `current_event_id` read at reply time, which files it under whatever event is selected when the
+   answer lands. `Message::RecvPortalToken` now carries the `EventId` captured at issue.
+3. **Task 5 (adopt a pre-upgrade key) was built and then REMOVED.** The whole-branch review showed
+   it could file the existing key under the wrong event: the link note records the last *linked*
+   event, not the last *logged-in* one. Where those differ the key was consumed and worked for
+   neither — a regression against master. Eric ruled on 2026-09-01 to drop adoption: everyone logs
+   in once after upgrading, which is predictable, rather than a rare silent key-burn.
+   The legacy `token` fields therefore remain parsed and written-while-non-empty, but nothing in
+   this version reads them.
+4. **`build_site_client` lost its `config` parameter** rather than keeping it as `_config`; the
+   plan wrongly claimed `https_policy_conflict` still needed it.
+5. **`apply_access_key()` runs before** the `#[cfg(debug_assertions)]` scramble block in
+   `set_current_event_id`, not as the last statement as the plan said, so
+   `UWH_PORTAL_SCRAMBLE_TOKEN` keeps the last word.
+6. **Tasks 5-6 ran lean** (controller-implemented, one whole-branch review) rather than a per-task
+   gated loop, per `.claude/rules/plan-execution.md`.

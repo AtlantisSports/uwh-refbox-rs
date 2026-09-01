@@ -204,7 +204,10 @@ pub enum Message {
     /// roster cache is keyed by team id alone, and a team id is whatever text
     /// the serving site chose to send.
     RecvTeamRoster(GameSource, TeamId, Vec<u8>),
-    RecvSchedule(EventId, Schedule),
+    /// An event's schedule. Carries the site generation it was fetched under so
+    /// a reply from a site the refbox has left cannot fill the court and game
+    /// pickers of the site it is on now.
+    RecvSchedule(EventId, Schedule, u64),
     RecvPortalToken(PortalTokenResponse),
     /// Result of a portal token-validity check for a specific event. Carries
     /// the `EventId` it was checked for so a late reply for a previously
@@ -364,7 +367,7 @@ impl Message {
             | Self::RecvEventList(_)
             | Self::RecvTeamsList(_, _)
             | Self::RecvTeamRoster(_, _, _)
-            | Self::RecvSchedule(_, _)
+            | Self::RecvSchedule(_, _, _)
             | Self::RecvPortalToken(_)
             | Self::RecvTokenValid(_, _, _)
             | Self::TimeUpdaterStarted(_)
@@ -702,7 +705,9 @@ impl PartialEq for Message {
             (Self::RecvTeamRoster(a, b, c), Self::RecvTeamRoster(d, e, f)) => {
                 a == d && b == e && c == f
             }
-            (Self::RecvSchedule(a, b), Self::RecvSchedule(c, d)) => a == c && b == d,
+            (Self::RecvSchedule(a, b, c), Self::RecvSchedule(d, e, f)) => {
+                a == d && b == e && c == f
+            }
             (Self::RecvPortalToken(a), Self::RecvPortalToken(b)) => a == b,
             (Self::RecvTokenValid(a, b, c), Self::RecvTokenValid(d, e, f)) => {
                 a == d && b == e && c == f
@@ -791,7 +796,7 @@ impl PartialEq for Message {
             | (Self::RecvEventList(_), _)
             | (Self::RecvTeamsList(_, _), _)
             | (Self::RecvTeamRoster(_, _, _), _)
-            | (Self::RecvSchedule(_, _), _)
+            | (Self::RecvSchedule(_, _, _), _)
             | (Self::RecvPortalToken(_), _)
             | (Self::RecvTokenValid(_, _, _), _)
             | (Self::StopClock, _)

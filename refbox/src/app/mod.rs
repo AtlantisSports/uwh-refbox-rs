@@ -1318,6 +1318,13 @@ impl RefBoxApp {
 
     fn request_uwhportal_token(&self, event_id: &EventId, code: u32) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
+            // The site this login goes out against, carried on the reply. Read
+            // here, at the moment of issue, because that is the only point at
+            // which the answer is known. It matters more here than anywhere
+            // else in this group: what comes back is an access key, so a reply
+            // resolved against the wrong site hands one site's credential to
+            // another rather than merely showing stale data.
+            let issued_at = self.site_generation;
             // why this cannot panic: see `request_teams_list` above.
             let request = client.lock().unwrap().login_to_portal(event_id, code);
             let portal_name = portal_name_for_mode(self.config.mode);
@@ -1325,7 +1332,7 @@ impl RefBoxApp {
                 match request.await {
                     Ok(token) => {
                         info!("Got a response from {portal_name} Portal token request");
-                        Message::RecvPortalToken(token)
+                        Message::RecvPortalToken(token, issued_at)
                     }
                     Err(e) => {
                         error!("Failed to get {portal_name} portal token: {e}");
@@ -6016,7 +6023,36 @@ impl RefBoxApp {
                 }
                 Task::batch(roster_tasks)
             }
-            Message::RecvPortalToken(token_response) => {
+            Message::RecvPortalToken(token_response, issued_at) => {
+                if !reply_is_current(issued_at, self.site_generation) {
+                    // The answer came from a site the refbox has left, so it is
+                    // dropped whole, before anything reads it. Two things below
+                    // depend on that: `set_token` would install the departed
+                    // site's key on the client now pointing elsewhere, and the
+                    // config slot is chosen from `current_site`, which is
+                    // assigned in the same two lines of `repoint_client` that
+                    // bump the generation — so a current generation is exactly
+                    // what makes that choice correct.
+                    //
+                    // The failure arms are dropped too. A "login failed" page
+                    // for a site the operator has walked away from is the same
+                    // wrong-site attribution, thrown over the page they are on
+                    // now. Returning here also leaves `app_state` untouched:
+                    // the handler otherwise routes to the Game page, which
+                    // would pull the operator out of wherever the switch took
+                    // them.
+                    //
+                    // Silent by design — a log line and nothing on screen. The
+                    // operator is already looking at the new site's true token
+                    // state (`refresh_token_indicator` runs on the switch), and
+                    // the cost of the drop is one re-login, not a wrong answer.
+                    warn!(
+                        "Discarding a login answer: it was issued against site \
+                         generation {}, and the refbox is now on {}",
+                        issued_at, self.site_generation
+                    );
+                    return Task::none();
+                }
                 let mut task = Task::none();
                 self.app_state = match token_response {
                     PortalTokenResponse::Success(token) => {
@@ -7807,7 +7843,7 @@ mod site_target_tests {
     #[test]
     fn a_traced_message_never_carries_a_portal_token() {
         const SECRET: &str = "s3cret-access-key";
-        let message = Message::RecvPortalToken(PortalTokenResponse::Success(SECRET.to_string()));
+        let message = Message::RecvPortalToken(PortalTokenResponse::Success(SECRET.to_string()), 0);
         assert!(
             !format!("{message:?}").contains(SECRET),
             "leaked: {message:?}"

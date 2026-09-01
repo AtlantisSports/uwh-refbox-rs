@@ -121,3 +121,28 @@ sites configured with identical event numbering — see
   repoint), pickers go empty and it will look like a network fault. Criterion 5 exists for this.
 - **`RecvEventList` carries no id at all**, so it has nothing to fall back on — it is the one that
   is currently wholly unguarded and the one most likely to be missed.
+
+---
+
+## Follow-up — a sixth site-scoped reply the scope table missed
+
+`RecvPortalToken`, a site's answer to a login attempt, is site-scoped and is not in the table
+above, so it went unstamped when this design was built. It is the only reply in the group that
+carries a **credential**: `request_uwhportal_token` issues against the live client, and the handler
+both installed the returned key on that client and filed it by arrival-time `current_site.kind`. A
+source switch during a login therefore handed the Portal's access key to a third-party server, and
+the reverse direction overwrote the operator's real Portal login.
+
+Found by the whole-branch review of `fix/refbox/site-scoped-reply-origin` on 2026-08-31 — read from
+the code, never reproduced at the time — and fixed on its own branch,
+`fix/refbox/portal-token-cross-site-leak`, with the same generation stamp. A late key is discarded
+silently: a log line and nothing on screen, so the cost of switching mid-login is one re-login
+rather than a credential on the wrong server.
+
+With that stamped, the title above holds for the message group: every site-scoped reply carries its
+origin except `RecvEventList`, which is deliberately unstamped because it does not use the live
+client at all. The reason is recorded on `request_event_list`.
+
+Still open, same family: the background health probe re-checks the token on a cadence through the
+shared client and applies the verdict to `portal_manager` state, which carries no site
+(`refbox/src/portal_manager/health.rs`).

@@ -1494,6 +1494,22 @@ mod test {
     }
 
     #[test]
+    fn returning_to_a_previously_used_event_finds_its_key() {
+        // The behaviour this whole branch exists for: run event A, move to event B,
+        // come back to A. A's key must still be there, and must survive a save/load.
+        let portal = "https://api.uwhportal.com";
+        let mut config = Config::default();
+        config.store_access_key(portal, &ev("aaa"), "KEY-A".into());
+        config.store_access_key(portal, &ev("bbb"), "KEY-B".into());
+
+        let text = toml::to_string(&config).unwrap();
+        let reloaded: Config = toml::from_str(&text).unwrap();
+
+        assert_eq!(reloaded.access_key_for(portal, &ev("aaa")), Some("KEY-A"));
+        assert_eq!(reloaded.access_key_for(portal, &ev("bbb")), Some("KEY-B"));
+    }
+
+    #[test]
     fn access_key_is_found_by_site_and_event() {
         let mut config = Config::default();
         config.store_access_key("https://api.uwhportal.com", &ev("abc"), "KEY-A".into());

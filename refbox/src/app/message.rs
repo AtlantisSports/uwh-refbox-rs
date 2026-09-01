@@ -194,7 +194,10 @@ pub enum Message {
     },
     AutoConfirmScores(GameSnapshot),
     RecvEventList(Vec<Event>),
-    RecvTeamsList(EventId, TeamList),
+    /// The teams entered in an event. Carries the site generation it was
+    /// fetched under so a reply from a site the refbox has left cannot be
+    /// filed against the site it is on now.
+    RecvTeamsList(EventId, TeamList, u64),
     /// A team's roster arrived from the site in use, reduced to the cap numbers
     /// on it. Players with no cap number are dropped at the fetch — there is
     /// nothing to tap for them.
@@ -365,7 +368,7 @@ impl Message {
             | Self::CustomSiteUrlChanged(_)
             | Self::CycleParameter(_)
             | Self::RecvEventList(_)
-            | Self::RecvTeamsList(_, _)
+            | Self::RecvTeamsList(_, _, _)
             | Self::RecvTeamRoster(_, _, _)
             | Self::RecvSchedule(_, _, _)
             | Self::RecvPortalToken(_)
@@ -701,7 +704,9 @@ impl PartialEq for Message {
             (Self::PenaltyShot(a), Self::PenaltyShot(b)) => a == b,
             (Self::TimeUpdaterStarted(a), Self::TimeUpdaterStarted(b)) => a.same_channel(b),
             (Self::RecvEventList(a), Self::RecvEventList(b)) => a == b,
-            (Self::RecvTeamsList(a, b), Self::RecvTeamsList(c, d)) => a == c && b == d,
+            (Self::RecvTeamsList(a, b, c), Self::RecvTeamsList(d, e, f)) => {
+                a == d && b == e && c == f
+            }
             (Self::RecvTeamRoster(a, b, c), Self::RecvTeamRoster(d, e, f)) => {
                 a == d && b == e && c == f
             }
@@ -794,7 +799,7 @@ impl PartialEq for Message {
             | (Self::ScoreConfirmation { .. }, _)
             | (Self::AutoConfirmScores(_), _)
             | (Self::RecvEventList(_), _)
-            | (Self::RecvTeamsList(_, _), _)
+            | (Self::RecvTeamsList(_, _, _), _)
             | (Self::RecvTeamRoster(_, _, _), _)
             | (Self::RecvSchedule(_, _, _), _)
             | (Self::RecvPortalToken(_), _)

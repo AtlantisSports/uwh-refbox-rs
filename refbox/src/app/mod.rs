@@ -1187,6 +1187,8 @@ impl RefBoxApp {
 
     fn request_teams_list(&self, event_id: EventId) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
+            // The site this request goes out against, carried on the reply.
+            let issued_at = self.site_generation;
             // why this cannot panic: the guard is held only long enough to build
             // the request and is dropped before the await, and no writer panics
             // while holding it. `request_event_list` used to carry this note and
@@ -1197,7 +1199,7 @@ impl RefBoxApp {
                 match request.await {
                     Ok(teams) => {
                         info!("Got teams list");
-                        Message::RecvTeamsList(event_id, teams)
+                        Message::RecvTeamsList(event_id, teams, issued_at)
                     }
                     Err(e) => {
                         error!("Failed to get teams list: {e}");
@@ -5794,23 +5796,21 @@ impl RefBoxApp {
                 }
                 Task::batch(tasks)
             }
-            Message::RecvTeamsList(event_id, teams) => {
+            Message::RecvTeamsList(event_id, teams, issued_at) => {
+                if !reply_is_current(issued_at, self.site_generation) {
+                    warn!(
+                        "Discarding the teams list for event {}: it was fetched from \
+                         site generation {}, and the refbox is now on {}",
+                        event_id.full(),
+                        issued_at,
+                        self.site_generation
+                    );
+                    return Task::none();
+                }
                 // Resolves against the COMMITTED source, not the staged one:
                 // staging alone never moves the client, so a reply arriving
                 // after a merely staged source change still belongs to the
                 // committed one.
-                //
-                // KNOWN GAP, deliberately not closed here. A source button now
-                // commits AND repoints at the tap, so the committed source can
-                // change while a request is in flight, and this no longer
-                // identifies the site that answered. The reply carries only an
-                // `EventId` — the URL is gone by the time it gets here — so a
-                // late reply from the departed site is filed under the new one
-                // whenever the two sites use the same event numbering, which
-                // custom sites are required to do. Fixing it means tagging every
-                // site-scoped reply with its origin, the way `RecvTeamRoster`
-                // now is; that is one mechanism across four handlers and has its
-                // own branch.
                 let source = self.reply_source();
                 if let Some(event) = self.events.get_mut(source, &event_id) {
                     event.teams = Some(teams);

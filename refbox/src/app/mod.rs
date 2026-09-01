@@ -809,7 +809,7 @@ fn https_policy_conflict(target: &SiteTarget) -> Option<String> {
 /// `None` when the client cannot be built at all, which leaves the refbox in
 /// its existing degraded mode (red indicator, nothing sent) rather than holding
 /// a client pointed somewhere unintended.
-fn build_site_client(target: &SiteTarget, _config: &Config) -> Option<UwhPortalClient> {
+fn build_site_client(target: &SiteTarget) -> Option<UwhPortalClient> {
     // No key here on purpose. Keys are filed per (site, event) and the event is
     // not known when the client is built at startup, so `apply_access_key` is
     // the one place that decides which key is loaded — called whenever the
@@ -1199,7 +1199,7 @@ impl RefBoxApp {
     /// site answered; this one's does not.
     fn request_event_list(&self) -> Task<Message> {
         let target = portal_target(self.config.mode, self.require_https);
-        let Some(client) = build_site_client(&target, &self.config) else {
+        let Some(client) = build_site_client(&target) else {
             // build_site_client has already logged why.
             return Task::none();
         };
@@ -1549,7 +1549,7 @@ impl RefBoxApp {
             error!("{}", no_client_log_line(&target));
             return;
         };
-        let Some(new_client) = build_site_client(&target, &self.config) else {
+        let Some(new_client) = build_site_client(&target) else {
             return;
         };
         info!("{}", repoint_log_line(&target));
@@ -2063,7 +2063,12 @@ impl RefBoxApp {
             .portal_event_id
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = new;
+        self.apply_access_key();
 
+        // Must run after `apply_access_key`: the scramble exists to exercise
+        // token *rejection*, and its own log line says the replacement
+        // happens "after event linked" -- so the scramble has to have the
+        // last word, or the debug flag would silently stop doing its job.
         #[cfg(debug_assertions)]
         if self.scramble_token_pending && new_is_some {
             if let Some(client) = self.uwhportal_client.as_ref() {
@@ -2077,7 +2082,6 @@ impl RefBoxApp {
             }
             self.scramble_token_pending = false;
         }
-        self.apply_access_key();
     }
 
     /// Write or delete `portal_link.json` to reflect the current live link.
@@ -3127,8 +3131,7 @@ impl RefBoxApp {
                 "UWH_PORTAL_SCRAMBLE_TOKEN armed: in-memory token will be invalidated after first event link"
             );
         }
-        let uwhportal_client =
-            build_site_client(&current_site, &config).map(|c| Arc::new(Mutex::new(c)));
+        let uwhportal_client = build_site_client(&current_site).map(|c| Arc::new(Mutex::new(c)));
 
         // Shared event id the background portal task consults for its
         // periodic `verify_token` check. Mirrors `current_event_id` on
@@ -8162,12 +8165,20 @@ mod site_target_tests {
     /// At startup `current_event_id` is `None` and is only filled later by the
     /// link restore, so the event simply is not known yet when the client is
     /// built -- no key can be chosen at that point even though one is on file.
+    ///
+    /// `uwhportal.token` is set here on purpose, even though it plays no part
+    /// in the new per-event store: before this task `build_site_client` read
+    /// that legacy field directly, so a non-empty value here would have
+    /// produced a client WITH a token and failed this assertion. Setting it
+    /// is what makes the test fail without this task's change, rather than
+    /// passing either way.
     #[test]
     fn a_client_is_built_with_no_key_because_the_event_is_not_known_yet() {
         let mut config = Config::default();
+        config.uwhportal.token = "LEGACY-KEY".into();
         config.store_access_key("https://api.uwhportal.com", &ev("abc"), "KEY-A".into());
         let target = portal_target(Mode::Hockey6V6, false);
-        let client = build_site_client(&target, &config).unwrap();
+        let client = build_site_client(&target).unwrap();
         assert!(
             !client.has_token(),
             "the event is unknown at build time, so no key can be chosen"

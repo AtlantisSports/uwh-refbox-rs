@@ -1128,6 +1128,17 @@ impl RefBoxApp {
     /// the live client's token in memory and not the config's; a scrambled
     /// session will still load the list here. That is acceptable — the flag
     /// exists to exercise token *rejection*, which this fetch is not.
+    ///
+    /// Deliberately NOT stamped with `site_generation`, unlike every other
+    /// reply in this group. This fetch does not use the live client at all — it
+    /// builds its own against the portal, so its answer is portal data whatever
+    /// source the refbox is committed to, and `set_portal_list` files it in the
+    /// portal bucket either way. Stamping it would drop a perfectly good event
+    /// list whenever a source switch happened while it was in flight, emptying
+    /// the event picker in a way that looks like a network fault — and would
+    /// undo `297ff166`, which made the list load regardless of source on
+    /// purpose. The guard belongs on replies whose meaning depends on which
+    /// site answered; this one's does not.
     fn request_event_list(&self) -> Task<Message> {
         let target = portal_target(self.config.mode, self.require_https);
         let Some(client) = build_site_client(&target, &self.config) else {

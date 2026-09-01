@@ -3375,7 +3375,13 @@ impl RefBoxApp {
                         new.current_site.base_url.expose(),
                         &note.event_id,
                     ) {
-                        info!("Adopted a pre-upgrade access key for the linked event");
+                        // Names the event so a mis-attribution is diagnosable: the note
+                        // records the last LINKED event, which is not necessarily the event
+                        // the pre-upgrade key was issued for.
+                        info!(
+                            "Adopted a pre-upgrade access key, attributing it to event {}",
+                            note.event_id.full()
+                        );
                         new.persist_config();
                     }
                     new.set_current_event_id(Some(note.event_id.clone()));
@@ -6230,6 +6236,21 @@ impl RefBoxApp {
                                 // that if it ever does fire, the reason a login silently failed
                                 // to stick is in the log rather than nowhere.
                                 warn!("A login answer went stale before its key could be filed");
+                            } else {
+                                // The key was installed on the live client above as part of
+                                // checking it can be sent, which is a different question from
+                                // which key this refbox should be holding. Re-derive that from
+                                // the store, so `apply_access_key` stays the single owner of
+                                // what is loaded: without this, logging in for a drafted event
+                                // and then cancelling leaves the live client holding a key for
+                                // an event it is not linked to.
+                                self.apply_access_key();
+                                // Save immediately. The handler routes to the Game page, so a
+                                // key filed only in memory is lost if the operator backs out
+                                // without applying, or the machine loses power — and returning
+                                // to that event would need a fresh code from the portal
+                                // website, which is the whole thing this store exists to avoid.
+                                self.persist_config();
                             }
                             if let Some(ref mut settings) = self.edited_settings {
                                 settings.uwhportal_token_valid = Some(true);

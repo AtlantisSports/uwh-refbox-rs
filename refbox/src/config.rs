@@ -533,7 +533,8 @@ impl Config {
     /// The key held for this exact site and event, if any. `None` means the
     /// operator has never logged in to this event on this site, or the key was
     /// replaced by a later login elsewhere.
-    #[allow(dead_code)]
+    /// Has no production caller until the store is wired into the portal client in a later task.
+    #[expect(dead_code, reason = "wired up in a later task on this branch")]
     pub fn access_key_for(&self, site: &str, event: &EventId) -> Option<&str> {
         self.access_keys
             .iter()
@@ -544,7 +545,8 @@ impl Config {
     /// File a key against the site and event that issued it, replacing any key
     /// already held for that pair. Deliberately never removes anything else:
     /// keys for other events stay, which is the whole point of the store.
-    #[allow(dead_code)]
+    /// Has no production caller until the store is wired into the login handler in a later task.
+    #[expect(dead_code, reason = "wired up in a later task on this branch")]
     pub fn store_access_key(&mut self, site: &str, event: &EventId, key: String) {
         match self
             .access_keys

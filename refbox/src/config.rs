@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use toml::Table;
 pub use uwh_common::config::Game;
+use uwh_common::uwhportal::schedule::EventId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hardware {
@@ -88,6 +89,19 @@ impl CustomSite {
         get_string_value(old, "token", &mut token);
         Self { url, token }
     }
+}
+
+/// One saved access key, filed against the exact site and event that issued it.
+///
+/// `site` is the normalised base URL with no trailing slash — the same string
+/// `SiteTarget::base_url` carries. Filing by event alone would be wrong: event
+/// ids collide between the Portal and a custom site by design, so a Portal key
+/// could be handed to somebody else's server.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccessKey {
+    pub site: String,
+    pub event: EventId,
+    pub key: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -395,6 +409,8 @@ pub struct Config {
     pub display_mode: crate::app::theme::DisplayMode,
     #[serde(default)]
     pub front_display_layout: crate::sim_frame::FrontDisplayLayout,
+    #[serde(default)]
+    pub access_keys: Vec<AccessKey>,
 }
 
 impl Config {
@@ -418,6 +434,7 @@ impl Config {
             mut language,
             mut display_mode,
             mut front_display_layout,
+            mut access_keys,
         } = Default::default();
 
         if let Some(old_mode) = old.get("mode") {
@@ -488,6 +505,7 @@ impl Config {
         get_serde_value(old, "language", &mut language);
         get_serde_value(old, "display_mode", &mut display_mode);
         get_serde_value(old, "front_display_layout", &mut front_display_layout);
+        get_serde_value(old, "access_keys", &mut access_keys);
 
         Self {
             mode,
@@ -508,6 +526,37 @@ impl Config {
             language,
             display_mode,
             front_display_layout,
+            access_keys,
+        }
+    }
+
+    /// The key held for this exact site and event, if any. `None` means the
+    /// operator has never logged in to this event on this site, or the key was
+    /// replaced by a later login elsewhere.
+    #[allow(dead_code)]
+    pub fn access_key_for(&self, site: &str, event: &EventId) -> Option<&str> {
+        self.access_keys
+            .iter()
+            .find(|k| k.site == site && k.event == *event)
+            .map(|k| k.key.as_str())
+    }
+
+    /// File a key against the site and event that issued it, replacing any key
+    /// already held for that pair. Deliberately never removes anything else:
+    /// keys for other events stay, which is the whole point of the store.
+    #[allow(dead_code)]
+    pub fn store_access_key(&mut self, site: &str, event: &EventId, key: String) {
+        match self
+            .access_keys
+            .iter_mut()
+            .find(|k| k.site == site && k.event == *event)
+        {
+            Some(existing) => existing.key = key,
+            None => self.access_keys.push(AccessKey {
+                site: site.to_string(),
+                event: event.clone(),
+                key,
+            }),
         }
     }
 }
@@ -1400,5 +1449,69 @@ mod test {
         assert_eq!(config.uwhportal.token, "token");
         assert!(!config.sound.sound_enabled);
         assert_eq!(config.sound.whistle_vol, Volume::Max);
+    }
+
+    fn ev(id: &str) -> EventId {
+        EventId::from_full(format!("events/{id}")).unwrap()
+    }
+
+    #[test]
+    fn access_key_is_found_by_site_and_event() {
+        let mut config = Config::default();
+        config.store_access_key("https://api.uwhportal.com", &ev("abc"), "KEY-A".into());
+        assert_eq!(
+            config.access_key_for("https://api.uwhportal.com", &ev("abc")),
+            Some("KEY-A")
+        );
+    }
+
+    #[test]
+    fn access_key_is_not_shared_across_events_on_one_site() {
+        let mut config = Config::default();
+        config.store_access_key("https://api.uwhportal.com", &ev("abc"), "KEY-A".into());
+        assert_eq!(
+            config.access_key_for("https://api.uwhportal.com", &ev("xyz")),
+            None
+        );
+    }
+
+    #[test]
+    fn access_key_is_not_shared_across_sites_with_a_colliding_event_id() {
+        // Event ids collide between the Portal and a custom site by design. A
+        // Portal key must never be handed to somebody else's server.
+        let mut config = Config::default();
+        config.store_access_key("https://api.uwhportal.com", &ev("abc"), "PORTAL-KEY".into());
+        assert_eq!(
+            config.access_key_for("https://scores.example.org", &ev("abc")),
+            None
+        );
+    }
+
+    #[test]
+    fn storing_twice_for_one_site_and_event_replaces_rather_than_appends() {
+        let mut config = Config::default();
+        config.store_access_key("https://api.uwhportal.com", &ev("abc"), "OLD".into());
+        config.store_access_key("https://api.uwhportal.com", &ev("abc"), "NEW".into());
+        assert_eq!(config.access_keys.len(), 1);
+        assert_eq!(
+            config.access_key_for("https://api.uwhportal.com", &ev("abc")),
+            Some("NEW")
+        );
+    }
+
+    #[test]
+    fn access_keys_round_trip_through_the_settings_file() {
+        let mut config = Config::default();
+        config.store_access_key("https://api.uwhportal.com", &ev("abc"), "KEY-A".into());
+        config.store_access_key("https://scores.example.org", &ev("abc"), "KEY-B".into());
+        let text = toml::to_string(&config).unwrap();
+        let parsed: Config = toml::from_str(&text).unwrap();
+        assert_eq!(parsed.access_keys, config.access_keys);
+    }
+
+    #[test]
+    fn a_settings_file_with_no_access_keys_loads_with_an_empty_store() {
+        let parsed: Config = toml::from_str(&config_toml_without("access_keys")).unwrap();
+        assert!(parsed.access_keys.is_empty());
     }
 }

@@ -1117,7 +1117,8 @@ mod test {
         "#;
         let table: toml::Table = toml::from_str(old).unwrap();
         let config = Config::migrate(&table);
-        // Still read, so Task 3 can adopt them.
+        // Still parsed, so an existing settings file loads and a rollback to an older
+        // refbox still finds a key. Nothing in this version reads them.
         assert_eq!(config.uwhportal.token, "LEGACY-PORTAL");
         assert_eq!(config.custom_site.token, "LEGACY-CUSTOM");
         // The address is not a credential and stays.

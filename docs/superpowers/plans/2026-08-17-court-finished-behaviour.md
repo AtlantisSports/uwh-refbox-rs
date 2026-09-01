@@ -1312,4 +1312,26 @@ into the relevant code commit — do not create standalone deviation commits.
 
 | Task | What differed | Why |
 |---|---|---|
-| | | |
+| 1 | Accepted v1 notes instead of quarantining them | A version bump that discarded the old note would force a re-pick on upgrade day, mid-tournament. A v1 note migrates for free via a serde alias. |
+| 2 | Left `set_schedule_linked` dead until Task 5 (Ruling 4) | The plan deliberately split the engine change from its wiring. An `allow(dead_code)` added and removed one task later is churn in the state machine's own file. Clippy went clean at Task 5 as predicted. |
+| 3 | Persist call went INSIDE `uses_remote()`, not after it (Ruling 2) | Outside, manual mode would reach the note's DELETE branch from the game-clock path, for no benefit. |
+| 3 | +1 fix round: the custom-site Apply path never cleared the anchor | Review Critical. A stale anchor from the old site was written under the new event id — decision 25's exact failure. |
+| 4 | +1 fix round: two tests could not fail | One was a defect in THIS PLAN's text: the "same answer however many times it is asked" loop calls a pure function five times, which the type system already guarantees. Replaced with the post-consumption state. The other pinned the anchor-start precedence, which inverting the code had not broken. |
+| 5 | +1 fix round: custom-site startup never set the flag (Critical), and a finished court showed a 15-minute countdown before parking (violating criterion 2's "No countdown") | The first left this plan's headline defect fully live for custom sites. The second is Ruling 7: park at 0:00, matching the state a played-to-finish court is left in. |
+| 5 | Third `set_schedule_linked` write site accepted against the plan's own constraint (Ruling 14) | It only ever writes `false`, from `reset_to_manual_break`, whose name asserts manual; the single-writer alternative needs a non-reentrant lock dropped and borrows re-choreographed for zero behaviour change. |
+| 6 | Corrected items 2, 3 and 4 of the old walkthrough doc, not just scenario 8 (Rulings 9, 10) | Leaving them produced a document contradicting ITSELF. Stopped at the task bodies: those are a completed plan for a superseded branch, and rewriting them would erase why this branch exists. |
+| rebase | 3 conflicts, one SEMANTIC: master renamed `make_button` -> `make_chrome_button` and deleted the old name | Keeping both sides, or taking ours verbatim, would not have compiled. |
+| rebase | Controller removed 5 `.unwrap()`s on `tm.lock()` and their poison comments | master replaced the game-state mutex with a poison-recovering wrapper returning the guard directly. |
+| final review | +1 fix round, 2 high: clock work ran BEFORE the source was committed, so switching Portal->Manual refused to start the break (failing criterion 9) and hot-looped the updater | Both were ordering bugs from Task 5's wiring. `just check` passed straight over them. |
+
+## Status at checkpoint, 2026-08-31
+
+Code complete at `717823ed` + docs at `dc15d310`. `just check` green (708 tests). Walkthrough
+9/10 (see `docs/backlog/court-finished-panel-state/WALKTHROUGH-RESULTS-2026-08-31.md`).
+
+**BLOCKER: master gained 105 commits after our rebase**, 18 touching `refbox/src/app/mod.rs`
+(1347 lines) — including source-selection ported onto SharedGame, per-source event data, and
+"drop a schedule/teams/token from the site the refbox has left", which is the same territory as
+this branch's anchor clearing. A second rebase is required and will need judgement, not just
+textual conflict resolution. Per `.claude/rules/pr-review.md` that rebase STALES both mandatory
+checks: the code review and the human walkthrough must both be re-run against the rebased diff.

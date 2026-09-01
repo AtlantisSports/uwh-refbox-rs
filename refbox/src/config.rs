@@ -553,8 +553,6 @@ impl Config {
     /// File a key against the site and event that issued it, replacing any key
     /// already held for that pair. Deliberately never removes anything else:
     /// keys for other events stay, which is the whole point of the store.
-    /// Has no production caller until the store is wired into the login handler in a later task.
-    #[allow(dead_code)]
     pub fn store_access_key(&mut self, site: &str, event: &EventId, key: String) {
         match self
             .access_keys

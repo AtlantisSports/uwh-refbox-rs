@@ -511,20 +511,21 @@ fn login_site_name(kind: SiteKind, mode: Mode) -> String {
     }
 }
 
-/// File a login answer's access key against the site it was issued to.
+/// File a login answer's access key against the site and event it was issued to.
 ///
 /// Returns `false` when the answer is stale — the refbox has moved to another site since the login
 /// went out — in which case nothing is written.
 ///
 /// The `RecvPortalToken` handler already drops a stale answer whole, before reading it, so in
 /// normal flow this check never fires. It is here anyway, on purpose: this is the single line that
-/// puts one site's credential into a config slot, and re-checking at the point of the write means a
+/// puts one site's credential into the config, and re-checking at the point of the write means a
 /// later edit that moves or loses the handler's guard cannot silently reopen the leak. Extracted
 /// rather than written inline for the same reason `repoint_log_line` is a function — so the test
 /// exercises the real decision and not a copy of it.
 fn file_login_key(
     config: &mut Config,
-    kind: SiteKind,
+    site: &str,
+    event: &EventId,
     issued_at: u64,
     now: u64,
     token: String,
@@ -532,10 +533,7 @@ fn file_login_key(
     if !reply_is_current(issued_at, now) {
         return false;
     }
-    match kind {
-        SiteKind::Portal => config.uwhportal.token = token,
-        SiteKind::Custom => config.custom_site.token = token,
-    }
+    config.store_access_key(site, event, token);
     true
 }
 
@@ -1374,6 +1372,10 @@ impl RefBoxApp {
             // resolved against the wrong site hands one site's credential to
             // another rather than merely showing stale data.
             let issued_at = self.site_generation;
+            // The event this login was issued for, captured here rather than
+            // read back off `self` when the reply lands -- see the field
+            // comment on `Message::RecvPortalToken`.
+            let event = event_id.clone();
             // why this cannot panic: see `request_teams_list` above.
             let request = client.lock().unwrap().login_to_portal(event_id, code);
             let site = login_site_name(self.current_site.kind, self.config.mode);
@@ -1381,7 +1383,7 @@ impl RefBoxApp {
                 match request.await {
                     Ok(token) => {
                         info!("Got a response from a login request to {site}");
-                        Message::RecvPortalToken(token, issued_at)
+                        Message::RecvPortalToken(token, event, issued_at)
                     }
                     Err(e) => {
                         error!("Failed to get an access key from {site}: {e}");
@@ -6110,7 +6112,7 @@ impl RefBoxApp {
                 }
                 Task::batch(roster_tasks)
             }
-            Message::RecvPortalToken(token_response, issued_at) => {
+            Message::RecvPortalToken(token_response, issued_for_event, issued_at) => {
                 if !reply_is_current(issued_at, self.site_generation) {
                     // The answer came from a site the refbox has left, so it is
                     // dropped whole, before anything reads it. Two things below
@@ -6167,13 +6169,16 @@ impl RefBoxApp {
                             AppState::ConfirmationPage(ConfirmationKind::UwhPortalKeyUnusable)
                         } else {
                             info!("Portal token request succeeded");
-                            // Save it against the site it was issued by. Writing it
-                            // to the portal's slot regardless would both destroy the
-                            // operator's real Portal login and leave the custom site
-                            // with no saved credential for the next launch.
+                            // Save it against the exact site and event that
+                            // issued it, never against whatever event happens
+                            // to be selected now -- the operator may have
+                            // switched events while the login was in flight,
+                            // and a key filed under the wrong event is a key
+                            // that cannot work.
                             if !file_login_key(
                                 &mut self.config,
-                                self.current_site.kind,
+                                self.current_site.base_url.expose(),
+                                &issued_for_event,
                                 issued_at,
                                 self.site_generation,
                                 token,
@@ -7887,34 +7892,49 @@ mod site_target_tests {
         // Before the site stamp there was no `issued_at` to compare and the key was written
         // unconditionally, so this assertion had nothing to hold on to.
         let mut config = Config::default();
-        config.uwhportal.token = "PORTAL-KEY".to_string();
-        config.custom_site.token = "CUSTOM-KEY".to_string();
+        config.store_access_key(
+            "https://api.uwhportal.com",
+            &ev("current"),
+            "ORIGINAL-KEY".into(),
+        );
         assert!(!file_login_key(
             &mut config,
-            SiteKind::Portal,
+            "https://api.uwhportal.com",
+            &ev("current"),
             3,
             4,
             "FROM-A-SITE-WE-LEFT".to_string()
         ));
-        assert_eq!(config.uwhportal.token, "PORTAL-KEY");
-        assert_eq!(config.custom_site.token, "CUSTOM-KEY");
+        assert_eq!(
+            config.access_key_for("https://api.uwhportal.com", &ev("current")),
+            Some("ORIGINAL-KEY")
+        );
     }
 
     #[test]
-    fn a_current_login_answer_is_filed_against_its_own_site_only() {
+    fn a_current_login_answer_is_filed_against_its_own_site_and_event_only() {
         let mut config = Config::default();
-        config.uwhportal.token = "PORTAL-KEY".to_string();
+        config.store_access_key(
+            "https://api.uwhportal.com",
+            &ev("first"),
+            "FIRST-KEY".into(),
+        );
         assert!(file_login_key(
             &mut config,
-            SiteKind::Custom,
+            "https://api.uwhportal.com",
+            &ev("second"),
             4,
             4,
-            "CUSTOM-KEY".to_string()
+            "SECOND-KEY".to_string()
         ));
-        assert_eq!(config.custom_site.token, "CUSTOM-KEY");
         assert_eq!(
-            config.uwhportal.token, "PORTAL-KEY",
-            "a custom-site login must never overwrite the operator's Portal login"
+            config.access_key_for("https://api.uwhportal.com", &ev("second")),
+            Some("SECOND-KEY")
+        );
+        assert_eq!(
+            config.access_key_for("https://api.uwhportal.com", &ev("first")),
+            Some("FIRST-KEY"),
+            "a login for one event must never overwrite the key filed for another"
         );
     }
 
@@ -7998,7 +8018,11 @@ mod site_target_tests {
     #[test]
     fn a_traced_message_never_carries_a_portal_token() {
         const SECRET: &str = "s3cret-access-key";
-        let message = Message::RecvPortalToken(PortalTokenResponse::Success(SECRET.to_string()), 0);
+        let message = Message::RecvPortalToken(
+            PortalTokenResponse::Success(SECRET.to_string()),
+            ev("abc"),
+            0,
+        );
         assert!(
             !format!("{message:?}").contains(SECRET),
             "leaked: {message:?}"

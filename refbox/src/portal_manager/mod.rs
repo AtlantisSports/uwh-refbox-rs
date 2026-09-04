@@ -64,17 +64,20 @@ impl health::PortalTaskIo for NullIo {
 pub type SelectedEventId =
     std::sync::Arc<std::sync::Mutex<Option<uwh_common::uwhportal::schedule::EventId>>>;
 
-/// Shared handle to the `UwhPortalClient`. Used by both the UI thread
-/// (for one-shot requests such as login, schedule fetches, and score
-/// posts during the normal flow) and the background retry task (for
-/// queued-item retries and token health checks).
+/// Shared handle to the `UwhPortalClient`, owned by the background retry task.
+///
+/// Its credential is the background task's alone: `request_for` loads a key per call from the
+/// published store, and the UI thread neither reads nor writes it. Foreground fetches that need a
+/// credential build their own client (`client_for_event`) rather than borrowing this one, so a
+/// request about an event the operator is merely browsing cannot disturb the key a queued upload
+/// is about to use. Do not reintroduce a foreground `set_token` here.
 ///
 /// Wrapped in `Arc<std::sync::Mutex<...>>` because `UwhPortalClient`'s
 /// methods are infallible-sync request-builders that return a `+ use<>`
 /// future — we only hold the guard long enough to construct the request
 /// and drop it before awaiting the network round-trip. `std::sync` (not
-/// `tokio::sync`) so the UI thread's synchronous read paths (`id()`,
-/// `has_token()`, `set_token()`) don't need an async context.
+/// `tokio::sync`) so the synchronous read paths (`id()`, `has_token()`, `set_token()`) don't
+/// need an async context.
 pub type SharedUwhPortalClient =
     std::sync::Arc<std::sync::Mutex<uwh_common::uwhportal::UwhPortalClient>>;
 
@@ -107,10 +110,10 @@ pub type SharedAccessKeys = std::sync::Arc<std::sync::Mutex<SiteAccessKeys>>;
 
 /// Production `PortalTaskIo` backed by a real `UwhPortalClient`.
 ///
-/// Shares the same `UwhPortalClient` handle as the main app via
-/// `Arc<Mutex<_>>` so that operator-driven token mutations
-/// (set_token / clear_token) are immediately visible to the background
-/// retry task without having to restart anything. The lock is only held
+/// Holds the `UwhPortalClient` handle and the published key store, and is the only writer of
+/// that client's credential: `request_for` installs the key for the event each call is about,
+/// immediately before building the request. The main app publishes keys and repoints the client;
+/// it does not set tokens on it. The lock is only held
 /// across the short synchronous portion of each portal call (URL building
 /// and request construction); the returned future is `+ use<>` on
 /// `UwhPortalClient`'s methods, so we drop the guard before awaiting the

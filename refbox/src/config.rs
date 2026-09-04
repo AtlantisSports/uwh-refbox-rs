@@ -668,9 +668,6 @@ fn get_string_value(table: &Table, key: &str, save: &mut String) {
     }
 }
 
-/// Reads a value that `Config` stores through serde rather than as a bare TOML scalar —
-/// the unit-variant enums, and `Option`s of them. `save` is left at its default if the
-/// key is absent or holds something that will not deserialize.
 /// Read the key store, keeping every entry that parses.
 ///
 /// `get_serde_value` is all-or-nothing: one malformed `[[access_keys]]` entry -- a hand edit, a
@@ -698,6 +695,9 @@ fn get_access_keys(table: &Table, save: &mut Vec<AccessKey>) {
     *save = kept;
 }
 
+/// Reads a value that `Config` stores through serde rather than as a bare TOML scalar —
+/// the unit-variant enums, and `Option`s of them. `save` is left at its default if the
+/// key is absent or holds something that will not deserialize.
 fn get_serde_value<T: DeserializeOwned>(table: &Table, key: &str, save: &mut T) {
     if let Some(value) = table.get(key) {
         if let Ok(value) = value.clone().try_into() {

@@ -1,6 +1,7 @@
 use self::infraction::InfractionDetails;
 use super::{APP_NAME, fl};
 use crate::panic_text::panic_reason;
+use crate::portal_manager::link_session::NoteSite;
 use crate::{
     beep_test::{cadence::TournamentManager as BeepTestManager, snapshot::BeepTestSnapshot},
     config::{Config, CustomSite, GameSource, Mode, RemoteSource},
@@ -1686,6 +1687,23 @@ impl RefBoxApp {
         self.tm.lock().set_schedule_linked(self.uses_remote());
     }
 
+    /// The site this refbox is configured for, in the form a link note records it.
+    ///
+    /// Manual answers `Portal`: a manual refbox has no site of its own, and a Portal
+    /// note restoring into one is the existing behaviour that brings a relaunched
+    /// link back up. A custom site answers with its configured address, which
+    /// includes the event — so comparing it to a note's site asks "same site and
+    /// same event?" in one comparison.
+    fn note_site(&self) -> NoteSite {
+        if self.source == GameSource::Custom {
+            NoteSite::Custom {
+                address: self.config.custom_site.url.clone(),
+            }
+        } else {
+            NoteSite::Portal
+        }
+    }
+
     /// Commit a whole [`LinkSelection`].
     ///
     /// Every APPLY path that carries the operator's selections forward goes
@@ -2448,6 +2466,9 @@ impl RefBoxApp {
                     last_played: self.last_played.clone(),
                     last_played_start: self.last_played_start,
                     mode: self.config.mode,
+                    // Written from the committed source, so the note this session
+                    // leaves behind is one the next startup will accept.
+                    site: self.note_site(),
                     last_active: time::OffsetDateTime::now_utc(),
                 };
                 if let Err(e) = link_session::save(&self.config_dir, &note) {
@@ -3766,22 +3787,32 @@ impl RefBoxApp {
         // See ADR 011/017 amendment and
         // docs/superpowers/specs/2026-06-25-portal-link-restore-resilience-design.md.
         //
-        // Skipped entirely when a custom site was restored above: the note
-        // records a *portal* link, and applying it would silently move the
-        // operator off the site they configured.
+        // A note is restored only into the site it was written against — see
+        // `decide_restore`. That replaces a blanket skip for custom sites, which was
+        // there because a note carrying only an event id could not say whose event it
+        // was, so applying one would have moved the operator off their own site.
+        let current_site = new.note_site();
         match crate::portal_manager::link_session::load_or_none(&new.config_dir) {
-            Ok(Some(_)) if new.source == GameSource::Custom => {
-                info!("Custom site restored from config; portal link note ignored");
-            }
             Ok(Some(note)) => {
-                if decide_restore(&note, time::OffsetDateTime::now_utc(), new.config.mode) {
+                if decide_restore(
+                    &note,
+                    time::OffsetDateTime::now_utc(),
+                    new.config.mode,
+                    &current_site,
+                ) {
                     info!(
-                        "Restoring portal link to {} (court {:?}, game {:?})",
+                        "Restoring {:?} link to {} (court {:?}, game {:?})",
+                        note.site,
                         note.event_id.full(),
                         note.court,
                         note.current_game
                     );
-                    new.source = GameSource::Portal;
+                    // The note matched this refbox's configured site, so this commits
+                    // the source it was written against rather than forcing Portal.
+                    new.source = match note.site {
+                        NoteSite::Portal => GameSource::Portal,
+                        NoteSite::Custom { .. } => GameSource::Custom,
+                    };
                     new.current_court = note.court.clone();
                     new.pending_restore_game = note.current_game.clone();
                     // Push the remembered game into the engine now rather than
@@ -3803,10 +3834,20 @@ impl RefBoxApp {
                     // Defer the schedule fetch to RecvEventList (after the event
                     // list populates self.events) so it can't race ahead of the
                     // event list and silently skip the game re-selection.
-                    new.pending_restore_schedule = Some(note.event_id);
+                    //
+                    // Portal only: a custom site has no event list, so RecvEventList
+                    // never arrives and this would wait forever. `adopt_custom_event`
+                    // — pushed into the startup tasks below — fetches that site's
+                    // schedule itself, and sees this restored event as unchanged (the
+                    // address it parses is the one the note was matched on), so it
+                    // leaves the restored court and anchor standing.
+                    if matches!(note.site, NoteSite::Portal) {
+                        new.pending_restore_schedule = Some(note.event_id);
+                    }
                 } else {
                     info!(
-                        "Portal link note present but stale/cross-portal; starting dormant (note kept)"
+                        "Link note present but stale, cross-portal or for another \
+                         site; starting dormant (note kept)"
                     );
                 }
             }
@@ -8369,15 +8410,25 @@ mod commit_app_toggles_tests {
     }
 }
 
-/// Decide whether a remembered link note should be restored at startup:
-/// it must be fresh (within the freshness window) and belong to the same
-/// portal as the current mode (a UWH note is never restored into UWR).
+/// Decide whether a remembered link note should be restored at startup: it must
+/// be fresh (within the freshness window), belong to the same portal as the
+/// current mode (a UWH note is never restored into UWR), and belong to the site
+/// the refbox is configured for.
 fn decide_restore(
     note: &crate::portal_manager::link_session::LinkSessionFile,
     now: time::OffsetDateTime,
     current_mode: Mode,
+    current_site: &NoteSite,
 ) -> bool {
     use crate::portal_manager::link_session::{FRESHNESS_WINDOW, is_fresh};
+    // A note belongs to one site, and an event id cannot say which — ids collide
+    // between the Portal and a custom site by design. Restoring across sites
+    // would hand the operator another server's court and game, which is why a
+    // custom session's note used to be ignored outright rather than matched.
+    // A correctness guard, not a freshness question, so it comes first.
+    if note.site != *current_site {
+        return false;
+    }
     // A link for a different portal (UWR vs UWH) is never restored, regardless
     // of timing — that is a correctness guard, not a freshness question.
     if crosses_portal(note.mode, current_mode) {
@@ -8865,17 +8916,91 @@ mod restore_tests {
             last_played: None,
             last_played_start: None,
             mode,
+            site: NoteSite::Portal,
             last_active,
         }
+    }
+
+    fn custom(address: &str) -> NoteSite {
+        NoteSite::Custom {
+            address: address.to_string(),
+        }
+    }
+
+    const SITE_A: &str = "http://scoreboard.local:8099/api/events/1234-A";
+    const SITE_B: &str = "http://other.local:8099/api/events/1234-A";
+
+    /// The point of the whole change: a custom session's note is restored, where it
+    /// used to be written and then ignored because an event id could not say which
+    /// site it belonged to.
+    #[test]
+    fn a_custom_note_restores_into_the_same_address() {
+        let now = time::OffsetDateTime::now_utc();
+        let n = LinkSessionFile {
+            site: custom(SITE_A),
+            ..note(now - time::Duration::hours(2), Mode::Hockey6V6)
+        };
+        assert!(decide_restore(&n, now, Mode::Hockey6V6, &custom(SITE_A)));
+    }
+
+    /// Two third-party sites deliberately reuse portal-style event and game
+    /// numbering, so a note from one names real games on the other — just the wrong
+    /// ones. The address is what separates them.
+    #[test]
+    fn a_custom_note_does_not_restore_into_a_different_address() {
+        let now = time::OffsetDateTime::now_utc();
+        let n = LinkSessionFile {
+            site: custom(SITE_A),
+            ..note(now - time::Duration::hours(2), Mode::Hockey6V6)
+        };
+        assert!(!decide_restore(&n, now, Mode::Hockey6V6, &custom(SITE_B)));
+    }
+
+    /// A custom address includes the event, so editing only the event in the URL
+    /// invalidates the note for free — no separate event check needed.
+    #[test]
+    fn a_custom_note_does_not_restore_after_the_event_in_the_url_changes() {
+        let now = time::OffsetDateTime::now_utc();
+        let n = LinkSessionFile {
+            site: custom(SITE_A),
+            ..note(now - time::Duration::hours(2), Mode::Hockey6V6)
+        };
+        let same_host_new_event = custom("http://scoreboard.local:8099/api/events/9999-A");
+        assert!(!decide_restore(
+            &n,
+            now,
+            Mode::Hockey6V6,
+            &same_host_new_event
+        ));
+    }
+
+    #[test]
+    fn a_custom_note_does_not_restore_into_the_portal() {
+        let now = time::OffsetDateTime::now_utc();
+        let n = LinkSessionFile {
+            site: custom(SITE_A),
+            ..note(now - time::Duration::hours(2), Mode::Hockey6V6)
+        };
+        assert!(!decide_restore(&n, now, Mode::Hockey6V6, &NoteSite::Portal));
+    }
+
+    /// What the old blanket skip achieved, now enforced by the site check rather
+    /// than by refusing to look: a Portal note must never move a refbox off the
+    /// custom site its operator configured.
+    #[test]
+    fn a_portal_note_does_not_restore_into_a_custom_site() {
+        let now = time::OffsetDateTime::now_utc();
+        let n = note(now - time::Duration::hours(2), Mode::Hockey6V6);
+        assert!(!decide_restore(&n, now, Mode::Hockey6V6, &custom(SITE_A)));
     }
 
     #[test]
     fn fresh_same_portal_restores() {
         let now = time::OffsetDateTime::now_utc();
         let n = note(now - time::Duration::hours(20), Mode::Hockey6V6);
-        assert!(decide_restore(&n, now, Mode::Hockey6V6));
+        assert!(decide_restore(&n, now, Mode::Hockey6V6, &NoteSite::Portal));
         // 3v3 shares the UWH portal with 6v6 → still restore
-        assert!(decide_restore(&n, now, Mode::Hockey3V3));
+        assert!(decide_restore(&n, now, Mode::Hockey3V3, &NoteSite::Portal));
     }
 
     #[test]
@@ -8883,7 +9008,7 @@ mod restore_tests {
         // Trustworthy clock, link older than the 120h window → dormant.
         let now = time::OffsetDateTime::now_utc();
         let n = note(now - time::Duration::hours(121), Mode::Hockey6V6);
-        assert!(!decide_restore(&n, now, Mode::Hockey6V6));
+        assert!(!decide_restore(&n, now, Mode::Hockey6V6, &NoteSite::Portal));
     }
 
     #[test]
@@ -8893,7 +9018,7 @@ mod restore_tests {
         // recent, so it must restore (this is the bad-boot-clock fix).
         let now = time::OffsetDateTime::now_utc();
         let n = note(now + time::Duration::hours(3), Mode::Hockey6V6);
-        assert!(decide_restore(&n, now, Mode::Hockey6V6));
+        assert!(decide_restore(&n, now, Mode::Hockey6V6, &NoteSite::Portal));
     }
 
     #[test]
@@ -8901,7 +9026,7 @@ mod restore_tests {
         // The cross-portal guard wins even when the clock looks untrustworthy.
         let now = time::OffsetDateTime::now_utc();
         let n = note(now + time::Duration::hours(3), Mode::Hockey6V6);
-        assert!(!decide_restore(&n, now, Mode::Rugby));
+        assert!(!decide_restore(&n, now, Mode::Rugby, &NoteSite::Portal));
     }
 
     #[test]
@@ -8909,7 +9034,7 @@ mod restore_tests {
         let now = time::OffsetDateTime::now_utc();
         let n = note(now, Mode::Hockey6V6);
         // Rugby uses the UWR portal → must NOT restore a UWH note
-        assert!(!decide_restore(&n, now, Mode::Rugby));
+        assert!(!decide_restore(&n, now, Mode::Rugby, &NoteSite::Portal));
     }
 }
 

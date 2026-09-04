@@ -313,6 +313,40 @@ impl TournamentManager {
         self.start_clock(now);
     }
 
+    /// Reset the clock and game number for a move to a **different site**: forget
+    /// the previous site's next-game info and number, put the schedule link in step
+    /// with the app, and hold the clock until that site names a game.
+    ///
+    /// Deliberately not `reset_to_manual_break`. That method drops the schedule
+    /// link so its own `start_clock` is not refused, which is right for the manual
+    /// path it is named for and wrong for a site switch: the app is committing a
+    /// *remote* source, and an engine left unlinked resumes arithmetic numbering.
+    /// The nominal break it then starts expires unattended and auto-starts a
+    /// phantom game on the site just switched to, posting a result against it —
+    /// the invented game this whole area exists to prevent.
+    pub fn reset_for_site_switch(&mut self, linked: bool, now: Instant) {
+        self.clear_portal_next_game();
+        self.set_schedule_linked(linked);
+        // The previous site's number names nothing here; back to the fresh-launch
+        // default so the game selection reads as empty.
+        self.game_number = "0".to_string();
+        if self.no_startable_next_game() {
+            // Nothing to count down to until the operator picks. Same parked state
+            // a court that played out its schedule is left in.
+            self.clock_state = ClockState::Stopped {
+                clock_time: Duration::ZERO,
+            };
+            // Or the updater keeps waking for a clock it believes is running.
+            self.send_clock_running(false);
+            self.reset_game_time = Duration::ZERO;
+        } else {
+            self.clock_state = ClockState::Stopped {
+                clock_time: self.config.nominal_break,
+            };
+            self.start_clock(now);
+        }
+    }
+
     pub fn game_number(&self) -> GameNumber {
         self.game_number.clone()
     }
@@ -330,16 +364,16 @@ impl TournamentManager {
 
         match self.game_number.parse::<u32>() {
             Ok(num) => (num + 1).to_string(),
-            Err(_) => {
-                // Manual game numbers come from a numeric keypad, so reaching this
-                // is a bug, not a runtime condition. Report it and start nothing;
-                // the old "default to 1" silently restarted the day.
-                error!(
-                    "Manual game number '{}' is not an integer; refusing to name a next game",
-                    self.game_number
-                );
-                GameNumber::new()
-            }
+            // Manual game numbers come from a numeric keypad, so reaching this is a
+            // bug, not a runtime condition. Start nothing; the old "default to 1"
+            // silently restarted the day.
+            //
+            // Deliberately silent: this is a getter, called from `generate_snapshot`
+            // on every clock tick and from all four sites of
+            // `no_startable_next_game`. Logging here floods the rolling log for as
+            // long as the state lasts and rolls the surrounding diagnostics out of
+            // it. `set_game_number` reports it once instead, where the value enters.
+            Err(_) => GameNumber::new(),
         }
     }
 
@@ -366,6 +400,17 @@ impl TournamentManager {
     pub fn set_game_number<S: ToString>(&mut self, number: S) {
         self.game_number = number.to_string();
         info!("Game Number set to {}", self.game_number);
+        // Reported here, once, rather than from `next_game_number` — which is a
+        // getter on the per-tick snapshot path. Only when unlinked: a schedule
+        // legitimately supplies non-numeric numbers ("G27"), and while linked the
+        // engine never names a next game by arithmetic anyway, so there is nothing
+        // wrong to report. Unlinked, it means manual numbering cannot continue.
+        if !self.schedule_linked && self.game_number.parse::<u32>().is_err() {
+            error!(
+                "Manual game number '{}' is not an integer; no next game can be named",
+                self.game_number
+            );
+        }
     }
 
     pub fn set_next_game(&mut self, info: NextGameInfo) {
@@ -1285,7 +1330,16 @@ impl TournamentManager {
             start_time: now,
             time_remaining_at_start,
         };
-        self.arm_mid_break_reset(time_remaining_at_start, now);
+        // Only when the clock was parked. A court coming back to life had its reset
+        // point zeroed by `end_game`, so it needs arming. An ordinary mid-break game
+        // change already has a reset point belonging to the countdown it replaces, and
+        // re-arming that against a freshly floored `time_remaining_at_start` moves it —
+        // on a break shorter than `post_game_duration`, all the way to 0:00, which
+        // holds the old score on screen until kickoff: the bug this arming was added
+        // to fix, reintroduced by fixing it too widely.
+        if !was_running {
+            self.arm_mid_break_reset(time_remaining_at_start, now);
+        }
 
         // The break clock is held stopped at 0:00 when a court's schedule is finished.
         // Applying a game restarts it, and the time updater only wakes on this
@@ -9596,6 +9650,47 @@ mod test {
     }
 
     #[test]
+    fn a_break_expiring_while_linked_with_no_game_starts_nothing() {
+        // `update()`'s between-games expiry guard, reached the one way production
+        // still can. Its sibling below no longer arrives here: `set_no_next_game`
+        // parks the break outright, so the countdown never expires. This path keeps
+        // the guard covered — `commit_source` links the engine, from an APPLY that
+        // named no game, while an ordinary break is already counting down. The engine
+        // then holds no next game with the schedule linked, and the countdown runs
+        // out with nothing to start.
+        initialize();
+        let config = GameConfig {
+            minimum_break: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        tm.set_game_number("9");
+
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(1));
+        tm.start_clock(start);
+        assert!(
+            tm.clock_is_running(),
+            "fixture check: the break is counting down"
+        );
+        tm.set_schedule_linked(true);
+        assert!(
+            tm.clock_is_running(),
+            "fixture check: linking must not park the clock, or this path is not reached"
+        );
+
+        tm.update(start + Duration::from_secs(2)).unwrap();
+
+        assert_eq!(
+            tm.current_period(),
+            GamePeriod::BetweenGames,
+            "no phantom game 10 may be started"
+        );
+        assert_eq!(tm.game_number(), "9");
+        assert!(!tm.clock_is_running());
+    }
+
+    #[test]
     fn between_games_expiry_starts_nothing_when_the_court_is_finished() {
         initialize();
         let config = GameConfig {
@@ -9615,6 +9710,14 @@ mod test {
         tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(1));
         tm.start_clock(start);
         tm.set_no_next_game();
+        // Since 2026-09-04 the refresh parks the break at once, so everything below
+        // proves the parking rather than `update()`'s expiry guard, which this test
+        // no longer reaches. That guard is covered by
+        // `a_break_expiring_while_linked_with_no_game_starts_nothing`.
+        assert!(
+            !tm.clock_is_running(),
+            "fixture check: reporting the court finished parks the break immediately"
+        );
         tm.update(start + Duration::from_secs(2)).unwrap();
 
         // Still between games, holding at 0:00, still game 9 — no phantom game 10.
@@ -9659,6 +9762,42 @@ mod test {
         assert!(tm.clock_is_running());
         assert!(rx.has_changed().unwrap());
         assert!(*rx.borrow_and_update());
+    }
+
+    #[test]
+    fn a_site_switch_leaves_the_engine_linked_and_starts_nothing() {
+        // Finding 1 of the 2026-09-04 re-review, and the worst thing found on this
+        // branch. `switch_to_source` reset the clock with `reset_to_manual_break`,
+        // which drops the schedule link. On a remote-to-remote switch that left the
+        // engine unlinked while the app was still remote, so it resumed arithmetic
+        // numbering: the break counted down unattended and auto-started a phantom
+        // game 1 on the site just switched to, then posted a 0-0 against it.
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let start = Instant::now();
+        tm.set_schedule_linked(true);
+        tm.set_game_number("9");
+        tm.set_next_game(NextGameInfo {
+            number: "11".to_string(),
+            timing: None,
+            start_time: None,
+        });
+
+        tm.reset_for_site_switch(true, start);
+
+        assert_eq!(
+            tm.next_game_number(),
+            "",
+            "a linked engine must not name a game the new site never gave it"
+        );
+        assert!(
+            !tm.clock_is_running(),
+            "nothing is next on the new site, so nothing may count down toward it"
+        );
+        // And it stays put: no phantom game can auto-start however long it runs.
+        tm.update(start + Duration::from_secs(3600)).unwrap();
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert_eq!(tm.game_number(), "0");
     }
 
     #[test]
@@ -9724,6 +9863,36 @@ mod test {
             "a game in progress must keep its clock when the court is flagged finished"
         );
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(900)));
+    }
+
+    #[test]
+    fn an_ordinary_mid_break_game_change_leaves_the_reset_point_alone() {
+        // Finding 7 of the 2026-09-04 re-review. The operator picks a different game
+        // part-way through a normal break, where the reset point already belongs to
+        // the countdown being replaced.
+        initialize();
+        let config = GameConfig {
+            minimum_break: Duration::from_secs(60),
+            post_game_duration: Duration::from_secs(120),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(300));
+        tm.start_clock(start);
+        let armed_by_the_break = tm.reset_game_time;
+
+        tm.set_next_game(NextGameInfo {
+            number: "11".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.apply_next_game_start(start).unwrap();
+
+        assert_eq!(
+            tm.reset_game_time, armed_by_the_break,
+            "a running break's reset point must survive a game change"
+        );
     }
 
     #[test]

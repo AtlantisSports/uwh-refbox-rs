@@ -5,7 +5,9 @@ use crate::{
     beep_test::{cadence::TournamentManager as BeepTestManager, snapshot::BeepTestSnapshot},
     config::{Config, CustomSite, GameSource, Mode, RemoteSource},
     penalty_editor::*,
-    portal_manager::{ItemId, PortalEvent, PortalManager, SelectedEventId, UwhPortalIo},
+    portal_manager::{
+        ItemId, PortalEvent, PortalManager, SelectedEventId, SharedAccessKeys, UwhPortalIo,
+    },
     sound_controller::*,
     tournament_manager::{penalty::*, *},
 };
@@ -173,6 +175,8 @@ pub struct RefBoxApp {
     /// go through that helper so the background task sees the latest
     /// selection.
     portal_event_id: SelectedEventId,
+    /// Published to the background uploader so it can resolve a key per queued item.
+    portal_access_keys: SharedAccessKeys,
     /// Where `uwhportal_client` actually points, kept in step with every
     /// rebuild. Read to decide whether an Apply would repoint the refbox at a
     /// different site (and so needs the clock and queue guards).
@@ -1611,46 +1615,29 @@ impl RefBoxApp {
         // and must NOT be invalidated. (Same asymmetry `1f4bdc62` fixed for the
         // portal fetch; keep the two consistent.)
         self.site_generation = self.site_generation.wrapping_add(1);
-        self.apply_access_key();
+        // The site changed, so which keys are reachable changed with it.
+        self.publish_access_keys();
     }
 
-    /// Load the key for the site and the *linked* event onto the shared client, or clear it when
-    /// none is held.
+    /// Publish the site and the key store to the background uploader.
     ///
-    /// The single owner of what the shared client carries. That client is cloned into the
-    /// background health probe and the result-upload queue, both of which are asking about the
-    /// linked event, so its credential must mean exactly that and nothing else. A fetch about any
-    /// other event -- one merely staged in the settings editor -- takes its own client from
-    /// `client_for_event` rather than borrowing this one.
-    fn apply_access_key(&self) {
-        let Some(shared) = self.uwhportal_client.as_ref() else {
-            return;
-        };
-        // The *linked* event, and only ever that one. Everything else holding this handle -- the
-        // background health probe, the result queue -- is asking about the event the refbox is
-        // linked to, so that is what its credential has to be. A fetch for any other event brings
-        // its own client; see `client_for_event`.
-        let key = key_for_event(
-            &self.config,
-            self.current_site.base_url.expose(),
-            self.current_event_id.as_ref(),
-        )
-        .map(str::to_owned);
-        // why this cannot panic: the guard is held only across the synchronous
-        // set_token/clear_token calls below, neither of which panics.
-        let mut guard = shared.lock().unwrap();
-        match key {
-            Some(key) => {
-                if let Err(why) = guard.set_token(&key) {
-                    // Only reachable from a hand-edited settings file: a key is
-                    // refused before it is ever stored. Clear rather than keep,
-                    // so no request goes out with a broken credential.
-                    warn!("A saved access key cannot be sent and was not loaded: {why}");
-                    guard.clear_token();
-                }
-            }
-            None => guard.clear_token(),
-        }
+    /// The background task resolves a key per call -- the linked event's for its health probe, the
+    /// item's own for each queued result -- so it needs the store, not a pre-loaded credential.
+    /// This is the whole of the foreground's involvement with what the background sends.
+    ///
+    /// Called wherever the site or the store changes. It is deliberately *not* called when the
+    /// operator merely links or unlinks an event: a result queued for an event is still that
+    /// event's to deliver, so dropping to manual games when the network dies must not strand it.
+    fn publish_access_keys(&self) {
+        // why this cannot panic: `unwrap_or_else(into_inner)` keeps a poisoned lock usable, and
+        // nothing here can panic while holding it.
+        self.portal_access_keys
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .publish(
+                self.current_site.base_url.expose().to_string(),
+                self.config.access_keys.clone(),
+            );
     }
 
     /// Re-seed the ACCESS TOKEN indicator after the refbox has been pointed at
@@ -1662,15 +1649,22 @@ impl RefBoxApp {
     /// refbox has never authenticated to. Mirrors the seeding done when the
     /// settings editor is opened.
     fn refresh_token_indicator(&mut self) -> Task<Message> {
-        let has_token = match self.uwhportal_client.as_ref() {
-            // why this cannot panic: the guard is held only for a synchronous
-            // `has_token()` call and dropped immediately.
-            Some(client) => client.lock().unwrap().has_token(),
-            None => false,
-        };
-        let (valid, task) = match (has_token, self.current_event_id.clone()) {
-            (true, Some(id)) => (None, self.check_uwhportal_auth(&id)),
-            // No credential for this site, or no event to check it against:
+        // Asked of the store, for the site the refbox is now on. The shared client no longer
+        // carries a credential of its own -- the background task loads one per call -- so there
+        // is nothing there to ask.
+        let (valid, task) = match self.current_event_id.clone() {
+            Some(id)
+                if self.uwhportal_client.is_some()
+                    && key_for_event(
+                        &self.config,
+                        self.current_site.base_url.expose(),
+                        Some(&id),
+                    )
+                    .is_some() =>
+            {
+                (None, self.check_uwhportal_auth(&id))
+            }
+            // No key for this site and event, or no event to check one against:
             // the resting state, same as opening the editor in that condition.
             _ => (Some(false), Task::none()),
         };
@@ -2124,23 +2118,33 @@ impl RefBoxApp {
             .portal_event_id
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = new;
-        self.apply_access_key();
-
-        // Must run after `apply_access_key`: the scramble exists to exercise
+        // Must run after the event is published: the scramble exists to exercise
         // token *rejection*, and its own log line says the replacement
         // happens "after event linked" -- so the scramble has to have the
         // last word, or the debug flag would silently stop doing its job.
         #[cfg(debug_assertions)]
         if self.scramble_token_pending && new_is_some {
-            if let Some(client) = self.uwhportal_client.as_ref() {
-                let mut guard = client
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                // A literal printable-ASCII key, so the check cannot refuse it;
-                // this is the debug scramble path, not an operator's key.
-                let _ = guard.set_token("invalid-debug-token");
-                warn!("UWH_PORTAL_SCRAMBLE_TOKEN: in-memory token replaced after event linked");
-            }
+            // Scrambles the *published* store, not the client. The background task loads a key
+            // per call from this, so replacing the client's would be overwritten before the next
+            // probe and the flag would silently stop exercising rejection.
+            let scrambled: Vec<_> = self
+                .config
+                .access_keys
+                .iter()
+                .map(|k| crate::config::AccessKey {
+                    site: k.site.clone(),
+                    event: k.event.clone(),
+                    // A literal printable-ASCII key, so the check cannot refuse it; this is the
+                    // debug scramble path, not an operator's key.
+                    key: "invalid-debug-token".to_string(),
+                })
+                .collect();
+            // why this cannot panic: see `publish_access_keys`.
+            self.portal_access_keys
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .publish(self.current_site.base_url.expose().to_string(), scrambled);
+            warn!("UWH_PORTAL_SCRAMBLE_TOKEN: published keys replaced after event linked");
             self.scramble_token_pending = false;
         }
     }
@@ -3204,6 +3208,7 @@ impl RefBoxApp {
         // `RefBoxApp`; both start `None` here and are kept in sync via
         // `set_current_event_id` on every subsequent write.
         let portal_event_id: SelectedEventId = Arc::new(Mutex::new(None));
+        let portal_access_keys: SharedAccessKeys = Arc::new(Mutex::new(Default::default()));
 
         let tm = SharedGame::new(tm);
 
@@ -3264,7 +3269,11 @@ impl RefBoxApp {
                 let try_new_manager = |dir: &std::path::Path| {
                     PortalManager::new(
                         dir,
-                        UwhPortalIo::new(Arc::clone(client), Arc::clone(&portal_event_id)),
+                        UwhPortalIo::new(
+                            Arc::clone(client),
+                            Arc::clone(&portal_event_id),
+                            Arc::clone(&portal_access_keys),
+                        ),
                     )
                 };
                 match try_new_manager(&config_dir) {
@@ -3331,6 +3340,7 @@ impl RefBoxApp {
             update_sender,
             uwhportal_client,
             portal_event_id,
+            portal_access_keys,
             current_site,
             site_generation: 0,
             require_https,
@@ -6225,12 +6235,10 @@ impl RefBoxApp {
                         // launch.
                         let token = token.trim().to_string();
                         let refused = match self.uwhportal_client.as_ref() {
-                            // why this cannot panic: the guard is held only for a
-                            // synchronous `set_token()` call and dropped immediately.
-                            Some(client) => client.lock().unwrap().set_token(&token).err(),
-                            // No client to hold the key, so the same rule is applied
-                            // directly — a key that cannot be sent must never reach
-                            // the config file.
+                            // Judged without touching the shared client. Installing the key to
+                            // test it would put one event's credential on the handle the
+                            // background uploader is using for another's.
+                            Some(_) => check_access_key(&token).err(),
                             None => check_access_key(&token).err(),
                         };
                         if let Some(why) = refused {
@@ -6260,13 +6268,10 @@ impl RefBoxApp {
                             } else {
                                 // The key was installed on the live client above as part of
                                 // checking it can be sent, which is a different question from
-                                // which key the *shared* client should be holding. That check
-                                // just installed this key on it, and the shared client belongs to
-                                // the linked event -- the background health probe and the result
-                                // queue read it. Put it back to the linked event's key, so a
-                                // login for an event that is merely staged cannot leave their
-                                // credential pointing somewhere else.
-                                self.apply_access_key();
+                                // the store the background uploader reads. It resolves a key
+                                // per call, so a newly filed one has to reach it before the
+                                // next queued result goes out.
+                                self.publish_access_keys();
                                 // Save immediately. The handler routes to the Game page, so a
                                 // key filed only in memory is lost if the operator backs out
                                 // without applying, or the machine loses power — and returning
@@ -8037,12 +8042,12 @@ mod site_target_tests {
     #[test]
     fn a_request_carries_the_key_filed_for_the_event_it_asks_for() {
         let mut config = Config::default();
-        config.store_access_key(
-            "https://api.uwhportal.com",
-            &ev("asked-about"),
-            "KEY-B".into(),
-        );
+        // Keyed off the target's own address, not a literal: `portal_target` reads
+        // UWH_PORTAL_URL_OVERRIDE at runtime, and with that exported -- the documented dev-portal
+        // workflow -- a hard-coded site made this test fail and its two negative siblings pass
+        // for the wrong reason.
         let target = portal_target(Mode::Hockey6V6, false);
+        config.store_access_key(target.base_url.expose(), &ev("asked-about"), "KEY-B".into());
         let client = client_for_event(&target, &config, &ev("asked-about")).unwrap();
         assert!(client.has_token(), "a key is on file for this event");
     }
@@ -8053,8 +8058,8 @@ mod site_target_tests {
     #[test]
     fn a_request_for_an_event_with_no_key_carries_no_credential() {
         let mut config = Config::default();
-        config.store_access_key("https://api.uwhportal.com", &ev("other"), "KEY-A".into());
         let target = portal_target(Mode::Hockey6V6, false);
+        config.store_access_key(target.base_url.expose(), &ev("other"), "KEY-A".into());
         let client = client_for_event(&target, &config, &ev("asked-about")).unwrap();
         assert!(
             !client.has_token(),

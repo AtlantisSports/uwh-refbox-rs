@@ -554,10 +554,7 @@ impl Config {
     /// operator has never logged in to this event on this site, or the key was
     /// replaced by a later login elsewhere.
     pub fn access_key_for(&self, site: &str, event: &EventId) -> Option<&str> {
-        self.access_keys
-            .iter()
-            .find(|k| k.site == site && k.event == *event)
-            .map(|k| k.key.as_str())
+        access_key_in(&self.access_keys, site, event)
     }
 
     /// File a key against the site and event that issued it, replacing any key
@@ -577,6 +574,23 @@ impl Config {
             }),
         }
     }
+}
+
+/// The key filed for exactly this site and event, from any slice of them.
+///
+/// Free-standing because two owners need the same answer: `Config` for the foreground, and the
+/// background upload queue, which holds a published copy of the store and resolves a key per
+/// queued item. One function, so the two cannot drift.
+pub fn access_key_in<'a>(keys: &'a [AccessKey], site: &str, event: &EventId) -> Option<&'a str> {
+    keys.iter()
+        .find(|k| k.site == site && k.event == *event)
+        .map(|k| k.key.as_str())
+        // An empty key is not a credential. `check_access_key` accepts `""` -- it only refuses
+        // characters a header cannot carry -- so a site answering with an empty accessKey, or a
+        // hand-edited file, would otherwise count as a key on file: the row would report
+        // connected and requests would go out as `Authorization: Bearer `. Master had this guard
+        // in `build_site_client`; it was lost when keys moved into the store.
+        .filter(|key| !key.is_empty())
 }
 
 macro_attr! {

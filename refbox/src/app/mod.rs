@@ -6632,13 +6632,10 @@ impl RefBoxApp {
                                         }
                                     } else {
                                         match decision {
-                                            // Both are definite "nothing is next
-                                            // here" answers, and `set_no_next_game`
-                                            // parks a running break for both. Kept
-                                            // apart above so an empty court is never
-                                            // recorded as a completed one.
-                                            NextGameFromSchedule::CourtFinished
-                                            | NextGameFromSchedule::NothingScheduled => {
+                                            // The one answer the schedule actually
+                                            // asserts: this court is played out.
+                                            // Recorded, which parks a running break.
+                                            NextGameFromSchedule::CourtFinished => {
                                                 tm.set_no_next_game();
                                             }
                                             // Nothing is known well enough to act
@@ -6646,7 +6643,23 @@ impl RefBoxApp {
                                             // the operator pick; with the portal
                                             // linked, `next_game_number` already
                                             // refuses to invent one.
-                                            NextGameFromSchedule::NeedsPick
+                                            //
+                                            // `NothingScheduled` belongs here, not
+                                            // above, which is what the enum's own doc
+                                            // has always said: a court the schedule
+                                            // does not mention at all has not been
+                                            // played out, and saying so would park
+                                            // the clock on an assertion the schedule
+                                            // never made. Reaching it needs a court
+                                            // to vanish from an event it was chosen
+                                            // from — the note's court is restored
+                                            // without being checked against a later
+                                            // schedule — which Eric confirmed does
+                                            // not happen in practice (2026-09-04).
+                                            // Kept defensive rather than given a
+                                            // state of its own for that reason.
+                                            NextGameFromSchedule::NothingScheduled
+                                            | NextGameFromSchedule::NeedsPick
                                             | NextGameFromSchedule::Unknown => {}
                                             NextGameFromSchedule::Game(_) => {}
                                         }

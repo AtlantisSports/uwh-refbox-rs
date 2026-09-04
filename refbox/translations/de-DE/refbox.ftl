@@ -67,8 +67,10 @@ player-display-brightness = HELLIGKEIT
     SPIELERANZEIGE
 confirm-score-at-game-end = SPIELSTAND BEI
     SPIELENDE BESTÄTIGEN
-track-cap-number-of-scorer = BADEKAPPENNUMMER
-    DES TORSCHÜTZEN ERFASSEN
+track-cap-number = BADEKAPPENNUMMER
+    ERFASSEN
+force-keypad-numbers = NUMMERNFELD
+    ERZWINGEN
 event = VERANSTALTUNG:
 track-fouls-and-warnings = FOULS UND
     VERWARNUNGEN ERFASSEN

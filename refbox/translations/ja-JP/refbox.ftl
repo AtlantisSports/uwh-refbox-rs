@@ -67,8 +67,10 @@ player-display-brightness = 選手表示
     明るさ
 confirm-score-at-game-end = 試合終了時
     得点確認
-track-cap-number-of-scorer = 得点者の
-    キャップ番号記録
+track-cap-number = キャップ番号
+    記録
+force-keypad-numbers = 数字キーパッドを
+    常に使用
 event = 大会:
 track-fouls-and-warnings = 反則・
     警告の記録

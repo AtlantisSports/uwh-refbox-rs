@@ -100,8 +100,18 @@ pub(super) fn grid_rows(numbers: &[u8], mode: Mode) -> Vec<Vec<Option<u8>>> {
 /// being edited may hold a number that is not on the current roster, and that
 /// number must stay visible, so those fall back to the pad. `0` means nothing
 /// is selected (and, on the goal page, a team goal), which the grid shows fine.
-pub(super) fn show_grid(numbers: &[u8], mode: Mode, current: u32) -> bool {
-    if numbers.is_empty() || grid_cells(mode) == 0 {
+///
+/// `force_keypad_numbers` overrides all of that: the operator has asked for the
+/// pad, or cap numbers are switched off, and either way a perfectly usable
+/// roster must still give way. It is checked first because it answers the
+/// question on its own -- see `effective_keypad_numbers_forced`.
+pub(super) fn show_grid(
+    numbers: &[u8],
+    mode: Mode,
+    current: u32,
+    force_keypad_numbers: bool,
+) -> bool {
+    if force_keypad_numbers || numbers.is_empty() || grid_cells(mode) == 0 {
         return false;
     }
 
@@ -173,27 +183,48 @@ mod tests {
 
     #[test]
     fn empty_roster_means_no_grid() {
-        assert!(!show_grid(&[], Mode::Hockey6V6, 0));
+        assert!(!show_grid(&[], Mode::Hockey6V6, 0, false));
     }
 
     #[test]
     fn beep_test_has_no_grid() {
-        assert!(!show_grid(&[1, 2, 3], Mode::BeepTest, 0));
+        assert!(!show_grid(&[1, 2, 3], Mode::BeepTest, 0, false));
     }
 
     #[test]
     fn roster_with_numbers_shows_grid() {
-        assert!(show_grid(&[1, 2, 3], Mode::Hockey6V6, 0));
+        assert!(show_grid(&[1, 2, 3], Mode::Hockey6V6, 0, false));
     }
 
     #[test]
     fn number_on_the_roster_shows_grid() {
-        assert!(show_grid(&[1, 7, 12], Mode::Hockey6V6, 7));
+        assert!(show_grid(&[1, 7, 12], Mode::Hockey6V6, 7, false));
+    }
+
+    /// FORCE KEYPAD NUMBERS is an override, not a hint: a roster that earns a
+    /// grid on every other test in this module still gives way to the pad.
+    /// Both routes into the grid are covered -- nothing entered yet, and a
+    /// number already entered that IS on the roster -- because a check on only
+    /// the first would leave the operator stranded on the grid the moment they
+    /// tapped a cell.
+    #[test]
+    fn forcing_the_keypad_beats_an_otherwise_usable_grid() {
+        assert!(show_grid(&[1, 2, 3], Mode::Hockey6V6, 0, false));
+        assert!(
+            !show_grid(&[1, 2, 3], Mode::Hockey6V6, 0, true),
+            "a usable roster must still yield to the override"
+        );
+
+        assert!(show_grid(&[1, 7, 12], Mode::Hockey6V6, 7, false));
+        assert!(
+            !show_grid(&[1, 7, 12], Mode::Hockey6V6, 7, true),
+            "an entered roster number must not pull the grid back"
+        );
     }
 
     #[test]
     fn number_off_the_roster_falls_back_to_the_pad() {
-        assert!(!show_grid(&[1, 7, 12], Mode::Hockey6V6, 23));
+        assert!(!show_grid(&[1, 7, 12], Mode::Hockey6V6, 23, false));
     }
 
     #[test]

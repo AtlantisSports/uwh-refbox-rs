@@ -67,8 +67,10 @@ player-display-brightness = OYUNCU EKRANI
     PARLAKLIGI
 confirm-score-at-game-end = OYUN SONUNDA
     SKORU ONAYLA
-track-cap-number-of-scorer = GOLCÜNÜN BAŞLIK
-    NUMARASINI TAKİP ET
+track-cap-number = BAŞLIK NUMARASINI
+    TAKİP ET
+force-keypad-numbers = NUMARA TUŞ
+    TAKIMINI ZORLA
 event = ETKİNLİK:
 track-fouls-and-warnings = FAUL VE
     UYARILARI TAKİP ET

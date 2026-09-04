@@ -67,8 +67,10 @@ player-display-brightness = 球员显示
     亮度
 confirm-score-at-game-end = 比赛结束时
     确认比分
-track-cap-number-of-scorer = 追踪进球
-    泳帽号码
+track-cap-number = 追踪泳帽
+    号码
+force-keypad-numbers = 始终使用
+    数字键盘
 event = 赛事：
 track-fouls-and-warnings = 追踪犯规
     和警告

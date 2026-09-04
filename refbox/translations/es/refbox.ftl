@@ -66,8 +66,9 @@ player-display-brightness = BRILLO DE LA
     PANTALLA DEL JUGADOR
 confirm-score-at-game-end = CONFIRMAR PUNTUACIÓN
     AL FINAL DEL JUEGO
-track-cap-number-of-scorer = REGISTRAR NÚMERO
-    DEL ANOTADOR
+track-cap-number = REGISTRAR NÚMERO
+force-keypad-numbers = FORZAR TECLADO
+    NUMÉRICO
 track-fouls-and-warnings = REGISTRAR FALTAS
     Y ADVERTENCIAS
 show-behind-schedule-time = MOSTRAR RETRASO

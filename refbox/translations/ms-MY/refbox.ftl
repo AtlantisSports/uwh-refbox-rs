@@ -67,8 +67,10 @@ player-display-brightness = KECERAHAN PAPARAN
     PEMAIN
 confirm-score-at-game-end = SAHKAN MARKAH
     AKHIR PERLAWANAN
-track-cap-number-of-scorer = REKOD NOMBOR PEMAIN
-    PENCETAK GOL
+track-cap-number = REKOD NOMBOR
+    PEMAIN
+force-keypad-numbers = PAKSA PAPAN
+    NOMBOR
 event = ACARA:
 track-fouls-and-warnings = REKOD KESALAHAN
     DAN AMARAN

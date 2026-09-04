@@ -67,8 +67,10 @@ player-display-brightness = LIWANAG NG
     DISPLAY NG MANLALARO
 confirm-score-at-game-end = KUMPIRMAHIN ANG PUNTOS
     SA KATAPUSAN NG LARO
-track-cap-number-of-scorer = SUBAYBAYAN ANG NUMERO
-    NG GORRO NG MANLALARO
+track-cap-number = SUBAYBAYAN ANG
+    NUMERO NG GORRO
+force-keypad-numbers = PILITIN ANG
+    KEYPAD NG NUMERO
 event = KAGANAPAN:
 track-fouls-and-warnings = SUBAYBAYAN ANG POUL
     AT BABALA

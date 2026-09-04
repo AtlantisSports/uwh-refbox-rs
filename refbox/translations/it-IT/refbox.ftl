@@ -67,8 +67,10 @@ player-display-brightness = LUMINOSITÀ
     DISPLAY GIOCATORI
 confirm-score-at-game-end = CONFERMA PUNTEGGIO
     A FINE PARTITA
-track-cap-number-of-scorer = TRACCIA NUMERO
-    CALOTTINA MARCATORE
+track-cap-number = TRACCIA NUMERO
+    CALOTTINA
+force-keypad-numbers = FORZA TASTIERINO
+    NUMERICO
 event = EVENTO:
 track-fouls-and-warnings = TRACCIA FALLI
     E AMMONIZIONI

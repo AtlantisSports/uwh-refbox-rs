@@ -48,6 +48,7 @@ pub(in super::super) fn build_keypad_page<'a>(
     track_fouls_and_warnings: bool,
     original_game_number: Option<String>,
     rosters: &BlackWhiteBundle<Vec<u8>>,
+    force_keypad_numbers: bool,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -104,18 +105,20 @@ pub(in super::super) fn build_keypad_page<'a>(
             None
         ),
         row![
-            container(if show_grid(panel_numbers, mode, player_num) {
-                make_player_grid(
-                    make_panel_label(&page, role, player_num),
-                    role,
-                    panel_numbers,
-                    mode,
-                    player_num,
-                    enabled,
-                )
-            } else {
-                make_number_pad(&page, role, player_num, enabled)
-            })
+            container(
+                if show_grid(panel_numbers, mode, player_num, force_keypad_numbers) {
+                    make_player_grid(
+                        make_panel_label(&page, role, player_num),
+                        role,
+                        panel_numbers,
+                        mode,
+                        player_num,
+                        enabled,
+                    )
+                } else {
+                    make_number_pad(&page, role, player_num, enabled)
+                }
+            )
             .style(if enabled {
                 light_gray_container
             } else {

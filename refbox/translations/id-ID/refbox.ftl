@@ -67,8 +67,9 @@ player-display-brightness = KECERAHAN
     TAMPILAN PEMAIN
 confirm-score-at-game-end = KONFIRMASI SKOR
     DI AKHIR PERTANDINGAN
-track-cap-number-of-scorer = LACAK NOMOR TOPI
-    PENCETAK GOL
+track-cap-number = LACAK NOMOR TOPI
+force-keypad-numbers = PAKSA PAPAN
+    NOMOR
 event = ACARA:
 track-fouls-and-warnings = LACAK PELANGGARAN
     DAN PERINGATAN

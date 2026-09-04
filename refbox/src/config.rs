@@ -407,6 +407,12 @@ pub struct Config {
     #[derivative(Default(value = "true"))]
     pub collect_scorer_cap_num: bool,
     pub track_fouls_and_warnings: bool,
+    /// YES forces the plain 0-9 pad in place of the portal roster grid on every
+    /// player picker. NO -- the default, and the only behaviour before this
+    /// setting existed -- leaves the grid to appear wherever a team has a usable
+    /// roster. Read through [`effective_keypad_numbers_forced`], never directly.
+    #[serde(default)]
+    pub force_keypad_numbers: bool,
     #[derivative(Default(value = "true"))]
     pub show_behind_schedule_time: bool,
     #[derivative(Default(value = "true"))]
@@ -433,6 +439,68 @@ pub struct Config {
     pub access_keys: Vec<AccessKey>,
 }
 
+/// Whether fouls and warnings are actually being tracked.
+///
+/// `collect_scorer_cap_num` off switches this off too, whatever
+/// `track_fouls_and_warnings` says. That is a deliberate product decision, not
+/// something derived from what the code needs: TRACK CAP NUMBER is the master
+/// switch for the App page's fouls-and-warnings setting. It was taken with the
+/// costs below stated and accepted, so do not quietly "fix" it back.
+///
+/// What it costs -- recorded here so a future reader does not re-derive it as a
+/// bug, because none of this follows from cap numbers being unavailable:
+/// - Team warnings and equal fouls go with it, and neither ever needed a player
+///   number: `warning_add_can_commit(_, true, 0)` and
+///   `foul_add_can_commit(_, None, 0)` are both true. `main_view` gates the ADD
+///   FOUL and ADD WARNING buttons, the warnings panel and the warnings summary
+///   on this flag, so all of that disappears too.
+/// - Penalties still commit, needing only a player number
+///   (`penalty_edit_can_commit`, and the PENALTIES button is ungated), but
+///   their infraction picker is hidden -- so the REASON for a penalty stops
+///   being recordable. That half is not new: it is what the penalty page has
+///   always done with tracking off.
+///
+/// The override is computed here and never written back, which is the whole
+/// point: the operator's stored YES waits untouched in the config and returns
+/// the moment cap numbers do. Pinned by `cap_numbers_off_overrides_fouls_tracking`
+/// and `the_override_is_never_written_back_to_config`.
+pub fn effective_fouls_tracked(
+    track_fouls_and_warnings: bool,
+    collect_scorer_cap_num: bool,
+) -> bool {
+    track_fouls_and_warnings && collect_scorer_cap_num
+}
+
+/// Whether every player picker must show the plain 0-9 pad rather than the
+/// portal roster grid.
+///
+/// True when the operator asks for it, and unconditionally while
+/// `collect_scorer_cap_num` is off. The grid can only offer numbers that are on
+/// the roster, and penalties still name a player whatever else is switched off,
+/// so leaving the grid up with cap numbers off would strand the operator on the
+/// roster with no way to enter an unlisted number.
+///
+/// Like [`effective_fouls_tracked`], this is computed and never stored.
+pub fn effective_keypad_numbers_forced(
+    force_keypad_numbers: bool,
+    collect_scorer_cap_num: bool,
+) -> bool {
+    force_keypad_numbers || !collect_scorer_cap_num
+}
+
+impl Config {
+    /// See [`effective_fouls_tracked`]. Use this, not the raw field, anywhere
+    /// the answer drives behaviour.
+    pub fn fouls_tracked(&self) -> bool {
+        effective_fouls_tracked(self.track_fouls_and_warnings, self.collect_scorer_cap_num)
+    }
+
+    /// See [`effective_keypad_numbers_forced`]. Use this, not the raw field.
+    pub fn keypad_numbers_forced(&self) -> bool {
+        effective_keypad_numbers_forced(self.force_keypad_numbers, self.collect_scorer_cap_num)
+    }
+}
+
 impl Config {
     pub fn migrate(old: &Table) -> Self {
         let Self {
@@ -440,6 +508,7 @@ impl Config {
             mut hide_time,
             mut collect_scorer_cap_num,
             mut track_fouls_and_warnings,
+            mut force_keypad_numbers,
             mut show_behind_schedule_time,
             mut confirm_score,
             mut audible_countdown,
@@ -471,6 +540,7 @@ impl Config {
             "track_fouls_and_warnings",
             &mut track_fouls_and_warnings,
         );
+        get_boolean_value(old, "force_keypad_numbers", &mut force_keypad_numbers);
         get_boolean_value(
             old,
             "show_behind_schedule_time",
@@ -532,6 +602,7 @@ impl Config {
             hide_time,
             collect_scorer_cap_num,
             track_fouls_and_warnings,
+            force_keypad_numbers,
             show_behind_schedule_time,
             confirm_score,
             audible_countdown,
@@ -1648,5 +1719,68 @@ mod test {
     fn a_settings_file_with_no_access_keys_loads_with_an_empty_store() {
         let parsed: Config = toml::from_str(&config_toml_without("access_keys")).unwrap();
         assert!(parsed.access_keys.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod effective_value_tests {
+    use super::*;
+
+    /// Cap numbers off must silence fouls-and-warnings tracking, because
+    /// tracking one means naming a player the operator has just said they do
+    /// not record.
+    #[test]
+    fn cap_numbers_off_overrides_fouls_tracking() {
+        assert!(effective_fouls_tracked(true, true));
+        assert!(!effective_fouls_tracked(false, true));
+        assert!(!effective_fouls_tracked(true, false));
+        assert!(!effective_fouls_tracked(false, false));
+    }
+
+    /// Cap numbers off forces the 0-9 pad: penalties still name a player
+    /// whatever else is switched off, and the grid cannot offer a number that
+    /// is not on the roster.
+    #[test]
+    fn cap_numbers_off_forces_the_number_pad() {
+        assert!(!effective_keypad_numbers_forced(false, true));
+        assert!(effective_keypad_numbers_forced(true, true));
+        assert!(effective_keypad_numbers_forced(false, false));
+        assert!(effective_keypad_numbers_forced(true, false));
+    }
+
+    /// The override is computed, never stored. This is what makes the operator's
+    /// settings survive a trip through cap-numbers-off: a `Config` with cap
+    /// numbers off still reports its own stored YES, so switching them back on
+    /// restores it with no remembered second copy to drift out of step.
+    #[test]
+    fn the_override_is_never_written_back_to_config() {
+        let config = Config {
+            collect_scorer_cap_num: false,
+            track_fouls_and_warnings: true,
+            force_keypad_numbers: false,
+            ..Default::default()
+        };
+
+        assert!(!config.fouls_tracked(), "tracking is off in force");
+        assert!(config.keypad_numbers_forced(), "the pad is forced in force");
+
+        assert!(
+            config.track_fouls_and_warnings,
+            "but the stored setting must be untouched, ready to come back"
+        );
+        assert!(
+            !config.force_keypad_numbers,
+            "and so must the stored keypad setting"
+        );
+
+        let restored = Config {
+            collect_scorer_cap_num: true,
+            ..config
+        };
+        assert!(
+            restored.fouls_tracked(),
+            "the operator's YES returns intact"
+        );
+        assert!(!restored.keypad_numbers_forced());
     }
 }

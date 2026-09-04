@@ -66,8 +66,9 @@ player-display-brightness = PLAYER DISPLAY
     BRIGHTNESS
 confirm-score-at-game-end = CONFIRM SCORE
     AT GAME END
-track-cap-number-of-scorer = TRACK CAP NUMBER
-    OF SCORER
+track-cap-number = TRACK CAP NUMBER
+force-keypad-numbers = FORCE KEYPAD
+    NUMBERS
 event = EVENT:
 track-fouls-and-warnings = TRACK FOULS
     AND WARNINGS

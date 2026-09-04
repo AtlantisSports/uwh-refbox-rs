@@ -58,6 +58,7 @@ pub(in super::super) struct EditableSettings {
     pub hide_time: bool,
     pub collect_scorer_cap_num: bool,
     pub track_fouls_and_warnings: bool,
+    pub force_keypad_numbers: bool,
     pub show_behind_schedule_time: bool,
     pub confirm_score: bool,
     pub audible_countdown: bool,
@@ -311,6 +312,7 @@ pub(in super::super) fn page_has_changes(
                 mode,
                 collect_scorer_cap_num,
                 track_fouls_and_warnings,
+                force_keypad_numbers,
                 show_behind_schedule_time,
                 confirm_score,
                 hide_time,
@@ -324,6 +326,7 @@ pub(in super::super) fn page_has_changes(
                 || edited.mode != *mode
                 || edited.collect_scorer_cap_num != *collect_scorer_cap_num
                 || edited.track_fouls_and_warnings != *track_fouls_and_warnings
+                || edited.force_keypad_numbers != *force_keypad_numbers
                 || edited.show_behind_schedule_time != *show_behind_schedule_time
                 || edited.confirm_score != *confirm_score
                 || edited.hide_time != *hide_time
@@ -1233,6 +1236,26 @@ fn make_event_config_page<'a>(
     col.into()
 }
 
+impl EditableSettings {
+    /// See [`crate::config::effective_fouls_tracked`]. The App page shows this
+    /// rather than the stored field, so a greyed button never claims a
+    /// behaviour the app is not performing.
+    pub fn fouls_tracked(&self) -> bool {
+        crate::config::effective_fouls_tracked(
+            self.track_fouls_and_warnings,
+            self.collect_scorer_cap_num,
+        )
+    }
+
+    /// See [`crate::config::effective_keypad_numbers_forced`].
+    pub fn keypad_numbers_forced(&self) -> bool {
+        crate::config::effective_keypad_numbers_forced(
+            self.force_keypad_numbers,
+            self.collect_scorer_cap_num,
+        )
+    }
+}
+
 fn make_app_config_page<'a>(
     mode: Mode,
     snapshot: &GameSnapshot,
@@ -1243,7 +1266,6 @@ fn make_app_config_page<'a>(
 ) -> Element<'a, Message> {
     let EditableSettings {
         collect_scorer_cap_num,
-        track_fouls_and_warnings,
         show_behind_schedule_time,
         confirm_score,
         hide_time,
@@ -1254,6 +1276,12 @@ fn make_app_config_page<'a>(
     // A game is "in progress" for the purpose of gating the updater whenever we
     // are not in the BetweenGames period.
     let game_in_progress = snapshot.current_period != GamePeriod::BetweenGames;
+
+    // TRACK CAP NUMBER is the master switch for the two buttons below it: with
+    // it off, neither FORCE KEYPAD NUMBERS nor TRACK FOULS AND WARNINGS has any
+    // effect, so neither may be tapped. `None` is how `make_value_button` greys
+    // a button -- there is no separate enabled flag.
+    let cap_num_gated = |message: Message| (*collect_scorer_cap_num).then_some(message);
 
     column![
         make_game_time_button(
@@ -1273,26 +1301,6 @@ fn make_app_config_page<'a>(
                 Some(Message::CycleParameter(CyclingParameter::Mode)),
             ),
             make_value_button(
-                fl!("track-cap-number-of-scorer"),
-                bool_string(*collect_scorer_cap_num),
-                (false, true),
-                Some(Message::ToggleBoolParameter(
-                    BoolGameParameter::ScorerCapNum,
-                )),
-            ),
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
-        row![
-            make_value_button(
-                fl!("track-fouls-and-warnings"),
-                bool_string(*track_fouls_and_warnings),
-                (false, true),
-                Some(Message::ToggleBoolParameter(
-                    BoolGameParameter::FoulsAndWarnings,
-                )),
-            ),
-            make_value_button(
                 fl!("confirm-score-at-game-end"),
                 bool_string(*confirm_score),
                 (false, true),
@@ -1305,12 +1313,39 @@ fn make_app_config_page<'a>(
         .height(Length::Fill),
         row![
             make_value_button(
+                fl!("track-cap-number"),
+                bool_string(*collect_scorer_cap_num),
+                (false, true),
+                Some(Message::ToggleBoolParameter(
+                    BoolGameParameter::ScorerCapNum,
+                )),
+            ),
+            make_value_button(
                 // Internally still `hide_time`; the button shows the INVERSE:
                 // YES = the final 10-second countdown IS shown on the scoreboard.
                 fl!("show-countdown-for-last-10-seconds"),
                 bool_string(!*hide_time),
                 (false, true),
                 Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime)),
+            ),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            // Both cap-num-gated buttons show the value that is IN FORCE, not
+            // the one stored. With cap numbers off this reads YES because the
+            // pad is what the operator gets, while their own setting waits
+            // untouched in the config for cap numbers to come back. Greying
+            // alone would leave the page asserting a behaviour the app is not
+            // performing -- which for the fouls button below would read as
+            // "fouls are being recorded" while none were.
+            make_value_button(
+                fl!("force-keypad-numbers"),
+                bool_string(settings.keypad_numbers_forced()),
+                (false, true),
+                cap_num_gated(Message::ToggleBoolParameter(
+                    BoolGameParameter::ForceKeypadNumbers,
+                )),
             ),
             make_value_button(
                 fl!("audible-countdown-for-last-10-seconds"),
@@ -1325,6 +1360,14 @@ fn make_app_config_page<'a>(
         .height(Length::Fill),
         row![
             make_value_button(
+                fl!("track-fouls-and-warnings"),
+                bool_string(settings.fouls_tracked()),
+                (false, true),
+                cap_num_gated(Message::ToggleBoolParameter(
+                    BoolGameParameter::FoulsAndWarnings,
+                )),
+            ),
+            make_value_button(
                 fl!("show-behind-schedule-time"),
                 bool_string(*show_behind_schedule_time),
                 (false, true),
@@ -1332,7 +1375,6 @@ fn make_app_config_page<'a>(
                     BoolGameParameter::ShowBehindScheduleTime,
                 )),
             ),
-            horizontal_space(),
         ]
         .spacing(SPACING)
         .height(Length::Fill),
@@ -3301,6 +3343,7 @@ mod tests {
             mode: Mode::Hockey6V6,
             collect_scorer_cap_num: false,
             track_fouls_and_warnings: false,
+            force_keypad_numbers: false,
             show_behind_schedule_time: false,
             confirm_score: false,
             hide_time: false,
@@ -3313,6 +3356,66 @@ mod tests {
         assert!(page_has_changes(ConfigPage::App, &edited, Some(&snap)));
     }
 
+    /// Without the new field in `page_has_changes`, FORCE KEYPAD NUMBERS would
+    /// be the one toggle on the page that leaves Apply greyed out -- the
+    /// operator taps it, nothing happens, and the setting is silently lost on
+    /// Cancel.
+    #[test]
+    fn app_detects_force_keypad_numbers_change() {
+        let snap = PageEntrySnapshot::App {
+            source: GameSource::Manual,
+            current_event_id: None,
+            current_court: None,
+            schedule: None,
+            mode: Mode::Hockey6V6,
+            collect_scorer_cap_num: false,
+            track_fouls_and_warnings: false,
+            force_keypad_numbers: false,
+            show_behind_schedule_time: false,
+            confirm_score: false,
+            hide_time: false,
+            audible_countdown: false,
+        };
+        let edited = EditableSettings {
+            force_keypad_numbers: true,
+            ..Default::default()
+        };
+        assert!(page_has_changes(ConfigPage::App, &edited, Some(&snap)));
+    }
+
+    /// The App page shows what is IN FORCE on the two cap-num-gated buttons,
+    /// while the operator's own choice stays put underneath. If these ever
+    /// diverge, a greyed button starts asserting a behaviour the app is not
+    /// performing -- for the fouls button, "fouls are being recorded" while
+    /// none are.
+    #[test]
+    fn gated_buttons_show_what_is_in_force_and_keep_what_was_chosen() {
+        let mut settings = EditableSettings {
+            collect_scorer_cap_num: true,
+            track_fouls_and_warnings: true,
+            force_keypad_numbers: false,
+            ..Default::default()
+        };
+
+        // Cap numbers on: the buttons show the operator's own settings.
+        assert!(settings.fouls_tracked());
+        assert!(!settings.keypad_numbers_forced());
+
+        settings.collect_scorer_cap_num = false;
+
+        // Cap numbers off: fouls read NO and the pad reads YES, because that is
+        // what the app is doing.
+        assert!(!settings.fouls_tracked(), "fouls must read NO");
+        assert!(settings.keypad_numbers_forced(), "the pad must read YES");
+
+        // ...and neither stored choice was touched, so both come back.
+        assert!(settings.track_fouls_and_warnings);
+        assert!(!settings.force_keypad_numbers);
+        settings.collect_scorer_cap_num = true;
+        assert!(settings.fouls_tracked(), "the operator's YES must return");
+        assert!(!settings.keypad_numbers_forced());
+    }
+
     #[test]
     fn app_detects_audible_countdown_change() {
         let snap = PageEntrySnapshot::App {
@@ -3323,6 +3426,7 @@ mod tests {
             mode: Mode::Hockey6V6,
             collect_scorer_cap_num: false,
             track_fouls_and_warnings: false,
+            force_keypad_numbers: false,
             show_behind_schedule_time: false,
             confirm_score: false,
             hide_time: false,
@@ -3458,6 +3562,7 @@ mod tests {
             mode: edited.mode,
             collect_scorer_cap_num: edited.collect_scorer_cap_num,
             track_fouls_and_warnings: edited.track_fouls_and_warnings,
+            force_keypad_numbers: edited.force_keypad_numbers,
             show_behind_schedule_time: edited.show_behind_schedule_time,
             confirm_score: edited.confirm_score,
             hide_time: false,

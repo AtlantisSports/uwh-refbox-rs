@@ -65,8 +65,9 @@ player-display-brightness = LUMINOSITÉ DE
     L'AFFICHAGE DES JOUEURS
 confirm-score-at-game-end = CONFIRMER LE SCORE
     À LA FIN DU MATCH
-track-cap-number-of-scorer = SUIVRE LE NUMÉRO DU
-    BUTEUR
+track-cap-number = SUIVRE LE NUMÉRO
+force-keypad-numbers = FORCER LE CLAVIER
+    NUMÉRIQUE
 track-fouls-and-warnings = SUIVRE LES FAUTES
     ET LES AVERTISSEMENTS
 show-behind-schedule-time = AFFICHER LE RETARD

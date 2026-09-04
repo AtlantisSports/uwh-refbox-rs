@@ -1281,6 +1281,14 @@ fn make_app_config_page<'a>(
     // it off, neither FORCE KEYPAD NUMBERS nor TRACK FOULS AND WARNINGS has any
     // effect, so neither may be tapped. `None` is how `make_value_button` greys
     // a button -- there is no separate enabled flag.
+    //
+    // Those same two buttons -- and only those two, which sit in different rows
+    // below -- show the value that is IN FORCE, not the one stored. With cap
+    // numbers off FORCE KEYPAD NUMBERS reads YES because the pad is what the
+    // operator gets, while their own setting waits untouched in the config for
+    // cap numbers to come back. Greying alone would leave the page asserting a
+    // behaviour the app is not performing -- which for TRACK FOULS AND WARNINGS
+    // would read as "fouls are being recorded" while none were.
     let cap_num_gated = |message: Message| (*collect_scorer_cap_num).then_some(message);
 
     column![
@@ -1332,13 +1340,7 @@ fn make_app_config_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            // Both cap-num-gated buttons show the value that is IN FORCE, not
-            // the one stored. With cap numbers off this reads YES because the
-            // pad is what the operator gets, while their own setting waits
-            // untouched in the config for cap numbers to come back. Greying
-            // alone would leave the page asserting a behaviour the app is not
-            // performing -- which for the fouls button below would read as
-            // "fouls are being recorded" while none were.
+            // Effective value, not stored -- see `cap_num_gated` above.
             make_value_button(
                 fl!("force-keypad-numbers"),
                 bool_string(settings.keypad_numbers_forced()),
@@ -1359,6 +1361,7 @@ fn make_app_config_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
+            // Effective value, not stored -- see `cap_num_gated` above.
             make_value_button(
                 fl!("track-fouls-and-warnings"),
                 bool_string(settings.fouls_tracked()),

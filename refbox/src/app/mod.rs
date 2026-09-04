@@ -563,8 +563,10 @@ fn client_for_event(
         // fetch with no Authorization header: refused by a strict site, and *accepted* by a
         // permissive one, which is worse -- it would answer as though the refbox were entitled
         // to data it has never authenticated for.
-        warn!(
-            "No access key held for {}; not building a client for it",
+        // Info, not warn: no key yet is the ordinary state of every event before its first
+        // login, and a warning per event picked would dilute the level in a support log.
+        info!(
+            "No access key held for {}; not fetching against it",
             event.full()
         );
         return None;
@@ -2139,9 +2141,16 @@ impl RefBoxApp {
         // *missing key* path rather than the rejection path the flag exists for.
         #[cfg(debug_assertions)]
         if self.scramble_token_pending && new_is_some && !self.config.access_keys.is_empty() {
-            // Scrambles the *published* store, not the client. The background task loads a key
-            // per call from this, so replacing the client's would be overwritten before the next
-            // probe and the flag would silently stop exercising rejection.
+            // Scrambles the *published* store only, not `config.access_keys`. The background
+            // task loads a key per call from the published view, so this is what makes its probe
+            // exercise rejection; replacing the client's token instead would be overwritten
+            // before the next probe.
+            //
+            // Known limitation, deliberate: the settings ACCESS TOKEN row reads the config, so it
+            // stays green while the background probe goes red, and the next repoint or login
+            // republishes the real keys and undoes this. Scrambling the config itself would risk
+            // `persist_config` writing a scrambled key to the operator's settings file, which is
+            // not a trade worth making for a debug flag.
             let scrambled: Vec<_> = self
                 .config
                 .access_keys
@@ -2159,7 +2168,10 @@ impl RefBoxApp {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .publish(self.current_site.base_url.expose().to_string(), scrambled);
-            warn!("UWH_PORTAL_SCRAMBLE_TOKEN: published keys replaced after event linked");
+            warn!(
+                "UWH_PORTAL_SCRAMBLE_TOKEN: background key view scrambled after event linked \
+                 (settings row still reads the real config; republished on the next repoint)"
+            );
             self.scramble_token_pending = false;
         }
     }
@@ -5269,6 +5281,9 @@ impl RefBoxApp {
                         // Set the new event id and clear court / game number / schedule
                         // that were filtered by the previous event so the user re-picks
                         // against the new event's data.
+                        // why this cannot panic: `ParameterSelected` is only reachable from a
+                        // parameter list, which only exists while the editor does -- the same
+                        // precondition as the single borrow these four replaced.
                         self.edited_settings
                             .as_mut()
                             .unwrap()
@@ -5299,6 +5314,7 @@ impl RefBoxApp {
                                     &id,
                                 )
                                 .is_some();
+                            // why this cannot panic: see `select_event` above.
                             self.edited_settings.as_mut().unwrap().uwhportal_token_valid =
                                 if have_key { None } else { Some(false) };
                         }
@@ -5340,10 +5356,12 @@ impl RefBoxApp {
                         // Set the new court and clear the game number that was filtered
                         // by the previous court so the user re-picks from the new
                         // court's filtered list.
+                        // why this cannot panic: see the Event arm above.
                         self.edited_settings.as_mut().unwrap().select_court(val);
                         Task::none()
                     }
                     ListableParameter::Game => {
+                        // why this cannot panic: see the Event arm above.
                         self.edited_settings.as_mut().unwrap().game_number = val;
                         Task::none()
                     }

@@ -12,11 +12,6 @@ use uwh_common::{
 
 const TEAM_NAME_LEN_LIMIT: usize = 40;
 
-/// Shown wherever the table has no value to give — the same hyphen the referee rows
-/// already use for an empty slot. Deliberately not a translated string: there is
-/// nothing to translate, and the grid keeps its shape either way.
-const NO_VALUE: &str = "-";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in super::super) enum GameRole {
     Last,
@@ -100,7 +95,7 @@ pub(in super::super) fn game_info_rows(
     // Trust the blank number alone. The blank IS the signal, whatever the source says:
     // reading both risks the two disagreeing, and the table should follow the engine.
     let no_game = snapshot.next_game_number.is_empty();
-    let no_current_game = between && no_game;
+    let no_current_game = snapshot.court_schedule_finished();
     let no_next_game = !between && no_game;
 
     let mut rows = Vec::new();

@@ -1171,20 +1171,6 @@ fn anchor_after_game_end(
     }
 }
 
-/// `true` when the break now on screen will start nothing when it expires: we are
-/// between games and the next-game number is blank, which is how the refbox reports
-/// that the selected court has no further scheduled games.
-///
-/// All three break sounds are gated on this: the 30-second whistle, the start-of-play
-/// buzzer at 0:00, and the audible countdown on the way there. Nothing is coming, so
-/// counting the poolside down or sounding them would announce a game that never begins.
-///
-/// Only `BetweenGames` can be silenced. Every other break has a game in progress and
-/// will start play again, whatever the next-game number says — hence the period test.
-fn break_starts_nothing(period: GamePeriod, next_game_number: &str) -> bool {
-    period == GamePeriod::BetweenGames && next_game_number.is_empty()
-}
-
 /// What the restart note should record about the game.
 ///
 /// The distinction that matters is **knowledge versus ignorance**. Treating the
@@ -1280,8 +1266,9 @@ impl RefBoxApp {
         // Once the court's last game has ended the clock stops dead, so the common path
         // never reaches 30 seconds; this matters for the other ordering, where a break
         // is already counting down when a schedule refresh reports the court finished.
-        let starts_nothing =
-            break_starts_nothing(new_snapshot.current_period, &new_snapshot.next_game_number);
+        // All three sounds are gated on it: the 30-second whistle, the start-of-play
+        // buzzer at 0:00, and the countdown beeps on the way there.
+        let starts_nothing = new_snapshot.court_schedule_finished();
 
         let (play_whistle, play_buzzer) = match new_snapshot.timeout {
             Some(TimeoutSnapshot::Black(time)) | Some(TimeoutSnapshot::White(time)) => {
@@ -9254,36 +9241,6 @@ mod refresh_next_game_tests {
             next_game_from_schedule(&schedule, None, None, Some(&"9".to_string()), None, None),
             NextGameFromSchedule::Unknown
         );
-    }
-}
-
-#[cfg(test)]
-mod break_starts_nothing_tests {
-    use super::break_starts_nothing;
-    use uwh_common::game_snapshot::GamePeriod;
-
-    #[test]
-    fn blank_number_between_games_starts_nothing() {
-        assert!(break_starts_nothing(GamePeriod::BetweenGames, ""));
-    }
-
-    #[test]
-    fn a_real_upcoming_game_still_sounds() {
-        assert!(!break_starts_nothing(GamePeriod::BetweenGames, "11"));
-    }
-
-    #[test]
-    fn other_breaks_are_never_silenced() {
-        // A game is in progress in every other break, so they always start play
-        // again — whatever the next-game number says.
-        for period in [
-            GamePeriod::HalfTime,
-            GamePeriod::PreOvertime,
-            GamePeriod::OvertimeHalfTime,
-            GamePeriod::PreSuddenDeath,
-        ] {
-            assert!(!break_starts_nothing(period, ""), "{period:?}");
-        }
     }
 }
 

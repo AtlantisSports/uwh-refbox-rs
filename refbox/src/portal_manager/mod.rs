@@ -96,14 +96,95 @@ pub type SharedUwhPortalClient =
 /// the indicator red before the operator has set up the tournament.
 /// `post_scores` / `post_stats` ignore this field; they use the queued
 /// item's own event id.
+/// The access keys the background task is allowed to send, and the site they belong to.
+///
+/// Published by the UI thread whenever the site or the store changes. The uploader and the health
+/// probe each resolve the key for *their own* event from this, rather than sending whatever the
+/// shared client happens to be carrying: a queued result belongs to the event it was recorded
+/// for, which is not necessarily the event the operator is linked to now -- and may be no event
+/// at all, if they dropped to manual games when the network died.
+#[derive(Default)]
+pub struct SiteAccessKeys {
+    site: String,
+    keys: Vec<crate::config::AccessKey>,
+}
+
+impl SiteAccessKeys {
+    /// Replace the published view. Called on a repoint and whenever a login files a key.
+    pub fn publish(&mut self, site: String, keys: Vec<crate::config::AccessKey>) {
+        self.site = site;
+        self.keys = keys;
+    }
+
+    fn key_for(&self, event: &uwh_common::uwhportal::schedule::EventId) -> Option<&str> {
+        crate::config::access_key_in(&self.keys, &self.site, event)
+    }
+}
+
+pub type SharedAccessKeys = std::sync::Arc<std::sync::Mutex<SiteAccessKeys>>;
+
 pub struct UwhPortalIo {
     client: SharedUwhPortalClient,
     event_id: SelectedEventId,
+    keys: SharedAccessKeys,
 }
 
 impl UwhPortalIo {
-    pub fn new(client: SharedUwhPortalClient, event_id: SelectedEventId) -> Self {
-        Self { client, event_id }
+    pub fn new(
+        client: SharedUwhPortalClient,
+        event_id: SelectedEventId,
+        keys: SharedAccessKeys,
+    ) -> Self {
+        Self {
+            client,
+            event_id,
+            keys,
+        }
+    }
+
+    /// The key filed for `event`, or the error a caller should report when none is held.
+    ///
+    /// Never sends a request without one. An unauthenticated POST is not a degraded upload -- a
+    /// permissive site would accept it and a strict one refuses it, and neither outcome is the
+    /// result the operator recorded going where it belongs.
+    fn key_for(
+        &self,
+        event: &uwh_common::uwhportal::schedule::EventId,
+    ) -> Result<String, health::PortalCallError> {
+        // why this cannot panic: `unwrap_or_else(into_inner)` keeps the background task alive
+        // even if a writer panicked while holding the lock.
+        let guard = self
+            .keys
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard.key_for(event).map(str::to_owned).ok_or_else(|| {
+            health::PortalCallError::Failed(format!(
+                "no access key held for event {}",
+                event.full()
+            ))
+        })
+    }
+
+    /// Put `key` on the shared client and hand back the request built with it.
+    ///
+    /// Safe to mutate here: since the foreground builds its own client for every fetch that needs
+    /// a credential, this background task is the only writer left, and each call sets what it
+    /// needs under the same lock immediately before building its request.
+    fn with_key<T>(
+        &self,
+        key: &str,
+        build: impl FnOnce(&uwh_common::uwhportal::UwhPortalClient) -> T,
+    ) -> Result<T, health::PortalCallError> {
+        // why this cannot panic: see `key_for` above.
+        let mut guard = self
+            .client
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard.set_token(key).map_err(|why| {
+            health::PortalCallError::Failed(format!("a saved access key cannot be sent: {why}"))
+        })?;
+        Ok(build(&guard))
+        // guard drops here, before the network call is awaited
     }
 }
 
@@ -197,32 +278,12 @@ impl health::PortalTaskIo for UwhPortalIo {
             None => return Ok(()),
         };
 
-        let fut = {
-            // why this cannot panic: the guarded data (`UwhPortalClient`)
-            // is only mutated via `set_token`/`clear_token`, which do not
-            // panic, so the mutex never gets poisoned in practice; we use
-            // `unwrap_or_else(into_inner)` defensively so even a poisoned
-            // mutex keeps the background task alive.
-            let guard = self
-                .client
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if !guard.has_token() {
-                // Never ask a site to vouch for a credential we do not hold.
-                // Only the site can enforce a token, so a site that answers an
-                // unauthenticated probe with `200` would hold this indicator
-                // green over nothing — the same false reassurance the settings
-                // row used to give before it was gated. Reporting a token
-                // problem is honest, and it is what a correctly-refusing site
-                // would have produced anyway.
-                return Err(health::PortalCallError::Failed(
-                    "no access token held for this site".to_string(),
-                ));
-            }
-            guard.verify_token(&event_id)
-            // guard drops here so token mutations from the UI thread can
-            // land while the network call is in flight.
-        };
+        // Never ask a site to vouch for a credential we do not hold. Only the site can enforce a
+        // token, so a site that answers an unauthenticated probe with `200` would hold this
+        // indicator green over nothing. Reporting a token problem is honest, and it is what a
+        // correctly-refusing site would have produced anyway.
+        let key = self.key_for(&event_id)?;
+        let fut = self.with_key(&key, |client| client.verify_token(&event_id))?;
         fut.await.map_err(classify_error)
     }
 
@@ -234,14 +295,12 @@ impl health::PortalTaskIo for UwhPortalIo {
         };
         let game_number = item.id.game_number.clone();
         let force = item.force;
-        let fut = {
-            // why this cannot panic: see `verify_token` above.
-            let guard = self
-                .client
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            guard.post_game_scores(&event_id, &game_number, scores, force)
-        };
+        // The key for the event this result was recorded for -- not for whatever the operator is
+        // linked to now, and not nothing if they are linked to nothing at all.
+        let key = self.key_for(&event_id)?;
+        let fut = self.with_key(&key, |client| {
+            client.post_game_scores(&event_id, &game_number, scores, force)
+        })?;
         fut.await.map_err(classify_error)
     }
 
@@ -249,14 +308,11 @@ impl health::PortalTaskIo for UwhPortalIo {
         let event_id = parse_event_id(&item.id.event_id)?;
         let game_number = item.id.game_number.clone();
         let stats = item.stats.clone();
-        let fut = {
-            // why this cannot panic: see `verify_token` above.
-            let guard = self
-                .client
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            guard.post_game_stats(&event_id, &game_number, stats)
-        };
+        // Same rule as the scores above: the key belongs to the event this item was recorded for.
+        let key = self.key_for(&event_id)?;
+        let fut = self.with_key(&key, |client| {
+            client.post_game_stats(&event_id, &game_number, stats)
+        })?;
         fut.await.map_err(classify_error)
     }
 }
@@ -1199,6 +1255,47 @@ impl PortalManager {
 
 #[cfg(test)]
 mod tests {
+
+    /// A queued result belongs to the event it was recorded for, and finds that event's key even
+    /// when the refbox is linked to nothing at all -- the case where the network died and the
+    /// operator dropped to manual games with results still waiting.
+    #[test]
+    fn a_queued_item_finds_its_own_events_key_with_nothing_linked() {
+        let site = "https://api.uwhportal.com";
+        let event =
+            uwh_common::uwhportal::schedule::EventId::from_full("events/queued-for").unwrap();
+        let mut keys = SiteAccessKeys::default();
+        keys.publish(
+            site.to_string(),
+            vec![crate::config::AccessKey {
+                site: site.to_string(),
+                event: event.clone(),
+                key: "KEY-Q".to_string(),
+            }],
+        );
+        assert_eq!(keys.key_for(&event), Some("KEY-Q"));
+    }
+
+    /// ...and never borrows another event's key to do it. Substituting one would send a
+    /// credential the site will refuse, and on a permissive site would file a result under an
+    /// authorisation that was never granted for it.
+    #[test]
+    fn a_queued_item_never_borrows_another_events_key() {
+        let site = "https://api.uwhportal.com";
+        let held = uwh_common::uwhportal::schedule::EventId::from_full("events/held-for").unwrap();
+        let wanted =
+            uwh_common::uwhportal::schedule::EventId::from_full("events/wanted-for").unwrap();
+        let mut keys = SiteAccessKeys::default();
+        keys.publish(
+            site.to_string(),
+            vec![crate::config::AccessKey {
+                site: site.to_string(),
+                event: held,
+                key: "KEY-HELD".to_string(),
+            }],
+        );
+        assert_eq!(keys.key_for(&wanted), None);
+    }
     use super::*;
     use crate::portal_manager::queue::{QueueFile, QueuedItem};
     use time::{Duration as TimeDuration, OffsetDateTime};

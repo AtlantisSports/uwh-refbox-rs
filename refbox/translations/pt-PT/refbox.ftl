@@ -67,8 +67,10 @@ player-display-brightness = BRILHO DO
     ECRÃ DE JOGADORES
 confirm-score-at-game-end = CONFIRMAR RESULTADO
     NO FIM DO JOGO
-track-cap-number-of-scorer = REGISTAR NÚMERO
-    DE TOUCA DO MARCADOR
+track-cap-number = REGISTAR NÚMERO
+    DE TOUCA
+force-keypad-numbers = FORÇAR TECLADO
+    NUMÉRICO
 event = EVENTO:
 track-fouls-and-warnings = REGISTAR FALTAS
     E AVISOS

@@ -906,6 +906,7 @@ pub(crate) enum PageEntrySnapshot {
         mode: Mode,
         collect_scorer_cap_num: bool,
         track_fouls_and_warnings: bool,
+        force_keypad_numbers: bool,
         show_behind_schedule_time: bool,
         confirm_score: bool,
         hide_time: bool,
@@ -963,6 +964,7 @@ impl PageEntrySnapshot {
                 mode,
                 collect_scorer_cap_num,
                 track_fouls_and_warnings,
+                force_keypad_numbers,
                 show_behind_schedule_time,
                 confirm_score,
                 hide_time,
@@ -975,6 +977,7 @@ impl PageEntrySnapshot {
                 edited.mode = mode;
                 edited.collect_scorer_cap_num = collect_scorer_cap_num;
                 edited.track_fouls_and_warnings = track_fouls_and_warnings;
+                edited.force_keypad_numbers = force_keypad_numbers;
                 edited.show_behind_schedule_time = show_behind_schedule_time;
                 edited.confirm_score = confirm_score;
                 edited.hide_time = hide_time;
@@ -2275,7 +2278,7 @@ impl RefBoxApp {
             LinkCommit::Leave => None,
         };
 
-        // Committed here, while `edited` is still borrowed, so the six toggles
+        // Committed here, while `edited` is still borrowed, so the seven toggles
         // need no per-field locals. `config` and `edited_settings` are disjoint
         // fields, so this mutable borrow and the immutable one above coexist.
         let hide_time_changed = commit_app_toggles(&mut self.config, edited);
@@ -2995,6 +2998,7 @@ impl RefBoxApp {
                 mode: edited.mode,
                 collect_scorer_cap_num: edited.collect_scorer_cap_num,
                 track_fouls_and_warnings: edited.track_fouls_and_warnings,
+                force_keypad_numbers: edited.force_keypad_numbers,
                 show_behind_schedule_time: edited.show_behind_schedule_time,
                 confirm_score: edited.confirm_score,
                 hide_time: edited.hide_time,
@@ -3093,6 +3097,7 @@ impl RefBoxApp {
             hide_time: self.config.hide_time,
             collect_scorer_cap_num: self.config.collect_scorer_cap_num,
             track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+            force_keypad_numbers: self.config.force_keypad_numbers,
             show_behind_schedule_time: self.config.show_behind_schedule_time,
             confirm_score: self.config.confirm_score,
             audible_countdown: self.config.audible_countdown,
@@ -5474,6 +5479,9 @@ impl RefBoxApp {
                             BoolGameParameter::FoulsAndWarnings => {
                                 edited_settings.track_fouls_and_warnings ^= true
                             }
+                            BoolGameParameter::ForceKeypadNumbers => {
+                                edited_settings.force_keypad_numbers ^= true
+                            }
                             BoolGameParameter::ShowBehindScheduleTime => {
                                 edited_settings.show_behind_schedule_time ^= true
                             }
@@ -6703,6 +6711,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    force_keypad_numbers: self.config.force_keypad_numbers,
                     show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     audible_countdown: self.config.audible_countdown,
@@ -6754,6 +6763,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    force_keypad_numbers: self.config.force_keypad_numbers,
                     show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     audible_countdown: self.config.audible_countdown,
@@ -6844,6 +6854,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    force_keypad_numbers: self.config.force_keypad_numbers,
                     show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     audible_countdown: self.config.audible_countdown,
@@ -6942,6 +6953,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    force_keypad_numbers: self.config.force_keypad_numbers,
                     show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     audible_countdown: self.config.audible_countdown,
@@ -7210,7 +7222,7 @@ impl RefBoxApp {
                     game_config,
                     self.uses_remote(),
                     self.schedule.as_ref(),
-                    self.config.track_fouls_and_warnings,
+                    self.config.fouls_tracked(),
                     self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled,
                     self.mouse_alarm_held || self.spacebar_held,
                     behind_schedule,
@@ -7257,9 +7269,10 @@ impl RefBoxApp {
                     data,
                     page,
                     player_num,
-                    self.config.track_fouls_and_warnings,
+                    self.config.fouls_tracked(),
                     self.edited_settings.as_ref().map(|e| e.game_number.clone()),
                     &self.game_rosters,
+                    self.config.keypad_numbers_forced(),
                 ),
             AppState::GameDetailsPage(is_refreshing) => build_game_info_page(
                 data,
@@ -7736,7 +7749,7 @@ mod link_selection_tests {
     }
 }
 
-/// Copy the six plain `Config` toggles owned by the App Options page out of the
+/// Copy the seven plain `Config` toggles owned by the App Options page out of the
 /// staged edits. Returns `true` when `hide_time` changed, which the live Apply
 /// path has to report to the update server.
 ///
@@ -7754,6 +7767,7 @@ mod link_selection_tests {
 fn commit_app_toggles(config: &mut Config, edited: &EditableSettings) -> bool {
     config.collect_scorer_cap_num = edited.collect_scorer_cap_num;
     config.track_fouls_and_warnings = edited.track_fouls_and_warnings;
+    config.force_keypad_numbers = edited.force_keypad_numbers;
     config.show_behind_schedule_time = edited.show_behind_schedule_time;
     config.confirm_score = edited.confirm_score;
     config.audible_countdown = edited.audible_countdown;
@@ -7766,7 +7780,7 @@ fn commit_app_toggles(config: &mut Config, edited: &EditableSettings) -> bool {
 mod commit_app_toggles_tests {
     use super::*;
 
-    /// All six toggles set to the opposite of their `Config` default, so a
+    /// All seven toggles set to the opposite of their `Config` default, so a
     /// missing assignment cannot pass by coincidence.
     fn all_flipped() -> EditableSettings {
         EditableSettings {
@@ -7776,12 +7790,13 @@ mod commit_app_toggles_tests {
             confirm_score: false,
             audible_countdown: true,
             hide_time: true,
+            force_keypad_numbers: true,
             ..Default::default()
         }
     }
 
     #[test]
-    fn all_six_toggles_are_copied() {
+    fn all_seven_toggles_are_copied() {
         let mut config = Config::default();
 
         commit_app_toggles(&mut config, &all_flipped());
@@ -7792,16 +7807,17 @@ mod commit_app_toggles_tests {
         assert!(!config.confirm_score);
         assert!(config.audible_countdown);
         assert!(config.hide_time);
+        assert!(config.force_keypad_numbers);
     }
 
     #[test]
-    fn all_six_toggles_are_copied_the_other_way() {
-        // Guards against a hardcoded assignment rather than a copy: the same six
-        // fields driven back in the opposite direction. All six start `true` so
-        // that committing an all-default (all-false) EditableSettings has to
-        // change every one of them — starting from `all_flipped()` would leave
-        // three already false, and their assertions would then pass even with
-        // the assignment deleted.
+    fn all_seven_toggles_are_copied_the_other_way() {
+        // Guards against a hardcoded assignment rather than a copy: the same
+        // seven fields driven back in the opposite direction. All seven start
+        // `true` so that committing an all-default (all-false) EditableSettings
+        // has to change every one of them — starting from `all_flipped()` would
+        // leave three already false, and their assertions would then pass even
+        // with the assignment deleted.
         let mut config = Config::default();
         config.collect_scorer_cap_num = true;
         config.track_fouls_and_warnings = true;
@@ -7809,6 +7825,7 @@ mod commit_app_toggles_tests {
         config.confirm_score = true;
         config.audible_countdown = true;
         config.hide_time = true;
+        config.force_keypad_numbers = true;
         let edited = EditableSettings::default();
 
         commit_app_toggles(&mut config, &edited);
@@ -7825,6 +7842,7 @@ mod commit_app_toggles_tests {
         assert_eq!(config.confirm_score, edited.confirm_score);
         assert_eq!(config.audible_countdown, edited.audible_countdown);
         assert_eq!(config.hide_time, edited.hide_time);
+        assert_eq!(config.force_keypad_numbers, edited.force_keypad_numbers);
     }
 
     #[test]
@@ -7858,7 +7876,7 @@ mod commit_app_toggles_tests {
     }
 
     #[test]
-    fn only_the_six_toggles_are_written() {
+    fn only_the_seven_toggles_are_written() {
         // `mode` and `source` must NOT be committed by this helper. Both have
         // side effects that differ between the two commit paths — the mode
         // confirmation and the portal-queue flush — so they stay with the
@@ -7892,6 +7910,7 @@ mod commit_app_toggles_tests {
         expected.confirm_score = edited.confirm_score;
         expected.audible_countdown = edited.audible_countdown;
         expected.hide_time = edited.hide_time;
+        expected.force_keypad_numbers = edited.force_keypad_numbers;
 
         commit_app_toggles(&mut config, &edited);
 

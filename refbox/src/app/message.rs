@@ -963,6 +963,10 @@ pub enum BoolGameParameter {
     TimeoutsCountedPerHalf,
     ConfirmScore,
     AudibleCountdown,
+    /// Emitted by FORCE KEYPAD NUMBERS on the App options page. Toggles the
+    /// staged `force_keypad_numbers`; the button is greyed, and so emits
+    /// nothing, while TRACK CAP NUMBER is off.
+    ForceKeypadNumbers,
     ManualAlarmEnabled,
 }
 

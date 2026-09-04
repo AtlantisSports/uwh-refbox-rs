@@ -67,8 +67,9 @@ player-display-brightness = HELDERHEID
     SPELERSSCHERM
 confirm-score-at-game-end = SCORE BEVESTIGEN
     BIJ WEDSTRIJDEINDE
-track-cap-number-of-scorer = MUTSNUMMER
-    DOELPUNTENMAKER
+track-cap-number = MUTSNUMMER
+force-keypad-numbers = NUMMERPAD
+    FORCEREN
 event = EVENEMENT:
 track-fouls-and-warnings = OVERTREDINGEN
     EN WAARSCHUWINGEN

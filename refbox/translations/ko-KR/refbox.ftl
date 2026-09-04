@@ -69,8 +69,10 @@ player-display-brightness = 선수 화면
     밝기
 confirm-score-at-game-end = 경기 종료 시
     점수 확인
-track-cap-number-of-scorer = 득점자 모자
-    번호 추적
+track-cap-number = 모자 번호
+    추적
+force-keypad-numbers = 항상 숫자
+    키패드 사용
 event = 대회:
 track-fouls-and-warnings = 반칙 및
     경고 추적

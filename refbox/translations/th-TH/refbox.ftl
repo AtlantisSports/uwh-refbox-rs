@@ -67,8 +67,9 @@ player-display-brightness = ความสว่าง
     หน้าจอผู้เล่น
 confirm-score-at-game-end = ยืนยันคะแนน
     ท้ายเกม
-track-cap-number-of-scorer = บันทึกหมายเลขหมวก
-    ของผู้ทำคะแนน
+track-cap-number = บันทึกหมายเลขหมวก
+force-keypad-numbers = บังคับใช้แป้น
+    หมายเลข
 event = กิจกรรม:
 track-fouls-and-warnings = บันทึกฟาวล์
     และการเตือน

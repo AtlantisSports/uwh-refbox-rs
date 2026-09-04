@@ -537,6 +537,33 @@ fn file_login_key(
     true
 }
 
+/// Which key the live client must be holding: the one filed for the event the refbox is *working
+/// with*, or `None` when no key is held for it.
+///
+/// The working event is the one staged in the settings editor while it is open, and the linked one
+/// otherwise. Those two diverge for the whole of an edit session, and the refbox fetches against
+/// the staged one from the moment it is picked -- `request_schedule` resolves the event exactly
+/// this way. Reading the linked event alone therefore chose the wrong key for every request an
+/// open editor makes, and cleared the key outright when nothing was linked yet: a fresh login
+/// filed its key correctly and the court list then hung, because the request that fills it went
+/// out with no credential.
+///
+/// One function so there is one answer. `apply_access_key` is the only writer of the client's key
+/// and reads it from here, so the client cannot end up holding a key for some other event.
+/// The event the refbox is working with: the one staged in the settings editor while it is open,
+/// the linked one otherwise.
+fn working_event<'a>(
+    drafted: Option<&'a EventId>,
+    linked: Option<&'a EventId>,
+) -> Option<&'a EventId> {
+    drafted.or(linked)
+}
+
+/// The key filed for one specific event, or `None` when none is held for it.
+fn key_for_event<'a>(config: &'a Config, site: &str, event: Option<&EventId>) -> Option<&'a str> {
+    event.and_then(|event| config.access_key_for(site, event))
+}
+
 /// The line logged when a saved custom-site address cannot be used, and what follows from it.
 ///
 /// Names the reason, never the address. The address is the one value that cannot be shown safely
@@ -1317,6 +1344,11 @@ impl RefBoxApp {
     }
 
     fn request_schedule(&self, event_id: EventId) -> Task<Message> {
+        // The privileged schedule endpoint is the only per-event authenticated fetch, and it is
+        // where a wrong key shows up as a court list that never loads. Settle the credential
+        // against the event actually being asked for, here, rather than trusting whichever
+        // transition led here to have pushed the right one.
+        self.apply_access_key_for(Some(&event_id));
         if let Some(client) = &self.uwhportal_client {
             // The site this request goes out against, carried on the reply.
             // Read at the moment of issue — the only point at which it is known.
@@ -1567,21 +1599,44 @@ impl RefBoxApp {
         self.apply_access_key();
     }
 
+    /// Drop the in-flight settings edit and put the client's key back where it belongs.
+    ///
+    /// The two belong together. While the editor is open the client holds the key for the event
+    /// being drafted; leaving without applying must not leave that key installed for an event the
+    /// refbox is not linked to. Every exit from the editor goes through here so a future one
+    /// cannot forget the second half.
+    fn close_settings_editor(&mut self) {
+        self.edited_settings = None;
+        self.apply_access_key();
+    }
+
     /// Load the key for the site and event the refbox is currently on, or clear
     /// the client's key when none is held. The single owner of "which key is
     /// loaded", so the client can never be left holding a key belonging to a
     /// different event.
-    fn apply_access_key(&mut self) {
+    fn apply_access_key(&self) {
+        self.apply_access_key_for(working_event(
+            self.edited_settings
+                .as_ref()
+                .and_then(|settings| settings.current_event_id.as_ref()),
+            self.current_event_id.as_ref(),
+        ));
+    }
+
+    /// Load the key filed for one named event, rather than for whichever event the refbox is
+    /// working with.
+    ///
+    /// Used where the event is already decided and the credential must match *it*: a request
+    /// settles its own key here, immediately before going out, so no state transition upstream can
+    /// leave it carrying the wrong one. Pushing the key on every transition was tried first and
+    /// missed twice in a single session -- once on the login path, once on an exit from the
+    /// settings editor -- because there are eleven places that stage or clear the event and only
+    /// two that read the result.
+    fn apply_access_key_for(&self, event: Option<&EventId>) {
         let Some(shared) = self.uwhportal_client.as_ref() else {
             return;
         };
-        let key = self
-            .current_event_id
-            .as_ref()
-            .and_then(|event| {
-                self.config
-                    .access_key_for(self.current_site.base_url.expose(), event)
-            })
+        let key = key_for_event(&self.config, self.current_site.base_url.expose(), event)
             .map(str::to_owned);
         // why this cannot panic: the guard is held only across the synchronous
         // set_token/clear_token calls below, neither of which panics.
@@ -1695,6 +1750,9 @@ impl RefBoxApp {
                 edits.current_event_id = Some(event_id.clone());
             }
         }
+        // Before the fetches below: the schedule call is authenticated per event, so it
+        // needs the key for the event just adopted, not the one being left.
+        self.apply_access_key();
 
         info!("Adopted custom site event {}", event_id.full());
         Task::batch(vec![
@@ -1787,6 +1845,9 @@ impl RefBoxApp {
             // greyed until a credential has actually been checked.
             edited.clear_for_remote_switch();
         }
+        // The staged event is gone, so the working event falls back to the linked one and
+        // the key has to follow it down.
+        self.apply_access_key();
 
         // 4. The clock and the game number — and NOT the game configuration.
         //    The portal-off path pairs `reset_to_manual_break` with
@@ -2957,6 +3018,14 @@ impl RefBoxApp {
     /// the game-info table tap-through added in Task 7).
     fn enter_game_config(&mut self, landing: ConfigPage) -> Task<Message> {
         let mut task = Task::none();
+
+        // A previous edit session's staged event may still be sitting here if the refbox left the
+        // editor by some route other than its own exits -- and the fresh `EditableSettings` built
+        // below is seeded from the *linked* event regardless. Drop it first so the key, and the
+        // `has_token()` read just below that decides the ACCESS TOKEN row, both describe the event
+        // this editor is about to show. Without it the row reports an event the refbox holds a
+        // good key for as disconnected until the operator re-picks it.
+        self.close_settings_editor();
 
         let uwhportal_token_valid = if let Some(ref client) = self.uwhportal_client {
             // why this cannot panic: the guard is held only for a synchronous
@@ -4977,7 +5046,7 @@ impl RefBoxApp {
                 //
                 // BeepTest mode no longer routes through EditGameConfig (it has its
                 // own Settings hierarchy), so this exit path always returns to MainPage.
-                self.edited_settings = None;
+                self.close_settings_editor();
                 self.app_state = AppState::MainPage;
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
@@ -5158,11 +5227,13 @@ impl RefBoxApp {
                 task
             }
             Message::ParameterSelected(param, val) => {
-                let edited_settings = self.edited_settings.as_mut().unwrap();
                 let task = match param {
                     ListableParameter::Event => {
                         let id = EventId::from_full(val).unwrap();
-                        let edited_source = edited_settings.source;
+                        // why this cannot panic: the same precondition as the single
+                        // borrow this replaces -- `ParameterSelected` is only reachable
+                        // from a parameter list, which only exists while the editor does.
+                        let edited_source = self.edited_settings.as_ref().unwrap().source;
                         // Whether the live client will actually be asked about
                         // this event — see `site_serves`. Shared by the token
                         // indicator below and the fetch batch at the end of
@@ -5171,7 +5242,19 @@ impl RefBoxApp {
                         // Set the new event id and clear court / game number / schedule
                         // that were filtered by the previous event so the user re-picks
                         // against the new event's data.
-                        edited_settings.select_event(id.clone());
+                        self.edited_settings
+                            .as_mut()
+                            .unwrap()
+                            .select_event(id.clone());
+                        // The key must follow the event just staged. Both things below
+                        // depend on it: the indicator reads the live client to decide
+                        // what to show, and the schedule fetch at the end of this arm
+                        // goes out against this event -- with the previous event's key
+                        // still loaded, a return to an event already logged in to fetches
+                        // nothing and reports itself disconnected, which is the whole
+                        // feature. `apply_access_key` stays the single owner of which
+                        // key is loaded.
+                        self.apply_access_key();
 
                         // Only resolve (or reset) the token indicator when a
                         // fetch will actually follow to settle it. Setting it to
@@ -5192,13 +5275,11 @@ impl RefBoxApp {
                                 // why this cannot panic: the guard is held only for a
                                 // synchronous `has_token()` call and dropped immediately.
                                 let has_token = client.lock().unwrap().has_token();
-                                if has_token {
-                                    edited_settings.uwhportal_token_valid = None;
-                                } else {
-                                    edited_settings.uwhportal_token_valid = Some(false);
-                                }
+                                self.edited_settings.as_mut().unwrap().uwhportal_token_valid =
+                                    if has_token { None } else { Some(false) };
                             } else {
-                                edited_settings.uwhportal_token_valid = Some(false);
+                                self.edited_settings.as_mut().unwrap().uwhportal_token_valid =
+                                    Some(false);
                             };
                         }
 
@@ -5239,11 +5320,11 @@ impl RefBoxApp {
                         // Set the new court and clear the game number that was filtered
                         // by the previous court so the user re-picks from the new
                         // court's filtered list.
-                        edited_settings.select_court(val);
+                        self.edited_settings.as_mut().unwrap().select_court(val);
                         Task::none()
                     }
                     ListableParameter::Game => {
-                        edited_settings.game_number = val;
+                        self.edited_settings.as_mut().unwrap().game_number = val;
                         Task::none()
                     }
                 };
@@ -6590,7 +6671,7 @@ impl RefBoxApp {
             Message::BeepTestCloseSettings => {
                 // Discard any staged edits (including the seeded mode) and
                 // return to the BeepTest main view.
-                self.edited_settings = None;
+                self.close_settings_editor();
                 self.app_state = AppState::BeepTestPage;
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
@@ -7951,6 +8032,59 @@ mod site_target_tests {
             config.access_key_for("https://api.uwhportal.com", &ev("first")),
             Some("FIRST-KEY"),
             "a login for one event must never overwrite the key filed for another"
+        );
+    }
+
+    /// The live client must hold the key for the event the refbox is *working with*, which while
+    /// the settings editor is open is the event being drafted -- not the one still linked. The
+    /// schedule fetch that fills the court list goes out against the drafted event the moment it
+    /// is picked (`request_schedule` resolves the event the same way), so a key chosen from the
+    /// linked event alone is the wrong key for every request the editor makes.
+    ///
+    /// Eric hit this on the 2026-09-04 walkthrough: a fresh login filed its key correctly and the
+    /// court list then hung forever, because the request that fills it went out with no key.
+    #[test]
+    fn the_key_follows_the_event_being_drafted_in_the_settings_editor() {
+        let mut config = Config::default();
+        config.store_access_key(
+            "https://api.uwhportal.com",
+            &ev("drafted"),
+            "DRAFTED-KEY".into(),
+        );
+        assert_eq!(
+            key_for_event(
+                &config,
+                "https://api.uwhportal.com",
+                working_event(Some(&ev("drafted")), Some(&ev("linked"))),
+            ),
+            Some("DRAFTED-KEY")
+        );
+    }
+
+    /// ...and stops following it the moment the editor is closed without applying: the refbox is
+    /// back to fetching for the linked event, so that is the key that must be loaded. Without
+    /// this, a key drafted and then abandoned would stay installed for an event the refbox is
+    /// not linked to.
+    #[test]
+    fn closing_the_editor_puts_the_key_back_on_the_linked_event() {
+        let mut config = Config::default();
+        config.store_access_key(
+            "https://api.uwhportal.com",
+            &ev("drafted"),
+            "DRAFTED-KEY".into(),
+        );
+        config.store_access_key(
+            "https://api.uwhportal.com",
+            &ev("linked"),
+            "LINKED-KEY".into(),
+        );
+        assert_eq!(
+            key_for_event(
+                &config,
+                "https://api.uwhportal.com",
+                working_event(None, Some(&ev("linked"))),
+            ),
+            Some("LINKED-KEY")
         );
     }
 

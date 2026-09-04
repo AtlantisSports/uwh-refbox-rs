@@ -9432,14 +9432,6 @@ mod anchor_tests {
     }
 }
 
-fn font_family_id(lang: Language) -> u8 {
-    match lang {
-        Language::Korean | Language::Japanese | Language::Mandarin => 1,
-        Language::Thai => 2,
-        _ => 0,
-    }
-}
-
 /// Fallback re-poll delay for the time updater when the clock is running but
 /// the game state has no concrete next-update instant. This happens only in
 /// degenerate zero-duration timing rules (e.g. the portal "FINALS" rule, whose

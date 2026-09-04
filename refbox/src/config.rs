@@ -525,7 +525,7 @@ impl Config {
         get_serde_value(old, "language", &mut language);
         get_serde_value(old, "display_mode", &mut display_mode);
         get_serde_value(old, "front_display_layout", &mut front_display_layout);
-        get_serde_value(old, "access_keys", &mut access_keys);
+        get_access_keys(old, &mut access_keys);
 
         Self {
             mode,
@@ -671,6 +671,33 @@ fn get_string_value(table: &Table, key: &str, save: &mut String) {
 /// Reads a value that `Config` stores through serde rather than as a bare TOML scalar —
 /// the unit-variant enums, and `Option`s of them. `save` is left at its default if the
 /// key is absent or holds something that will not deserialize.
+/// Read the key store, keeping every entry that parses.
+///
+/// `get_serde_value` is all-or-nothing: one malformed `[[access_keys]]` entry -- a hand edit, a
+/// truncated write, a field renamed by a future version -- would discard the whole array and
+/// leave the default, silently logging the operator out of every event they held a key for, with
+/// no way to tell that from "never logged in". Every other composite field in this file salvages
+/// per field for exactly that reason; this one salvages per entry.
+fn get_access_keys(table: &Table, save: &mut Vec<AccessKey>) {
+    let Some(value) = table.get("access_keys") else {
+        return;
+    };
+    let Some(entries) = value.as_array() else {
+        log::error!("access_keys is not an array of tables; ignoring it and keeping none");
+        return;
+    };
+    let mut kept = Vec::with_capacity(entries.len());
+    for entry in entries {
+        match entry.clone().try_into::<AccessKey>() {
+            Ok(key) => kept.push(key),
+            // Named without the key itself: this is the one field in the entry that is a
+            // credential, and a parse error can carry the value that failed.
+            Err(e) => log::error!("Discarding one unreadable saved access key: {e}"),
+        }
+    }
+    *save = kept;
+}
+
 fn get_serde_value<T: DeserializeOwned>(table: &Table, key: &str, save: &mut T) {
     if let Some(value) = table.get(key) {
         if let Ok(value) = value.clone().try_into() {
@@ -1578,6 +1605,33 @@ mod test {
             config.access_key_for("https://api.uwhportal.com", &ev("abc")),
             Some("NEW")
         );
+    }
+
+    /// One unreadable entry costs that entry, not the store. Discarding the array would log the
+    /// operator out of every event at once, and look exactly like never having logged in.
+    #[test]
+    fn one_unreadable_access_key_does_not_discard_the_others() {
+        let text = r#"
+            [[access_keys]]
+            site = "https://api.uwhportal.com"
+            event = "events/good-A"
+            key = "KEEP-ME"
+
+            [[access_keys]]
+            site = "https://api.uwhportal.com"
+            key = "NO-EVENT-FIELD"
+        "#;
+        let table: toml::Table = toml::from_str(text).unwrap();
+        let config = Config::migrate(&table);
+        assert_eq!(
+            config.access_key_for(
+                "https://api.uwhportal.com",
+                &EventId::from_full("events/good-A").unwrap()
+            ),
+            Some("KEEP-ME"),
+            "a readable entry beside a broken one must survive"
+        );
+        assert_eq!(config.access_keys.len(), 1);
     }
 
     #[test]

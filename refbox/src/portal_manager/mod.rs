@@ -142,11 +142,6 @@ impl UwhPortalIo {
         }
     }
 
-    /// The key filed for `event`, or the error a caller should report when none is held.
-    ///
-    /// Never sends a request without one. An unauthenticated POST is not a degraded upload -- a
-    /// permissive site would accept it and a strict one refuses it, and neither outcome is the
-    /// result the operator recorded going where it belongs.
     /// Build a request about `event`, carrying the key filed for it.
     ///
     /// Never sends one without a key. An unauthenticated POST is not a degraded upload -- a
@@ -156,8 +151,9 @@ impl UwhPortalIo {
     /// Both locks are taken here, keys before client, and held together while the key is chosen
     /// and installed. Taken separately, a repoint landing in between would install the departed
     /// site's key on the client now pointing at the new one -- the exact cross-site leak the key
-    /// store exists to prevent. `repoint_client` never holds both at once, so the ordering cannot
-    /// deadlock against it.
+    /// store exists to prevent. `repoint_client` installs the swapped client and the new key view
+    /// under the same two locks in the same order, which is what makes the pairing hold from both
+    /// sides and keeps the ordering free of deadlock.
     ///
     /// Mutating the shared client here is safe because the foreground builds its own client for
     /// every fetch that needs a credential; this task is the only writer left.

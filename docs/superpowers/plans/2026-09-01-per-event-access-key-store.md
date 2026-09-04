@@ -630,6 +630,17 @@ Claude launches the app; Eric performs these and reports back. Needs the dev por
 
 ## Flagged, not addressed in this branch
 
+- **Upgrading with results already queued — known issue, ruled 2026-09-04: accept and document.**
+  Adoption was dropped (deviation 3), so after an upgrade the queue can hold results for an event
+  whose key is no longer readable. Every upload is refused with `no access key held for event …`
+  and the portal indicator goes red until the operator logs in again *for that event*. If that
+  event has already finished it will not issue a refbox code, so those results cannot be delivered
+  at all: they are archived to `portal_queue.expired.json` after `EXPIRY_THRESHOLD` (120h) rather
+  than sent. The window is narrow — it needs an upgrade between events with results still pending
+  — and the archive means nothing is destroyed, but it is a real path to results never reaching
+  the Portal. Eric ruled against reintroducing adoption for this case; do not reopen it without
+  new evidence.
+
 - **The mode-switch warning may become pessimistic.** `mode-switch-portal-tenant` says "you must re-connect to {$to_portal} Portal". Each mode has its own portal base URL (`portal_target`, `app/mod.rs:474-494`), so once keys are filed per site, switching back to a tenant you have used will re-establish on its own and the warning will overstate. Copy change needs Eric's ruling.
 - **A queued result for an old event.** Queue items carry an event but no site, and the client holds one key at a time. A result queued for event A and sent while linked to event B already goes out with B's key today; this branch does not change that, but it does make it fixable.
 - **`post_game_stats` is not event-scoped in its URL** (`/api/admin/events/stats`, `uwh-common/src/uwhportal/mod.rs:344`) while every other authenticated refbox call is. Worth confirming which key it expects before branch 2.

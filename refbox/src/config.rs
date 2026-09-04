@@ -1121,7 +1121,7 @@ mod test {
     }
 
     #[test]
-    fn legacy_token_slots_are_read_but_never_written_back() {
+    fn legacy_token_slots_survive_a_load_and_vanish_only_when_empty() {
         let old = r#"
             [uwhportal]
             token = "LEGACY-PORTAL"
@@ -1138,11 +1138,13 @@ mod test {
         // The address is not a credential and stays.
         assert_eq!(config.custom_site.url, "https://scores.example.org");
 
-        // Once adopted and blanked, they leave the file entirely.
-        let mut adopted = config.clone();
-        adopted.uwhportal.token.clear();
-        adopted.custom_site.token.clear();
-        let text = toml::to_string(&adopted).unwrap();
+        // Emptied -- which nothing in this version does, since adoption was dropped on
+        // 2026-09-01 -- they leave the file entirely rather than being written as `token = ""`.
+        // That is why a settings file created fresh by this version carries no token line at all.
+        let mut blanked = config.clone();
+        blanked.uwhportal.token.clear();
+        blanked.custom_site.token.clear();
+        let text = toml::to_string(&blanked).unwrap();
         assert!(!text.contains("LEGACY-PORTAL"));
         assert!(
             !text.contains("token"),

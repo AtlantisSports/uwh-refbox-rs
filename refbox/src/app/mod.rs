@@ -561,18 +561,21 @@ fn client_for_event(
     let mut client = build_site_client(target)?;
     if let Some(key) = config.access_key_for(target.base_url.expose(), event) {
         if let Err(why) = client.set_token(key) {
-            // Only reachable from a hand-edited settings file: send nothing rather than a
-            // credential that cannot be put in a header.
-            warn!("A saved access key cannot be sent and was not loaded: {why}");
-            client.clear_token();
+            // Only reachable from a hand-edited settings file. No client at all, rather than one
+            // carrying nothing: the callers treat `None` as "cannot ask", while a token-less
+            // client would send the privileged fetch and the token check unauthenticated -- and a
+            // permissive site answering `200` to that check paints the row green over no
+            // credential whatsoever.
+            warn!("A saved access key cannot be sent, so no request will be made: {why}");
+            return None;
         }
     }
     Some(client)
 }
 
 /// The key filed for one specific event, or `None` when none is held for it.
-fn key_for_event<'a>(config: &'a Config, site: &str, event: Option<&EventId>) -> Option<&'a str> {
-    event.and_then(|event| config.access_key_for(site, event))
+fn key_for_event<'a>(config: &'a Config, site: &str, event: &EventId) -> Option<&'a str> {
+    config.access_key_for(site, event)
 }
 
 /// The line logged when a saved custom-site address cannot be used, and what follows from it.
@@ -1592,17 +1595,33 @@ impl RefBoxApp {
             return;
         };
         info!("{}", repoint_log_line(&target));
-        // why this cannot panic: the guard is held only for the assignment
-        // below, which cannot panic, so the mutex is never poisoned here.
-        *shared.lock().unwrap() = new_client;
         self.current_site = target;
+        // The new client and the key view that belongs to it, installed together under both
+        // locks in the reader's order (keys, then client). `UwhPortalIo::request_for` takes the
+        // same two the same way round: published separately, it could read the departed site's
+        // key between the two acquisitions and put it on the client already pointing at the new
+        // site, which is precisely the cross-site leak the store exists to prevent.
+        {
+            // why this cannot panic: `unwrap_or_else(into_inner)` keeps a poisoned lock usable,
+            // and neither the assignment nor `publish` can panic while they are held.
+            let mut keys = self
+                .portal_access_keys
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut client = shared
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            *client = new_client;
+            keys.publish(
+                self.current_site.base_url.expose().to_string(),
+                self.config.access_keys.clone(),
+            );
+        }
         // Only here. The two early returns above leave the client exactly where
         // it was, so replies in flight are still from the site the refbox is on
         // and must NOT be invalidated. (Same asymmetry `1f4bdc62` fixed for the
         // portal fetch; keep the two consistent.)
         self.site_generation = self.site_generation.wrapping_add(1);
-        // The site changed, so which keys are reachable changed with it.
-        self.publish_access_keys();
     }
 
     /// Publish the site and the key store to the background uploader.
@@ -1641,12 +1660,8 @@ impl RefBoxApp {
         let (valid, task) = match self.current_event_id.clone() {
             Some(id)
                 if self.uwhportal_client.is_some()
-                    && key_for_event(
-                        &self.config,
-                        self.current_site.base_url.expose(),
-                        Some(&id),
-                    )
-                    .is_some() =>
+                    && key_for_event(&self.config, self.current_site.base_url.expose(), &id)
+                        .is_some() =>
             {
                 (None, self.check_uwhportal_auth(&id))
             }
@@ -1896,12 +1911,9 @@ impl RefBoxApp {
             let issued_at = self.site_generation;
             // Asked of the store, about *this* event. The shared client's key belongs to the
             // linked event and answers a different question.
-            let has_token = key_for_event(
-                &self.config,
-                self.current_site.base_url.expose(),
-                Some(event_id),
-            )
-            .is_some();
+            let has_token =
+                key_for_event(&self.config, self.current_site.base_url.expose(), event_id)
+                    .is_some();
             if !has_token {
                 // Never ask a site to vouch for a credential we do not hold.
                 // Only the site can enforce a token, and a permissive one
@@ -3017,7 +3029,7 @@ impl RefBoxApp {
                     if key_for_event(
                         &self.config,
                         self.current_site.base_url.expose(),
-                        Some(event_id),
+                        event_id,
                     )
                     .is_some() =>
                 {
@@ -4414,11 +4426,12 @@ impl RefBoxApp {
             }
             Message::RequestPortalRefresh => {
                 // Only spin the REFRESH button when there is actually an event
-                // to refresh AND a client to fetch it with; otherwise nothing
-                // would arrive to clear the flag. The no-client case is real:
-                // a degraded startup (see PortalManager::new_degraded) can
-                // still have an event linked from a restored link note, and
-                // `request_schedule` returns Task::none() with no client, so
+                // to refresh AND a site the refbox could reach; otherwise
+                // nothing would arrive to clear the flag. The no-client case is
+                // real: a degraded startup (see PortalManager::new_degraded) can
+                // still have an event linked from a restored link note, and it
+                // means the site could not be built at all -- `request_schedule`
+                // builds against that same target and fails the same way, so
                 // without this the button sticks on "Refreshing..." forever.
                 match (
                     self.current_event_id.clone(),
@@ -5266,7 +5279,7 @@ impl RefBoxApp {
                                 && key_for_event(
                                     &self.config,
                                     self.current_site.base_url.expose(),
-                                    Some(&id),
+                                    &id,
                                 )
                                 .is_some();
                             self.edited_settings.as_mut().unwrap().uwhportal_token_valid =

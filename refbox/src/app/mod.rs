@@ -550,13 +550,33 @@ fn file_login_key(
 ///
 /// One function so there is one answer. `apply_access_key` is the only writer of the client's key
 /// and reads it from here, so the client cannot end up holding a key for some other event.
-/// The event the refbox is working with: the one staged in the settings editor while it is open,
-/// the linked one otherwise.
-fn working_event<'a>(
-    drafted: Option<&'a EventId>,
-    linked: Option<&'a EventId>,
-) -> Option<&'a EventId> {
-    drafted.or(linked)
+/// A client for `target` carrying the key filed for `event`, or carrying none when no key is held.
+///
+/// Deliberately not the shared client. The background health probe and the result-upload queue
+/// hold a clone of that one (`UwhPortalIo::new(Arc::clone(client), ..)`) and both assume its key
+/// belongs to the *linked* event. A foreground fetch for a different event -- the one being
+/// drafted in the settings editor -- must not borrow theirs and put it back: review on 2026-09-04
+/// showed that clearing the shared key from the event picker made the background probe report a
+/// false "login expired", and sent queued uploads out uncredentialed for as long as the picker was
+/// open.
+///
+/// Builds a fresh client per call, which is affordable because the callers are operator actions --
+/// picking an event, logging in, refreshing -- and not a polling loop.
+fn client_for_event(
+    target: &SiteTarget,
+    config: &Config,
+    event: &EventId,
+) -> Option<UwhPortalClient> {
+    let mut client = build_site_client(target)?;
+    if let Some(key) = config.access_key_for(target.base_url.expose(), event) {
+        if let Err(why) = client.set_token(key) {
+            // Only reachable from a hand-edited settings file: send nothing rather than a
+            // credential that cannot be put in a header.
+            warn!("A saved access key cannot be sent and was not loaded: {why}");
+            client.clear_token();
+        }
+    }
+    Some(client)
 }
 
 /// The key filed for one specific event, or `None` when none is held for it.
@@ -1205,12 +1225,11 @@ impl RefBoxApp {
     /// where results are sent, which must keep going to the site they were
     /// queued for until an APPLY says otherwise.
     ///
-    /// The token comes from the config, which is written at the same moment the
-    /// live client's is (`Message::RecvPortalToken`), so the two agree. The one
-    /// exception is the debug-only `UWH_PORTAL_SCRAMBLE_TOKEN`, which scrambles
-    /// the live client's token in memory and not the config's; a scrambled
-    /// session will still load the list here. That is acceptable — the flag
-    /// exists to exercise token *rejection*, which this fetch is not.
+    /// Carries no credential at all. `build_site_client` files no key -- keys belong to a
+    /// (site, event) pair and no event is named here -- and the event list is not a privileged
+    /// endpoint, so none is needed. This paragraph previously described where its token came
+    /// from and how `UWH_PORTAL_SCRAMBLE_TOKEN` interacted with it; neither has been true since
+    /// the key store landed.
     ///
     /// Deliberately NOT stamped with `site_generation`, unlike every other
     /// reply in this group. This fetch does not use the live client at all — it
@@ -1345,19 +1364,15 @@ impl RefBoxApp {
 
     fn request_schedule(&self, event_id: EventId) -> Task<Message> {
         // The privileged schedule endpoint is the only per-event authenticated fetch, and it is
-        // where a wrong key shows up as a court list that never loads. Settle the credential
-        // against the event actually being asked for, here, rather than trusting whichever
-        // transition led here to have pushed the right one.
-        self.apply_access_key_for(Some(&event_id));
-        if let Some(client) = &self.uwhportal_client {
+        // where a wrong key shows up as a court list that never loads. It carries the key filed
+        // for the event it asks about, on a client of its own, so asking about an event other than
+        // the linked one cannot disturb what the background tasks are holding.
+        if let Some(client) = client_for_event(&self.current_site, &self.config, &event_id) {
             // The site this request goes out against, carried on the reply.
             // Read at the moment of issue — the only point at which it is known.
             let issued_at = self.site_generation;
-            // why this cannot panic: see `request_teams_list` above.
-            let guard = client.lock().unwrap();
-            let schedule_req = guard.get_event_schedule_privileged(&event_id);
-            let names_req = guard.get_event_referee_name_map_from_referees(&event_id);
-            drop(guard);
+            let schedule_req = client.get_event_schedule_privileged(&event_id);
+            let names_req = client.get_event_referee_name_map_from_referees(&event_id);
             Task::future(async move {
                 let mut schedule = match schedule_req.await {
                     Ok(s) => s,
@@ -1599,45 +1614,28 @@ impl RefBoxApp {
         self.apply_access_key();
     }
 
-    /// Drop the in-flight settings edit and put the client's key back where it belongs.
+    /// Load the key for the site and the *linked* event onto the shared client, or clear it when
+    /// none is held.
     ///
-    /// The two belong together. While the editor is open the client holds the key for the event
-    /// being drafted; leaving without applying must not leave that key installed for an event the
-    /// refbox is not linked to. Every exit from the editor goes through here so a future one
-    /// cannot forget the second half.
-    fn close_settings_editor(&mut self) {
-        self.edited_settings = None;
-        self.apply_access_key();
-    }
-
-    /// Load the key for the site and event the refbox is currently on, or clear
-    /// the client's key when none is held. The single owner of "which key is
-    /// loaded", so the client can never be left holding a key belonging to a
-    /// different event.
+    /// The single owner of what the shared client carries. That client is cloned into the
+    /// background health probe and the result-upload queue, both of which are asking about the
+    /// linked event, so its credential must mean exactly that and nothing else. A fetch about any
+    /// other event -- one merely staged in the settings editor -- takes its own client from
+    /// `client_for_event` rather than borrowing this one.
     fn apply_access_key(&self) {
-        self.apply_access_key_for(working_event(
-            self.edited_settings
-                .as_ref()
-                .and_then(|settings| settings.current_event_id.as_ref()),
-            self.current_event_id.as_ref(),
-        ));
-    }
-
-    /// Load the key filed for one named event, rather than for whichever event the refbox is
-    /// working with.
-    ///
-    /// Used where the event is already decided and the credential must match *it*: a request
-    /// settles its own key here, immediately before going out, so no state transition upstream can
-    /// leave it carrying the wrong one. Pushing the key on every transition was tried first and
-    /// missed twice in a single session -- once on the login path, once on an exit from the
-    /// settings editor -- because there are eleven places that stage or clear the event and only
-    /// two that read the result.
-    fn apply_access_key_for(&self, event: Option<&EventId>) {
         let Some(shared) = self.uwhportal_client.as_ref() else {
             return;
         };
-        let key = key_for_event(&self.config, self.current_site.base_url.expose(), event)
-            .map(str::to_owned);
+        // The *linked* event, and only ever that one. Everything else holding this handle -- the
+        // background health probe, the result queue -- is asking about the event the refbox is
+        // linked to, so that is what its credential has to be. A fetch for any other event brings
+        // its own client; see `client_for_event`.
+        let key = key_for_event(
+            &self.config,
+            self.current_site.base_url.expose(),
+            self.current_event_id.as_ref(),
+        )
+        .map(str::to_owned);
         // why this cannot panic: the guard is held only across the synchronous
         // set_token/clear_token calls below, neither of which panics.
         let mut guard = shared.lock().unwrap();
@@ -1750,10 +1748,6 @@ impl RefBoxApp {
                 edits.current_event_id = Some(event_id.clone());
             }
         }
-        // Before the fetches below: the schedule call is authenticated per event, so it
-        // needs the key for the event just adopted, not the one being left.
-        self.apply_access_key();
-
         info!("Adopted custom site event {}", event_id.full());
         Task::batch(vec![
             self.request_teams_list(event_id.clone()),
@@ -1845,9 +1839,6 @@ impl RefBoxApp {
             // greyed until a credential has actually been checked.
             edited.clear_for_remote_switch();
         }
-        // The staged event is gone, so the working event falls back to the linked one and
-        // the key has to follow it down.
-        self.apply_access_key();
 
         // 4. The clock and the game number — and NOT the game configuration.
         //    The portal-off path pairs `reset_to_manual_break` with
@@ -1918,14 +1909,19 @@ impl RefBoxApp {
     }
 
     fn check_uwhportal_auth(&self, event_id: &EventId) -> Task<Message> {
-        if let Some(client) = &self.uwhportal_client {
+        if self.uwhportal_client.is_some() {
             // The site this check goes out against, carried on the reply. Read
             // here, at the moment of issue, because that is the only point at
             // which the answer is known.
             let issued_at = self.site_generation;
-            // why this cannot panic: the guard is held only for a synchronous
-            // `has_token()` call and dropped immediately.
-            let has_token = client.lock().unwrap().has_token();
+            // Asked of the store, about *this* event. The shared client's key belongs to the
+            // linked event and answers a different question.
+            let has_token = key_for_event(
+                &self.config,
+                self.current_site.base_url.expose(),
+                Some(event_id),
+            )
+            .is_some();
             if !has_token {
                 // Never ask a site to vouch for a credential we do not hold.
                 // Only the site can enforce a token, and a permissive one
@@ -1934,8 +1930,10 @@ impl RefBoxApp {
                 // rejected state here instead, without sending the request.
                 return Task::done(Message::RecvTokenValid(event_id.clone(), false, issued_at));
             }
-            // why this cannot panic: see `request_teams_list` above.
-            let request = client.lock().unwrap().verify_token(event_id);
+            let Some(client) = client_for_event(&self.current_site, &self.config, event_id) else {
+                return Task::done(Message::RecvTokenValid(event_id.clone(), false, issued_at));
+            };
+            let request = client.verify_token(event_id);
             // Tag the result with the event it was checked for so the handler
             // can drop a late reply for a previously-selected event.
             let event_id = event_id.clone();
@@ -3019,27 +3017,24 @@ impl RefBoxApp {
     fn enter_game_config(&mut self, landing: ConfigPage) -> Task<Message> {
         let mut task = Task::none();
 
-        // A previous edit session's staged event may still be sitting here if the refbox left the
-        // editor by some route other than its own exits -- and the fresh `EditableSettings` built
-        // below is seeded from the *linked* event regardless. Drop it first so the key, and the
-        // `has_token()` read just below that decides the ACCESS TOKEN row, both describe the event
-        // this editor is about to show. Without it the row reports an event the refbox holds a
-        // good key for as disconnected until the operator re-picks it.
-        self.close_settings_editor();
-
-        let uwhportal_token_valid = if let Some(ref client) = self.uwhportal_client {
-            // why this cannot panic: the guard is held only for a synchronous
-            // `has_token()` call and dropped immediately.
-            let has_token = client.lock().unwrap().has_token();
-            if has_token {
-                if let Some(event_id) = self.current_event_id.as_ref() {
+        // Whether a key is on file for the event this editor is about to show, asked of the
+        // store. Reading the shared client instead made the row report an event the refbox holds
+        // a good key for as disconnected, because that client's key had been cleared by an
+        // earlier visit to the picker.
+        let uwhportal_token_valid = if self.uwhportal_client.is_some() {
+            match self.current_event_id.as_ref() {
+                Some(event_id)
+                    if key_for_event(
+                        &self.config,
+                        self.current_site.base_url.expose(),
+                        Some(event_id),
+                    )
+                    .is_some() =>
+                {
                     task = self.check_uwhportal_auth(event_id);
                     None
-                } else {
-                    Some(false)
                 }
-            } else {
-                Some(false)
+                _ => Some(false),
             }
         } else {
             Some(false)
@@ -5046,7 +5041,7 @@ impl RefBoxApp {
                 //
                 // BeepTest mode no longer routes through EditGameConfig (it has its
                 // own Settings hierarchy), so this exit path always returns to MainPage.
-                self.close_settings_editor();
+                self.edited_settings = None;
                 self.app_state = AppState::MainPage;
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
@@ -5246,15 +5241,6 @@ impl RefBoxApp {
                             .as_mut()
                             .unwrap()
                             .select_event(id.clone());
-                        // The key must follow the event just staged. Both things below
-                        // depend on it: the indicator reads the live client to decide
-                        // what to show, and the schedule fetch at the end of this arm
-                        // goes out against this event -- with the previous event's key
-                        // still loaded, a return to an event already logged in to fetches
-                        // nothing and reports itself disconnected, which is the whole
-                        // feature. `apply_access_key` stays the single owner of which
-                        // key is loaded.
-                        self.apply_access_key();
 
                         // Only resolve (or reset) the token indicator when a
                         // fetch will actually follow to settle it. Setting it to
@@ -5271,16 +5257,18 @@ impl RefBoxApp {
                         // usable address saved, where the SITE page's APPLY is
                         // what moves the client, or a repoint that failed.
                         if will_fetch {
-                            if let Some(ref client) = self.uwhportal_client {
-                                // why this cannot panic: the guard is held only for a
-                                // synchronous `has_token()` call and dropped immediately.
-                                let has_token = client.lock().unwrap().has_token();
-                                self.edited_settings.as_mut().unwrap().uwhportal_token_valid =
-                                    if has_token { None } else { Some(false) };
-                            } else {
-                                self.edited_settings.as_mut().unwrap().uwhportal_token_valid =
-                                    Some(false);
-                            };
+                            // Whether a key is on file for the event just staged, read from the
+                            // store. The shared client's key belongs to the linked event and says
+                            // nothing about this one.
+                            let have_key = self.uwhportal_client.is_some()
+                                && key_for_event(
+                                    &self.config,
+                                    self.current_site.base_url.expose(),
+                                    Some(&id),
+                                )
+                                .is_some();
+                            self.edited_settings.as_mut().unwrap().uwhportal_token_valid =
+                                if have_key { None } else { Some(false) };
                         }
 
                         if let Some(pools) = self
@@ -6272,11 +6260,12 @@ impl RefBoxApp {
                             } else {
                                 // The key was installed on the live client above as part of
                                 // checking it can be sent, which is a different question from
-                                // which key this refbox should be holding. Re-derive that from
-                                // the store, so `apply_access_key` stays the single owner of
-                                // what is loaded: without this, logging in for a drafted event
-                                // and then cancelling leaves the live client holding a key for
-                                // an event it is not linked to.
+                                // which key the *shared* client should be holding. That check
+                                // just installed this key on it, and the shared client belongs to
+                                // the linked event -- the background health probe and the result
+                                // queue read it. Put it back to the linked event's key, so a
+                                // login for an event that is merely staged cannot leave their
+                                // credential pointing somewhere else.
                                 self.apply_access_key();
                                 // Save immediately. The handler routes to the Game page, so a
                                 // key filed only in memory is lost if the operator backs out
@@ -6286,7 +6275,14 @@ impl RefBoxApp {
                                 self.persist_config();
                             }
                             if let Some(ref mut settings) = self.edited_settings {
-                                settings.uwhportal_token_valid = Some(true);
+                                // Only for the event this key was issued for. If the operator
+                                // staged a different event while the login was in flight, nothing
+                                // here has checked *that* event, and painting the row green over
+                                // it is the same untruth the suppressed-fetch case avoids. Its
+                                // own verdict, set when it was staged, is left standing.
+                                if settings.current_event_id.as_ref() == Some(&issued_for_event) {
+                                    settings.uwhportal_token_valid = Some(true);
+                                }
                             }
 
                             // Tell the portal manager the token is healthy
@@ -6671,7 +6667,7 @@ impl RefBoxApp {
             Message::BeepTestCloseSettings => {
                 // Discard any staged edits (including the seeded mode) and
                 // return to the BeepTest main view.
-                self.close_settings_editor();
+                self.edited_settings = None;
                 self.app_state = AppState::BeepTestPage;
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
@@ -8035,56 +8031,52 @@ mod site_target_tests {
         );
     }
 
-    /// The live client must hold the key for the event the refbox is *working with*, which while
-    /// the settings editor is open is the event being drafted -- not the one still linked. The
-    /// schedule fetch that fills the court list goes out against the drafted event the moment it
-    /// is picked (`request_schedule` resolves the event the same way), so a key chosen from the
-    /// linked event alone is the wrong key for every request the editor makes.
-    ///
-    /// Eric hit this on the 2026-09-04 walkthrough: a fresh login filed its key correctly and the
-    /// court list then hung forever, because the request that fills it went out with no key.
+    /// A fetch carries the key filed for the event it is asking about. This is the half that
+    /// broke on 2026-09-04: the key was chosen from the *linked* event, so the first fetch after a
+    /// login went out with no credential at all and the court list hung.
     #[test]
-    fn the_key_follows_the_event_being_drafted_in_the_settings_editor() {
+    fn a_request_carries_the_key_filed_for_the_event_it_asks_for() {
         let mut config = Config::default();
         config.store_access_key(
             "https://api.uwhportal.com",
-            &ev("drafted"),
-            "DRAFTED-KEY".into(),
+            &ev("asked-about"),
+            "KEY-B".into(),
         );
-        assert_eq!(
-            key_for_event(
-                &config,
-                "https://api.uwhportal.com",
-                working_event(Some(&ev("drafted")), Some(&ev("linked"))),
-            ),
-            Some("DRAFTED-KEY")
+        let target = portal_target(Mode::Hockey6V6, false);
+        let client = client_for_event(&target, &config, &ev("asked-about")).unwrap();
+        assert!(client.has_token(), "a key is on file for this event");
+    }
+
+    /// ...and one filed for a different event is never substituted. A client that fell back to
+    /// "any key for this site" would pass the test above and still send one event's credential to
+    /// a request about another.
+    #[test]
+    fn a_request_for_an_event_with_no_key_carries_no_credential() {
+        let mut config = Config::default();
+        config.store_access_key("https://api.uwhportal.com", &ev("other"), "KEY-A".into());
+        let target = portal_target(Mode::Hockey6V6, false);
+        let client = client_for_event(&target, &config, &ev("asked-about")).unwrap();
+        assert!(
+            !client.has_token(),
+            "a key filed for another event must never be sent for this one"
         );
     }
 
-    /// ...and stops following it the moment the editor is closed without applying: the refbox is
-    /// back to fetching for the linked event, so that is the key that must be loaded. Without
-    /// this, a key drafted and then abandoned would stay installed for an event the refbox is
-    /// not linked to.
+    /// The pre-upgrade `[uwhportal] token` is kept in the file and never used as a credential:
+    /// adoption was dropped on 2026-09-01, so an upgrading operator logs in exactly once.
+    ///
+    /// Replaces a test that asserted `build_site_client` carries no key. That was true but could
+    /// not fail -- the function no longer receives the config it was set up with, so the
+    /// assertion held no matter what the config said.
     #[test]
-    fn closing_the_editor_puts_the_key_back_on_the_linked_event() {
+    fn a_legacy_token_is_never_sent_as_an_access_key() {
         let mut config = Config::default();
-        config.store_access_key(
-            "https://api.uwhportal.com",
-            &ev("drafted"),
-            "DRAFTED-KEY".into(),
-        );
-        config.store_access_key(
-            "https://api.uwhportal.com",
-            &ev("linked"),
-            "LINKED-KEY".into(),
-        );
-        assert_eq!(
-            key_for_event(
-                &config,
-                "https://api.uwhportal.com",
-                working_event(None, Some(&ev("linked"))),
-            ),
-            Some("LINKED-KEY")
+        config.uwhportal.token = "LEGACY-KEY".into();
+        let target = portal_target(Mode::Hockey6V6, false);
+        let client = client_for_event(&target, &config, &ev("abc")).unwrap();
+        assert!(
+            !client.has_token(),
+            "the legacy slot is retained for rollback, never sent"
         );
     }
 
@@ -8334,29 +8326,6 @@ mod site_target_tests {
 
     fn ev(id: &str) -> EventId {
         EventId::from_full(format!("events/{id}")).unwrap()
-    }
-
-    /// At startup `current_event_id` is `None` and is only filled later by the
-    /// link restore, so the event simply is not known yet when the client is
-    /// built -- no key can be chosen at that point even though one is on file.
-    ///
-    /// `uwhportal.token` is set here on purpose, even though it plays no part
-    /// in the new per-event store: before this task `build_site_client` read
-    /// that legacy field directly, so a non-empty value here would have
-    /// produced a client WITH a token and failed this assertion. Setting it
-    /// is what makes the test fail without this task's change, rather than
-    /// passing either way.
-    #[test]
-    fn a_client_is_built_with_no_key_because_the_event_is_not_known_yet() {
-        let mut config = Config::default();
-        config.uwhportal.token = "LEGACY-KEY".into();
-        config.store_access_key("https://api.uwhportal.com", &ev("abc"), "KEY-A".into());
-        let target = portal_target(Mode::Hockey6V6, false);
-        let client = build_site_client(&target).unwrap();
-        assert!(
-            !client.has_token(),
-            "the event is unknown at build time, so no key can be chosen"
-        );
     }
 }
 

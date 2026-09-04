@@ -2088,10 +2088,13 @@ impl RefBoxApp {
         //    overwrite the operator's settings. Calling only this half is the
         //    whole point.
         //
-        //    why this cannot panic: `reset_to_manual_break` takes no fallible
-        //    path — it clears the next-game info, sets the game number and clock
-        //    directly, and starts the clock.
-        self.tm.lock().reset_to_manual_break(Instant::now());
+        //    `reset_for_site_switch`, NOT `reset_to_manual_break`: the latter drops
+        //    the schedule link so its own `start_clock` is not refused, which would
+        //    leave the engine unlinked here while the app is still remote. It would
+        //    then resume arithmetic numbering and auto-start a phantom game on the
+        //    site just switched to. See that method's own note.
+        let linked = self.uses_remote();
+        self.tm.lock().reset_for_site_switch(linked, Instant::now());
 
         // 5. What the new site owes us.
         let mut task = match target {

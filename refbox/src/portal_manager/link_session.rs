@@ -39,6 +39,17 @@ const TMP_FILE_NAME: &str = "portal_link.json.tmp";
 /// `Portal` does not say *which* portal: the existing `mode` field already
 /// separates UWH from UWR, and `decide_restore` refuses a note that crosses
 /// between them.
+///
+/// **Known gap, recorded 2026-09-04 (re-review finding 13).** It also does not
+/// separate portal *environments*. A refbox launched with
+/// `UWH_PORTAL_URL_OVERRIDE` pointed at the dev portal writes a note that is
+/// indistinguishable from a production one, so relaunching without the override
+/// restores a dev event id, court and anchor against production — real values,
+/// wrong server. Event ids collide across environments by design, which is the
+/// same reason `Custom` carries its whole address. Closing it means recording the
+/// portal base URL here too. Not done in this change: it affects the note written
+/// by every ordinary session, so it wants its own branch and its own walkthrough.
+/// It matters most during testing, which is exactly when the override is in use.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NoteSite {
     #[default]
@@ -83,9 +94,14 @@ pub struct LinkSessionFile {
     /// Defaults to `Portal`, which is exactly what a note written before this
     /// field existed meant: startup restored those only for the Portal and
     /// ignored them outright for a custom site. Deliberately additive rather
-    /// than a version bump — the default reproduces the old behaviour exactly,
-    /// and holding the version lets a rolled-back binary still read the note
-    /// instead of quarantining it and losing the link mid-tournament.
+    /// than a version bump: the default reproduces the old behaviour exactly, and
+    /// an unknown key is ignored, so any binary that already understands v2 reads
+    /// a note carrying this field.
+    ///
+    /// That is narrower than first written here. Rolling back past this branch
+    /// still loses the note — the branch's own v1 -> v2 bump did that, and a v1
+    /// binary matches its version exactly rather than accepting anything lower.
+    /// Not bumping again only avoids adding a second such cliff.
     #[serde(default)]
     pub site: NoteSite,
     #[serde(with = "time::serde::rfc3339")]

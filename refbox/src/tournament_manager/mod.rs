@@ -350,12 +350,17 @@ impl TournamentManager {
         self.schedule_linked = linked;
     }
 
-    /// No game can legitimately be started next: either the court is known to be
-    /// finished, or we are linked to a schedule that has not named one. Both mean
-    /// the clock must hold rather than count down toward a game that is not
-    /// coming — and neither may be answered with arithmetic.
+    /// No game can legitimately be started next — which is exactly the question
+    /// `next_game_number` already answers with a blank.
+    ///
+    /// Asked rather than re-derived, because the blank has three causes and the
+    /// re-derivation only covered two: the court is known to be finished, we are
+    /// linked to a schedule that has not named a game, **or** the manual number
+    /// will not parse so no arithmetic can name one. Testing the flags instead
+    /// missed that third case, leaving the engine believing a game was startable
+    /// while every surface that reads the number showed there was none.
     fn no_startable_next_game(&self) -> bool {
-        self.next_game.is_none() && (self.no_next_game || self.schedule_linked)
+        self.next_game_number().is_empty()
     }
 
     pub fn set_game_number<S: ToString>(&mut self, number: S) {
@@ -9841,6 +9846,29 @@ mod test {
         tm.set_game_number("not-a-number");
         tm.set_schedule_linked(false);
         assert_eq!(tm.next_game_number(), "");
+    }
+
+    #[test]
+    fn an_unparseable_manual_number_also_refuses_start_play_now() {
+        // Finding 2 of the 2026-09-04 review. The test above proves the number comes
+        // out blank; this proves the engine acts on it. The gate used to test the two
+        // flags (`no_next_game`, `schedule_linked`) rather than the answer they feed,
+        // so on this third path it still believed a game was startable — while the UI
+        // greyed START NOW off the blank number. The two disagreeing is what let the
+        // between-games expiry start a game with an empty number.
+        initialize();
+        let mut tm = TournamentManager::new(Default::default());
+        tm.set_game_number("not-a-number");
+        tm.set_schedule_linked(false);
+        assert_eq!(
+            tm.next_game_number(),
+            "",
+            "fixture check: an unparseable number names no next game"
+        );
+        assert_eq!(
+            tm.start_play_now(Instant::now()),
+            Err(TMErr::NoNextGameOnCourt)
+        );
     }
 
     #[test]

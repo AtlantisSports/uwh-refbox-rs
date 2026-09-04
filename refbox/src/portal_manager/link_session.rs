@@ -28,6 +28,29 @@ pub const FRESHNESS_WINDOW: time::Duration = time::Duration::hours(120);
 const FILE_NAME: &str = "portal_link.json";
 const TMP_FILE_NAME: &str = "portal_link.json.tmp";
 
+/// Which site a note belongs to.
+///
+/// An event id cannot answer this: ids collide between the Portal and a custom
+/// site by design, so a note carrying only an event id could be restored against
+/// whichever site happened to be configured — handing the operator another
+/// server's court and game. That is why a custom session's note used to be
+/// written and then ignored at startup.
+///
+/// `Portal` does not say *which* portal: the existing `mode` field already
+/// separates UWH from UWR, and `decide_restore` refuses a note that crosses
+/// between them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NoteSite {
+    #[default]
+    Portal,
+    /// A third-party site, identified by the address it was configured with.
+    ///
+    /// The whole address, not just the host: a custom address includes the event,
+    /// so comparing it asks "the same site *and* the same event?" in one go, and
+    /// editing only the event in the URL correctly invalidates the note.
+    Custom { address: String },
+}
+
 /// The remembered live portal link, persisted next to `portal_queue.json`.
 ///
 /// v2 records a **fact** (which game was last played) rather than a conclusion
@@ -55,6 +78,16 @@ pub struct LinkSessionFile {
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub last_played_start: Option<OffsetDateTime>,
     pub mode: Mode,
+    /// Which site this note was written against.
+    ///
+    /// Defaults to `Portal`, which is exactly what a note written before this
+    /// field existed meant: startup restored those only for the Portal and
+    /// ignored them outright for a custom site. Deliberately additive rather
+    /// than a version bump — the default reproduces the old behaviour exactly,
+    /// and holding the version lets a rolled-back binary still read the note
+    /// instead of quarantining it and losing the link mid-tournament.
+    #[serde(default)]
+    pub site: NoteSite,
     #[serde(with = "time::serde::rfc3339")]
     pub last_active: OffsetDateTime,
 }
@@ -156,6 +189,7 @@ mod tests {
             last_played: None,
             last_played_start: None,
             mode: Mode::Hockey6V6,
+            site: NoteSite::Portal,
             last_active: now,
         }
     }
@@ -253,6 +287,7 @@ mod tests {
             last_played: Some("G27".to_string()),
             last_played_start: Some(datetime!(2026-08-17 14:00:00 UTC)),
             mode: Mode::Hockey6V6,
+            site: NoteSite::Portal,
             last_active: datetime!(2026-08-17 14:22:03 UTC),
         };
         save(tmp.path(), &note).unwrap();
@@ -276,6 +311,36 @@ mod tests {
         save(tmp.path(), &sample(OffsetDateTime::now_utc())).unwrap();
         assert!(tmp.path().join("portal_link.json").exists());
         assert!(!tmp.path().join("portal_link.json.tmp").exists());
+    }
+
+    #[test]
+    fn a_note_written_before_the_site_field_reads_as_portal() {
+        // The migration that matters: every note already on disk has no `site` key,
+        // and every one of those was a Portal note as far as startup was concerned.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("portal_link.json");
+        let v2 = r#"{"version":2,"event_id":"events/2113-A","court":"1",
+                     "current_game":"G27","mode":"Hockey6V6",
+                     "last_active":"2026-08-17T09:00:00Z"}"#;
+        std::fs::write(&path, v2).unwrap();
+        let note = load_or_none(tmp.path())
+            .unwrap()
+            .expect("a note without a site must still load");
+        assert_eq!(note.site, NoteSite::Portal);
+        assert!(path.exists(), "it must not be quarantined");
+    }
+
+    #[test]
+    fn a_custom_site_note_round_trips_its_address() {
+        let tmp = TempDir::new().unwrap();
+        let note = LinkSessionFile {
+            site: NoteSite::Custom {
+                address: "http://scoreboard.local:8099/api/events/1234-A".to_string(),
+            },
+            ..sample(OffsetDateTime::now_utc())
+        };
+        save(tmp.path(), &note).unwrap();
+        assert_eq!(load_or_none(tmp.path()).unwrap(), Some(note));
     }
 
     #[test]

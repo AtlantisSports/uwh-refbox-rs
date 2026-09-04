@@ -6633,10 +6633,10 @@ impl RefBoxApp {
                                     } else {
                                         match decision {
                                             // Both are definite "nothing is next
-                                            // here" answers, and both park the
-                                            // clock. Kept apart above so an empty
-                                            // court is never recorded as a
-                                            // completed one.
+                                            // here" answers, and `set_no_next_game`
+                                            // parks a running break for both. Kept
+                                            // apart above so an empty court is never
+                                            // recorded as a completed one.
                                             NextGameFromSchedule::CourtFinished
                                             | NextGameFromSchedule::NothingScheduled => {
                                                 tm.set_no_next_game();

@@ -377,10 +377,38 @@ impl TournamentManager {
     /// Record that the selected court has no game after the one in progress. Reported
     /// as a blank next-game number, and honoured by the between-games countdown and by
     /// `start_play_now`, neither of which will start a game in this state.
+    ///
+    /// A break already counting down is parked at 0:00 here, so that the clock agrees
+    /// with the banner the blank number produces (Eric's ruling, 2026-09-04). Without
+    /// it a refresh that moved the upcoming game off this court left the countdown
+    /// running for its remaining minutes under an `END --:--` banner, with the break
+    /// sounds suppressed and the mid-break reset still due — which wiped the finished
+    /// game's score off the screen part-way through. Parking also leaves exactly the
+    /// state a court that played to the end of its own schedule is left in, rather
+    /// than a second, subtly different one.
+    ///
+    /// **Only between games.** This is called at kickoff too — a court is known to be
+    /// finished from the moment its last game starts — and stopping the clock there
+    /// would freeze the game itself. The period test is what keeps criterion 8 (the
+    /// last game still gets its half-time whistle and second half) working.
     pub fn set_no_next_game(&mut self) {
         info!("No further games scheduled on this court");
         self.next_game = None;
         self.no_next_game = true;
+
+        if self.current_period == GamePeriod::BetweenGames && self.clock_is_running() {
+            info!("No game to count down to; parking the break clock at 0:00");
+            self.clock_state = ClockState::Stopped {
+                clock_time: Duration::ZERO,
+            };
+            // Or the updater goes on waking for a clock it believes is running, whose
+            // next-update instant is now — a hot loop. Same reason `end_game` notifies
+            // unconditionally on this path.
+            self.send_clock_running(false);
+            // The mid-break reset only runs inside a `CountingDown` arm, so a stopped
+            // clock never reaches it and the final score stays on screen.
+            self.reset_game_time = Duration::ZERO;
+        }
     }
 
     pub fn reset_game(&mut self, now: Instant) {
@@ -9631,6 +9659,71 @@ mod test {
         assert!(tm.clock_is_running());
         assert!(rx.has_changed().unwrap());
         assert!(*rx.borrow_and_update());
+    }
+
+    #[test]
+    fn a_court_finishing_mid_break_parks_the_clock_at_once() {
+        // Eric's ruling, 2026-09-04. A break is counting down toward game 11 when a
+        // refresh reports it has moved off this court. The banner already reads
+        // END --:-- off the blank number; the clock must agree rather than run on for
+        // its remaining minutes.
+        initialize();
+        let config = GameConfig {
+            minimum_break: Duration::from_secs(600),
+            post_game_duration: Duration::from_secs(120),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.set_game_number("9");
+        tm.set_next_game(NextGameInfo {
+            number: "11".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(150));
+        tm.start_clock(start);
+        assert!(
+            tm.clock_is_running(),
+            "fixture check: the break is counting down"
+        );
+
+        let mut rx = tm.get_start_stop_rx();
+        rx.borrow_and_update();
+
+        tm.set_no_next_game();
+
+        assert!(
+            !tm.clock_is_running(),
+            "the break must not run toward no game"
+        );
+        assert_eq!(tm.game_clock_time(start), Some(Duration::ZERO));
+        // The updater has to be told, or it keeps waking for a clock it thinks runs.
+        assert!(rx.has_changed().unwrap());
+        assert!(!*rx.borrow_and_update());
+    }
+
+    #[test]
+    fn a_court_flagged_finished_at_kickoff_keeps_its_game_clock() {
+        // Criterion 8, and the thing the parking above could most easily break: the
+        // court is recorded as finished from the moment its LAST game starts, so this
+        // runs with a game in progress. Stopping the clock there would freeze the game.
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            ..Default::default()
+        });
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(900));
+        tm.start_clock(start);
+
+        tm.set_no_next_game();
+
+        assert!(
+            tm.clock_is_running(),
+            "a game in progress must keep its clock when the court is flagged finished"
+        );
+        assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(900)));
     }
 
     #[test]

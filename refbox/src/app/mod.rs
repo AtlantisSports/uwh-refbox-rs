@@ -1184,8 +1184,14 @@ enum LinkNoteGame {
     /// this court's schedule is finished — remember the court, but no game, so
     /// a restart comes back to the same state.
     Write(Option<GameNumber>),
-    /// Ignorance: no schedule has been read yet, so there is nothing to record.
-    /// Leave any existing note exactly as it is.
+    /// Ignorance: the engine has only an arithmetic guess, so there is nothing
+    /// worth recording. Leave any existing note exactly as it is.
+    ///
+    /// Unreachable from the one live caller: `persist_link_session` writes only
+    /// while `uses_remote()`, and `commit_source` keeps the engine's linkage in
+    /// step with that, and a linked engine never answers with arithmetic. Kept
+    /// deliberately — the drift it guards against would write a guess into the
+    /// note, which has twice replayed and re-posted a finished court's day.
     Unknown,
 }
 
@@ -9251,12 +9257,21 @@ mod link_note_game_tests {
     use std::time::Duration;
     use uwh_common::game_snapshot::GamePeriod;
 
-    /// Startup, before the schedule has been read: the engine knows nothing, so
-    /// the note must be left exactly as it is. Writing anything here is what
-    /// cost us twice — first a guessed `"1"` that made a finished court replay
-    /// the day, then a blank that erased a mid-event operator's resume point.
+    /// The defensive branch, exercised directly. Writing anything when the engine
+    /// knows nothing is what cost us twice — first a guessed `"1"` that made a
+    /// finished court replay the day, then a blank that erased a mid-event
+    /// operator's resume point.
+    ///
+    /// **Production cannot currently reach this**, and this test does not pretend
+    /// otherwise: it builds an *unlinked* engine, while the only caller
+    /// (`persist_link_session`) runs solely when `uses_remote()` is true, and
+    /// linkage is held in step with the source by `commit_source`. A linked engine
+    /// refuses arithmetic outright, so the blank arm above always wins — which is
+    /// what `a_linked_engine_records_the_finished_state_not_ignorance` pins down.
+    /// The branch is kept as a net: if linkage and source ever drift, the failure
+    /// it prevents is a whole day of results re-posted.
     #[test]
-    fn the_note_is_left_alone_until_the_schedule_is_known() {
+    fn an_unlinked_engine_with_a_guess_is_ignorance_not_knowledge() {
         let tm = TournamentManager::new(GameConfig::default());
 
         // What the engine offers here is the arithmetic guess `game_number + 1`,
@@ -9264,6 +9279,23 @@ mod link_note_game_tests {
         assert_eq!(tm.next_game_number(), "1");
 
         assert_eq!(link_note_game(&tm), LinkNoteGame::Unknown);
+    }
+
+    /// The invariant that makes the branch above unreachable, asserted rather than
+    /// assumed: a schedule-linked engine with no next game names none, so the note
+    /// records the finished court as knowledge instead of declining to write.
+    #[test]
+    fn a_linked_engine_records_the_finished_state_not_ignorance() {
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("3");
+        tm.set_schedule_linked(true);
+
+        assert_eq!(
+            tm.next_game_number(),
+            "",
+            "a linked engine must not answer with arithmetic"
+        );
+        assert_eq!(link_note_game(&tm), LinkNoteGame::Write(None));
     }
 
     /// A finished court is *knowledge*, and must be recorded as "no game" —

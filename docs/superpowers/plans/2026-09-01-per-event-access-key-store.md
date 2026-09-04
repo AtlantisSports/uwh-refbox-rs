@@ -8,7 +8,11 @@
 
 **Tech Stack:** Rust 2024, MSRV 1.85, `serde` + `toml` for the settings file, `iced` 0.13 for the UI (untouched by this branch).
 
-**Spec:** `docs/superpowers/specs/2026-09-01-source-switch-draft-model-design.md` — open question 2 and the "Sequencing and delivery" section. This is branch 1 of two.
+**Spec:** the source-switch draft-model design — open question 2 and its "Sequencing and
+delivery" section. This is branch 1 of two, and that spec describes branch 2, so it is
+deliberately not carried here: it would put a document for unbuilt work into this PR's diff.
+It is recoverable from `51f22f86` in this branch's history, and a working copy is kept
+untracked in the main checkout under `docs/superpowers/specs/`.
 
 ## Global Constraints
 

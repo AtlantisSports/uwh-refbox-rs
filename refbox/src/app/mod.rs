@@ -558,8 +558,19 @@ fn client_for_event(
     config: &Config,
     event: &EventId,
 ) -> Option<UwhPortalClient> {
+    let Some(key) = config.access_key_for(target.base_url.expose(), event) else {
+        // No key for this event, so no request. A token-less client would send the privileged
+        // fetch with no Authorization header: refused by a strict site, and *accepted* by a
+        // permissive one, which is worse -- it would answer as though the refbox were entitled
+        // to data it has never authenticated for.
+        warn!(
+            "No access key held for {}; not building a client for it",
+            event.full()
+        );
+        return None;
+    };
     let mut client = build_site_client(target)?;
-    if let Some(key) = config.access_key_for(target.base_url.expose(), event) {
+    {
         if let Err(why) = client.set_token(key) {
             // Only reachable from a hand-edited settings file. No client at all, rather than one
             // carrying nothing: the callers treat `None` as "cannot ask", while a token-less
@@ -1399,7 +1410,10 @@ impl RefBoxApp {
                 Message::RecvSchedule(event_id, schedule, issued_at)
             })
         } else {
-            Task::none()
+            // Not `Task::none()`. `RequestPortalRefresh` arms the spinner on a condition this
+            // function no longer depends on -- it builds its own client now -- and disarms it by
+            // translating `NoAction`. Falling silent here leaves REFRESH spinning forever.
+            Task::done(Message::NoAction)
         }
     }
 
@@ -2120,8 +2134,11 @@ impl RefBoxApp {
         // token *rejection*, and its own log line says the replacement
         // happens "after event linked" -- so the scramble has to have the
         // last word, or the debug flag would silently stop doing its job.
+        // The `is_empty` guard matters: after an upgrade the store is empty until the first
+        // login, and spending the one-shot flag there would replace nothing, then exercise the
+        // *missing key* path rather than the rejection path the flag exists for.
         #[cfg(debug_assertions)]
-        if self.scramble_token_pending && new_is_some {
+        if self.scramble_token_pending && new_is_some && !self.config.access_keys.is_empty() {
             // Scrambles the *published* store, not the client. The background task loads a key
             // per call from this, so replacing the client's would be overwritten before the next
             // probe and the flag would silently stop exercising rejection.
@@ -8068,14 +8085,15 @@ mod site_target_tests {
     /// "any key for this site" would pass the test above and still send one event's credential to
     /// a request about another.
     #[test]
-    fn a_request_for_an_event_with_no_key_carries_no_credential() {
+    fn a_request_for_an_event_with_no_key_is_not_made_at_all() {
         let mut config = Config::default();
         let target = portal_target(Mode::Hockey6V6, false);
         config.store_access_key(target.base_url.expose(), &ev("other"), "KEY-A".into());
-        let client = client_for_event(&target, &config, &ev("asked-about")).unwrap();
         assert!(
-            !client.has_token(),
-            "a key filed for another event must never be sent for this one"
+            client_for_event(&target, &config, &ev("asked-about")).is_none(),
+            "a key filed for another event must never be substituted -- and a client carrying no \
+             credential would send the privileged fetch unauthenticated, which a permissive site \
+             would answer as though the refbox were entitled to the data"
         );
     }
 
@@ -8090,9 +8108,8 @@ mod site_target_tests {
         let mut config = Config::default();
         config.uwhportal.token = "LEGACY-KEY".into();
         let target = portal_target(Mode::Hockey6V6, false);
-        let client = client_for_event(&target, &config, &ev("abc")).unwrap();
         assert!(
-            !client.has_token(),
+            client_for_event(&target, &config, &ev("abc")).is_none(),
             "the legacy slot is retained for rollback, never sent"
         );
     }

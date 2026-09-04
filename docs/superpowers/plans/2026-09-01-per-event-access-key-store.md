@@ -623,7 +623,10 @@ Claude launches the app; Eric performs these and reports back. Needs the dev por
 2. Open settings, switch to event B, log in with a fresh code, pick a court and a game. Confirm green.
 3. Switch back to event A. **Expected: it re-establishes with no login code requested.** This fails on master today.
 4. Quit and relaunch. Confirm event A is still connected without a login code.
-5. Open `~/.config/refbox/config.toml` and confirm two `[[access_keys]]` entries, and no `token =` line under `[uwhportal]`.
+5. Open `~/.config/refbox/default-config.toml` (confy's name for the settings file -- there is
+   no `config.toml`, and looking for one finds nothing) and confirm two `[[access_keys]]`
+   entries. A pre-existing `token =` under `[uwhportal]` stays exactly where it is: deviation 3
+   dropped adoption, so the legacy slot is retained and never read, not removed.
 
 ## Flagged, not addressed in this branch
 
@@ -655,3 +658,48 @@ Claude launches the app; Eric performs these and reports back. Needs the dev por
    `UWH_PORTAL_SCRAMBLE_TOKEN` keeps the last word.
 6. **Tasks 5-6 ran lean** (controller-implemented, one whole-branch review) rather than a per-task
    gated loop, per `.claude/rules/plan-execution.md`.
+
+7. **The walkthrough found a defect the branch had shipped with, and the fix changed shape twice.**
+   On 2026-09-04 Eric's login filed its key correctly and the court list then hung. The privileged
+   schedule request was coming back `401`, ~160ms after the app reported the login succeeded.
+   `apply_access_key()` resolved the key from `current_event_id` -- the *linked* event -- while the
+   login files under the event it was issued for and `request_schedule` fetches for the *drafted*
+   one. On a first login to a newly picked event those differ, the lookup missed, and the `None`
+   arm cleared the key `set_token()` had installed moments earlier.
+
+   The same root cause also broke this branch's headline feature: picking an event already logged
+   in to fetched its schedule with the *previous* event's key, so the court list hung there too and
+   APPLY never enabled -- which meant the operator could never reach the APPLY that would have
+   loaded the right key. Both whole-branch reviews called the branch clean. Nothing in the suite
+   exercised login-then-fetch; the tests covered the store, which was always correct.
+
+   It also re-reads walkthrough part 1: the identical `401` against production event `2243-A` on
+   2026-09-01 was recorded as "upcoming production events have no schedules". It was this bug.
+
+   The first fix pushed the key out at each transition that changes the working event. Eric hit the
+   gap within minutes -- the ACCESS TOKEN row reported an event with a good key on file as
+   disconnected, until he re-picked it. Eleven places stage or clear the event and only two read
+   the result, so the key is now settled at those two reads instead: immediately before the
+   privileged schedule fetch (`request_schedule`), and when the settings editor opens
+   (`enter_game_config`). `working_event` and `key_for_event` are the single definition.
+
+## Walkthrough as run (2026-09-04, dev portal, isolated `XDG_CONFIG_HOME`)
+
+Six scenarios, all confirmed by Eric driving the app, each corroborated in the log or the settings
+file rather than from the screen alone:
+
+1. **Fresh login fills the court list.** Was the reported defect; `Got schedule` 200 after the fix.
+2. **Returning to an event already logged in to** reconnects with no login code, court list fills.
+3. **A second event's login does not evict the first.** Two `[[access_keys]]` entries on one site
+   (`events/1889-B`, `events/1601-C`); the second login's schedule fetch returned 200.
+4. **Restart** restores the link and reconnects with no code; the ACCESS TOKEN row opens green.
+5. **Upgrade from a legacy token.** Seeded a *working* dev key into the old `[uwhportal] token`
+   slot with an empty store: refbox asked for a code anyway, filed a different key in the new
+   store, and left the legacy value untouched. Adoption is genuinely gone.
+6. **Cross-site separation.** Custom site pointed at `https://api.uwhportal.com/api/1889-B` --
+   production host, same event id, which collides by design. Refbox did not reuse the dev key:
+   the production request came back `401` with no credential sent, and switching back to the
+   Portal re-authenticated cleanly.
+
+Not covered: a genuine third-party server (the "custom site" was the portal at another address),
+and any use of a real tournament schedule under load.

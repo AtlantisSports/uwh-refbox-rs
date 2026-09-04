@@ -1,8 +1,8 @@
-# Written walkthrough scenarios for branch fix/uwh-common/no-next-game-on-court.
-# Oracle: docs/superpowers/specs/2026-08-05-no-next-game-on-court-design.md, plus the
+# Written walkthrough scenarios for branch fix/refbox/court-finished-behaviour.
+# Oracle: docs/superpowers/specs/2026-08-17-court-finished-behaviour-design.md, plus the
 # three late decisions recorded in
-# docs/superpowers/plans/2026-08-05-no-next-game-on-court.md (clock stops dead, the
-# banner reads END, the 30-second whistle is suppressed).
+# docs/superpowers/specs/2026-08-17-court-finished-behaviour-decisions.md (clock stops
+# dead, the banner reads END, the 30-second whistle is suppressed).
 # These files are documentation — there is no cucumber runner in this workspace.
 
 Feature: A court whose schedule is finished

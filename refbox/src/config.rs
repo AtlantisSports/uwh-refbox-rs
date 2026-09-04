@@ -406,6 +406,11 @@ pub struct Config {
     pub hide_time: bool,
     #[derivative(Default(value = "true"))]
     pub collect_scorer_cap_num: bool,
+    /// The operator's stored preference only. `collect_scorer_cap_num` off
+    /// overrides it, so read through [`effective_fouls_tracked`] -- never this
+    /// field directly -- anywhere the answer drives behaviour. The direct reads
+    /// that remain are persistence (loading and saving the stored value), which
+    /// must see the operator's own setting rather than the effective one.
     pub track_fouls_and_warnings: bool,
     /// YES forces the plain 0-9 pad in place of the portal roster grid on every
     /// player picker. NO -- the default, and the only behaviour before this
@@ -450,10 +455,14 @@ pub struct Config {
 /// What it costs -- recorded here so a future reader does not re-derive it as a
 /// bug, because none of this follows from cap numbers being unavailable:
 /// - Team warnings and equal fouls go with it, and neither ever needed a player
-///   number: `warning_add_can_commit(_, true, 0)` and
-///   `foul_add_can_commit(_, None, 0)` are both true. `main_view` gates the ADD
-///   FOUL and ADD WARNING buttons, the warnings panel and the warnings summary
-///   on this flag, so all of that disappears too.
+///   number. Both predicates read
+///   `!matches!(infraction, Infraction::Unknown) && (no_player || player_num > 0)`,
+///   so with an infraction chosen `warning_add_can_commit(i, true, 0)` and
+///   `foul_add_can_commit(i, None, 0)` are true at `player_num == 0` -- the
+///   team/equal case satisfies the second half outright. (An infraction is
+///   still required, as `warning_needs_infraction` and `foul_needs_infraction`
+///   pin.) `main_view` gates the ADD FOUL and ADD WARNING buttons, the warnings
+///   panel and the warnings summary on this flag, so all of that disappears too.
 /// - Penalties still commit, needing only a player number
 ///   (`penalty_edit_can_commit`, and the PENALTIES button is ungated), but
 ///   their infraction picker is hidden -- so the REASON for a penalty stops
@@ -1719,6 +1728,19 @@ mod test {
     fn a_settings_file_with_no_access_keys_loads_with_an_empty_store() {
         let parsed: Config = toml::from_str(&config_toml_without("access_keys")).unwrap();
         assert!(parsed.access_keys.is_empty());
+    }
+
+    /// Every settings file written before this release is missing
+    /// `force_keypad_numbers`. Without `#[serde(default)]` on the field those
+    /// files fail to parse and fall through to `Config::migrate`, so pin the
+    /// default here the same way `access_keys` is pinned above.
+    #[test]
+    fn a_settings_file_with_no_force_keypad_numbers_loads_with_it_off() {
+        let parsed: Config = toml::from_str(&config_toml_without("force_keypad_numbers")).unwrap();
+        assert!(
+            !parsed.force_keypad_numbers,
+            "an existing settings file must keep the pre-setting behaviour: grid where there is a roster"
+        );
     }
 }
 

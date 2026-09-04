@@ -590,6 +590,11 @@ const BANNER_TWO_TIME_TEXT: f32 = 46.0;
 /// Shown in place of the clock when the selected court's schedule is finished. Not a
 /// translated string -- it is punctuation, the same "nothing here" signal the game info
 /// table draws with a hyphen.
+///
+/// Raised as finding 11 of the 2026-09-04 review, against the crate rule that
+/// user-visible text goes through `translations/`. Eric ruled the same day that it
+/// needs no translation: it reads identically in every language. Recorded here so the
+/// question is not re-opened as an oversight.
 const NO_TIME: &str = "--:--";
 
 /// Shown wherever a surface has no value to give — the same hyphen the referee rows

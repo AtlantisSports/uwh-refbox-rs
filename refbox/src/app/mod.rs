@@ -541,19 +541,6 @@ fn file_login_key(
     true
 }
 
-/// Which key the live client must be holding: the one filed for the event the refbox is *working
-/// with*, or `None` when no key is held for it.
-///
-/// The working event is the one staged in the settings editor while it is open, and the linked one
-/// otherwise. Those two diverge for the whole of an edit session, and the refbox fetches against
-/// the staged one from the moment it is picked -- `request_schedule` resolves the event exactly
-/// this way. Reading the linked event alone therefore chose the wrong key for every request an
-/// open editor makes, and cleared the key outright when nothing was linked yet: a fresh login
-/// filed its key correctly and the court list then hung, because the request that fills it went
-/// out with no credential.
-///
-/// One function so there is one answer. `apply_access_key` is the only writer of the client's key
-/// and reads it from here, so the client cannot end up holding a key for some other event.
 /// A client for `target` carrying the key filed for `event`, or carrying none when no key is held.
 ///
 /// Deliberately not the shared client. The background health probe and the result-upload queue
@@ -853,16 +840,15 @@ fn https_policy_conflict(target: &SiteTarget) -> Option<String> {
     })
 }
 
-/// Build a client for `target`. Carries no credential yet -- see `apply_access_key`.
+/// Build a client for `target`. Carries no credential -- see `client_for_event`.
 ///
 /// `None` when the client cannot be built at all, which leaves the refbox in
 /// its existing degraded mode (red indicator, nothing sent) rather than holding
 /// a client pointed somewhere unintended.
 fn build_site_client(target: &SiteTarget) -> Option<UwhPortalClient> {
-    // No key here on purpose. Keys are filed per (site, event) and the event is
-    // not known when the client is built at startup, so `apply_access_key` is
-    // the one place that decides which key is loaded — called whenever the
-    // event or the site changes.
+    // No key here on purpose. Keys are filed per (site, event) and no event is named at this
+    // point, so whoever needs a credential attaches it: `client_for_event` for a foreground
+    // fetch, and the background task per call from the published store.
     let token = None;
     if let Some(msg) = https_policy_conflict(target) {
         error!("{msg}");
@@ -3380,6 +3366,12 @@ impl RefBoxApp {
             #[cfg(debug_assertions)]
             scramble_token_pending,
         };
+
+        // Before anything else touches it: the background uploader resolves a key per call from
+        // this, and nothing else publishes until the operator switches source or logs in again.
+        // Left unpublished, a restart left every queued result undeliverable while the foreground
+        // read the same keys from `config` and reported the login healthy.
+        new.publish_access_keys();
 
         // Restore a recent portal link so a relaunch (language change, self-update)
         // or a short shutdown comes back recognized instead of dormant. A stale or
@@ -6234,15 +6226,24 @@ impl RefBoxApp {
                         // of the config file, so it cannot come back at the next
                         // launch.
                         let token = token.trim().to_string();
-                        let refused = match self.uwhportal_client.as_ref() {
-                            // Judged without touching the shared client. Installing the key to
-                            // test it would put one event's credential on the handle the
-                            // background uploader is using for another's.
-                            Some(_) => check_access_key(&token).err(),
-                            None => check_access_key(&token).err(),
-                        };
-                        if let Some(why) = refused {
+                        // Judged without touching the shared client: installing the key to test
+                        // it would put one event's credential on the handle the background
+                        // uploader uses for another's.
+                        //
+                        // Empty is refused separately because `check_access_key` accepts it -- it
+                        // only rejects characters a header cannot carry. Filed, `""` would be
+                        // reported as a successful login while every reader treated it as no key
+                        // at all: fetches uncredentialed, uploads refused, and nothing said so.
+                        let refused = if token.is_empty() {
+                            warn!("The site returned an empty access key");
+                            true
+                        } else if let Some(why) = check_access_key(&token).err() {
                             warn!("The site returned an access key that cannot be sent: {why}");
+                            true
+                        } else {
+                            false
+                        };
+                        if refused {
                             AppState::ConfirmationPage(ConfirmationKind::UwhPortalKeyUnusable)
                         } else {
                             info!("Portal token request succeeded");
@@ -6266,10 +6267,8 @@ impl RefBoxApp {
                                 // to stick is in the log rather than nowhere.
                                 warn!("A login answer went stale before its key could be filed");
                             } else {
-                                // The key was installed on the live client above as part of
-                                // checking it can be sent, which is a different question from
-                                // the store the background uploader reads. It resolves a key
-                                // per call, so a newly filed one has to reach it before the
+                                // Into the store the background uploader reads. It resolves a
+                                // key per call, so a newly filed one has to reach it before the
                                 // next queued result goes out.
                                 self.publish_access_keys();
                                 // Save immediately. The handler routes to the Game page, so a

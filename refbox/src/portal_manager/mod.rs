@@ -78,24 +78,6 @@ pub type SelectedEventId =
 pub type SharedUwhPortalClient =
     std::sync::Arc<std::sync::Mutex<uwh_common::uwhportal::UwhPortalClient>>;
 
-/// Production `PortalTaskIo` backed by a real `UwhPortalClient`.
-///
-/// Shares the same `UwhPortalClient` handle as the main app via
-/// `Arc<Mutex<_>>` so that operator-driven token mutations
-/// (set_token / clear_token) are immediately visible to the background
-/// retry task without having to restart anything. The lock is only held
-/// across the short synchronous portion of each portal call (URL building
-/// and request construction); the returned future is `+ use<>` on
-/// `UwhPortalClient`'s methods, so we drop the guard before awaiting the
-/// network round-trip.
-///
-/// The `event_id` is shared mutable state rather than a plain `EventId`
-/// because the operator chooses the event after startup. When the event
-/// id is `None`, `verify_token` is a no-op that reports success —
-/// there's nothing to validate against yet, and we don't want to flash
-/// the indicator red before the operator has set up the tournament.
-/// `post_scores` / `post_stats` ignore this field; they use the queued
-/// item's own event id.
 /// The access keys the background task is allowed to send, and the site they belong to.
 ///
 /// Published by the UI thread whenever the site or the store changes. The uploader and the health
@@ -123,6 +105,24 @@ impl SiteAccessKeys {
 
 pub type SharedAccessKeys = std::sync::Arc<std::sync::Mutex<SiteAccessKeys>>;
 
+/// Production `PortalTaskIo` backed by a real `UwhPortalClient`.
+///
+/// Shares the same `UwhPortalClient` handle as the main app via
+/// `Arc<Mutex<_>>` so that operator-driven token mutations
+/// (set_token / clear_token) are immediately visible to the background
+/// retry task without having to restart anything. The lock is only held
+/// across the short synchronous portion of each portal call (URL building
+/// and request construction); the returned future is `+ use<>` on
+/// `UwhPortalClient`'s methods, so we drop the guard before awaiting the
+/// network round-trip.
+///
+/// The `event_id` is shared mutable state rather than a plain `EventId`
+/// because the operator chooses the event after startup. When the event
+/// id is `None`, `verify_token` is a no-op that reports success —
+/// there's nothing to validate against yet, and we don't want to flash
+/// the indicator red before the operator has set up the tournament.
+/// `post_scores` / `post_stats` ignore this field; they use the queued
+/// item's own event id.
 pub struct UwhPortalIo {
     client: SharedUwhPortalClient,
     event_id: SelectedEventId,
@@ -147,44 +147,46 @@ impl UwhPortalIo {
     /// Never sends a request without one. An unauthenticated POST is not a degraded upload -- a
     /// permissive site would accept it and a strict one refuses it, and neither outcome is the
     /// result the operator recorded going where it belongs.
-    fn key_for(
+    /// Build a request about `event`, carrying the key filed for it.
+    ///
+    /// Never sends one without a key. An unauthenticated POST is not a degraded upload -- a
+    /// permissive site would accept it and a strict one refuses it, and neither outcome is the
+    /// result the operator recorded going where it belongs.
+    ///
+    /// Both locks are taken here, keys before client, and held together while the key is chosen
+    /// and installed. Taken separately, a repoint landing in between would install the departed
+    /// site's key on the client now pointing at the new one -- the exact cross-site leak the key
+    /// store exists to prevent. `repoint_client` never holds both at once, so the ordering cannot
+    /// deadlock against it.
+    ///
+    /// Mutating the shared client here is safe because the foreground builds its own client for
+    /// every fetch that needs a credential; this task is the only writer left.
+    fn request_for<T>(
         &self,
         event: &uwh_common::uwhportal::schedule::EventId,
-    ) -> Result<String, health::PortalCallError> {
+        build: impl FnOnce(&uwh_common::uwhportal::UwhPortalClient) -> T,
+    ) -> Result<T, health::PortalCallError> {
         // why this cannot panic: `unwrap_or_else(into_inner)` keeps the background task alive
-        // even if a writer panicked while holding the lock.
-        let guard = self
+        // even if a writer panicked while holding either lock.
+        let keys = self
             .keys
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        guard.key_for(event).map(str::to_owned).ok_or_else(|| {
+        let key = keys.key_for(event).map(str::to_owned).ok_or_else(|| {
             health::PortalCallError::Failed(format!(
                 "no access key held for event {}",
                 event.full()
             ))
-        })
-    }
-
-    /// Put `key` on the shared client and hand back the request built with it.
-    ///
-    /// Safe to mutate here: since the foreground builds its own client for every fetch that needs
-    /// a credential, this background task is the only writer left, and each call sets what it
-    /// needs under the same lock immediately before building its request.
-    fn with_key<T>(
-        &self,
-        key: &str,
-        build: impl FnOnce(&uwh_common::uwhportal::UwhPortalClient) -> T,
-    ) -> Result<T, health::PortalCallError> {
-        // why this cannot panic: see `key_for` above.
-        let mut guard = self
+        })?;
+        let mut client = self
             .client
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        guard.set_token(key).map_err(|why| {
+        client.set_token(&key).map_err(|why| {
             health::PortalCallError::Failed(format!("a saved access key cannot be sent: {why}"))
         })?;
-        Ok(build(&guard))
-        // guard drops here, before the network call is awaited
+        Ok(build(&client))
+        // both guards drop here, before the network call is awaited
     }
 }
 
@@ -282,8 +284,7 @@ impl health::PortalTaskIo for UwhPortalIo {
         // token, so a site that answers an unauthenticated probe with `200` would hold this
         // indicator green over nothing. Reporting a token problem is honest, and it is what a
         // correctly-refusing site would have produced anyway.
-        let key = self.key_for(&event_id)?;
-        let fut = self.with_key(&key, |client| client.verify_token(&event_id))?;
+        let fut = self.request_for(&event_id, |client| client.verify_token(&event_id))?;
         fut.await.map_err(classify_error)
     }
 
@@ -297,8 +298,7 @@ impl health::PortalTaskIo for UwhPortalIo {
         let force = item.force;
         // The key for the event this result was recorded for -- not for whatever the operator is
         // linked to now, and not nothing if they are linked to nothing at all.
-        let key = self.key_for(&event_id)?;
-        let fut = self.with_key(&key, |client| {
+        let fut = self.request_for(&event_id, |client| {
             client.post_game_scores(&event_id, &game_number, scores, force)
         })?;
         fut.await.map_err(classify_error)
@@ -309,8 +309,7 @@ impl health::PortalTaskIo for UwhPortalIo {
         let game_number = item.id.game_number.clone();
         let stats = item.stats.clone();
         // Same rule as the scores above: the key belongs to the event this item was recorded for.
-        let key = self.key_for(&event_id)?;
-        let fut = self.with_key(&key, |client| {
+        let fut = self.request_for(&event_id, |client| {
             client.post_game_stats(&event_id, &game_number, stats)
         })?;
         fut.await.map_err(classify_error)

@@ -430,4 +430,52 @@ cargo build -p uwh-common --no-default-features
 
 ## Deviations
 
-(To be filled during execution.)
+**1. Findings 3 and 4 were not reachable, and Eric caught it — twice.** The review described an
+operator changing the game source on App Options. There is no such control there (its only cycle is
+App **Mode**), the MANUAL GAMES button is on the Game page and only *stages* the change, and the
+Game page cannot be left carrying a staged change: its exits are its own APPLY and a Cancel whose
+`revert_from_snapshot` restores `source` from `PageEntrySnapshot::Game`. So `edited.source` always
+equals the committed source when `apply_app_options` runs, and the branch's guard there asked for
+Manual and not-Manual at once. Not a rebase artifact — the App page had the same controls at this
+branch's own original base. Consequence: ~30 lines the branch added across `ff493841`, `406824d4`
+and `717823ed` were removed as dead, on Eric's ruling.
+
+**2. Finding 8 was traced to a defensive branch, not a live one.** `NothingScheduled` needs a court
+to vanish from an event it was chosen from — a restored note's court is never re-checked against a
+later schedule. Eric confirmed courts do not disappear mid-event, so it was routed with the other
+answers the refbox declines to act on (one line) rather than given a state of its own. I had framed
+it as routine and had to withdraw that.
+
+**3. Finding 1 grew, on Eric's ruling.** I recommended accepting that custom sites need a game
+picked after each restart and logging the improvement. Eric chose to give the link note a site
+instead, which I flagged as new scope on a rebase-repair branch. `NoteSite` records `Portal` or
+`Custom { address }`; a custom address already includes the event, so one comparison answers both
+"same site?" and "same event?". No version bump — additive, default reproduces v2.
+
+**4. Finding 11 is answered, not fixed.** Eric ruled `--:--` needs no translation: it reads the same
+in every language. The constant already said as much; the ruling is now recorded beside it.
+
+**5. Finding 7's guard was kept, not deleted.** The plan preferred deletion. Writing a guess into the
+link note has twice re-posted a finished court's day, so on an asymmetric risk the three-line net
+stays — with the test rewritten to stop claiming it covers live behaviour, and a new test pinning
+the invariant that makes it unreachable.
+
+**6. The re-review found a blocking regression this branch causes, plus three defects in the fixes
+above.** `switch_to_source` — a path master added — resets the clock through
+`reset_to_manual_break`, which commit `717823ed` taught to drop the schedule link. On a
+remote-to-remote switch that left the engine unlinked while the app stayed remote, so it resumed
+arithmetic numbering, auto-started a phantom game 1 on the site just switched to, and posted a 0-0
+against it. Fixed with `reset_for_site_switch`. The three self-inflicted ones: the parking made an
+existing expiry-guard test pass for the wrong reason; arming the mid-break reset on every
+`apply_next_game_start` reintroduced the held-on score it was added to fix; and routing
+`no_startable_next_game` through `next_game_number` multiplied an `error!` onto the per-tick path.
+
+**7. One re-review finding is recorded, not closed.** `NoteSite::Portal` does not separate portal
+*environments*, so a note written under `UWH_PORTAL_URL_OVERRIDE` restores into production. It
+changes the note every ordinary session writes, so it wants its own branch.
+
+**8. Verification.** `just check` exit 0 at 48 commits: **1196 tests passing, 0 failing**. Every fix
+carries a test that was broken on purpose first. `cargo clippy --workspace --all-targets` fails on
+three pre-existing issues outside this diff (`overlay-bridge/src/status.rs`,
+`keypad_pages/player_grid.rs`, and a `mod.rs` line that is on master); the `--all-features` form
+cannot run here at all — it fails building `grafton-ndi`, which needs the NDI SDK.

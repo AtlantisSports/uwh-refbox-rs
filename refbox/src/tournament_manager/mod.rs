@@ -1208,6 +1208,25 @@ impl TournamentManager {
         }
     }
 
+    /// Arm the mid-break reset: the point during a between-games countdown at which
+    /// the finished game's score and penalties clear from the display,
+    /// `post_game_duration` before the next game starts.
+    ///
+    /// Both places that start a between-games countdown must arm it. `end_game` is the
+    /// ordinary one; `apply_next_game_start` is a court coming back to life after being
+    /// parked as finished, where `reset_game_time` has been left at zero — and a zero
+    /// only comes due at 0:00, which would hold the old score on screen right up to the
+    /// next kickoff.
+    fn arm_mid_break_reset(&mut self, time_remaining_at_start: Duration, now: Instant) {
+        self.reset_game_time =
+            time_remaining_at_start.saturating_sub(self.config.post_game_duration);
+        info!(
+            "{} Will reset game at {:?}",
+            self.status_string(now),
+            self.reset_game_time
+        )
+    }
+
     pub fn apply_next_game_start(&mut self, now: Instant) -> Result<()> {
         if self.current_period != GamePeriod::BetweenGames {
             return Err(TournamentManagerError::GameInProgress);
@@ -1238,6 +1257,7 @@ impl TournamentManager {
             start_time: now,
             time_remaining_at_start,
         };
+        self.arm_mid_break_reset(time_remaining_at_start, now);
 
         // The break clock is held stopped at 0:00 when a court's schedule is finished.
         // Applying a game restarts it, and the time updater only wakes on this
@@ -1344,13 +1364,7 @@ impl TournamentManager {
             self.send_clock_running(true);
         }
 
-        self.reset_game_time =
-            time_remaining_at_start.saturating_sub(self.config.post_game_duration);
-        info!(
-            "{} Will reset game at {:?}",
-            self.status_string(now),
-            self.reset_game_time
-        )
+        self.arm_mid_break_reset(time_remaining_at_start, now);
     }
 
     fn start_game(&mut self, start_time: Instant) {
@@ -9617,6 +9631,61 @@ mod test {
         assert!(tm.clock_is_running());
         assert!(rx.has_changed().unwrap());
         assert!(*rx.borrow_and_update());
+    }
+
+    #[test]
+    fn a_revived_court_clears_the_old_score_early_again() {
+        // Finding 9 of the 2026-09-04 review. Ending the last game on a court parks the
+        // clock and drops `reset_game_time` to zero, because there is no countdown for a
+        // mid-break reset to sit inside. When a game is added and adopted,
+        // `apply_next_game_start` restarts the countdown — but used to leave
+        // `reset_game_time` at zero, so the reset only came due at 0:00 and the finished
+        // game's score and penalties stayed on the display right up to the next kickoff
+        // instead of clearing `post_game_duration` early as configured.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            minimum_break: Duration::from_secs(600),
+            post_game_duration: Duration::from_secs(120),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+
+        tm.set_next_game(NextGameInfo {
+            number: "9".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.add_score(Color::Black, 5, start);
+        // Game 9 is the last on this court.
+        tm.set_no_next_game();
+        tm.end_game(start);
+        assert_eq!(
+            tm.reset_game_time,
+            Duration::ZERO,
+            "fixture check: a finished court parks with no reset point"
+        );
+
+        // A game is added to the court and adopted on the next REFRESH.
+        tm.set_next_game(NextGameInfo {
+            number: "13".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.apply_next_game_start(start).unwrap();
+
+        let time_remaining = tm
+            .game_clock_time(start)
+            .expect("the break clock runs again after a game is adopted");
+        assert_eq!(
+            tm.reset_game_time,
+            time_remaining.saturating_sub(Duration::from_secs(120)),
+            "the old score should clear post_game_duration before kickoff, not at 0:00"
+        );
     }
 
     #[test]

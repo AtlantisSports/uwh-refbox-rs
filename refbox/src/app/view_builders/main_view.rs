@@ -122,8 +122,7 @@ pub(in super::super) fn build_main_view<'a>(
                 // A blank next-game number means the selected court has no further
                 // games: there is nothing to start until the operator picks a game in
                 // Settings, so the button goes inactive (no on_press renders greyed).
-                let nothing_to_start = snapshot.current_period == GamePeriod::BetweenGames
-                    && snapshot.next_game_number.is_empty();
+                let nothing_to_start = snapshot.court_schedule_finished();
                 let start_btn = make_chrome_button(fl!("start-now"))
                     .style(green_button)
                     .width(Length::Fill);

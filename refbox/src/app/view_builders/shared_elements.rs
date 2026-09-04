@@ -592,6 +592,11 @@ const BANNER_TWO_TIME_TEXT: f32 = 46.0;
 /// table draws with a hyphen.
 const NO_TIME: &str = "--:--";
 
+/// Shown wherever a surface has no value to give — the same hyphen the referee rows
+/// already use for an empty slot. Deliberately not a translated string: there is
+/// nothing to translate, and every grid keeps its shape either way.
+pub(super) const NO_VALUE: &str = "-";
+
 pub(super) fn make_game_time_button<'a>(
     snapshot: &GameSnapshot,
     tall: bool,
@@ -637,8 +642,7 @@ pub(super) fn make_game_time_button<'a>(
     // banner says so rather than promising a game that is not coming: the label reads
     // END and the time reads dashes, keeping the banner's two-readout shape so nothing
     // around it changes size.
-    let schedule_ended =
-        snapshot.current_period == GamePeriod::BetweenGames && snapshot.next_game_number.is_empty();
+    let schedule_ended = snapshot.court_schedule_finished();
 
     let (mut period_text, period_color): (_, fn(&Theme) -> TextStyle) = {
         let (text, color): (_, fn(&Theme) -> TextStyle) = match snapshot.current_period {
@@ -1167,9 +1171,16 @@ pub(super) fn config_string_game_num(
                     None if snapshot.game_number == "0" => fl!("none"),
                     None => fl!("error", number = snapshot.game_number.clone()),
                 };
-                next_game = match games.get(&snapshot.next_game_number) {
-                    Some(game) => game.number.to_string(),
-                    None => fl!("error", number = snapshot.next_game_number.clone()),
+                next_game = if snapshot.court_schedule_finished() {
+                    // No further games on this court: the same dash every other
+                    // surface draws. Looking a blank number up finds nothing and
+                    // used to render a localized "Error: " here.
+                    NO_VALUE.to_string()
+                } else {
+                    match games.get(&snapshot.next_game_number) {
+                        Some(game) => game.number.to_string(),
+                        None => fl!("error", number = snapshot.next_game_number.clone()),
+                    }
                 };
             } else {
                 prev_game = if snapshot.game_number == "0" {
@@ -1177,7 +1188,11 @@ pub(super) fn config_string_game_num(
                 } else {
                     fl!("error", number = snapshot.game_number.clone())
                 };
-                next_game = fl!("error", number = snapshot.next_game_number.clone());
+                next_game = if snapshot.court_schedule_finished() {
+                    NO_VALUE.to_string()
+                } else {
+                    fl!("error", number = snapshot.next_game_number.clone())
+                };
             }
         } else {
             prev_game = if snapshot.game_number == "0" {
@@ -2065,6 +2080,44 @@ mod tests {
             text("test"),
             ScrollOption::PortalDetail,
             transparent_container,
+        );
+    }
+    /// Finding 5 of the 2026-09-04 review. This layout — used when four or more
+    /// warnings are shown — looked the blank next-game number up in the schedule,
+    /// found nothing, and rendered a localized "Error: " where the game-info table
+    /// and the clock banner both draw a dash.
+    #[test]
+    fn a_finished_court_dashes_the_alternate_config_string() {
+        let game = Game {
+            number: "3".to_string(),
+            dark: ScheduledTeam::new_pending_assignment_name("Dark"),
+            light: ScheduledTeam::new_pending_assignment_name("Light"),
+            start_time: time::macros::datetime!(2026-08-05 09:00 UTC),
+            court: "Court 1".to_string(),
+            timing_rule: "Standard".to_string(),
+            referee_assignments: None,
+            description: None,
+        };
+        let games: GameList = std::iter::once((game.number.clone(), game)).collect();
+        let snapshot = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            game_number: "3".to_string(),
+            next_game_number: String::new(),
+            ..Default::default()
+        };
+
+        let (rendered, _) = config_string_game_num(&snapshot, true, Some(&games));
+
+        // Built with the same formatter rather than an English literal, so the
+        // assertion holds in every locale.
+        let expected = fl!(
+            "two-games",
+            prev_game = "3".to_string(),
+            next_game = NO_VALUE.to_string()
+        );
+        assert!(
+            rendered.contains(&expected),
+            "expected the next game to be dashed, got: {rendered}"
         );
     }
 }

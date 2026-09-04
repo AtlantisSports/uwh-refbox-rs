@@ -146,6 +146,21 @@ impl GameSnapshot {
             None
         }
     }
+
+    /// `true` when the selected court has no further scheduled games — the state the
+    /// refbox reports with a **blank** next-game number while between games.
+    ///
+    /// The one definition of that question. It is asked in five places — the break
+    /// sounds, the START NOW button, the clock banner, the game-info table and the
+    /// alternate config string — and each used to re-derive it, which is how the
+    /// alternate config string came to be missed and render a localized "Error: "
+    /// where every other surface drew a dash.
+    ///
+    /// Only `BetweenGames` can answer `true`: every other period has a game in
+    /// progress and will start play again, whatever the next-game number says.
+    pub fn court_schedule_finished(&self) -> bool {
+        matches!(self.current_period, GamePeriod::BetweenGames) && self.next_game_number.is_empty()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -1199,6 +1214,50 @@ mod test {
             ..Default::default()
         };
         assert_eq!(snapshot.next_game_number(), Some(&"3".to_string()));
+    }
+
+    #[test]
+    fn between_games_with_a_blank_number_is_a_finished_court() {
+        let snapshot = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            next_game_number: String::new(),
+            ..Default::default()
+        };
+        assert!(snapshot.court_schedule_finished());
+    }
+
+    #[test]
+    fn between_games_with_a_real_number_is_not_finished() {
+        let snapshot = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            next_game_number: "11".to_string(),
+            ..Default::default()
+        };
+        assert!(!snapshot.court_schedule_finished());
+    }
+
+    #[test]
+    fn a_game_in_progress_is_never_a_finished_court() {
+        // Whatever the next-game number says: a period with play in it will start
+        // play again. A blank here means only that nothing follows this game.
+        for period in [
+            GamePeriod::FirstHalf,
+            GamePeriod::HalfTime,
+            GamePeriod::SecondHalf,
+            GamePeriod::SuddenDeath,
+        ] {
+            for number in [String::new(), "11".to_string()] {
+                let snapshot = GameSnapshot {
+                    current_period: period,
+                    next_game_number: number.clone(),
+                    ..Default::default()
+                };
+                assert!(
+                    !snapshot.court_schedule_finished(),
+                    "{period:?} with number {number:?}"
+                );
+            }
+        }
     }
 
     #[test]

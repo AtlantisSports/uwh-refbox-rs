@@ -4,7 +4,7 @@ Branch `fix/refbox/roster-before-kickoff`. Follow the steps in order and note wh
 against each expected result. Where something differs, write down what actually happened rather
 than what you expected — a surprise here is the point of the exercise.
 
-Roughly **20 minutes**, most of it waiting for a game and a break to run.
+Roughly **15 minutes**, most of it waiting for a game and a break to run.
 
 ---
 
@@ -86,16 +86,23 @@ The app starts sitting in a countdown to game 27. **Do not start the game yet.**
 
 4. Set it back to **NO**.
 
-### Step 3 — REFRESH must not move the grid
+### Step 3 — REFRESH must not move the grid — **REMOVED, do not walk this**
 
-1. With the game still running, open **ADD WARNING** → **BLACK** and note the numbers.
-2. Cancel out, go to the **Game Info** page and press **REFRESH**.
-3. Go back into **ADD WARNING** → **BLACK**.
+This step used to say: note the numbers, press REFRESH on the Game Info page, confirm they have
+not changed.
 
-> **Expected:** exactly the same numbers as before the refresh.
->
-> This is the guarantee the design is built on: numbers must never move under your finger
-> part-way through recording something.
+**It cannot fail, so it proves nothing.** REFRESH re-pulls the event from the portal, but unless
+somebody has actually edited a team's cap numbers on the portal *during the game*, it pulls back
+the numbers already on screen. "Unchanged" is then the answer whether the grid is frozen or not.
+Eric queried it on 2026-09-04 and was right to.
+
+The property it was aiming at — during a game the grid is fixed at kickoff, so numbers cannot
+shift under the operator's hand mid-entry — is covered by the unit test
+`during_play_keeps_the_kickoff_copy`, which is where a check of that shape belongs.
+
+**A real version of this check would need** a second person editing a cap number on the dev portal
+while a game is running here, then confirming the grid does *not* adopt it until the next kickoff.
+Worth doing once if the freeze is ever suspected; not worth it as routine.
 
 ---
 
@@ -175,3 +182,20 @@ If a player picker is open at the exact moment a game ends, the numbers will cha
 finished game's team to the upcoming game's. That is the fix doing its job. Anything you were
 part-way through entering at that moment is discarded by the app regardless — a separate,
 pre-existing bug, recorded under *Deferred* in the design document.
+
+## Result — walked by Eric, 2026-09-04
+
+- **Part 1** (before the first kickoff, FORCE KEYPAD both NO and YES) — **PASSED.** Screenshots
+  confirmed BLACK offering Melbourne's twelve and WHITE offering Brisbane's seven with the clock
+  reading NEXT GAME, and the plain pad at FORCE KEYPAD = YES. This is the requirement.
+- **Part 2** (during a game) — **PASSED.**
+- **Step 3** (REFRESH) — **not walked, and removed above as unfalsifiable.**
+- **Part 3** (both halves of the break) — **PASSED.** The original reported bug, in the state it
+  was reported in.
+- **Part 4** (portal off) — **PASSED.**
+
+Two notes for anyone repeating this. The dev schedule's start time for game 27 is long past, so
+the app falls back to a **3-minute** break and kicks off on its own; wind the clock up with TIME
+EDIT *before* starting, or the game begins mid-step (it did, on the first attempt). And reaching
+the break needs the game to end naturally — TIME EDIT each period down rather than using
+"end current game and apply", which takes a different path and skips the first half of the break.

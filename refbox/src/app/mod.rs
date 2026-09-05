@@ -23,6 +23,7 @@ use iced::{
 };
 use log::*;
 use std::{
+    borrow::Cow,
     cmp::min,
     collections::{BTreeMap, BTreeSet},
     panic::{AssertUnwindSafe, catch_unwind},
@@ -1053,6 +1054,34 @@ fn recorded_result_matches_ended_game(
     ended_game: &GameNumber,
 ) -> bool {
     recorded_game == Some(ended_game)
+}
+
+/// The game whose roster the player picker must offer, or `None` to use the copy
+/// pinned at kickoff.
+///
+/// The picker must always offer the roster of the game an entry made *now* would
+/// land on. Between games -- including before the first kickoff of a session,
+/// which is where the app sits from launch until the first game begins -- that is
+/// the game about to start, so the picker follows `next_game_number`. It is read
+/// live rather than pinned, so a roster arriving mid-break appears instead of
+/// being locked out until the next kickoff.
+///
+/// During play it is the running game, and the copy pinned at kickoff is used
+/// instead of a fresh lookup. That is what stops a mid-game REFRESH moving numbers
+/// under the operator's hand, and with it keeps the grid design's guarantee that a
+/// number recorded during a game is present on that game's grid.
+///
+/// Deliberately **not** `GameSnapshot::game_number()`, which looks like the right
+/// answer and is not: that helper names the *finished* game for the whole
+/// post-game window (`BetweenGames && !is_old_game`), so using it here would put
+/// the previous game's players on offer for the first two minutes of every break
+/// -- the exact bug this change exists to fix.
+fn picker_roster_game(snapshot: &GameSnapshot) -> Option<&GameNumber> {
+    if snapshot.current_period == GamePeriod::BetweenGames {
+        Some(&snapshot.next_game_number)
+    } else {
+        None
+    }
 }
 
 impl RefBoxApp {
@@ -7264,16 +7293,25 @@ impl RefBoxApp {
                 self.foul_edit.get_printable_lists(Instant::now()).unwrap(),
                 indices
             ),
-            AppState::KeypadPage(page, player_num) =>
+            AppState::KeypadPage(page, player_num) => {
+                // Between games the roster is read live so a roster arriving
+                // mid-break appears; during play the kickoff copy is used as-is,
+                // which is also why this is a Cow rather than an owned clone --
+                // the mid-game path allocates nothing per frame.
+                let rosters = match picker_roster_game(&self.snapshot) {
+                    Some(game_num) => Cow::Owned(self.rosters_for_game(game_num)),
+                    None => Cow::Borrowed(&self.game_rosters),
+                };
                 build_keypad_page(
                     data,
                     page,
                     player_num,
                     self.config.fouls_tracked(),
                     self.edited_settings.as_ref().map(|e| e.game_number.clone()),
-                    &self.game_rosters,
+                    &rosters,
                     self.config.keypad_numbers_forced(),
-                ),
+                )
+            }
             AppState::GameDetailsPage(is_refreshing) => build_game_info_page(
                 data,
                 &self.config.game,
@@ -9117,5 +9155,72 @@ mod reply_source_tests {
     fn an_unowned_remote_selection_leaves_the_committed_link_alone() {
         assert_eq!(link_commit(false, GameSource::Portal), LinkCommit::Leave);
         assert_eq!(link_commit(false, GameSource::Custom), LinkCommit::Leave);
+    }
+}
+
+#[cfg(test)]
+mod picker_roster_game_tests {
+    use super::{GamePeriod, GameSnapshot, picker_roster_game};
+
+    fn snap(period: GamePeriod, game: &str, next: &str) -> GameSnapshot {
+        GameSnapshot {
+            current_period: period,
+            game_number: game.to_string(),
+            next_game_number: next.to_string(),
+            ..GameSnapshot::default()
+        }
+    }
+
+    /// Before the first kickoff of a session the app sits in BetweenGames with no
+    /// prior game, and the picker must already offer the first game's roster --
+    /// the requirement this change exists for. Before the fix nothing is offered
+    /// there at all and every picker falls through to the 0-9 pad.
+    #[test]
+    fn before_the_first_kickoff_follows_the_upcoming_game() {
+        assert_eq!(
+            picker_roster_game(&snap(GamePeriod::BetweenGames, "0", "27")),
+            Some(&"27".to_string()),
+        );
+    }
+
+    /// An entry made anywhere in the break belongs to the game about to start, so
+    /// the picker follows that game from the whistle -- it must not switch partway
+    /// through the break. `is_old_game` marks the engine's changeover partway in;
+    /// it must make no difference here.
+    #[test]
+    fn the_whole_break_follows_the_upcoming_game() {
+        for is_old_game in [true, false] {
+            let mut s = snap(GamePeriod::BetweenGames, "27", "15");
+            s.is_old_game = is_old_game;
+            assert_eq!(
+                picker_roster_game(&s),
+                Some(&"15".to_string()),
+                "is_old_game={is_old_game} must not change which game the picker follows",
+            );
+        }
+    }
+
+    /// During play the copy pinned at kickoff is used, so a mid-game REFRESH
+    /// cannot move the grid under the operator's hand. This is the guarantee the
+    /// original grid design was built on and it must survive this change.
+    #[test]
+    fn during_play_keeps_the_kickoff_copy() {
+        for period in [
+            GamePeriod::FirstHalf,
+            GamePeriod::HalfTime,
+            GamePeriod::SecondHalf,
+            GamePeriod::PreOvertime,
+            GamePeriod::OvertimeFirstHalf,
+            GamePeriod::OvertimeHalfTime,
+            GamePeriod::OvertimeSecondHalf,
+            GamePeriod::PreSuddenDeath,
+            GamePeriod::SuddenDeath,
+        ] {
+            assert_eq!(
+                picker_roster_game(&snap(period, "27", "15")),
+                None,
+                "{period:?} must keep the roster pinned at kickoff",
+            );
+        }
     }
 }

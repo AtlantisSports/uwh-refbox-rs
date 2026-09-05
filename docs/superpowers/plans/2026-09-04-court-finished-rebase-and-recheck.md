@@ -536,3 +536,33 @@ module path) and were corrected in place.
 - **Docs to reconcile (task 8):** `WALKTHROUGH-2026-08-29.md` claims a restart onto a finished court
   "looks identical to finishing normally". It does not — the Prior Game row reads 0 with a blank
   score after a restart, because that row is session-scoped by design.
+
+---
+
+## Deviations — 2026-09-04 (rebase and third review)
+
+- **Rebased onto master**, which had moved +22 since the branch's previous base. All 51 commits
+  replayed with **no conflicts**. Backup taken first: `backup/pre-rebase-court-finished-20260904b`.
+  `just check` green on the rebased branch: 1217 tests, 0 failures.
+- **Third code review** run against the rebased diff at high effort. Three findings, all triaged
+  below. No dependency or vendored-code changes in the diff, so `security-review` was not triggered.
+- **Finding A — fixed, and it had two instances, not the one the review named.** The mid-break reset
+  was not armed by `reset_to_manual_break`, so a court revived by switching the source off the portal
+  held the finished game's score and penalties on screen for the whole break instead of clearing them
+  `post_game_duration` before kickoff — the same defect already fixed for `apply_next_game_start`
+  (finding 9). Checking the whole class rather than the reported case found `reset_for_site_switch`'s
+  else branch with the identical hole. Both now start their break through a new `start_nominal_break`,
+  which sets the clock and arms the reset in one place, so a future revive path cannot forget.
+  Tests: `a_manual_break_after_a_finished_court_clears_the_old_score_early`,
+  `a_site_switch_off_a_finished_court_clears_the_old_score_early`.
+  **Note:** the first of those sits exactly on criterion 9's route, which has still never been walked.
+- **Finding B — fixed. DELAY grew without bound on a finished court.** Parking a court left
+  `next_scheduled_start` holding the Game Block slot the next game would have used. With the break
+  clock parked at 0:00 the projected start is simply `now`, so the DELAY figure read the gap to that
+  phantom slot and grew for as long as the refbox stayed open. Cleared in `set_no_next_game` and in
+  `end_game`'s finished branch; `reset_for_site_switch`'s parked branch already cleared it via
+  `clear_portal_next_game`. Test: `a_finished_court_does_not_show_a_growing_delay`.
+- **Finding C — ruled out by Eric**, not a code change. Recorded in
+  `REVIEW-FINDINGS-OPEN-2026-09-04.md` under "Raised by review and ruled out".
+- All three fixes were written test-first; each test was watched failing for the right reason before
+  the fix went in. `just check` green afterwards: **1220 tests, 0 failures**.

@@ -65,3 +65,19 @@ which is exactly when the override is in use. Recorded at the variant in `link_s
    three crates' test modules, differing only in game numbers. Adding a field to `Game` means editing
    four fixtures, and the two schedules can drift apart. A single test-support builder in `uwh-common`
    would serve all three.
+
+## Raised by review and ruled out by Eric — do not re-open
+
+**A refresh keeps a game that has been moved to another court.** `next_game_from_schedule` returns
+the game the engine already holds (priority 2) before checking that the schedule still places it on
+the selected court. On the review's reading, a game moved off this court during the break before it
+would still be started here and its result posted against another court's game.
+
+Raised by the third review, 2026-09-04. **Eric ruled the premise false: games are not moved between
+courts, and never during a game.** No code change.
+
+The same ruling disposes of the related observation that `CourtFinished` cannot be reached from a
+refresh while the engine holds a game. With games staying on their court, the only route into that
+state is a court playing out its schedule — where the engine holds nothing, `engine_next` is `None`,
+and the priority-3 search runs normally. The branch's finished-court detection is therefore reachable
+by the only path that occurs in practice.

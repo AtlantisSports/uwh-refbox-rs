@@ -251,3 +251,74 @@ The state now resolves correctly and **silently**. The `set_game_number` warning
 `09183f21` sits in a function this route never calls, so nothing records that numbering restarted.
 That matches Eric's ruling (carry on from 1, rather than park and announce), but it means a field
 occurrence leaves no trace in the log.
+
+---
+
+# The six carried-over criteria, walked at last — 2026-09-05
+
+Criteria 1, 3, 6, 7, 8 and 10 had not been walked since 2026-08-31, and two rebases had landed
+since. Carried forward twice as "a disclosed judgement, not a verification". Eric chose to walk them
+rather than carry them a third time. All at `e3f2ee31`, on the isolated rig (mock portal 8101, own
+`XDG_CONFIG_HOME`, own target dir), run as one continuous session on court 1.
+
+| # | Criterion | Result |
+|---|---|---|
+| 6 | Mid-event restart: same game, never skipped | **PASS** — returned to game 3, Turtles v Eels |
+| 7 | Out-of-order pick survives REFRESH | **PASS** — and the refresh genuinely fetched |
+| 8 | Half-time of the last game keeps whistle and START NOW | **PASS** on observation; see the gap below |
+| 1 | Last game ends: clock dead, `END --:--`, dashes, score held, one result posted | **PASS** |
+| 3 | REFRESH repeatedly: finished every time | **PASS** — 5 refreshes, 0 adoptions |
+| 10 | Court with no history: offers nothing, asks for a pick | **PASS** — GAME field blank |
+
+## What made each falsifiable
+
+The recurring risk in this set is a step that reads the same whether or not the code works. Two were
+nearly that, and were tightened before being recorded:
+
+- **Criterion 7** would "pass" if REFRESH did nothing at all. The mock's access log shows the fetch
+  and the app log shows it acted: `22:47:39 Got schedule` → `22:47:40 Setting upcoming game info …
+  Game 1, Sharks/Barracudas`. The box received a schedule that pointed at game 3 and *chose* to keep
+  the operator's pick.
+- **Criterion 3** likewise. Six `Got schedule` since game 3 ended (one at game end, five from Eric),
+  six `No further games scheduled on this court`, and **zero** `Setting upcoming game info`.
+- **Criterion 10** could not be told from its failure by the log alone — both readings end with game
+  2 selected. Eric confirmed the GAME field was **blank and required a pick**, which is the pass.
+  Recorded on his direct observation, not inferred.
+
+## Criterion 8 — the precondition genuinely held
+
+Worth stating because it is the criterion most easily walked hollow. At kickoff of game 3:
+
+```
+22:51:10  No games scheduled on court 1 after game 3
+22:51:10  No further games scheduled on this court
+```
+
+So the court was flagged finished eight minutes *before* the half-time being tested. The whistle
+fired at 22:51:59 (`Playing whistle once`) and Eric confirmed he **heard** it — the log only proves
+the app tried. START NOW was live and pressable.
+
+**Gap, disclosed:** half-time ran its full 45 seconds (22:51:40 → 22:52:24), so START NOW was seen
+live but never *pressed*. "START NOW works to begin the second half early" is therefore observed,
+not exercised. Folded into the overtime run below rather than contrived separately.
+
+## Criterion 1 — the posting half
+
+Across the entire run the rig logged exactly two results: game 1 at 1-0 and game 3 at 2-1. One per
+game actually played, nothing invented, nothing duplicated, nothing posted during a break or a
+refresh.
+
+## A gap in the criteria themselves, raised by Eric
+
+**None of the ten cover overtime or sudden death on a finished court** — and the last game on a court
+is very often a final, which is exactly where they happen. Checked in code: all three suppression
+points test the period, not the game — `court_schedule_finished()` is
+`current_period == BetweenGames && next_game_number.is_empty()`, `start_play_now`'s refusal sits
+inside its `BetweenGames` arm, and the sound gate is `period == BetweenGames && …`. No in-game break
+can be `BetweenGames`, so the class is structurally excluded rather than enumerated.
+
+**But nothing automated covers it.** The golden trace does not render `game_number` or
+`next_game_number` (both marked "not core timing/state", design doc §4), and no golden scenario
+references `set_no_next_game`, `no_next_game`, `schedule_linked` or `court_schedule_finished` — the
+state never occurs under the trace at all. Follow-up worth filing: **add a golden-trace scenario for
+a finished court.** Not on this branch.

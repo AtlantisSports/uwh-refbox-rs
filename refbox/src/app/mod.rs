@@ -1056,6 +1056,47 @@ fn recorded_result_matches_ended_game(
     recorded_game == Some(ended_game)
 }
 
+/// Both teams' cap numbers for a scheduled game **on this court**, read from the
+/// session cache. Empty vectors where the slot has no portal team assigned (a
+/// placeholder such as "winner of A"), where no roster has arrived, or where the
+/// game is not this court's -- those teams get the number pad.
+///
+/// The court check is load-bearing. Game numbers are unique across a whole event,
+/// not per court, and when no next game is scheduled the engine synthesises one by
+/// incrementing the current number (`next_game_number`). That invented number can
+/// land on a real game being played on another court. Without this check the
+/// picker would offer two teams who are not in the pool, with nothing on screen to
+/// say anything was wrong -- worse than the number pad, which claims nothing.
+///
+/// A `current_court` of `None` is treated as "no court to disagree with" rather
+/// than as a mismatch, so every caller keeps the behaviour it has today rather
+/// than losing its grid in a state that has never been exercised.
+fn rosters_for_scheduled_game(
+    schedule: Option<&Schedule>,
+    team_rosters: &BTreeMap<TeamId, Vec<u8>>,
+    current_court: Option<&str>,
+    game_num: &GameNumber,
+) -> BlackWhiteBundle<Vec<u8>> {
+    let mut out = BlackWhiteBundle {
+        black: Vec::new(),
+        white: Vec::new(),
+    };
+
+    if let Some(schedule) = schedule {
+        if let Some(game) = schedule.games.get(game_num) {
+            if current_court.is_none_or(|court| game.court == court) {
+                for (color, team) in [(Color::Black, &game.dark), (Color::White, &game.light)] {
+                    if let Some(numbers) = team.assigned().and_then(|id| team_rosters.get(id)) {
+                        out[color] = numbers.clone();
+                    }
+                }
+            }
+        }
+    }
+
+    out
+}
+
 /// The game whose roster the player picker must offer, or `None` to use the copy
 /// pinned at kickoff.
 ///
@@ -1994,28 +2035,15 @@ impl RefBoxApp {
         }
     }
 
-    /// Both teams' cap numbers for a scheduled game, read from the session
-    /// cache. Empty vectors where the slot has no portal team assigned (a
-    /// placeholder such as "winner of A") or no roster has arrived — those
-    /// teams get the number pad.
+    /// Both teams' cap numbers for a scheduled game on this court, read from the
+    /// session cache. See `rosters_for_scheduled_game`.
     fn rosters_for_game(&self, game_num: &GameNumber) -> BlackWhiteBundle<Vec<u8>> {
-        let mut out = BlackWhiteBundle {
-            black: Vec::new(),
-            white: Vec::new(),
-        };
-
-        if let Some(schedule) = &self.schedule {
-            if let Some(game) = schedule.games.get(game_num) {
-                for (color, team) in [(Color::Black, &game.dark), (Color::White, &game.light)] {
-                    if let Some(numbers) = team.assigned().and_then(|id| self.team_rosters.get(id))
-                    {
-                        out[color] = numbers.clone();
-                    }
-                }
-            }
-        }
-
-        out
+        rosters_for_scheduled_game(
+            self.schedule.as_ref(),
+            &self.team_rosters,
+            self.current_court.as_deref(),
+            game_num,
+        )
     }
 
     fn handle_game_start(&mut self, new_game_num: &GameNumber) -> Task<Message> {
@@ -9222,5 +9250,111 @@ mod picker_roster_game_tests {
                 "{period:?} must keep the roster pinned at kickoff",
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod rosters_for_scheduled_game_tests {
+    use super::*;
+    use time::OffsetDateTime;
+    use uwh_common::uwhportal::schedule::{Game, ScheduledTeam};
+
+    fn game_on(number: &str, court: &str) -> Game {
+        Game {
+            number: number.to_string(),
+            dark: ScheduledTeam::new_team_id(TeamId::from_partial("dark")),
+            light: ScheduledTeam::new_team_id(TeamId::from_partial("light")),
+            start_time: OffsetDateTime::UNIX_EPOCH,
+            court: court.to_string(),
+            timing_rule: "RR".to_string(),
+            referee_assignments: None,
+            description: None,
+        }
+    }
+
+    fn schedule_with(game: Game) -> Schedule {
+        Schedule {
+            event_id: EventId::from_full("events/1889-B").unwrap(),
+            games: std::iter::once((game.number.clone(), game)).collect(),
+            non_game_entries: Vec::new(),
+            groups: Vec::new(),
+            timing_rules: Vec::new(),
+            standings_order: None,
+            final_results_order: None,
+            referees_by_game_number: None,
+        }
+    }
+
+    fn cached_rosters() -> BTreeMap<TeamId, Vec<u8>> {
+        BTreeMap::from([
+            (TeamId::from_partial("dark"), vec![3, 6, 9]),
+            (TeamId::from_partial("light"), vec![2, 7]),
+        ])
+    }
+
+    /// The ordinary case: a game on this court supplies both teams' numbers.
+    #[test]
+    fn a_game_on_this_court_supplies_both_rosters() {
+        let schedule = schedule_with(game_on("27", "Court 1"));
+        let out = rosters_for_scheduled_game(
+            Some(&schedule),
+            &cached_rosters(),
+            Some("Court 1"),
+            &"27".to_string(),
+        );
+        assert_eq!(out[Color::Black], vec![3, 6, 9]);
+        assert_eq!(out[Color::White], vec![2, 7]);
+    }
+
+    /// When no next game is scheduled the engine synthesises a game number by
+    /// incrementing the current one, and game numbers are unique across a whole
+    /// event rather than per court -- so that invented number can name a real
+    /// game being played somewhere else. Offering its two teams would be
+    /// confidently wrong, with nothing on screen to say so. The number pad,
+    /// which claims nothing, is the right answer instead.
+    #[test]
+    fn a_game_on_another_court_supplies_nothing() {
+        let schedule = schedule_with(game_on("28", "Court 2"));
+        let out = rosters_for_scheduled_game(
+            Some(&schedule),
+            &cached_rosters(),
+            Some("Court 1"),
+            &"28".to_string(),
+        );
+        assert!(
+            out[Color::Black].is_empty(),
+            "another court's dark team must not be offered",
+        );
+        assert!(
+            out[Color::White].is_empty(),
+            "another court's light team must not be offered",
+        );
+    }
+
+    /// No court selected is not a mismatch. Every existing caller keeps the
+    /// behaviour it has today rather than silently losing its grid in a state
+    /// that has never been exercised.
+    #[test]
+    fn no_current_court_still_supplies_the_roster() {
+        let schedule = schedule_with(game_on("27", "Court 1"));
+        let out =
+            rosters_for_scheduled_game(Some(&schedule), &cached_rosters(), None, &"27".to_string());
+        assert_eq!(out[Color::Black], vec![3, 6, 9]);
+        assert_eq!(out[Color::White], vec![2, 7]);
+    }
+
+    /// The other shape the synthesised number takes: one that is in no schedule
+    /// at all.
+    #[test]
+    fn an_unknown_game_supplies_nothing() {
+        let schedule = schedule_with(game_on("27", "Court 1"));
+        let out = rosters_for_scheduled_game(
+            Some(&schedule),
+            &cached_rosters(),
+            Some("Court 1"),
+            &"99".to_string(),
+        );
+        assert!(out[Color::Black].is_empty());
+        assert!(out[Color::White].is_empty());
     }
 }

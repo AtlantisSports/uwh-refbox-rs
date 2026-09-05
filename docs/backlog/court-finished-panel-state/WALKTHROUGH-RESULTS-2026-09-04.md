@@ -322,3 +322,56 @@ can be `BetweenGames`, so the class is structurally excluded rather than enumera
 references `set_no_next_game`, `no_next_game`, `schedule_linked` or `court_schedule_finished` — the
 state never occurs under the trace at all. Follow-up worth filing: **add a golden-trace scenario for
 a finished court.** Not on this branch.
+
+---
+
+# Criterion 11 (new) — overtime and sudden death on a finished court — 2026-09-05
+
+**Raised by Eric, and it was a real gap: none of the original ten cover it.** The last game on a
+court is very often a final, and a final is exactly where overtime and sudden death happen. Walked
+at `e3f2ee31` on the isolated rig, with the TEST timing rule given `overtimeAllowed`,
+`suddenDeathAllowed`, and 45s breaks so the 30-second whistle could fire in each.
+
+**Result: PASS**, and it also closes the piece criterion 8 could not.
+
+Game 3 — the last on court 1, so the court was flagged finished at kickoff
+(`23:21:54 No further games scheduled on this court`) — was played 0-0 through regulation and both
+overtime halves, into sudden death. Every in-game break counted down normally and **START NOW
+started the next period early in all four of them**:
+
+| Break | Entered | Started early with | START NOW |
+|---|---|---|---|
+| Half-time | 23:22:23 | 22.8s of 45s left | worked |
+| Pre-overtime | 23:23:14 | 13.3s of 45s left | worked |
+| Overtime half-time | 23:24:02 | 36.7s of 45s left | worked |
+| Pre-sudden-death | 23:24:30 | 23.8s of 45s left | worked |
+
+Whistles fired at 23:23:29 (pre-overtime) and 23:24:41 (pre-sudden-death). The overtime half-time
+shows none only because it was started 8s in, before the 30-second mark — not a miss.
+
+Periods reached in order: FRSTHLF, HLFTIME, SCNDHLF, PREOVTM, OTFRSTH, OTHLFTM, OTSCNDH, PRESDND,
+SUDNDTH, then `Last game on this court is over; stopping the clock`. Final: Score is Black: 0, White: 1
+
+**Criterion 8's open half is closed by this run.** Half-time ended with 22.8s still on a 45s clock,
+logged as "Second Half manually started by refs" — START NOW was pressed, on a finished court, and
+it worked.
+
+## Why this was worth walking even though the code argument was sound
+
+All three suppression points test the period, not the game, so no in-game break can be
+`BetweenGames` and the class is structurally excluded. That argument is correct. It was still worth
+walking, because **twice on this branch a "same class, must be fine" argument has been wrong about a
+site nobody had checked**: the fourth review's finding was the third site of a pattern already fixed
+at two, and the peer session's `reset_game` fix was the fourth. Two of three behaving is not
+evidence for the third.
+
+## Posting
+
+Four games were played tonight and four results posted, one per play: game 1, game 3, game 2, and
+game 3 again (this run). Game 3 appearing twice is the deliberate replay, not an invented post.
+
+## Follow-up this leaves
+
+The golden trace still cannot see any of this — it renders neither game number, and no scenario ever
+reaches the finished-court state. **Add a golden-trace scenario for a finished court**, including an
+overtime path. Not on this branch.

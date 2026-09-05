@@ -476,8 +476,14 @@ impl TournamentManager {
         self.timeout_state = None;
         self.reset();
 
-        if was_running {
-            self.start_game_clock(now);
+        if was_running && !self.start_game_clock(now) {
+            // The restart was refused: a court with no startable next game has nothing to
+            // count down to. The clock is parked, but the updater still has it cached as
+            // running, and a stopped clock it believes is running yields a next-wake
+            // instant of `now` — a hot loop. The other park sites in this file
+            // (`end_game`, `set_no_next_game`, `reset_for_site_switch`) notify for the
+            // same reason.
+            self.send_clock_running(false);
         }
     }
 
@@ -10183,6 +10189,48 @@ mod test {
         assert!(
             tm.next_game_scheduled_start(after_expiry).is_none(),
             "a game that is never coming has no scheduled start to be measured against"
+        );
+    }
+
+    #[test]
+    fn a_reset_on_a_finished_court_tells_the_updater_the_clock_stopped() {
+        // `reset_game` puts the engine in `BetweenGames` and then restarts the clock only if it
+        // was running. On a court whose schedule is finished that restart is refused, so the clock
+        // is left parked — but the updater still has it cached as running, and a stopped clock it
+        // believes is running gives a next-wake instant of `now`, i.e. a hot loop. Every other
+        // park site in this area sends the notification explicitly for exactly this reason.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            minimum_break: Duration::from_secs(600),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+
+        tm.set_next_game(NextGameInfo {
+            number: "9".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(start).unwrap();
+        assert!(
+            *tm.start_stop_tx.borrow(),
+            "fixture check: the game clock is running"
+        );
+
+        // A refresh part-way through the game reports this court's schedule finished.
+        tm.set_no_next_game();
+
+        tm.reset_game(start);
+
+        assert!(
+            !tm.clock_is_running(),
+            "fixture check: the restart is refused, so the clock is parked"
+        );
+        assert!(
+            !*tm.start_stop_tx.borrow(),
+            "the updater must be told the clock stopped, or it wakes continuously on a stopped clock"
         );
     }
 

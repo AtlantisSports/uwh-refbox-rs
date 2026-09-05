@@ -1113,10 +1113,15 @@ fn rosters_for_scheduled_game(
 /// number recorded during a game is present on that game's grid.
 ///
 /// Deliberately **not** `GameSnapshot::game_number()`, which looks like the right
-/// answer and is not: that helper names the *finished* game for the whole
-/// post-game window (`BetweenGames && !is_old_game`), so using it here would put
-/// the previous game's players on offer for the first two minutes of every break
-/// -- the exact bug this change exists to fix.
+/// answer and is not. That helper returns `next_game_number` only when
+/// `BetweenGames && !is_old_game`; the post-game window is the *other* half,
+/// `BetweenGames && is_old_game` (`is_old_game` is `!has_reset`, and `reset()`
+/// has not yet run). So for the first two minutes of every break the helper names
+/// the **finished** game, and using it here would put the previous game's players
+/// on offer -- the exact bug this change exists to fix.
+///
+/// Note the two halves are easy to invert. `is_old_game` is *also* true throughout
+/// normal play, so it is never a standalone test for "the game has ended".
 fn picker_roster_game(snapshot: &GameSnapshot) -> Option<&GameNumber> {
     if snapshot.current_period == GamePeriod::BetweenGames {
         Some(&snapshot.next_game_number)
@@ -2051,6 +2056,23 @@ impl RefBoxApp {
         // not change: a REFRESH mid-game re-pulls the event, but must not move
         // the grid under the operator's hand.
         self.game_rosters = self.rosters_for_game(new_game_num);
+
+        // An empty pin means the grid never appears for this whole game, and the
+        // three causes -- no roster fetched, a placeholder team slot, or a game
+        // that is not this court's -- look identical on screen. Say which, once,
+        // at kickoff. Deliberately here and not in the lookup itself: that runs
+        // on every frame while the picker is open, and a warning there would
+        // flood the rolling log and roll the useful history away.
+        if self.schedule.is_some()
+            && self.game_rosters.black.is_empty()
+            && self.game_rosters.white.is_empty()
+        {
+            warn!(
+                "No cap numbers pinned for game {new_game_num} (court {:?}); the player grid will \
+                 show the number pad for this game",
+                self.current_court,
+            );
+        }
 
         let mut tasks: Vec<Task<Message>> = Vec::new();
 
@@ -9228,6 +9250,27 @@ mod picker_roster_game_tests {
         }
     }
 
+    /// Compile-time guard for the list below. This match has no wildcard arm, so
+    /// adding a `GamePeriod` variant stops this file compiling and forces whoever
+    /// adds it to say what the picker should do in that period, instead of the
+    /// new period silently escaping an enumerated list. `GamePeriod` cannot be
+    /// iterated here -- that would need a derive in `uwh-common`, which this
+    /// branch does not touch -- so this is the next best thing.
+    fn is_between_games(period: GamePeriod) -> bool {
+        match period {
+            GamePeriod::BetweenGames => true,
+            GamePeriod::FirstHalf
+            | GamePeriod::HalfTime
+            | GamePeriod::SecondHalf
+            | GamePeriod::PreOvertime
+            | GamePeriod::OvertimeFirstHalf
+            | GamePeriod::OvertimeHalfTime
+            | GamePeriod::OvertimeSecondHalf
+            | GamePeriod::PreSuddenDeath
+            | GamePeriod::SuddenDeath => false,
+        }
+    }
+
     /// During play the copy pinned at kickoff is used, so a mid-game REFRESH
     /// cannot move the grid under the operator's hand. This is the guarantee the
     /// original grid design was built on and it must survive this change.
@@ -9244,6 +9287,10 @@ mod picker_roster_game_tests {
             GamePeriod::PreSuddenDeath,
             GamePeriod::SuddenDeath,
         ] {
+            assert!(
+                !is_between_games(period),
+                "{period:?} is BetweenGames -- it does not belong in this list",
+            );
             assert_eq!(
                 picker_roster_game(&snap(period, "27", "15")),
                 None,
@@ -9341,6 +9388,19 @@ mod rosters_for_scheduled_game_tests {
             rosters_for_scheduled_game(Some(&schedule), &cached_rosters(), None, &"27".to_string());
         assert_eq!(out[Color::Black], vec![3, 6, 9]);
         assert_eq!(out[Color::White], vec![2, 7]);
+    }
+
+    /// With no schedule there is nothing to look a roster up in, so every team
+    /// gets the number pad. This is what "the portal is off means the pad" rests
+    /// on, and it is asserted here rather than left to the invariant that Manual
+    /// mode always coincides with an absent schedule -- that invariant lives
+    /// three hops away in another module and nothing here pins it.
+    #[test]
+    fn no_schedule_supplies_nothing() {
+        let out =
+            rosters_for_scheduled_game(None, &cached_rosters(), Some("Court 1"), &"27".to_string());
+        assert!(out[Color::Black].is_empty());
+        assert!(out[Color::White].is_empty());
     }
 
     /// The other shape the synthesised number takes: one that is in no schedule

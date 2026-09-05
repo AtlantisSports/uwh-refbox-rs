@@ -4,7 +4,7 @@ Branch `fix/refbox/roster-before-kickoff`. Follow the steps in order and note wh
 against each expected result. Where something differs, write down what actually happened rather
 than what you expected — a surprise here is the point of the exercise.
 
-Roughly **15 minutes**, most of it waiting for a game and a break to run.
+Roughly **20 minutes**, most of it waiting for a game and a break to run.
 
 ---
 
@@ -103,17 +103,34 @@ The app starts sitting in a countdown to game 27. **Do not start the game yet.**
 
 Let game 27 finish, or wind the clock down to end it. The app moves into the break.
 
-**Wait about 2 minutes**, until the score on screen resets to **0-0**. The info panel will now
-name a **new** current game with **two different teams**. (You can get there faster by winding
-the break clock down with TIME EDIT.)
+**The break has two halves and you need to check both.** The app names a new current game with
+two different teams straight away, at the whistle. But about **2 minutes** later it does a
+changeover, which you can see because the score on screen resets to **0-0**. The fix has to work
+on both sides of that moment, so do Step 4 first, then Step 5.
+
+### Step 4 — Immediately after the whistle, before the score resets
+
+Do this within the first two minutes, while the score on screen is still **game 27's final
+score**.
 
 1. Open **ADD WARNING** → **BLACK**, then **WHITE**.
 
-> **Expected:** the numbers of the **two teams named as current** — the game about to start.
+> **Expected:** the numbers of the **two teams named as the current game** — the game about to
+> start, not Melbourne and Brisbane.
 >
-> **Before this change you got game 27's players here** — Melbourne and Brisbane — even though
-> the app itself said a different game was current. If you see Melbourne's 12 or Brisbane's 7 at
-> this point, the fix has not worked.
+> **This is the bug you originally found**, in the state you found it in. If you see Melbourne's
+> 12 or Brisbane's 7 here, the fix has not worked.
+
+2. Cancel out.
+
+### Step 5 — After the changeover
+
+Wait until the score resets to **0-0** (or wind the break clock down with TIME EDIT to get there
+faster).
+
+1. Open **ADD WARNING** → **BLACK**, then **WHITE**.
+
+> **Expected:** the same two teams as Step 4. Nothing should change across the changeover.
 
 2. Set FORCE KEYPAD NUMBERS to **YES** and look again.
 
@@ -139,7 +156,7 @@ For each step: **as expected**, or **what you actually saw**. The three that mat
 
 - **Step 1** — the requirement you asked for.
 - **Step 2** — without it, Step 1 proves nothing.
-- **Part 3** — the bug you originally found, in the state where you found it.
+- **Step 4** — the bug you originally found, in the state where you found it.
 
 ## Two things this walkthrough cannot cover
 

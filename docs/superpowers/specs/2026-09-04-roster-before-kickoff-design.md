@@ -173,31 +173,50 @@ not reachable in a walkthrough without a multi-court event and a finished last g
 
 ---
 
-## Deferred: closing the post-game window
+## Deferred: closing the post-game window — **RESOLVED, no work needed**
 
-Preserved on **`wip/refbox/post-game-entry-closure`** (`is_post_game` plus the gating of EDIT
-FOULS, EDIT WARNINGS and PENALTIES). Approved as a design on 2026-09-04, then split out the same
-day when review found it incomplete. **Do not resume it without reading this section.**
+**Ruled by Eric, 2026-09-04, after this work was built and split out:**
 
-### Why it exists
+> Once a game ends only the confirm score happens — no fouls or warnings or penalties. A game is
+> over when the confirm final score lands. None of the prior game's fouls and warnings are to be
+> recorded after the game is done.
 
-Nothing recorded in the post-game window survives. The result is sent to the portal at the whistle
-in `handle_game_end`, from the stats snapshot `end_game` took; and `reset()` clears the warnings,
-fouls, penalties and scores at the changeover `post_game_duration` later. A foul, warning or
-penalty entered in those two minutes reaches neither game — shown briefly, then silently
-discarded. Pre-existing on master, affecting all three entry types.
+**The app already enforces this.** From the final whistle until the score confirmation lands, a
+foul, warning or penalty cannot be recorded:
 
-### What was built, and the trap it already avoids
+- With **Confirm Score Required ON**, the window is spent on `AppState::ConfirmScores`, whose view
+  (`view_builders/confirmation.rs:260-267`) offers exactly two buttons — `ScoreConfirmation
+  { correct: true }` and `{ correct: false }`. Answering *no* leads to `ScoreEdit { is_confirmation:
+  true }`, the score editor. Neither screen reaches fouls, warnings or penalties.
+- With it **OFF**, `Message::ConfirmScores` (`app/mod.rs:5949-5967`) calls `end_confirm_pause`
+  immediately and goes straight to `MainPage`, so the window is effectively zero-length.
 
-`is_post_game(snapshot)` is `current_period == BetweenGames && is_old_game`. **Both halves are
-required.** `is_old_game` is `!has_reset`, and `has_reset` is set false at `start_game`, so
-`is_old_game` is *also true throughout normal play*; testing it alone disables foul and warning
-entry for entire games while compiling cleanly. The committed test asserts the during-play cases
-and has been watched failing on `FirstHalf` with the period check removed.
+Note the confirmation happens while the period is still `SecondHalf`; `end_confirm_pause`
+(`tournament_manager/mod.rs:2198`) is what moves it to `BetweenGames`. So the operator's
+"game over" and the engine's start-of-break are the same moment.
 
-### Six findings that must be answered first
+### Why the built work was wrong, not merely incomplete
 
-Three need a decision from Eric, not a patch:
+`wip/refbox/post-game-entry-closure` gated `BetweenGames && is_old_game` — the first ~2 minutes
+**of the break**, *after* the confirmation. Under the ruling above that is precisely the window
+where entry should stay available, because an entry there belongs to the game about to start. The
+branch therefore closed the wrong window and left the intended one alone. **It is inverted, not
+unfinished. Do not resume it.**
+
+Its six review findings are kept below only because several are about the codebase rather than
+about that branch, and are worth reading before any similar change.
+
+### What was actually being chased, and why it was dropped
+
+Anything recorded in the first ~2 minutes of a break is discarded by the engine's `reset()`.
+Claude framed that as a bug — entries that "ought to count" being lost — and proposed making them
+survive. **Eric ruled that scenario impossible and unwanted:** nothing of the prior game is to be
+recorded once the game is done. The discarding is not a defect to fix.
+
+### The six review findings, kept for their value about the codebase
+
+Three were framed as needing a decision; the ruling above removes that need, but the observations
+about the codebase stand:
 
 1. **A fourth entry surface was missed.** `main_view.rs` shows an **ADD WARNING** button during
    breaks with an unconditional `on_press`. Gating three buttons and missing the one the operator

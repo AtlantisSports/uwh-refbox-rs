@@ -357,16 +357,26 @@ impl TournamentManager {
 
         match self.game_number.parse::<u32>() {
             Ok(num) => (num + 1).to_string(),
-            // Manual game numbers come from a numeric keypad, so reaching this is a
-            // bug, not a runtime condition. Start nothing; the old "default to 1"
-            // silently restarted the day.
+            // Unlinked, so numbering simply resumes at 1 and the operator keeps running
+            // games (Eric's ruling, 2026-09-05). There is no schedule to restart and no
+            // portal game to post a result against, so nothing is at risk here.
             //
-            // Deliberately silent: this is a getter, called from `generate_snapshot`
-            // on every clock tick and from all four sites of
-            // `no_startable_next_game`. Logging here floods the rolling log for as
-            // long as the state lasts and rolls the surrounding diagnostics out of
-            // it. `set_game_number` reports it once instead, where the value enters.
-            Err(_) => GameNumber::new(),
+            // Reachable, contrary to the earlier comment here that called it a bug that
+            // could not happen: switching to manual mid-game with KEEP GAME
+            // (`ConfirmationOption::KeepGameAndApply`) drops the schedule link but
+            // deliberately leaves the running game's portal number -- "G27" -- in place,
+            // because that is still the name of the game on the clock. When it ends,
+            // manual numbering has nothing to count on from.
+            //
+            // The dangerous guess is the linked one, and it is refused above with a
+            // blank: there an invented number names a real game on another court.
+            //
+            // Deliberately silent: this is a getter, called from `generate_snapshot` on
+            // every clock tick and from all four sites of `no_startable_next_game`.
+            // Logging here floods the rolling log for as long as the state lasts and
+            // rolls the surrounding diagnostics out of it. `set_game_number` reports it
+            // once instead, where the value enters.
+            Err(_) => "1".to_string(),
         }
     }
 
@@ -397,10 +407,12 @@ impl TournamentManager {
         // getter on the per-tick snapshot path. Only when unlinked: a schedule
         // legitimately supplies non-numeric numbers ("G27"), and while linked the
         // engine never names a next game by arithmetic anyway, so there is nothing
-        // wrong to report. Unlinked, it means manual numbering cannot continue.
+        // wrong to report. Unlinked, it means numbering cannot continue FROM this value,
+        // so the next game will be 1 rather than this number plus one -- worth a line in
+        // the log, but no longer an error now that the engine carries on.
         if !self.schedule_linked && self.game_number.parse::<u32>().is_err() {
-            error!(
-                "Manual game number '{}' is not an integer; no next game can be named",
+            warn!(
+                "Manual game number '{}' is not an integer; the next game will be numbered 1",
                 self.game_number
             );
         }
@@ -1631,6 +1643,15 @@ impl TournamentManager {
                             );
                             leave_game_clock_running = false;
                             self.send_clock_running(false);
+                            // The third of the three sites that park this court, and the
+                            // last to forget the Game Block slot the game would have used.
+                            // No symptom is reachable through it today -- the mid-break
+                            // `reset()` clears `current_scheduled_start`, and
+                            // `behind_schedule` short-circuits to zero on that -- but the
+                            // three sites now give one answer rather than two out of three,
+                            // and no stale slot is left for a later caller of
+                            // `next_game_scheduled_start` to inherit.
+                            self.next_scheduled_start = None;
                         } else {
                             self.start_game(start_time + time_remaining_at_start);
                         }
@@ -10316,38 +10337,45 @@ mod test {
     }
 
     #[test]
-    fn an_unparseable_manual_number_is_an_error_not_a_default() {
-        // Manual game numbers come from a numeric keypad, so this cannot happen in
-        // normal operation. If it ever does it is a bug, and the safe failure is to
-        // start nothing — never to silently restart the day at game 1.
+    fn an_unparseable_manual_number_carries_on_from_one() {
+        // Ruled by Eric, 2026-09-05, reversing the earlier "start nothing" answer.
+        //
+        // The old comment here claimed this state was unreachable because manual numbers
+        // come from a numeric keypad. It is reachable: switching to manual mid-game with
+        // KEEP GAME (`ConfirmationOption::KeepGameAndApply`) drops the schedule link but
+        // deliberately leaves the running game's portal number — "G27" — in place, since
+        // that is still the name of the game on the clock. When it ends, manual numbering
+        // has nothing to count on from.
+        //
+        // Unlinked there is no schedule to restart and no portal game to misfile a result
+        // against, so numbering resumes at 1 and the operator keeps running games. The
+        // dangerous case is the linked one, answered separately above: there a guess names
+        // another court's game, so the number stays blank.
         initialize();
         let mut tm = TournamentManager::new(Default::default());
-        tm.set_game_number("not-a-number");
+        tm.set_game_number("G27");
         tm.set_schedule_linked(false);
-        assert_eq!(tm.next_game_number(), "");
+        assert_eq!(tm.next_game_number(), "1");
     }
 
     #[test]
-    fn an_unparseable_manual_number_also_refuses_start_play_now() {
-        // Finding 2 of the 2026-09-04 review. The test above proves the number comes
-        // out blank; this proves the engine acts on it. The gate used to test the two
-        // flags (`no_next_game`, `schedule_linked`) rather than the answer they feed,
-        // so on this third path it still believed a game was startable — while the UI
-        // greyed START NOW off the blank number. The two disagreeing is what let the
-        // between-games expiry start a game with an empty number.
+    fn an_unparseable_manual_number_can_still_start_play_now() {
+        // The companion to the test above: the engine must act on the number it reports,
+        // and both halves moved together when Eric reversed the ruling. While the
+        // unparseable case parked, this gate refused — correct then, wrong now that
+        // numbering carries on. The gate reads `next_game_number()` rather than the flags
+        // behind it, so it followed the getter without a second edit; that is the point of
+        // asking one question in one place.
         initialize();
         let mut tm = TournamentManager::new(Default::default());
-        tm.set_game_number("not-a-number");
+        tm.set_game_number("G27");
         tm.set_schedule_linked(false);
         assert_eq!(
             tm.next_game_number(),
-            "",
-            "fixture check: an unparseable number names no next game"
+            "1",
+            "fixture check: an unparseable manual number resumes numbering at 1"
         );
-        assert_eq!(
-            tm.start_play_now(Instant::now()),
-            Err(TMErr::NoNextGameOnCourt)
-        );
+        assert!(tm.start_play_now(Instant::now()).is_ok());
     }
 
     #[test]

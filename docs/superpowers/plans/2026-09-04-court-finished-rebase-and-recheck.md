@@ -587,3 +587,50 @@ module path) and were corrected in place.
 - **Criterion 9 walked for the first time in four sessions**, and it exercises the fix directly. The
   blocker recorded in the previous session — that refbox could not start at all because of WSL audio
   — no longer held; the app launched and ran normally, and no `wsl --shutdown` was needed.
+
+
+---
+
+## Deviations — 2026-09-05 (fourth review, Eric's two rulings, and Task 8)
+
+- **Both decisions Task 9 was waiting on are ruled, and neither needs code.** (1) A game is never
+  rescheduled to a later time; if it has to be played later the operator returns to the original game
+  and starts it there, then selects the proper next game — so the rescheduled-anchor scenario does
+  not arise. (2) No extra warning for changing court or game during a running countdown: the existing
+  rules for changing games during a running game are enough. The third, custom sites, was ruled
+  2026-09-04. **Task 9 step 1 is satisfied.**
+- **Rebased again**, onto `1229c396` (master +8, roster-before-kickoff). Two conflicts, both in
+  `app/mod.rs`, both pure additions — master's roster helpers and this branch's `break_starts_nothing`
+  / `anchor_after_game_end` landing at the same point. Both sides kept. Backup ref:
+  `backup/pre-rebase-court-finished-20260905`. `just check` green: 1228 tests.
+- **Local `master` was 8 commits stale**, which would have made the review diff include master's own
+  roster fix. Fast-forwarded before reviewing. Worth doing every time.
+- **Fourth code review**, at high effort against the rebased diff. Four findings; outcomes and the two
+  rejections are in `REVIEW-FINDINGS-OPEN-2026-09-04.md`. Two fixed test-first (`09183f21`,
+  `869e377a`), one stale comment corrected (`fae8becf`). `just check` green: **1229 tests**.
+- **Finding 3's reported symptom did not exist.** It was reported as a DELAY figure growing all day.
+  Both routes to the guard were probed — a full-length break and one compressed shorter than
+  `post_game_duration` — and DELAY read zero in each, because the mid-break `reset()` clears
+  `current_scheduled_start` and `behind_schedule` short-circuits on that. The missing clear was still
+  added, for one answer across three parking sites, and its test pins state rather than a symptom and
+  says so. **A review's mechanism is worth checking even when its conclusion is right.**
+- **New walkthrough step for `09183f21`, walked by Eric and PASSED**, on an isolated rig (mock portal
+  on 8101, own `XDG_CONFIG_HOME`, own target directory) so the peer session's rig on 8100 was
+  untouched. Details and the false pass caught on the way are in `WALKTHROUGH-RESULTS-2026-09-04.md`.
+
+### Task 8 — done, with two corrections
+
+- **Step 1: bug (a) re-anchored.** Its note cited a line number that the rebase moved. Rewritten to
+  describe the shape — both replies nested in `if let Some(event) = self.events.get_mut(...)`, where
+  `portal_list_loaded()` only selects the error message and the reply is dropped either way. Re-checked
+  against master at `1229c396`: still present, still unfixed.
+- **Step 2: (b) verified unchanged.** Master's 8 commits touch `app/mod.rs` only in the roster and
+  reply-source regions; the diff contains zero changed lines matching the note/heartbeat machinery.
+  Verified, not assumed.
+- **Step 2: (c) is WRONG AS STATED and has been corrected.** "No audio device takes the whole refbox
+  down" was recorded as an absolute, and the blocker it created stopped criterion 9 from being walked
+  for three sessions. On 2026-09-05 refbox started and ran normally through a full game despite ALSA
+  and JACK probe failures in its log, and the peer session walked criterion 9 with no `wsl --shutdown`
+  needed. The panic is real but **intermittent**, and its precondition is narrower than "WSL has no
+  audio". Retest it before ever treating it as blocking again.
+- **Step 3: recorded here**, not as a standalone deviation commit, per `.claude/rules/plan-execution.md`.

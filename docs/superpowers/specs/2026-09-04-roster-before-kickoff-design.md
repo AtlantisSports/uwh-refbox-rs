@@ -92,8 +92,21 @@ lookup previously had no court check, so the picker would have offered two teams
 the pool with nothing on screen to say so.
 
 The lookup now refuses a game that is not this court's, which guards every caller rather than only
-the new one. A `current_court` of `None` is not treated as a mismatch, so existing callers keep
-today's behaviour rather than losing their grid in a state that has never been exercised.
+the new one.
+
+A `current_court` of `None` is not treated as a mismatch. **Ruled by Eric, 2026-09-04:** a game
+cannot be selected before a court is, so no court-less state has a game selection for a roster to
+resolve against. The code agrees — `EditableSettings::uwhportal_incomplete`
+(`view_builders/configuration.rs:85-99`) requires `current_court` to be set *and* the selected
+game to be on it before a portal setup can be applied. An earlier draft justified the same choice
+as "a state that has never been exercised", which was an assertion rather than a check; this is
+the checkable reason.
+
+**This makes one reader honest; it does not stop the number being invented.** `RecvSchedule` still
+adopts the synthesised number as the engine's next game, and the Game Info page still names that
+game and its teams with no court check — so the wrong game is already visible elsewhere. An
+earlier draft of this section claimed there was "nothing on screen to say anything was wrong";
+that was wrong. Fixing it at the source is separate work.
 
 Found by code review on 2026-09-04, not by design. Before this change the affected states offered
 nothing; without the check, this work would have turned "nothing" into "confidently wrong".

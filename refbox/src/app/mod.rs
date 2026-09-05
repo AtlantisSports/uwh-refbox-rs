@@ -1064,13 +1064,22 @@ fn recorded_result_matches_ended_game(
 /// The court check is load-bearing. Game numbers are unique across a whole event,
 /// not per court, and when no next game is scheduled the engine synthesises one by
 /// incrementing the current number (`next_game_number`). That invented number can
-/// land on a real game being played on another court. Without this check the
-/// picker would offer two teams who are not in the pool, with nothing on screen to
-/// say anything was wrong -- worse than the number pad, which claims nothing.
+/// land on a real game being played on another court, whose two teams are not in
+/// this pool at all. The number pad claims nothing; a grid of the wrong team's cap
+/// numbers claims something false, so the pad is the better answer.
+///
+/// Note this is one reader being made honest, not the invented number being fixed.
+/// `RecvSchedule` still adopts it as the engine's next game, and the Game Info page
+/// still names that game and its teams without a court check -- so the wrong game
+/// *is* already visible elsewhere on screen. Correcting that belongs where the
+/// number is produced or adopted, not here.
 ///
 /// A `current_court` of `None` is treated as "no court to disagree with" rather
-/// than as a mismatch, so every caller keeps the behaviour it has today rather
-/// than losing its grid in a state that has never been exercised.
+/// than as a mismatch. That is safe because a portal setup cannot be applied
+/// without a court in the first place: `EditableSettings::uwhportal_incomplete`
+/// requires `current_court` to be set *and* the selected game to be on it, so
+/// there is no court-less state with a game selection for a roster to resolve
+/// against. Keeping it permissive also means no existing caller changes behaviour.
 fn rosters_for_scheduled_game(
     schedule: Option<&Schedule>,
     team_rosters: &BTreeMap<TeamId, Vec<u8>>,

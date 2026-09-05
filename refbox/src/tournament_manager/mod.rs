@@ -306,11 +306,7 @@ impl TournamentManager {
         self.set_schedule_linked(false);
         // Reset to the fresh-launch default so the game selection clears, matching TournamentManager::new.
         self.game_number = "0".to_string();
-        self.clock_state = ClockState::Stopped {
-            clock_time: self.config.nominal_break,
-        };
-        // Start the break counting down, exactly as the app does at startup.
-        self.start_clock(now);
+        self.start_nominal_break(now);
     }
 
     /// Reset the clock and game number for a move to a **different site**: forget
@@ -340,10 +336,7 @@ impl TournamentManager {
             self.send_clock_running(false);
             self.reset_game_time = Duration::ZERO;
         } else {
-            self.clock_state = ClockState::Stopped {
-                clock_time: self.config.nominal_break,
-            };
-            self.start_clock(now);
+            self.start_nominal_break(now);
         }
     }
 
@@ -440,6 +433,10 @@ impl TournamentManager {
         info!("No further games scheduled on this court");
         self.next_game = None;
         self.no_next_game = true;
+        // A game that is never coming has no scheduled start. Left set, the Game Block
+        // grid slot it would have used still projects a start time, and DELAY reads the
+        // gap to it — a figure that grows for as long as the refbox stays open.
+        self.next_scheduled_start = None;
 
         if self.current_period == GamePeriod::BetweenGames && self.clock_is_running() {
             info!("No game to count down to; parking the break clock at 0:00");
@@ -1285,11 +1282,11 @@ impl TournamentManager {
     /// the finished game's score and penalties clear from the display,
     /// `post_game_duration` before the next game starts.
     ///
-    /// Both places that start a between-games countdown must arm it. `end_game` is the
-    /// ordinary one; `apply_next_game_start` is a court coming back to life after being
-    /// parked as finished, where `reset_game_time` has been left at zero — and a zero
-    /// only comes due at 0:00, which would hold the old score on screen right up to the
-    /// next kickoff.
+    /// Every place that starts a between-games countdown must arm it. `end_game` is the
+    /// ordinary one; `apply_next_game_start` and `start_nominal_break` are a court coming
+    /// back to life after being parked as finished, where `reset_game_time` has been left
+    /// at zero — and a zero only comes due at 0:00, which would hold the old score on
+    /// screen right up to the next kickoff.
     fn arm_mid_break_reset(&mut self, time_remaining_at_start: Duration, now: Instant) {
         self.reset_game_time =
             time_remaining_at_start.saturating_sub(self.config.post_game_duration);
@@ -1298,6 +1295,22 @@ impl TournamentManager {
             self.status_string(now),
             self.reset_game_time
         )
+    }
+
+    /// Start a fresh nominal between-games break, arming the mid-break reset with it.
+    ///
+    /// Both `reset_*` methods that revive a court land here, and both can be reached
+    /// from a court parked as finished, where `reset_game_time` is zero. A zero only
+    /// comes due at 0:00, which would hold the finished game's score and penalties on
+    /// screen right up to the next kickoff instead of clearing `post_game_duration`
+    /// early. Sharing one method is what keeps a third revive path from forgetting.
+    fn start_nominal_break(&mut self, now: Instant) {
+        self.clock_state = ClockState::Stopped {
+            clock_time: self.config.nominal_break,
+        };
+        self.arm_mid_break_reset(self.config.nominal_break, now);
+        // Start the break counting down, exactly as the app does at startup.
+        self.start_clock(now);
     }
 
     pub fn apply_next_game_start(&mut self, now: Instant) -> Result<()> {
@@ -1429,6 +1442,10 @@ impl TournamentManager {
             // unconditionally.
             self.send_clock_running(false);
             self.reset_game_time = Duration::ZERO;
+            // As in `set_no_next_game`: no next game means no scheduled start to be
+            // behind. This branch is also reached without it, when the engine is linked
+            // and the schedule simply names nothing more.
+            self.next_scheduled_start = None;
             return;
         }
 
@@ -9947,6 +9964,137 @@ mod test {
             tm.reset_game_time,
             time_remaining.saturating_sub(Duration::from_secs(120)),
             "the old score should clear post_game_duration before kickoff, not at 0:00"
+        );
+    }
+
+    #[test]
+    fn a_manual_break_after_a_finished_court_clears_the_old_score_early() {
+        // Same class as `a_revived_court_clears_the_old_score_early_again`, reached by the
+        // other revive path: the operator switches the source off the portal on a court that
+        // has played out its schedule. `reset_to_manual_break` starts a fresh nominal break
+        // but left `reset_game_time` at the zero the finished court parked with, so the
+        // finished game's score and penalties stayed on screen for the whole break instead
+        // of clearing `post_game_duration` before the next kickoff.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            nominal_break: Duration::from_secs(600),
+            minimum_break: Duration::from_secs(300),
+            post_game_duration: Duration::from_secs(120),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+
+        tm.set_next_game(NextGameInfo {
+            number: "9".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.add_score(Color::Black, 5, start);
+        tm.set_no_next_game();
+        tm.end_game(start);
+        assert_eq!(
+            tm.reset_game_time,
+            Duration::ZERO,
+            "fixture check: a finished court parks with no reset point"
+        );
+
+        tm.reset_to_manual_break(start);
+
+        let time_remaining = tm
+            .game_clock_time(start)
+            .expect("the break clock runs again after switching to manual");
+        assert_eq!(
+            tm.reset_game_time,
+            time_remaining.saturating_sub(Duration::from_secs(120)),
+            "the old score should clear post_game_duration before kickoff, not at 0:00"
+        );
+    }
+
+    #[test]
+    fn a_site_switch_off_a_finished_court_clears_the_old_score_early() {
+        // The third member of the same class. `reset_for_site_switch` parks the clock when
+        // the new site names nothing startable, but when it does start a nominal break it
+        // left `reset_game_time` at the finished court's zero, exactly as
+        // `reset_to_manual_break` did.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            nominal_break: Duration::from_secs(600),
+            minimum_break: Duration::from_secs(300),
+            post_game_duration: Duration::from_secs(120),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+
+        tm.set_next_game(NextGameInfo {
+            number: "9".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.add_score(Color::Black, 5, start);
+        tm.set_no_next_game();
+        tm.end_game(start);
+        assert_eq!(
+            tm.reset_game_time,
+            Duration::ZERO,
+            "fixture check: a finished court parks with no reset point"
+        );
+
+        // Switching to an unlinked site, which can name a next game by arithmetic, so the
+        // break starts rather than staying parked.
+        tm.reset_for_site_switch(false, start);
+
+        let time_remaining = tm
+            .game_clock_time(start)
+            .expect("the break clock runs again after switching site");
+        assert_eq!(
+            tm.reset_game_time,
+            time_remaining.saturating_sub(Duration::from_secs(120)),
+            "the old score should clear post_game_duration before kickoff, not at 0:00"
+        );
+    }
+
+    #[test]
+    fn a_finished_court_does_not_show_a_growing_delay() {
+        // Parking a court as finished left `next_scheduled_start` pointing at the Game Block
+        // slot the next game would have used. With the break clock parked at 0:00 the
+        // projected start is simply `now`, so DELAY read `now - that phantom slot` and grew
+        // for as long as the refbox stayed open on a court whose day was over.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            game_block: Duration::from_secs(1800),
+            post_game_duration: Duration::from_secs(120),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+
+        tm.set_next_game(NextGameInfo {
+            number: "9".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.set_no_next_game();
+        tm.end_game(start);
+
+        let well_past_the_phantom_slot = start + Duration::from_secs(1800 + 600);
+        assert_eq!(
+            tm.behind_schedule(well_past_the_phantom_slot),
+            Duration::ZERO,
+            "a finished court cannot be behind a game that is never coming"
         );
     }
 

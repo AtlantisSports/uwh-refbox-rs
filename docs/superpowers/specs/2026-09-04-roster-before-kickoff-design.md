@@ -73,9 +73,15 @@ that game is always present on that game's grid."* A REFRESH mid-game still cann
 under the operator's hand.
 
 **Deliberately not using `GameSnapshot::game_number()`.** That helper looks like the right answer
-and is not: it returns the *finished* game's number for the whole post-game window
-(`BetweenGames && !is_old_game`), which would reintroduce the reported bug for the first two
-minutes of every break.
+and is not. It returns `next_game_number` only when `BetweenGames && !is_old_game`; the post-game
+window is the *other* half, `BetweenGames && is_old_game`. So for the first two minutes of every
+break the helper names the **finished** game, and using it would reintroduce the reported bug for
+exactly that window.
+
+The two halves are easy to invert — an earlier draft of this spec and of the code comment both got
+the formula the wrong way round while stating the right conclusion. `is_old_game` is `!has_reset`,
+and `has_reset` is false throughout normal play, so it is never a standalone test for "the game
+has ended".
 
 ### 2. Never offer a roster from another court
 

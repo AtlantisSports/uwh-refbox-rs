@@ -566,3 +566,24 @@ module path) and were corrected in place.
   `REVIEW-FINDINGS-OPEN-2026-09-04.md` under "Raised by review and ruled out".
 - All three fixes were written test-first; each test was watched failing for the right reason before
   the fix went in. `just check` green afterwards: **1220 tests, 0 failures**.
+
+---
+
+## Deviations — 2026-09-04 (peer rebase mid-walkthrough, and the re-walk)
+
+- **A peer session rebased this branch onto `1229c396` at 21:08:07, mid-walkthrough.** Master had
+  moved +8 (roster-before-kickoff merged). Nothing was lost and the branch's own diff stayed intact,
+  but it staled the review and the walkthrough that had just been completed, and both had to be
+  redone. `just check` on the rebased branch: 1228 tests, 0 failures.
+- **A screen error that looked exactly like a product bug was an artefact of that rebase.** The
+  refbox displayed `No localization for id: "schedule-end"` where END belongs. The key is defined in
+  all 15 locales. In a debug build `rust-embed` reads the translation files from disk at runtime, and
+  the app happened to read `en-US/refbox.ftl` while the rebase was replaying commits, catching it at
+  a point in history before that key was added. Every run since, on a stable tree, shows zero
+  occurrences — including a repeat of the same offline scenario that first produced it. The string
+  itself comes from `i18n-embed-0.16.0/src/fluent.rs:186`, not from this project.
+- **Criteria 2, 4, 5 and 9 re-walked and all PASSED** at `808b146b`, with HEAD verified unmoved
+  before and after every step. Evidence in `WALKTHROUGH-RESULTS-2026-09-04.md`.
+- **Criterion 9 walked for the first time in four sessions**, and it exercises the fix directly. The
+  blocker recorded in the previous session — that refbox could not start at all because of WSL audio
+  — no longer held; the app launched and ran normally, and no `wsl --shutdown` was needed.

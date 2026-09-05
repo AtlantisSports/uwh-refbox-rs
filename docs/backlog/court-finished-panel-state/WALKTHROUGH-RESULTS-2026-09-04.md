@@ -129,3 +129,68 @@ unmistakable, and every signal was gated on the executable path.
 The portal connection indicator shows **green for about three seconds at startup** before the first
 health check fails (launch 13:31:22, first failure 13:31:25) — a freshly started box briefly claims
 a connection it does not have.
+
+---
+
+# Re-walk after the 21:08 rebase — criteria 2, 4, 5 and 9
+
+**Everything above this line is superseded.** Those results were obtained against base `486c5692`.
+While the walkthrough was in progress a peer session rebased this branch onto `1229c396` (master had
+moved +8 — the roster-before-kickoff work merged), which stales both mandatory checks by the
+project's own rule. What follows was walked afterwards, in full, on the rebased branch.
+
+**Commit walked: `808b146b`.** HEAD was read before and after every step and never moved, so these
+results describe the branch as it actually stands. `just check` on the same commit: **1228 tests,
+0 failures**, run in this worktree with HEAD identical before and after. Binary rebuilt from that
+commit, with zero source files newer than it.
+
+Rig: mock portal on 8100, isolated `XDG_CONFIG_HOME`, court 2 (its last game is 5). Eric at the
+keyboard for criteria 5 and 9; Claude drove the restarts for 2 and 4 and read the logs and the
+portal's post record throughout.
+
+| # | Criterion | Result |
+|---|---|---|
+| 2 | Close and reopen twice: finished both times, no countdown, nothing posted | **PASS** — walked with two shutdown kinds, a polite SIGTERM and a hard SIGKILL |
+| 4 | Offline restart: nothing started, nothing queued, nothing posted on reconnect | **PASS** |
+| 5 | Game added, REFRESH: adopted, countdown runs, START NOW live | **PASS** |
+| 9 | Portal off from finished: break counts, START NOW live, numbering from 1 | **PASS** — walked for the first time in four sessions |
+
+## Criterion 9 — evidence, and the fix it validates
+
+Game 7 was played out to reach the finished state, the source was switched off UWH PORTAL and
+applied on the settings page. On screen: break counting from 15:00, START NOW green, **Current Game
+1** (not 8 — the App-page route would have numbered from the anchor). Score read 1-0 at 14:47 and
+0-0 at 12:58. The engine log:
+
+```
+[15:00.000 BTWNGMS] Will reset game at 780s     <- start_nominal_break arming it (900s - 120s)
+[13:05.013 BTWNGMS] Starting the game clock     <- TIME EDIT, to avoid waiting two minutes
+[12:59.998 BTWNGMS] Resetting game              <- the old score cleared, on 13:00
+```
+
+Before the fix that first line read `0ns`, and the finished game's score, penalties and timeouts
+stayed on the display for the whole 15-minute break.
+
+## Posts
+
+Five score posts exist in the mock's log across the whole day, every one of them a game somebody
+played (3, 6, 6, 5, 7). Nothing was posted during an outage, on reconnect, across four restarts, or
+during any break. The count was checked before and after every step.
+
+## Two rig facts worth not rediscovering
+
+**Criterion 2 must be walked before criterion 9.** Criterion 9 leaves the court in a manual break,
+and there is no way back to the finished state except replaying a last game — switching the source
+back to the portal requires picking a game, which starts you at the beginning of that game. Walking
+9 first cost a full re-setup.
+
+**A restored finished court does not reproduce criterion 9's precondition.** Restarting into a
+finished court leaves `reset_game_time` at its constructed default rather than the zero that
+`end_game`'s finished branch writes, so the defect the fix addresses does not arise. The finished
+state has to be reached by playing the last game out.
+
+## Not walked
+
+**Criterion 5 could not be walked in the offline-started instance** and was walked after an online
+restart. Criteria 1, 3, 6, 7, 8 and 10 remain carried over from 2026-08-31 as a disclosed judgement,
+not a verification.

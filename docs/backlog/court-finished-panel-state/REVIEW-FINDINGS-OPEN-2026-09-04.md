@@ -81,3 +81,36 @@ refresh while the engine holds a game. With games staying on their court, the on
 state is a court playing out its schedule — where the engine holds nothing, `engine_next` is `None`,
 and the priority-3 search runs normally. The branch's finished-court detection is therefore reachable
 by the only path that occurs in practice.
+
+---
+
+# Fourth review — 2026-09-05, against the diff rebased onto `1229c396`
+
+Four findings. Two fixed (`09183f21`, `869e377a`), one comment corrected (`fae8becf`), and the two
+below closed without code.
+
+## Re-raised, and already ruled out above — do not re-open a third time
+
+**"`engine_next` is adopted without a court check."** This is the same finding the third review
+raised and Eric ruled out on the premise that games are not moved between courts. The fourth review
+added a supporting claim that is **false**: that between games `next_game` is always `Some`, so the
+anchor / `CourtFinished` path can never intervene. It is not always `Some` — `set_no_next_game`
+clears it, which is exactly how a finished court reaches that path, and the section above already
+says so. Checked against the code before dismissing.
+
+The lesson worth keeping: a reviewer that has not read the branch's own ruled-out list will re-raise
+what has been settled, and may dress it in a new mechanism. Check the mechanism, not just the claim.
+
+## Ruled out as master's code and a malformed schedule
+
+**A same-court start-time tie is skipped.** `Schedule::next_game_on_court` filters on
+`start_time > after`, so a game on this court starting at exactly the anchor's start time is never
+offered, and the court parks as finished instead. Two games on one court at one time cannot be
+played, so this is a malformed schedule rather than a scenario — and parking while asking the
+operator is the right answer to a schedule that makes no sense, which is what the branch now does.
+
+**Not this branch's code.** The filter is unchanged from master. What the branch changes is the
+consequence: master guessed a number arithmetically, this parks. That is the intended direction.
+
+Left alone deliberately, per `.claude/rules/scope.md` — one branch, one concern. If it is ever worth
+addressing, it belongs on its own branch with a decision about what a tie should mean.

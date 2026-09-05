@@ -194,3 +194,60 @@ state has to be reached by playing the last game out.
 **Criterion 5 could not be walked in the offline-started instance** and was walked after an online
 restart. Criteria 1, 3, 6, 7, 8 and 10 remain carried over from 2026-08-31 as a disclosed judgement,
 not a verification.
+
+---
+
+# New step, 2026-09-05 — a letter-prefixed game number carried into manual mode
+
+Walked by Eric at commit `fae8becf` (the three fourth-review commits), on an isolated rig: a second
+mock portal on **8101** with its own schedule and its own `XDG_CONFIG_HOME`, so the session already
+running on 8100 was never touched. Binary built into a separate target directory for the same
+reason, which also made the two windows tellable apart by `readlink /proc/<pid>/exe`.
+
+**Why a new schedule was needed.** Every game in the 8100 schedule is numbered 1-7. The commit under
+test only changes what happens when the number is **not** an integer, so walked against those games
+the step passes whether or not the fix exists. The rig schedule numbers court 1's games **G27** and
+**G28**. Eric confirmed the same day that real events do sometimes label games this way, depending on
+the organiser — so this is a field case, not an invention.
+
+**Route:** link to the portal, pick court 1 / game G27, START NOW, then mid-game set MANUAL GAMES to
+ON and APPLY, answering the confirmation with **KEEP CURRENT GAME AND APPLY CHANGE**. Play G27 out
+and confirm the score.
+
+**Result: PASS.** Prior Game **G27** (score Black 1, White 0), Current Game **1**, the NEXT GAME
+clock counting down, START NOW green.
+
+```
+22:20:24  [00:26.090 BTWNGMS] Entering first half of game G27
+22:20:59  Schedule-linked set to false          <- KEEP CURRENT GAME AND APPLY CHANGE
+22:21:48  [00:00.010 BTWNGMS] Ending game G27. Score is Black: 1, White: 0
+22:21:48  [00:00.010 BTWNGMS] Entering between games, time to next game is 905.2s
+```
+
+The engine's `game_number` was still the literal `"G27"` when the game ended — `KeepGameAndApply`
+calls only `clear_portal_next_game`, which does not touch it, and `reset_to_manual_break` cannot have
+run because the period was not `BetweenGames` at 22:20:59. So `next_game_number()` reached the
+unparseable arm, which is the line this commit changes. Before it, that arm returned a blank and the
+court parked at 0:00 with START NOW greyed.
+
+## A false pass caught on the way, worth not repeating
+
+The first screenshot showed Current Game **1** with the clock counting down — the pass state — from a
+box that had done nothing at all since launch. Fresh-launch manual numbering starts at 0, so the next
+game reads 1 on its own. **The discriminator is the Prior Game row:** it must name the finished game
+(`G27`). A step whose expected reading is also the startup reading cannot fail.
+
+## Two observations, neither a defect of this branch
+
+- **The portal game's timing survives the switch to manual.** Half Length stayed 0:20 rather than
+  returning to the manual 15:00, because KEEP CURRENT GAME AND APPLY applies the settings as they
+  stood on the page, which held the portal game's timing rule. Pre-existing; not in scope here.
+- **Nothing is posted for G27.** The only portal traffic in the whole run was the login. Correct: the
+  portal was switched off before the game ended.
+
+## Known gap
+
+The state now resolves correctly and **silently**. The `set_game_number` warning updated in
+`09183f21` sits in a function this route never calls, so nothing records that numbering restarted.
+That matches Eric's ruling (carry on from 1, rather than park and announce), but it means a field
+occurrence leaves no trace in the log.

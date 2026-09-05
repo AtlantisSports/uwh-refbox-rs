@@ -10120,6 +10120,73 @@ mod test {
     }
 
     #[test]
+    fn a_break_that_expires_with_nothing_to_start_forgets_the_slot_it_would_have_used() {
+        // The third site of the pattern `a_finished_court_does_not_show_a_growing_delay`
+        // fixed at the other two. A schedule-linked engine whose portal has not named a
+        // next game is not `no_next_game` -- nothing parked its clock -- so the break
+        // counts down and expires, and the expiry guard holds it at 0:00 while leaving
+        // `next_scheduled_start` pointing at the Game Block slot the game would have used.
+        //
+        // Honest scope note: unlike its two siblings this one has NO reproducible symptom.
+        // I tried both routes to the guard -- a full-length break and a break compressed
+        // shorter than `post_game_duration` -- and DELAY read zero in each, because the
+        // mid-break `reset()` clears `current_scheduled_start` and `behind_schedule`
+        // short-circuits to zero on that. So this pins the state rather than a figure on
+        // screen: three parking sites, one answer, and no stale slot left for a future
+        // caller of `next_game_scheduled_start` to inherit.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            minimum_break: Duration::from_secs(30),
+            game_block: Duration::from_secs(60),
+            post_game_duration: Duration::from_secs(120),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+
+        tm.set_next_game(NextGameInfo {
+            number: "9".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::ZERO);
+        // Ends normally, so a break runs and a next slot is projected -- nothing here
+        // knows yet that nothing is coming.
+        tm.end_game(start);
+        assert!(
+            tm.clock_is_running(),
+            "fixture check: the break must be counting down for its expiry to be reached"
+        );
+        assert!(
+            tm.next_game_scheduled_start(start).is_some(),
+            "fixture check: a slot must be projected, or there is nothing to leave stale"
+        );
+        // Linked to a schedule that has not named the next game: the state the expiry
+        // guard exists for, reached by the break running out rather than by parking.
+        tm.set_schedule_linked(true);
+
+        let after_expiry = start + Duration::from_secs(120);
+        tm.update(after_expiry).unwrap();
+        assert_eq!(
+            tm.current_period(),
+            GamePeriod::BetweenGames,
+            "fixture check: the guard must have held, not started a game"
+        );
+        assert!(
+            !tm.clock_is_running(),
+            "fixture check: the guard parks the clock at 0:00"
+        );
+
+        assert!(
+            tm.next_game_scheduled_start(after_expiry).is_none(),
+            "a game that is never coming has no scheduled start to be measured against"
+        );
+    }
+
+    #[test]
     fn the_last_game_on_a_court_ends_with_the_clock_stopped() {
         // There is no next game, so there is nothing to count down TO. The clock stops
         // when the last game on the court ends, rather than running a break to zero.

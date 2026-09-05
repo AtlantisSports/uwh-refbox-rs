@@ -1074,18 +1074,21 @@ fn recorded_result_matches_ended_game(
 /// placeholder such as "winner of A"), where no roster has arrived, or where the
 /// game is not this court's -- those teams get the number pad.
 ///
-/// The court check is load-bearing. Game numbers are unique across a whole event,
-/// not per court, and when no next game is scheduled the engine synthesises one by
-/// incrementing the current number (`next_game_number`). That invented number can
-/// land on a real game being played on another court, whose two teams are not in
-/// this pool at all. The number pad claims nothing; a grid of the wrong team's cap
-/// numbers claims something false, so the pad is the better answer.
+/// The court check is defence in depth. Game numbers are unique across a whole event,
+/// not per court, so a number naming a game on another court must not resolve to that
+/// game's rosters here: those two teams are not in this pool at all. The number pad
+/// claims nothing; a grid of the wrong team's cap numbers claims something false, so
+/// the pad is the better answer.
 ///
-/// Note this is one reader being made honest, not the invented number being fixed.
-/// `RecvSchedule` still adopts it as the engine's next game, and the Game Info page
-/// still names that game and its teams without a court check -- so the wrong game
-/// *is* already visible elsewhere on screen. Correcting that belongs where the
-/// number is produced or adopted, not here.
+/// Written when the engine still synthesised a next-game number by incrementing the
+/// current one whenever a court ran out of scheduled games -- an invented number that
+/// could land on another court's game, which `RecvSchedule` then adopted and the Game
+/// Info page named. That is no longer so: while schedule-linked the engine reports a
+/// blank rather than a guess, and every surface reads the blank as "this court has no
+/// further games", so no invented number reaches here to be caught.
+///
+/// The check stays because it costs nothing and still answers the one case the engine
+/// cannot: a game moved to a different court after the operator picked it.
 ///
 /// A `current_court` of `None` is treated as "no court to disagree with" rather
 /// than as a mismatch. That is safe because a portal setup cannot be applied

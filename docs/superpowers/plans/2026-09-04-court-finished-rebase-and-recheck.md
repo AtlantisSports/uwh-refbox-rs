@@ -512,3 +512,27 @@ tests. Diff against master: 32 files, +5559/-95, versus the pre-rebase +5551/-95
 lines are the funnel comment in deviation 3. Formatting clean. Criterion 9's regression test
 passes. The plan's `--exact` test invocations were wrong (that flag needs the fully-qualified
 module path) and were corrected in place.
+
+---
+
+## Deviations — 2026-09-04 (walkthrough session)
+
+- **Branch renamed** to `fix/uwh-common/court-finished-behaviour` (review finding 12), with Eric's
+  yes. Free: nothing pushed, no PR. The worktree directory and `.superpowers/sdd/` path keep the
+  old name; harmless.
+- **Task 7 partially done.** Criteria **2, 4 and 5 walked and PASSED**; criterion **9 NOT walked**.
+  Full evidence: `docs/backlog/court-finished-panel-state/WALKTHROUGH-RESULTS-2026-09-04.md`.
+- **Step 6 of task 7 is settled as a finding, not a pending decision.** The WSL audio panic has
+  **no workaround** — tested: an `ALSA_CONFIG_PATH` null-device override of `default` does nothing
+  (cpal opens `pulse` by name), overriding `pulse` too only postpones the same exit-101 panic, no
+  sound daemon is installed to substitute, and audio init is not gated by config or CLI flag. Only
+  `wsl --shutdown` (Eric's call; kills every WSL session) unblocks criterion 9.
+- **Criterion 2 was walked more strictly than planned** — two shutdown kinds (SIGKILL and a tidy
+  window close) rather than two tidy closes.
+- **One attempt was voided and re-run**: `pgrep -f` matched the harness's bash wrapper, so a
+  SIGTERM left the real app running and a second instance came up beside it. A later kill loop over
+  `pgrep -x refbox` killed a peer session's refbox. Both recorded in the results doc; the rule
+  adopted is to gate every signal on `readlink /proc/<pid>/exe`.
+- **Docs to reconcile (task 8):** `WALKTHROUGH-2026-08-29.md` claims a restart onto a finished court
+  "looks identical to finishing normally". It does not — the Prior Game row reads 0 with a blank
+  score after a restart, because that row is session-scoped by design.

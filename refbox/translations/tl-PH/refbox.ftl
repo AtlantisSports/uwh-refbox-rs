@@ -81,6 +81,7 @@ audible-countdown-for-last-10-seconds = COUNTDOWN NA TUNOG
     HULING 10 SEGUNDO
 delay = ANTALA
 court = KORTE:
+court-count = {$count} KORTE
 half-length-full = HABA NG KALAHATI:
 game-length = HABA NG LARO:
 overtime-allowed = OVERTIME

@@ -80,6 +80,7 @@ audible-countdown-for-last-10-seconds = นับถอยหลังด้ว�
     10 วินาที
 delay = ล่าช้า
 court = สนาม:
+court-count = {$count} สนาม
 half-length-full = ความยาวครึ่งเวลา:
 game-length = ความยาวเกม:
 overtime-allowed = อนุญาต

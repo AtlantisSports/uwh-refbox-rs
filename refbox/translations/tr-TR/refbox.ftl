@@ -81,6 +81,7 @@ audible-countdown-for-last-10-seconds = SESLİ GERİ SAYIM
     SON 10 SANİYE
 delay = GECİKME
 court = SAHA:
+court-count = {$count} SAHA
 half-length-full = DEVRE SÜRESİ:
 game-length = OYUN SÜRESİ:
 overtime-allowed = UZATMA

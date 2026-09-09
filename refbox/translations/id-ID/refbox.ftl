@@ -80,6 +80,7 @@ audible-countdown-for-last-10-seconds = HITUNG MUNDUR SUARA
     10 DETIK
 delay = TERLAMBAT
 court = LAPANGAN:
+court-count = {$count} LAPANGAN
 half-length-full = DURASI BABAK:
 game-length = DURASI PERTANDINGAN:
 overtime-allowed = PERPANJANGAN WAKTU

@@ -79,6 +79,10 @@ audible-countdown-for-last-10-seconds = AUDIBLE COUNTDOWN
     FOR LAST 10 SECONDS
 delay = DELAY
 court = COURT:
+court-count = {$count ->
+    [1] {$count} COURT
+   *[other] {$count} COURTS
+}
 half-length-full = HALF LENGTH:
 game-length = GAME LENGTH:
 overtime-allowed = OVERTIME 

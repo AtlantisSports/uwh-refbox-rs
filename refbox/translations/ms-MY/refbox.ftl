@@ -81,6 +81,7 @@ audible-countdown-for-last-10-seconds = KIRA DETIK BUNYI
     10 SAAT
 delay = LEWAT
 court = GELANGGANG:
+court-count = {$count} GELANGGANG
 half-length-full = PANJANG SEPARUH:
 game-length = PANJANG PERLAWANAN:
 overtime-allowed = MASA TAMBAHAN

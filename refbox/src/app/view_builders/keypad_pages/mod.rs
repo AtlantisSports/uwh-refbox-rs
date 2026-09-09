@@ -46,7 +46,7 @@ pub(in super::super) fn build_keypad_page<'a>(
     page: KeypadPage,
     player_num: u32,
     track_fouls_and_warnings: bool,
-    original_game_number: Option<String>,
+    original_game: Option<(String, u8)>,
     rosters: &BlackWhiteBundle<Vec<u8>>,
     force_keypad_numbers: bool,
 ) -> Element<'a, Message> {
@@ -153,8 +153,8 @@ pub(in super::super) fn build_keypad_page<'a>(
                         player_num,
                     )
                 }
-                KeypadPage::GameNumber =>
-                    make_game_number_edit_page(player_num, original_game_number),
+                KeypadPage::GameNumber(courts) =>
+                    make_game_number_edit_page(player_num, courts, original_game),
                 KeypadPage::TeamTimeouts(_, _) => {
                     unreachable!("TeamTimeouts is handled by the early return above")
                 }
@@ -295,9 +295,9 @@ fn panel_role(page: &KeypadPage) -> PanelRole {
                 PanelRole::Player(*color)
             }
         }
-        KeypadPage::GameNumber | KeypadPage::TeamTimeouts(_, _) | KeypadPage::PortalLogin(_, _) => {
-            PanelRole::NotPlayer
-        }
+        KeypadPage::GameNumber(_)
+        | KeypadPage::TeamTimeouts(_, _)
+        | KeypadPage::PortalLogin(_, _) => PanelRole::NotPlayer,
     }
 }
 
@@ -552,7 +552,7 @@ mod tests {
                 },
                 PanelRole::TeamEntry,
             ),
-            (KeypadPage::GameNumber, PanelRole::NotPlayer),
+            (KeypadPage::GameNumber(1), PanelRole::NotPlayer),
             (
                 KeypadPage::TeamTimeouts(std::time::Duration::from_secs(60), true),
                 PanelRole::NotPlayer,
@@ -615,7 +615,7 @@ mod tests {
                 team_warning: true,
                 ret_to_overview: false,
             },
-            KeypadPage::GameNumber,
+            KeypadPage::GameNumber(1),
             KeypadPage::PortalLogin(0, false),
         ];
 

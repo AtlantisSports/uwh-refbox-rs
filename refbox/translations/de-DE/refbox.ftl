@@ -81,6 +81,10 @@ audible-countdown-for-last-10-seconds = AKUSTISCHER COUNTDOWN
     10 SEKUNDEN
 delay = VERZÖGERUNG
 court = FELD:
+court-count = {$count ->
+    [1] {$count} FELD
+   *[other] {$count} FELDER
+}
 half-length-full = HALBZEITDAUER:
 game-length = SPIELDAUER:
 overtime-allowed = VERLÄNGERUNG

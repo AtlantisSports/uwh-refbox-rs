@@ -79,6 +79,10 @@ audible-countdown-for-last-10-seconds = CUENTA ATRÁS SONORA
 delay = RETRASO
 event = EVENTO:
 court = CANCHA:
+court-count = {$count ->
+    [1] {$count} CANCHA
+   *[other] {$count} CANCHAS
+}
 half-length-full = DURACIÓN DE
     UNA MITAD:
 game-length = DURACIÓN DEL

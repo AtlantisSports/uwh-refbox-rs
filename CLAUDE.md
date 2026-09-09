@@ -73,9 +73,9 @@ See `docs/workspace-map.md` for full details on each crate.
 | `chore` — maintenance | `uwh-common` |
 | `refactor` — restructure | `overlay` |
 | `docs` — documentation | `wireless-remote` |
-| `hotfix` — urgent fix | `overlay-bridge` |
-| `wip` — work in progress | `ci`, `deps`, `workspace` |
-| `audit` — auditing existing code | |
+| `hotfix` — urgent fix | `beep-test`, `alphagen`, `fonts` |
+| `wip` — work in progress | `led-panel-sim`, `matrix-drawing`, `wireless-modes` |
+| `audit` — auditing existing code | `ci`, `deps`, `workspace` |
 
 **Examples:**
 ```

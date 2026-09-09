@@ -81,6 +81,7 @@ audible-countdown-for-last-10-seconds = 残り10秒の音声
     カウントダウン
 delay = 遅延
 court = コート:
+court-count = {$count} コート
 half-length-full = ハーフ時間:
 game-length = 試合時間:
 overtime-allowed = 延長戦

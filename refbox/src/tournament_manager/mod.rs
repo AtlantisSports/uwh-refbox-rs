@@ -155,6 +155,10 @@ pub struct TournamentManager {
     /// there is no schedule to contradict it; while linked, a number no schedule
     /// supplied is a guess, and a guessed number is another court's game.
     schedule_linked: bool,
+    /// How far the automatic advance moves the game number on, in games: one
+    /// per court in use. Only ever consulted on the manual path below, which
+    /// is the only place a number is derived rather than supplied.
+    game_number_step: u32,
     next_scheduled_start: Option<Instant>,
     /// Scheduled start of the game currently in progress (portal printed time when
     /// present, else the Game Block grid slot). Set at `start_game`. `None` before
@@ -189,6 +193,7 @@ impl TournamentManager {
             next_game: None,
             no_next_game: false,
             schedule_linked: false,
+            game_number_step: 1,
             next_scheduled_start: None,
             current_scheduled_start: None,
             reset_game_time: config.nominal_break,
@@ -356,7 +361,13 @@ impl TournamentManager {
         }
 
         match self.game_number.parse::<u32>() {
-            Ok(num) => (num + 1).to_string(),
+            // No game has been played yet, so there is nothing to count on
+            // from: the first game of a session is game 1 on every court.
+            // Stepping here would open the day on the *last* court's number --
+            // game 3 of 3 -- which is the collision the step exists to avoid.
+            // The operator sets the other courts' starting numbers by hand.
+            Ok(0) => "1".to_string(),
+            Ok(num) => (num + self.game_number_step).to_string(),
             // Unlinked, so numbering simply resumes at 1 and the operator keeps running
             // games (Eric's ruling, 2026-09-05). There is no schedule to restart and no
             // portal game to post a result against, so nothing is at risk here.
@@ -385,6 +396,25 @@ impl TournamentManager {
             info!("Schedule-linked set to {linked}");
         }
         self.schedule_linked = linked;
+    }
+
+    /// Sets how far the automatic advance moves the game number on: one step
+    /// per court in use.
+    ///
+    /// On a two-court event each box runs every second game, so the court
+    /// typed as 1 runs 1, 3, 5 while the court typed as 2 runs 2, 4, 6. Only
+    /// the automatic advance is affected -- a number the operator types
+    /// arrives through `set_next_game` and is honoured exactly.
+    ///
+    /// Clamped to at least one here rather than at the call sites: a step of
+    /// zero would hand out the same game number forever, and the value comes
+    /// from a config file that is editable by hand.
+    pub fn set_game_number_step(&mut self, step: u32) {
+        let step = step.max(1);
+        if self.game_number_step != step {
+            info!("Game number step set to {step}");
+        }
+        self.game_number_step = step;
     }
 
     /// No game can legitimately be started next — which is exactly the question
@@ -9603,6 +9633,87 @@ mod test {
 
         tm.set_no_next_game();
         // Blank, never "10" — on a two-court event game 10 belongs to the other court.
+        assert_eq!(tm.next_game_number(), "");
+    }
+
+    #[test]
+    fn the_first_game_of_a_session_is_game_one_whatever_the_court_count() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+
+        tm.set_game_number_step(3);
+
+        // "0" is the no-game-played-yet marker every session starts on. On any
+        // court the first game of the day is game 1 -- never game 3, which is
+        // the last court's number.
+        assert_eq!(tm.next_game_number(), "1");
+    }
+
+    #[test]
+    fn next_game_number_steps_by_the_court_count() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("1");
+
+        tm.set_game_number_step(2);
+
+        // Two courts: this box runs the odd-numbered games, the other box the even.
+        assert_eq!(tm.next_game_number(), "3");
+    }
+
+    #[test]
+    fn the_court_count_step_carries_across_a_game_start() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("1");
+        tm.set_game_number_step(3);
+
+        tm.start_play_now(Instant::now()).unwrap();
+
+        assert_eq!(tm.game_number(), "4");
+        assert_eq!(tm.next_game_number(), "7");
+    }
+
+    #[test]
+    fn a_zero_court_count_cannot_freeze_the_numbering() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("5");
+
+        tm.set_game_number_step(0);
+
+        // A step of zero would hand out game 5 for the rest of the day.
+        assert_eq!(tm.next_game_number(), "6");
+    }
+
+    #[test]
+    fn an_explicit_next_game_ignores_the_court_count_step() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("1");
+        tm.set_game_number_step(2);
+
+        tm.set_next_game(NextGameInfo {
+            number: "8".to_string(),
+            timing: None,
+            start_time: None,
+        });
+
+        // The operator named game 8; the step governs only the automatic advance.
+        assert_eq!(tm.next_game_number(), "8");
+    }
+
+    #[test]
+    fn the_court_count_step_invents_no_number_while_schedule_linked() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("1");
+        tm.set_game_number_step(2);
+
+        tm.set_schedule_linked(true);
+
+        // Still blank: a schedule decides the numbers, and a guess would name
+        // another court's game.
         assert_eq!(tm.next_game_number(), "");
     }
 

@@ -83,6 +83,7 @@ audible-countdown-for-last-10-seconds = 마지막 10초 음성
     카운트다운
 delay = 지연
 court = 코트:
+court-count = {$count} 코트
 half-length-full = 전반 시간:
 game-length = 경기 시간:
 overtime-allowed = 연장전

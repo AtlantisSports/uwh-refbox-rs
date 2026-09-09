@@ -80,6 +80,10 @@ audible-countdown-for-last-10-seconds = HOORBARE AFTELLING
     10 SECONDEN
 delay = VERTRAGING
 court = BAAN:
+court-count = {$count ->
+    [1] {$count} BAAN
+   *[other] {$count} BANEN
+}
 half-length-full = DUUR HELFT:
 game-length = WEDSTRIJDDUUR:
 overtime-allowed = VERLENGING

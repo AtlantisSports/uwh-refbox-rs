@@ -428,6 +428,14 @@ pub struct Config {
     pub source: GameSource,
     #[serde(default)]
     pub remembered_remote: RemoteSource,
+    /// How many courts this event is running on. In manual mode the game
+    /// number advances by this many at the end of each game, so boxes on
+    /// neighbouring courts never hand out the same game number twice.
+    /// Not a plain `#[serde(default)]`: that yields zero for a `u8`, and a
+    /// step of zero hands out the same game number for the rest of the day.
+    #[serde(default = "default_courts")]
+    #[derivative(Default(value = "1"))]
+    pub courts: u8,
     pub game: Game,
     pub beep_test: BeepTest,
     pub hardware: Hardware,
@@ -498,6 +506,14 @@ pub fn effective_keypad_numbers_forced(
 }
 
 impl Config {
+    /// The court count as the app may act on it: the settings file is editable
+    /// by hand, and the Game Number page offers only 1 to [`MAX_COURTS`]. Use
+    /// this, not the raw field, anywhere the answer drives behaviour -- a value
+    /// outside the range would otherwise leave every court button unlit.
+    pub fn courts_in_use(&self) -> u8 {
+        self.courts.clamp(1, MAX_COURTS)
+    }
+
     /// See [`effective_fouls_tracked`]. Use this, not the raw field, anywhere
     /// the answer drives behaviour.
     pub fn fouls_tracked(&self) -> bool {
@@ -523,6 +539,7 @@ impl Config {
             mut audible_countdown,
             mut source,
             mut remembered_remote,
+            mut courts,
             mut game,
             mut beep_test,
             mut hardware,
@@ -571,6 +588,7 @@ impl Config {
                 }
             }
         }
+        get_integer_value(old, "courts", &mut courts);
         if let Some(old_game) = old.get("game") {
             if let Some(old_game) = old_game.as_table() {
                 game = Game::migrate(old_game);
@@ -617,6 +635,7 @@ impl Config {
             audible_countdown,
             source,
             remembered_remote,
+            courts,
             game,
             beep_test,
             hardware,
@@ -720,6 +739,16 @@ macro_attr! {
         Portal,
         Custom,
     }
+}
+
+/// The largest court count the Game Number page offers, and so the largest the
+/// rest of the app will act on.
+pub const MAX_COURTS: u8 = 4;
+
+/// One court -- the behaviour every settings file written before the court
+/// count existed must keep.
+fn default_courts() -> u8 {
+    1
 }
 
 fn get_integer_value<T: DeserializeOwned + TryFrom<i64>>(table: &Table, key: &str, save: &mut T) {
@@ -1311,6 +1340,35 @@ mod test {
         let serialized = toml::to_string(&config).unwrap();
         let parsed: Config = toml::from_str(&serialized).unwrap();
         assert_eq!(parsed.custom_site, config.custom_site);
+    }
+
+    #[test]
+    fn config_missing_courts_defaults_to_one_court() {
+        // The path every existing installation takes: no such key in the file.
+        let parsed: Config = toml::from_str(&config_toml_without("courts")).unwrap();
+        assert_eq!(parsed.courts, 1);
+    }
+
+    #[test]
+    fn migrate_keeps_a_stored_court_count() {
+        let old: Table = toml::from_str("courts = 3").unwrap();
+        assert_eq!(Config::migrate(&old).courts, 3);
+    }
+
+    #[test]
+    fn a_court_count_the_app_cannot_offer_is_clamped_to_the_offered_range() {
+        // Only a hand-edited settings file can carry these.
+        let too_many = Config {
+            courts: 9,
+            ..Default::default()
+        };
+        assert_eq!(too_many.courts_in_use(), MAX_COURTS);
+
+        let none = Config {
+            courts: 0,
+            ..Default::default()
+        };
+        assert_eq!(none.courts_in_use(), 1);
     }
 
     #[test]

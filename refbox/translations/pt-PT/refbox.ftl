@@ -81,6 +81,10 @@ audible-countdown-for-last-10-seconds = CONTAGEM DECRESCENTE
     SONORA 10 S
 delay = ATRASO
 court = CAMPO:
+court-count = {$count ->
+    [1] {$count} CAMPO
+   *[other] {$count} CAMPOS
+}
 half-length-full = DURAÇÃO DO TEMPO:
 game-length = DURAÇÃO DO JOGO:
 overtime-allowed = PRORROGAÇÃO

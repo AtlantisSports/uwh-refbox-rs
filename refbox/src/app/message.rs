@@ -159,6 +159,9 @@ pub enum Message {
     /// `edited_settings` so Cancel discards it like any other pending edit.
     CustomSiteUrlChanged(super::custom_site::TypedSiteUrl),
     CycleParameter(CyclingParameter),
+    /// Set how many courts the event runs on (Game Number page). Stages the
+    /// value on the keypad page itself, so CANCEL discards it.
+    SetCourtCount(u8),
     /// Set the team-timeout count directly (team-timeout edit page 0/1 toggle).
     SetTeamTimeoutCount(u32),
     /// Set the team-timeout length to a preset value (team-timeout edit page).
@@ -500,6 +503,7 @@ impl Message {
             | Self::UpdatesInstalled(_)
             | Self::UpdatesBack
             | Self::UpdaterHealthyCheck
+            | Self::SetCourtCount(_)
             | Self::SetTeamTimeoutCount(_)
             | Self::SetTeamTimeoutLength(_)
             | Self::OpenPowerPage
@@ -728,6 +732,7 @@ impl PartialEq for Message {
             (Self::RecvTokenValid(a, b, c), Self::RecvTokenValid(d, e, f)) => {
                 a == d && b == e && c == f
             }
+            (Self::SetCourtCount(a), Self::SetCourtCount(b)) => a == b,
             (Self::SetTeamTimeoutCount(a), Self::SetTeamTimeoutCount(b)) => a == b,
             (Self::SetTeamTimeoutLength(a), Self::SetTeamTimeoutLength(b)) => a == b,
             (Self::UpdatesCheckDone(a), Self::UpdatesCheckDone(b)) => a == b,
@@ -868,6 +873,7 @@ impl PartialEq for Message {
             | (Self::UpdatesInstalled(_), _)
             | (Self::UpdatesBack, _)
             | (Self::UpdaterHealthyCheck, _)
+            | (Self::SetCourtCount(_), _)
             | (Self::SetTeamTimeoutCount(_), _)
             | (Self::SetTeamTimeoutLength(_), _)
             | (Self::OpenPowerPage, _)
@@ -1007,7 +1013,9 @@ pub enum KeypadPage {
         PenaltyKind,
         Infraction,
     ),
-    GameNumber,
+    /// Carries the staged court count, so CANCEL discards a court change the
+    /// same way it discards a typed number. Mirrors `TeamTimeouts`.
+    GameNumber(u8),
     TeamTimeouts(Duration, bool),
     FoulAdd {
         origin: Option<(Option<GameColor>, usize)>,
@@ -1033,7 +1041,7 @@ impl KeypadPage {
             | Self::FoulAdd { .. }
             | Self::WarningAdd { .. } => 99,
             Self::TeamTimeouts(_, _) => 999,
-            Self::GameNumber => 9999,
+            Self::GameNumber(_) => 9999,
             Self::PortalLogin(_, _) => 999_999,
         }
     }
@@ -1044,7 +1052,7 @@ impl KeypadPage {
             | Self::Penalty(_, _, _, _)
             | Self::FoulAdd { .. }
             | Self::WarningAdd { .. } => fl!("player-number"),
-            Self::GameNumber => fl!("game-number"),
+            Self::GameNumber(_) => fl!("game-number"),
             Self::TeamTimeouts(_, true) => fl!("num-tos-per-half"),
             Self::TeamTimeouts(_, false) => fl!("num-tos-per-game"),
             Self::PortalLogin(_, _) => fl!("portal-login-code"),

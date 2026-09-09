@@ -81,6 +81,10 @@ audible-countdown-for-last-10-seconds = CONTO ALLA ROVESCIA
     SONORO 10 S
 delay = RITARDO
 court = CAMPO:
+court-count = {$count ->
+    [1] {$count} CAMPO
+   *[other] {$count} CAMPI
+}
 half-length-full = DURATA TEMPO:
 game-length = DURATA PARTITA:
 overtime-allowed = TEMPI SUPPL.

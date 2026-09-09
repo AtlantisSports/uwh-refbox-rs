@@ -81,6 +81,7 @@ audible-countdown-for-last-10-seconds = 最后10秒
     声音倒计时
 delay = 延误
 court = 球场：
+court-count = {$count} 球场
 half-length-full = 半场时长：
 game-length = 比赛时长：
 overtime-allowed = 允许

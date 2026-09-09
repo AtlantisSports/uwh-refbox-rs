@@ -78,6 +78,10 @@ audible-countdown-for-last-10-seconds = COMPTE À REBOURS
 delay = RETARD
 event = EVÉNEMENT:
 court = TERRAIN:
+court-count = {$count ->
+    [1] {$count} TERRAIN
+   *[other] {$count} TERRAINS
+}
 half-length-full = DURÉE DE LA
     PÉRIODE:
 game-length = DURÉE DU

@@ -38,6 +38,9 @@ impl EditableSettings {
 pub(in super::super) struct EditableSettings {
     pub config: GameConfig,
     pub game_number: GameNumber,
+    /// Courts the event is running on, staged by the Game Number page. The
+    /// game number advances by this many at the end of each game.
+    pub courts: u8,
     pub white_on_right: bool,
     pub brightness: Brightness,
     pub front_display_layout: FrontDisplayLayout,
@@ -289,6 +292,7 @@ pub(in super::super) fn page_has_changes(
             PageEntrySnapshot::Game {
                 config,
                 game_number,
+                courts,
                 source,
                 current_event_id,
                 current_court,
@@ -297,6 +301,7 @@ pub(in super::super) fn page_has_changes(
         ) => {
             edited.config != *config
                 || edited.game_number != *game_number
+                || edited.courts != *courts
                 || edited.source != *source
                 || edited.current_event_id != *current_event_id
                 || edited.current_court != *current_court
@@ -721,6 +726,7 @@ fn make_event_config_page<'a>(
     let EditableSettings {
         config,
         game_number,
+        courts,
         source,
         remembered_remote,
         current_event_id,
@@ -766,7 +772,7 @@ fn make_event_config_page<'a>(
             None
         }
     } else {
-        Some(Message::KeypadPage(KeypadPage::GameNumber))
+        Some(Message::KeypadPage(KeypadPage::GameNumber(*courts)))
     };
 
     let mut game_large_text = true;
@@ -3450,6 +3456,28 @@ mod tests {
     // ---------------------------------------------------------------------
 
     #[test]
+    fn a_changed_court_count_enables_apply_on_game_options() {
+        let mut edited = EditableSettings::default();
+        let snap = PageEntrySnapshot::Game {
+            config: edited.config.clone(),
+            game_number: edited.game_number.clone(),
+            courts: edited.courts,
+            source: edited.source,
+            current_event_id: edited.current_event_id.clone(),
+            current_court: edited.current_court.clone(),
+            schedule: edited.schedule.clone(),
+        };
+
+        // The court count is the only thing the operator touched.
+        edited.courts = 2;
+
+        assert!(
+            page_has_changes(ConfigPage::Game, &edited, Some(&snap)),
+            "Apply must enable, or a court-count change can never be committed"
+        );
+    }
+
+    #[test]
     fn game_snapshot_revert_restores_all_game_slice_fields() {
         let event_id = EventId::from_partial("evt-A");
         let original_config = GameConfig::default();
@@ -3469,6 +3497,7 @@ mod tests {
         let snap = PageEntrySnapshot::Game {
             config: edited.config.clone(),
             game_number: edited.game_number.clone(),
+            courts: edited.courts,
             source: edited.source,
             current_event_id: edited.current_event_id.clone(),
             current_court: edited.current_court.clone(),
@@ -3504,6 +3533,7 @@ mod tests {
         let snap = PageEntrySnapshot::Game {
             config: edited.config.clone(),
             game_number: edited.game_number.clone(),
+            courts: edited.courts,
             source: edited.source,
             current_event_id: edited.current_event_id.clone(),
             current_court: edited.current_court.clone(),
@@ -3874,6 +3904,7 @@ mod tests {
         let snapshot = PageEntrySnapshot::Game {
             config: entry.config.clone(),
             game_number: entry.game_number.clone(),
+            courts: entry.courts,
             source: entry.source,
             current_event_id: entry.current_event_id.clone(),
             current_court: entry.current_court.clone(),
@@ -3909,6 +3940,7 @@ mod tests {
         let snapshot = PageEntrySnapshot::Game {
             config: entry.config.clone(),
             game_number: entry.game_number.clone(),
+            courts: entry.courts,
             source: entry.source,
             current_event_id: entry.current_event_id.clone(),
             current_court: entry.current_court.clone(),

@@ -907,6 +907,7 @@ pub(crate) enum PageEntrySnapshot {
     Game {
         config: GameConfig,
         game_number: GameNumber,
+        courts: u8,
         source: GameSource,
         current_event_id: Option<EventId>,
         current_court: Option<String>,
@@ -958,6 +959,7 @@ impl PageEntrySnapshot {
             PageEntrySnapshot::Game {
                 config,
                 game_number,
+                courts,
                 source,
                 current_event_id,
                 current_court,
@@ -965,6 +967,7 @@ impl PageEntrySnapshot {
             } => {
                 edited.config = config;
                 edited.game_number = game_number;
+                edited.courts = courts;
                 edited.source = source;
                 edited.current_event_id = current_event_id;
                 edited.current_court = current_court;
@@ -2684,6 +2687,34 @@ impl RefBoxApp {
         self.persist_link_session();
     }
 
+    /// Commit the staged court count: to the settings file, and to the engine as
+    /// the game-number step.
+    ///
+    /// Called from the three places a Game-page commit actually succeeds -- the
+    /// Apply handler, once `apply_game_options` has returned without raising a
+    /// confirmation, and the two confirmation handlers, for any selection that
+    /// is not an abandonment.
+    ///
+    /// Deliberately NOT called ahead of those gates. Every way out of settings
+    /// other than Apply would then leave an abandoned court count committed:
+    /// both discard arms, page Cancel, GO BACK followed by a Cancel, and the
+    /// Settings back button, which drops the edit buffer without reverting at
+    /// all. Compensating on each of those is the drift `commit_app_toggles`
+    /// exists to prevent.
+    ///
+    /// The confirmation handlers ask whether the selection is an abandonment
+    /// rather than listing the arms that commit, so an arm added later commits
+    /// by default instead of silently dropping the setting.
+    fn commit_court_count(&mut self) {
+        let Some(courts) = self.edited_settings.as_ref().map(|edited| edited.courts) else {
+            return;
+        };
+        self.config.courts = courts;
+        self.tm
+            .lock()
+            .set_game_number_step(self.config.courts_in_use() as u32);
+    }
+
     /// Commit the Game-Options slice (game config + game number) to the live state.
     ///
     /// Returns `Some(ConfirmationKind)` when a safety gate fires (uwhportal-incomplete,
@@ -2911,6 +2942,14 @@ impl RefBoxApp {
             AppState::ConfirmationPage(ConfirmationKind::SwitchToManualFromApply)
         ) {
             return self.apply_switch_to_manual_confirmation(selection);
+        }
+
+        // Any selection that is not an abandonment commits the Game slice.
+        if !matches!(
+            selection,
+            ConfirmationOption::DiscardChanges | ConfirmationOption::GoBack
+        ) {
+            self.commit_court_count();
         }
 
         let new_config = if let AppState::ConfirmationPage(
@@ -3213,6 +3252,13 @@ impl RefBoxApp {
         &mut self,
         selection: ConfirmationOption,
     ) -> Task<Message> {
+        // Any selection that is not an abandonment commits the Game slice.
+        if !matches!(
+            selection,
+            ConfirmationOption::DiscardChanges | ConfirmationOption::GoBack
+        ) {
+            self.commit_court_count();
+        }
         let mut task = Task::none();
         let app_state = match selection {
             ConfirmationOption::EndGameAndApply => {
@@ -3307,6 +3353,7 @@ impl RefBoxApp {
             ConfigPage::Game => PageEntrySnapshot::Game {
                 config: edited.config.clone(),
                 game_number: edited.game_number.clone(),
+                courts: edited.courts,
                 source: edited.source,
                 current_event_id: edited.current_event_id.clone(),
                 current_court: edited.current_court.clone(),
@@ -3417,6 +3464,7 @@ impl RefBoxApp {
             sound: self.config.sound.clone(),
             mode: self.config.mode,
             hide_time: self.config.hide_time,
+            courts: self.config.courts_in_use(),
             collect_scorer_cap_num: self.config.collect_scorer_cap_num,
             track_fouls_and_warnings: self.config.track_fouls_and_warnings,
             force_keypad_numbers: self.config.force_keypad_numbers,
@@ -3507,7 +3555,8 @@ impl RefBoxApp {
         // neither of which has been read yet, and a break started now cannot be
         // taken back: it would count fifteen minutes down toward a game that is
         // never coming. Started (or parked) once, below, after both are known.
-        let tm = TournamentManager::new(config.game.clone());
+        let mut tm = TournamentManager::new(config.game.clone());
+        tm.set_game_number_step(config.courts_in_use() as u32);
 
         // In BeepTest mode, also build a cadence engine. `None` for the
         // ordinary Hockey/Rugby modes — the game `tm` above remains the
@@ -4487,7 +4536,7 @@ impl RefBoxApp {
                         .as_ref()
                         .map(|s| s.config.num_team_timeouts_allowed as u32)
                         .unwrap_or(self.config.game.num_team_timeouts_allowed as u32),
-                    KeypadPage::GameNumber => self
+                    KeypadPage::GameNumber(_) => self
                         .edited_settings
                         .as_ref()
                         .unwrap()
@@ -4548,6 +4597,17 @@ impl RefBoxApp {
                     if number <= page.max_val() {
                         *val = number;
                     }
+                } else {
+                    unreachable!()
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::SetCourtCount(courts) => {
+                if let AppState::KeypadPage(KeypadPage::GameNumber(ref mut staged), _) =
+                    self.app_state
+                {
+                    *staged = courts;
                 } else {
                     unreachable!()
                 }
@@ -4974,6 +5034,8 @@ impl RefBoxApp {
                             trace!("AppState changed to {:?}", self.app_state);
                             return Task::none();
                         }
+                        // Reached only when the apply committed outright.
+                        self.commit_court_count();
                     }
                     ConfigPage::Language | ConfigPage::Main | ConfigPage::User => {
                         // Language uses its own LanguageSelectComplete path. Main
@@ -5589,9 +5651,10 @@ impl RefBoxApp {
                                 }
                             }
                         }
-                        AppState::KeypadPage(KeypadPage::GameNumber, num) => {
+                        AppState::KeypadPage(KeypadPage::GameNumber(courts), num) => {
                             let edited_settings = self.edited_settings.as_mut().unwrap();
                             edited_settings.game_number = num.to_string();
+                            edited_settings.courts = courts;
                         }
                         AppState::KeypadPage(KeypadPage::TeamTimeouts(len, per_half), num) => {
                             let edited_settings = self.edited_settings.as_mut().unwrap();
@@ -5640,7 +5703,7 @@ impl RefBoxApp {
                     AppState::ParameterEditor(_, _, _) => {
                         AppState::EditGameConfig(ConfigPage::Game)
                     }
-                    AppState::KeypadPage(KeypadPage::GameNumber, _) => {
+                    AppState::KeypadPage(KeypadPage::GameNumber(_), _) => {
                         AppState::EditGameConfig(ConfigPage::Game)
                     }
                     AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), _) => {
@@ -7163,6 +7226,7 @@ impl RefBoxApp {
                     sound: self.config.sound.clone(),
                     mode: self.config.mode,
                     hide_time: self.config.hide_time,
+                    courts: self.config.courts_in_use(),
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
                     force_keypad_numbers: self.config.force_keypad_numbers,
@@ -7215,6 +7279,7 @@ impl RefBoxApp {
                     sound: self.config.sound.clone(),
                     mode: self.config.mode,
                     hide_time: self.config.hide_time,
+                    courts: self.config.courts_in_use(),
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
                     force_keypad_numbers: self.config.force_keypad_numbers,
@@ -7306,6 +7371,7 @@ impl RefBoxApp {
                     sound: self.config.sound.clone(),
                     mode: self.config.mode,
                     hide_time: self.config.hide_time,
+                    courts: self.config.courts_in_use(),
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
                     force_keypad_numbers: self.config.force_keypad_numbers,
@@ -7405,6 +7471,7 @@ impl RefBoxApp {
                     sound: self.config.sound.clone(),
                     mode: self.config.mode,
                     hide_time: self.config.hide_time,
+                    courts: self.config.courts_in_use(),
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
                     force_keypad_numbers: self.config.force_keypad_numbers,
@@ -7732,7 +7799,9 @@ impl RefBoxApp {
                     page,
                     player_num,
                     self.config.fouls_tracked(),
-                    self.edited_settings.as_ref().map(|e| e.game_number.clone()),
+                    self.edited_settings
+                        .as_ref()
+                        .map(|e| (e.game_number.clone(), e.courts)),
                     &rosters,
                     self.config.keypad_numbers_forced(),
                 )

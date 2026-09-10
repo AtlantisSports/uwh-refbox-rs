@@ -9,7 +9,9 @@
 use std::time::Duration;
 use time::OffsetDateTime;
 use uwh_common::{
-    config::Game as GameConfig, game_snapshot::GamePeriod, uwhportal::schedule::GameNumber,
+    config::Game as GameConfig,
+    game_snapshot::GamePeriod,
+    uwhportal::schedule::{GameNumber, TimingRule},
 };
 
 /// One scheduled game on the selected court, reduced to what placement needs.
@@ -17,11 +19,18 @@ use uwh_common::{
 /// `config` is deliberately not optional. A game whose timing rule cannot be resolved
 /// is left out of the list entirely rather than given a default: default period lengths
 /// would place the engine confidently at a position that does not exist.
+///
+/// `timing` is the same rule *before* conversion, kept so the engine can hand a proper
+/// `NextGameInfo` to `start_game` — which adopts a game's configuration only from a
+/// `TimingRule`. Without it, a catch-up that lands in a break cannot tell the engine
+/// what the upcoming game is, and the engine goes on believing the pre-sleep next game
+/// is next. `None` only in tests, which never exercise that path.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ScheduledGame {
     pub(crate) number: GameNumber,
     pub(crate) start_time: OffsetDateTime,
     pub(crate) config: GameConfig,
+    pub(crate) timing: Option<TimingRule>,
 }
 
 /// Where a moment falls relative to a court's games. Indices are into the slice
@@ -43,6 +52,31 @@ pub(crate) enum Placement {
     },
     /// Past the end of the last game on the court — or the court has no games at all.
     PastLastGame,
+}
+
+/// Whether this calculation models `period` at all.
+///
+/// It models regulation only — the overtime and sudden-death lengths depend on the
+/// score, and [`place`] works from the schedule, which knows nothing about scores.
+/// Sudden death has no length at all: it counts up until somebody scores.
+///
+/// Lives here, beside [`regulation_length`], so that anyone extending the model has
+/// both halves of the decision in front of them. A caller that acts on a placement
+/// for a period this returns `false` for is asserting a position the arithmetic
+/// cannot actually compute.
+pub(crate) fn models_period(period: GamePeriod) -> bool {
+    match period {
+        GamePeriod::BetweenGames
+        | GamePeriod::FirstHalf
+        | GamePeriod::HalfTime
+        | GamePeriod::SecondHalf => true,
+        GamePeriod::PreOvertime
+        | GamePeriod::OvertimeFirstHalf
+        | GamePeriod::OvertimeHalfTime
+        | GamePeriod::OvertimeSecondHalf
+        | GamePeriod::PreSuddenDeath
+        | GamePeriod::SuddenDeath => false,
+    }
 }
 
 /// Length of a regulation game: both halves plus half time.
@@ -142,11 +176,13 @@ mod test {
                 number: "1".into(),
                 start_time: t(0),
                 config: cfg(),
+                timing: None,
             },
             ScheduledGame {
                 number: "2".into(),
                 start_time: t(1800),
                 config: cfg(),
+                timing: None,
             },
         ]
     }
@@ -231,6 +267,31 @@ mod test {
 
         for (offset, expected, what) in cases {
             assert_eq!(place(&games(), t(*offset)), *expected, "{what}");
+        }
+    }
+
+    #[test]
+    fn the_model_covers_exactly_the_periods_place_can_compute() {
+        // If someone adds a period to `regulation_length`, this is the other half of
+        // the change. Overtime and sudden death depend on the score, which the
+        // schedule does not know.
+        for period in [
+            GamePeriod::BetweenGames,
+            GamePeriod::FirstHalf,
+            GamePeriod::HalfTime,
+            GamePeriod::SecondHalf,
+        ] {
+            assert!(models_period(period), "{period:?} should be modelled");
+        }
+        for period in [
+            GamePeriod::PreOvertime,
+            GamePeriod::OvertimeFirstHalf,
+            GamePeriod::OvertimeHalfTime,
+            GamePeriod::OvertimeSecondHalf,
+            GamePeriod::PreSuddenDeath,
+            GamePeriod::SuddenDeath,
+        ] {
+            assert!(!models_period(period), "{period:?} must NOT be modelled");
         }
     }
 

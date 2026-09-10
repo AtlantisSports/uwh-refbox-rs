@@ -703,11 +703,6 @@ static GAME_ENDING_RUGBY_PENALTY_SHOT_ACTIONS: &[(u64, Action)] = &[
     (10, ConfirmGameEnd), // confirm the score → game ends → BetweenGames
 ];
 
-// ── Public entry point ────────────────────────────────────────────────────────
-
-/// Return every scenario in the library.
-///
-/// Task 4 will iterate this list to run each scenario against its golden file.
 /// A sleep that crossed a game boundary: play a little of game 1, score in it, then
 /// wake up 12 seconds into game 4's second half. The trace should show the score
 /// dropping back to 0-0 and the period going straight from FirstHalf to SecondHalf
@@ -721,6 +716,11 @@ const SLEEP_CATCHUP_ACTIONS: &[(u64, Action)] = &[
     ),
 ];
 
+// ── Public entry point ────────────────────────────────────────────────────────
+
+/// Return every scenario in the library.
+///
+/// Task 4 will iterate this list to run each scenario against its golden file.
 pub(super) fn all() -> Vec<Scenario> {
     vec![
         // ── Family 1 — Regulation flow ──────────────────────────────────────

@@ -332,6 +332,9 @@ fn apply_action(tm: &mut TournamentManager, action: Action, now: Instant) {
                 number: number.into(),
                 start_time: OffsetDateTime::UNIX_EPOCH,
                 config: tm.config().clone(),
+                // The scenario never exercises the break path, which is the only one
+                // that needs a real rule to hand on to `start_game`.
+                timing: None,
             };
             tm.place_at_schedule_position(now, &game, period, time_remaining)
                 .unwrap();

@@ -1564,6 +1564,20 @@ impl TournamentManager {
         // "past the last game" are different situations that `place` reports
         // identically, and treating manual mode as past-the-last would zero a
         // perfectly good manual clock.
+        // Overtime and sudden death have no length the schedule can know: overtime
+        // depends on the score, and sudden death counts up until somebody scores. There
+        // is no "true position" to move to, and treating one as regulation would drop a
+        // live knockout game. Leave it alone and say so.
+        if !placement::models_period(self.current_period) {
+            info!(
+                "{} Lost {lost:?} during {:?}, whose length depends on the score; \
+                 there is no schedule position to move to, leaving the clock alone",
+                self.status_string(now),
+                self.current_period
+            );
+            return Ok(());
+        }
+
         if self.court_schedule.is_empty() {
             info!(
                 "{} Lost {lost:?} to a clock jump; no schedule loaded, taking it off the clock",
@@ -1573,22 +1587,30 @@ impl TournamentManager {
             return Ok(());
         }
 
+        // The correction has to be justified by the loss that triggered it. A
+        // tournament running late means the schedule already disagrees with where the
+        // game actually is; re-placing then abandons a live game because of the
+        // backlog, not because time moved — and a few seconds of clock correction
+        // would be enough to do it.
+        if !self.schedule_was_tracking_reality(wall_now, lost) {
+            info!(
+                "{} Lost {lost:?}, but the schedule already disagreed with where this \
+                 game was, so it cannot say where we are now; taking the lost time off \
+                 the clock instead of re-placing",
+                self.status_string(now)
+            );
+            self.absorb_lost_time(lost);
+            return Ok(());
+        }
+
         match place(&self.court_schedule, wall_now) {
-            Placement::BeforeFirstGame { until_start } | Placement::InBreak { until_start, .. } => {
-                info!(
-                    "{} Lost {lost:?}; the next game is {until_start:?} away",
-                    self.status_string(now)
-                );
-                // The period matters as much as the clock: left in a play period, the
-                // countdown's expiry would run the end-of-period transition instead of
-                // starting a game.
-                self.current_period = GamePeriod::BetweenGames;
-                self.clock_state = ClockState::CountingDown {
-                    start_time: now,
-                    time_remaining_at_start: until_start,
-                };
-                self.catch_up_pending = true;
+            Placement::BeforeFirstGame { until_start } => {
+                self.wait_for_scheduled_game(now, 0, until_start, lost)
             }
+            Placement::InBreak {
+                next_index,
+                until_start,
+            } => self.wait_for_scheduled_game(now, next_index, until_start, lost),
             Placement::InGame {
                 index,
                 period,
@@ -1601,19 +1623,79 @@ impl TournamentManager {
             }
             Placement::PastLastGame => {
                 info!(
-                    "{} Lost {lost:?}; past the last game on this court, stopping the clock",
+                    "{} Lost {lost:?}; past the last game on this court",
                     self.status_string(now)
                 );
                 self.current_period = GamePeriod::BetweenGames;
-                self.clock_state = ClockState::Stopped {
-                    clock_time: Duration::ZERO,
-                };
+                // Not merely "stop the clock": the engine must also stop believing the
+                // pre-sleep next game is still coming, or it starts it. This parks the
+                // break at 0:00 too.
+                self.set_no_next_game();
                 self.catch_up_pending = true;
-                self.send_clock_running(false);
             }
         }
 
         Ok(())
+    }
+
+    /// Sit between games, counting down to the game at `index`.
+    ///
+    /// Setting the period matters as much as the clock: left in a play period, the
+    /// countdown's expiry runs the end-of-period transition instead of a kickoff.
+    /// Setting `next_game` matters more still — without it the engine goes on believing
+    /// the game that was next before the sleep is next now, and starts THAT game when
+    /// the countdown expires. Its end then posts a result, under the wrong number, for
+    /// a game the catch-up passed over.
+    fn wait_for_scheduled_game(
+        &mut self,
+        now: Instant,
+        index: usize,
+        until_start: Duration,
+        lost: Duration,
+    ) {
+        self.current_period = GamePeriod::BetweenGames;
+        self.clock_state = ClockState::CountingDown {
+            start_time: now,
+            time_remaining_at_start: until_start,
+        };
+
+        if let Some(game) = self.court_schedule.get(index).cloned() {
+            info!(
+                "{} Lost {lost:?}; game {} is {until_start:?} away",
+                self.status_string(now),
+                game.number
+            );
+            self.set_next_game(NextGameInfo {
+                number: game.number.clone(),
+                timing: game.timing.clone(),
+                start_time: Some(game.start_time),
+            });
+        }
+
+        self.catch_up_pending = true;
+    }
+
+    /// Whether the schedule still described where the game actually was, just before
+    /// the jump. If it did not, it cannot describe where we are now either.
+    ///
+    /// Compares the engine's real position against the schedule's opinion of the moment
+    /// `lost` ago — the last moment the two clocks agreed. A tournament running behind
+    /// puts these permanently out of step, and it is exactly then that a few seconds of
+    /// clock correction would otherwise throw a live game forward into a later slot.
+    fn schedule_was_tracking_reality(&self, wall_now: OffsetDateTime, lost: Duration) -> bool {
+        let Ok(lost) = time::Duration::try_from(lost) else {
+            return false;
+        };
+
+        match place(&self.court_schedule, wall_now - lost) {
+            Placement::InGame { index, .. } => self
+                .court_schedule
+                .get(index)
+                .is_some_and(|game| game.number == self.game_number),
+            Placement::BeforeFirstGame { .. }
+            | Placement::InBreak { .. }
+            | Placement::PastLastGame => self.current_period == GamePeriod::BetweenGames,
+        }
     }
 
     /// Manual mode: no schedule to jump to, so just consume the lost time on whatever
@@ -5130,6 +5212,7 @@ mod test {
             number: number.into(),
             start_time: OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(offset_secs),
             config: GameConfig::default(),
+            timing: None,
         }
     }
 
@@ -5172,6 +5255,7 @@ mod test {
             number: number.clone(),
             start_time: OffsetDateTime::UNIX_EPOCH,
             config: GameConfig::default(),
+            timing: None,
         };
         tm.place_at_schedule_position(now, &game, GamePeriod::SecondHalf, Duration::from_secs(120))
             .unwrap();
@@ -5198,6 +5282,7 @@ mod test {
             number: "77".into(),
             start_time: OffsetDateTime::UNIX_EPOCH,
             config: GameConfig::default(),
+            timing: None,
         };
         tm.place_at_schedule_position(now, &game, GamePeriod::FirstHalf, Duration::from_secs(300))
             .unwrap();
@@ -5230,6 +5315,7 @@ mod test {
                 half_play_duration: Duration::from_secs(999),
                 ..Default::default()
             },
+            timing: None,
         };
         tm.place_at_schedule_position(now, &game, GamePeriod::FirstHalf, Duration::from_secs(300))
             .unwrap();
@@ -5249,6 +5335,7 @@ mod test {
             number: "1".into(),
             start_time: wall + time::Duration::hours(1),
             config: GameConfig::default(),
+            timing: None,
         }]);
         tm.start_play_now(now).unwrap();
         tm.start_clock(now);
@@ -5270,6 +5357,7 @@ mod test {
             number: "1".into(),
             start_time: kickoff,
             config: GameConfig::default(),
+            timing: None,
         }]);
         tm.set_next_game(NextGameInfo {
             number: "1".into(),
@@ -5294,29 +5382,47 @@ mod test {
     }
 
     #[test]
-    fn a_catch_up_into_a_break_sits_between_games() {
+    fn a_catch_up_into_a_break_waits_for_the_right_next_game() {
+        // Waking in the gap between games. Getting the countdown right is not enough:
+        // the engine is still holding the next-game info from before the sleep, so if
+        // that is left alone it starts THAT game when the countdown expires, and its
+        // end posts a result — under the wrong number — for a game that was never
+        // played. Game numbers here are deliberately non-consecutive: with 1/2/3 the
+        // engine's fallback of incrementing the current number would give the right
+        // answer by accident and the test would pass with the fix removed.
         initialize();
         let now = Instant::now();
         let wall = OffsetDateTime::now_utc();
+        let game = |number: &str, mins: i64| ScheduledGame {
+            number: number.into(),
+            start_time: wall + time::Duration::minutes(mins),
+            config: GameConfig::default(),
+            timing: None,
+        };
+
         let mut tm = TournamentManager::new(GameConfig::default());
-        tm.set_court_schedule(vec![
-            ScheduledGame {
-                number: "1".into(),
-                start_time: wall - time::Duration::hours(2),
-                config: GameConfig::default(),
-            },
-            ScheduledGame {
-                number: "2".into(),
-                start_time: wall + time::Duration::hours(1),
-                config: GameConfig::default(),
-            },
-        ]);
+        // Regulation is 33 min on the default config: game 1 runs 0..33,
+        // game 4 runs 40..73, game 9 starts at 120.
+        tm.set_court_schedule(vec![game("1", 0), game("4", 40), game("9", 120)]);
+        tm.set_next_game(NextGameInfo {
+            number: "1".into(),
+            timing: None,
+            start_time: Some(wall),
+        });
         tm.start_play_now(now).unwrap();
         tm.start_clock(now);
+        // What the app does at kickoff: point the engine at the following game.
+        tm.set_next_game(NextGameInfo {
+            number: "4".into(),
+            timing: None,
+            start_time: Some(wall + time::Duration::minutes(40)),
+        });
         tm.observe_time_jump(now, wall).unwrap();
         assert_eq!(tm.current_period(), GamePeriod::FirstHalf, "precondition");
+        assert_eq!(tm.next_game_number(), "4", "precondition: game 4 was next");
 
-        tm.observe_time_jump(now, wall + time::Duration::minutes(30))
+        // Sleep through game 4 entirely, landing in the break before game 9.
+        tm.observe_time_jump(now, wall + time::Duration::minutes(80))
             .unwrap();
 
         assert_eq!(
@@ -5325,6 +5431,95 @@ mod test {
             "landing in a break must move the PERIOD too — left in a play period the \
              countdown's expiry runs the end-of-period transition instead of a kickoff"
         );
+        assert_eq!(
+            tm.next_game_number(),
+            "9",
+            "the countdown must now be counting down to game 9. Left pointing at game \
+             4, the engine starts a game that was slept through and posts a result for it"
+        );
+    }
+
+    #[test]
+    fn a_small_clock_step_does_not_abandon_a_late_running_game() {
+        // Tournaments run late, and a machine's clock can step by seconds on its own —
+        // a Raspberry Pi has no battery-backed clock and takes its time from the
+        // network. The correction must be justified by the loss that caused it, or a
+        // few seconds of clock nudge throws a live game into the next slot.
+        initialize();
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_court_schedule(vec![
+            ScheduledGame {
+                number: "1".into(),
+                start_time: wall - time::Duration::minutes(40),
+                config: GameConfig::default(),
+                timing: None,
+            },
+            ScheduledGame {
+                number: "2".into(),
+                start_time: wall - time::Duration::minutes(5),
+                config: GameConfig::default(),
+                timing: None,
+            },
+        ]);
+        // Game 1 is still being played, 40 minutes into its slot: the tournament is
+        // running late, so the schedule already says game 2 should be under way.
+        tm.set_next_game(NextGameInfo {
+            number: "1".into(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(now).unwrap();
+        tm.start_clock(now);
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 1 }, now);
+        tm.observe_time_jump(now, wall).unwrap();
+
+        tm.observe_time_jump(now, wall + time::Duration::seconds(12))
+            .unwrap();
+
+        assert_eq!(
+            tm.game_number(),
+            "1",
+            "a 12-second clock step must not abandon the game being played"
+        );
+        assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
+        assert_eq!(
+            tm.get_scores(),
+            BlackWhiteBundle { black: 2, white: 1 },
+            "and must not discard its score"
+        );
+    }
+
+    #[test]
+    fn a_jump_during_sudden_death_changes_nothing() {
+        // Sudden death counts UP with no length at all, and overtime's length depends
+        // on the score. The placement arithmetic models regulation only, so applying it
+        // to one of these periods would conclude a live knockout game had finished.
+        initialize();
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_court_schedule(vec![ScheduledGame {
+            number: "1".into(),
+            start_time: wall - time::Duration::minutes(40),
+            config: GameConfig::default(),
+            timing: None,
+        }]);
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(30));
+        tm.start_clock(now);
+        tm.observe_time_jump(now, wall).unwrap();
+        let before = tm.game_clock_time(now);
+
+        tm.observe_time_jump(now, wall + time::Duration::hours(2))
+            .unwrap();
+
+        assert_eq!(
+            tm.current_period(),
+            GamePeriod::SuddenDeath,
+            "a live sudden-death game must never be dropped by a catch-up"
+        );
+        assert_eq!(tm.game_clock_time(now), before);
     }
 
     #[test]
@@ -5373,6 +5568,7 @@ mod test {
             number: "1".into(),
             start_time: wall + time::Duration::hours(1),
             config: GameConfig::default(),
+            timing: None,
         }]);
         pause.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
         pause.start_clock(now);
@@ -5479,11 +5675,13 @@ mod test {
                 number: "1".into(),
                 start_time: wall,
                 config: GameConfig::default(),
+                timing: None,
             },
             ScheduledGame {
                 number: "2".into(),
                 start_time: wall + time::Duration::hours(1),
                 config: GameConfig::default(),
+                timing: None,
             },
         ]);
         tm.set_next_game(NextGameInfo {
@@ -5528,6 +5726,7 @@ mod test {
             number: "2".into(),
             start_time: wall + time::Duration::hours(1),
             config: GameConfig::default(),
+            timing: None,
         }]);
         tm.set_next_game(NextGameInfo {
             number: "1".into(),

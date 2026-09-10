@@ -31,6 +31,8 @@ use infraction::*;
 mod game_stats;
 use game_stats::*;
 
+mod time_jump;
+
 use crate::penalty_editor::IterHelp;
 
 const MAX_TIME_VAL: Duration = Duration::from_secs(MAX_LONG_STRINGABLE_SECS as u64);

@@ -81,7 +81,7 @@ pub fn parse_csv(
         non_game_entries.extend(row_non_games);
 
         // Get the timing rule information
-        if let Some((name, value)) = parse_timing_rule_row(&row, &indices) {
+        if let Some((name, value)) = parse_timing_rule_row(&row, &indices)? {
             timing_rules_raw.entry(name).or_insert(vec![]).push(value);
         }
     }
@@ -587,17 +587,131 @@ pub(crate) fn parse_group(
     Ok(Some(group))
 }
 
+/// The JSON field names that `TimingRule` understands.
+///
+/// The spreadsheet's "Timing Rule Field" cell is pasted into the assembled JSON
+/// object as the key, and `TimingRule` deliberately does not use
+/// `deny_unknown_fields` — refbox reads the same type from the Portal and must
+/// keep tolerating fields the Portal adds later. That leniency means serde would
+/// drop a misspelled column without a word, so the spelling is checked here
+/// instead, where a spreadsheet is the thing being read.
+///
+/// `name` is in the list because it is a field of the type, but it arrives from
+/// its own "Timing Rule Name" column; putting it in the field column produces a
+/// duplicate key and fails loudly at deserialization.
+const TIMING_RULE_FIELDS: [&str; 15] = [
+    "name",
+    "teamTimeoutCount",
+    "teamTimeoutsCountedPerHalf",
+    "overtimeAllowed",
+    "suddenDeathAllowed",
+    "last2minStopTime",
+    "halfPlayDuration",
+    "halfTimeDuration",
+    "teamTimeoutDuration",
+    "overtimeHalfPlayDuration",
+    "overtimeHalfTimeDuration",
+    "preOvertimeBreak",
+    "preSuddenDeathDuration",
+    "minimumBreak",
+    "gameBlock",
+];
+
 pub(crate) fn parse_timing_rule_row(
     row: &csv::StringRecord,
     indices: &Indices,
-) -> Option<(String, String)> {
-    let name = row.get(indices.timing_rule_name)?.to_string();
-    let field = row.get(indices.timing_rule_field)?;
-    let value = row.get(indices.timing_rule_value)?;
+) -> Result<Option<(String, String)>, String> {
+    let (Some(name), Some(field), Some(value)) = (
+        row.get(indices.timing_rule_name),
+        row.get(indices.timing_rule_field),
+        row.get(indices.timing_rule_value),
+    ) else {
+        return Ok(None);
+    };
 
     if name.is_empty() && field.is_empty() && value.is_empty() {
-        return None;
+        return Ok(None);
     }
 
-    Some((name, format!("\"{field}\": {}", value.to_lowercase())))
+    if !TIMING_RULE_FIELDS.contains(&field) {
+        return Err(format!(
+            "Timing rule '{name}' has an unrecognised field name '{field}'. \
+             Check the spelling of that cell in the 'Timing Rule Field' column. \
+             Expected one of: {}",
+            TIMING_RULE_FIELDS.join(", ")
+        ));
+    }
+
+    Ok(Some((
+        name.to_string(),
+        format!("\"{field}\": {}", value.to_lowercase()),
+    )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a row with just the three timing-rule cells filled in, using the
+    /// single-game-per-row column layout.
+    fn timing_rule_row(name: &str, field: &str, value: &str) -> (csv::StringRecord, Indices) {
+        let indices = Indices::new(1);
+        let mut cells = vec![String::new(); indices.timing_rule_value + 1];
+        cells[indices.timing_rule_name] = name.to_string();
+        cells[indices.timing_rule_field] = field.to_string();
+        cells[indices.timing_rule_value] = value.to_string();
+        (csv::StringRecord::from(cells), indices)
+    }
+
+    #[test]
+    fn known_field_name_is_accepted() {
+        let (row, indices) = timing_rule_row("RR", "gameBlock", "1800");
+        assert_eq!(
+            parse_timing_rule_row(&row, &indices),
+            Ok(Some(("RR".to_string(), "\"gameBlock\": 1800".to_string())))
+        );
+    }
+
+    #[test]
+    fn misspelled_field_name_is_rejected_naming_rule_and_column() {
+        // Every one of these is silently discarded before the fix.
+        for misspelling in ["Game Block", "gameblock", "GameBlock", "gameBlock ", ""] {
+            let (row, indices) = timing_rule_row("RR", misspelling, "1800");
+            let err = match parse_timing_rule_row(&row, &indices) {
+                Err(e) => e,
+                other => panic!("'{misspelling}' should be rejected, got {other:?}"),
+            };
+            assert!(err.contains("RR"), "error should name the rule: {err}");
+            assert!(
+                err.contains(&format!("'{misspelling}'")),
+                "error should quote the offending column: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_field_name_the_type_understands_is_accepted() {
+        // Guards the list against drifting away from `TimingRule` — a name
+        // dropped from the const would start being rejected as unknown.
+        for field in TIMING_RULE_FIELDS {
+            let (row, indices) = timing_rule_row("RR", field, "1");
+            assert!(
+                parse_timing_rule_row(&row, &indices).is_ok(),
+                "'{field}' should be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn wholly_empty_row_is_not_a_timing_rule_row() {
+        let (row, indices) = timing_rule_row("", "", "");
+        assert_eq!(parse_timing_rule_row(&row, &indices), Ok(None));
+    }
+
+    #[test]
+    fn row_too_short_for_the_timing_rule_columns_is_skipped() {
+        let indices = Indices::new(1);
+        let row = csv::StringRecord::from(vec!["2026-06-26", "09:00"]);
+        assert_eq!(parse_timing_rule_row(&row, &indices), Ok(None));
+    }
 }

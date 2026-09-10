@@ -381,6 +381,9 @@ impl TournamentManager {
         self.court_schedule = games;
     }
 
+    /// Test-only: production code reads the field directly. Mirrors the existing
+    /// `set_period_and_game_clock_time` convention rather than an `allow(dead_code)`.
+    #[cfg(test)]
     pub(crate) fn court_schedule(&self) -> &[ScheduledGame] {
         &self.court_schedule
     }

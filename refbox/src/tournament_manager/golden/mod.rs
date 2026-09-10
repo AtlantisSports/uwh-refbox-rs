@@ -19,6 +19,8 @@
 //!   ever accumulates per-call state, this driver could diverge from the real app.
 
 use super::*;
+use crate::tournament_manager::placement::ScheduledGame;
+use time::OffsetDateTime;
 use uwh_common::game_snapshot::{PenaltyTime, TimeoutSnapshot};
 
 pub(super) mod scenarios;
@@ -101,6 +103,13 @@ pub(super) enum Action {
     EndTimeout,
     /// Manually set the game clock to the given duration (clock must be stopped).
     SetGameClock(Duration),
+    /// Catch up to a position in a *different* game, as after a sleep that crossed a
+    /// game boundary. Mirrors `tm.place_at_schedule_position(..)`.
+    ///
+    /// The golden harness does not route through `updater_tick`, so this calls the
+    /// placement method directly rather than going through jump detection; detection
+    /// is covered by unit tests.
+    CatchUpToGame(&'static str, GamePeriod, Duration),
 }
 
 /// A single replay scenario.
@@ -314,6 +323,18 @@ fn apply_action(tm: &mut TournamentManager, action: Action, now: Instant) {
                 tm.end_timeout(now).unwrap();
                 tm.update(now).unwrap();
             }
+        }
+        Action::CatchUpToGame(number, period, time_remaining) => {
+            // The scenario's own config stands in for the target game's timing rule;
+            // what the trace is pinning is the period and clock jump, and the score
+            // reset that comes with landing in a different game.
+            let game = ScheduledGame {
+                number: number.into(),
+                start_time: OffsetDateTime::UNIX_EPOCH,
+                config: tm.config().clone(),
+            };
+            tm.place_at_schedule_position(now, &game, period, time_remaining)
+                .unwrap();
         }
         Action::SetGameClock(duration) => {
             // Mirrors Message::TimeEditComplete (clock must already be stopped)

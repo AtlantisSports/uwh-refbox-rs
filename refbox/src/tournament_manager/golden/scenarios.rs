@@ -708,9 +708,28 @@ static GAME_ENDING_RUGBY_PENALTY_SHOT_ACTIONS: &[(u64, Action)] = &[
 /// Return every scenario in the library.
 ///
 /// Task 4 will iterate this list to run each scenario against its golden file.
+/// A sleep that crossed a game boundary: play a little of game 1, score in it, then
+/// wake up 12 seconds into game 4's second half. The trace should show the score
+/// dropping back to 0-0 and the period going straight from FirstHalf to SecondHalf
+/// with no HalfTime in between — the games in the middle are never played.
+const SLEEP_CATCHUP_ACTIONS: &[(u64, Action)] = &[
+    (0, Action::StartPlayNow),
+    (2, Action::AddScore(Color::Black)),
+    (
+        5,
+        Action::CatchUpToGame("4", GamePeriod::SecondHalf, Duration::from_secs(12)),
+    ),
+];
+
 pub(super) fn all() -> Vec<Scenario> {
     vec![
         // ── Family 1 — Regulation flow ──────────────────────────────────────
+        Scenario {
+            name: "sleep_catchup_across_game_boundary",
+            config: reg_config(),
+            actions: SLEEP_CATCHUP_ACTIONS,
+            run_secs: 45,
+        },
         Scenario {
             name: "regulation_full",
             config: reg_config(),

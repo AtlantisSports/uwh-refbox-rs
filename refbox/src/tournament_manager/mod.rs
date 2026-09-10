@@ -24,7 +24,8 @@ use uwh_common::{
 
 pub mod penalty;
 use penalty::*;
-use placement::ScheduledGame;
+use placement::{Placement, ScheduledGame, place};
+use time_jump::JumpDetector;
 
 pub mod infraction;
 use infraction::*;
@@ -154,6 +155,13 @@ pub struct TournamentManager {
     /// `next_game`, which is only ever one game ahead. Empty in manual mode, and
     /// empty of any game whose timing rule could not be resolved.
     court_schedule: Vec<ScheduledGame>,
+    /// Previous tick's pair of clock readings, for spotting a sleep. See `time_jump`.
+    jump_detector: JumpDetector,
+    /// Set when a catch-up has just moved the engine. The app reads and clears it so it
+    /// can tell a catch-up apart from a game genuinely ending or starting — the period
+    /// transition alone looks identical, and reading it as a game ending would submit a
+    /// result for a game that was slept through.
+    catch_up_pending: bool,
     /// Set when the app has established that the selected court has no game after the
     /// one in progress. Distinct from `next_game: None`, which only means "not known
     /// yet" — this one is a definite answer, and it stops the engine both from
@@ -201,6 +209,8 @@ impl TournamentManager {
             start_stop_rx,
             next_game: None,
             court_schedule: Vec::new(),
+            jump_detector: JumpDetector::default(),
+            catch_up_pending: false,
             no_next_game: false,
             schedule_linked: false,
             game_number_step: 1,
@@ -1496,11 +1506,148 @@ impl TournamentManager {
             self.cull_penalties(now)?;
         }
 
+        self.catch_up_pending = true;
+
         if !was_running {
             self.send_clock_running(true);
         }
 
         Ok(())
+    }
+
+    /// Whether a catch-up has moved the engine since the app last asked. Reading it
+    /// clears it.
+    pub fn take_catch_up_pending(&mut self) -> bool {
+        std::mem::take(&mut self.catch_up_pending)
+    }
+
+    /// Compare the two clocks and, if the machine lost time, re-place the game at the
+    /// true schedule position.
+    ///
+    /// Called once per tick from the app's clock updater, which is the single seam
+    /// between the updater and the engine.
+    pub(super) fn observe_time_jump(
+        &mut self,
+        now: Instant,
+        wall_now: OffsetDateTime,
+    ) -> Result<()> {
+        // `observe` runs BEFORE every guard below and rebases on every call, so a tick
+        // that is guarded out still keeps the baseline current. Guarding first would
+        // let a held clock accumulate an arbitrary gap and fire one huge spurious
+        // catch-up the moment the hold ended.
+        let Some(lost) = self.jump_detector.observe(now, wall_now) else {
+            return Ok(());
+        };
+
+        // A stopped game clock is an operator holding the game on purpose, and a
+        // timeout or a score-confirmation pause is the same hold by another name. The
+        // schedule has moved on around them, but taking the game out of the operator's
+        // hands because a screen went to sleep is worse than a stale clock they can see.
+        //
+        // `clock_state.is_running()` rather than `clock_is_running()`: the latter reports
+        // the TIMEOUT clock whenever a timeout exists, which answers a different question.
+        if !self.clock_state.is_running()
+            || self.timeout_state.is_some()
+            || self.time_pause_confirmation.is_some()
+        {
+            info!(
+                "{} Lost {lost:?} to a clock jump; the clock is being held, leaving it alone",
+                self.status_string(now)
+            );
+            return Ok(());
+        }
+
+        // Manual mode is checked BEFORE `place` is consulted: an empty court list and
+        // "past the last game" are different situations that `place` reports
+        // identically, and treating manual mode as past-the-last would zero a
+        // perfectly good manual clock.
+        if self.court_schedule.is_empty() {
+            info!(
+                "{} Lost {lost:?} to a clock jump; no schedule loaded, taking it off the clock",
+                self.status_string(now)
+            );
+            self.absorb_lost_time(lost);
+            return Ok(());
+        }
+
+        match place(&self.court_schedule, wall_now) {
+            Placement::BeforeFirstGame { until_start } | Placement::InBreak { until_start, .. } => {
+                info!(
+                    "{} Lost {lost:?}; the next game is {until_start:?} away",
+                    self.status_string(now)
+                );
+                // The period matters as much as the clock: left in a play period, the
+                // countdown's expiry would run the end-of-period transition instead of
+                // starting a game.
+                self.current_period = GamePeriod::BetweenGames;
+                self.clock_state = ClockState::CountingDown {
+                    start_time: now,
+                    time_remaining_at_start: until_start,
+                };
+                self.catch_up_pending = true;
+            }
+            Placement::InGame {
+                index,
+                period,
+                time_remaining,
+            } => {
+                // Indexing is safe: `place` only returns an index into the slice it was
+                // given, and nothing mutates `court_schedule` in between.
+                let game = self.court_schedule[index].clone();
+                self.place_at_schedule_position(now, &game, period, time_remaining)?;
+            }
+            Placement::PastLastGame => {
+                info!(
+                    "{} Lost {lost:?}; past the last game on this court, stopping the clock",
+                    self.status_string(now)
+                );
+                self.current_period = GamePeriod::BetweenGames;
+                self.clock_state = ClockState::Stopped {
+                    clock_time: Duration::ZERO,
+                };
+                self.catch_up_pending = true;
+                self.send_clock_running(false);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Manual mode: no schedule to jump to, so just consume the lost time on whatever
+    /// clock is running. Never starts a game.
+    fn absorb_lost_time(&mut self, lost: Duration) {
+        match self.clock_state {
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start,
+            } => {
+                let remaining = time_remaining_at_start.saturating_sub(lost);
+                if remaining.is_zero() {
+                    // Parked at zero rather than allowed to expire. Letting a
+                    // between-games countdown run out would auto-start a game, and with
+                    // no schedule there is nothing to justify starting one.
+                    self.clock_state = ClockState::Stopped {
+                        clock_time: Duration::ZERO,
+                    };
+                    self.send_clock_running(false);
+                } else {
+                    self.clock_state = ClockState::CountingDown {
+                        start_time,
+                        time_remaining_at_start: remaining,
+                    };
+                }
+            }
+            ClockState::CountingUp {
+                start_time,
+                time_at_start,
+            } => {
+                self.clock_state = ClockState::CountingUp {
+                    start_time,
+                    time_at_start: time_at_start + lost,
+                };
+            }
+            ClockState::Stopped { .. } => {}
+        }
     }
 
     fn end_game(&mut self, now: Instant) {
@@ -2183,6 +2330,12 @@ impl TournamentManager {
     }
 
     pub fn start_clock(&mut self, now: Instant) {
+        // No tick runs while the clock is stopped — `next_updater_wake` returns `None`
+        // and the updater waits on the start/stop latch with no timer — so the jump
+        // detector sees nothing during a hold. Rebasing here stops the whole held
+        // period being reported as lost time and re-placing the game the operator has
+        // just started by hand.
+        self.jump_detector = JumpDetector::default();
         let mut need_to_send = false;
         let status_str = self.status_string(now);
         match &mut self.timeout_state {
@@ -5083,6 +5236,230 @@ mod test {
             Duration::from_secs(999),
             "the placed game must run under its own timing rule, not the old game's"
         );
+    }
+
+    /// A running game with a one-game court schedule, primed so the next
+    /// `observe_time_jump` is a comparison rather than a baseline.
+    fn running_with_schedule(now: Instant, wall: OffsetDateTime) -> TournamentManager {
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_court_schedule(vec![ScheduledGame {
+            number: "1".into(),
+            start_time: wall + time::Duration::hours(1),
+            config: GameConfig::default(),
+        }]);
+        tm.start_play_now(now).unwrap();
+        tm.start_clock(now);
+        tm.observe_time_jump(now, wall).unwrap();
+        tm
+    }
+
+    #[test]
+    fn a_sleep_before_the_first_game_corrects_the_countdown() {
+        // The reported fault: the countdown read ~146 minutes when the game was
+        // ~20 minutes away, after the Mac had been asleep about two hours.
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+        let kickoff = wall + time::Duration::minutes(146);
+
+        tm.set_court_schedule(vec![ScheduledGame {
+            number: "1".into(),
+            start_time: kickoff,
+            config: GameConfig::default(),
+        }]);
+        tm.set_next_game(NextGameInfo {
+            number: "1".into(),
+            timing: None,
+            start_time: Some(kickoff),
+        });
+        tm.apply_next_game_start(now).unwrap();
+        tm.observe_time_jump(now, wall).unwrap();
+
+        // Two hours asleep: the wall clock moves, the monotonic clock does not.
+        let woke = now + Duration::from_millis(20);
+        tm.observe_time_jump(woke, wall + time::Duration::minutes(126))
+            .unwrap();
+
+        let remaining = tm
+            .game_clock_time(woke)
+            .expect("a running countdown has a time");
+        assert!(
+            remaining.abs_diff(Duration::from_secs(20 * 60)) < Duration::from_secs(5),
+            "countdown should read ~20 min after catching up, read {remaining:?}"
+        );
+    }
+
+    #[test]
+    fn a_catch_up_into_a_break_sits_between_games() {
+        initialize();
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_court_schedule(vec![
+            ScheduledGame {
+                number: "1".into(),
+                start_time: wall - time::Duration::hours(2),
+                config: GameConfig::default(),
+            },
+            ScheduledGame {
+                number: "2".into(),
+                start_time: wall + time::Duration::hours(1),
+                config: GameConfig::default(),
+            },
+        ]);
+        tm.start_play_now(now).unwrap();
+        tm.start_clock(now);
+        tm.observe_time_jump(now, wall).unwrap();
+        assert_eq!(tm.current_period(), GamePeriod::FirstHalf, "precondition");
+
+        tm.observe_time_jump(now, wall + time::Duration::minutes(30))
+            .unwrap();
+
+        assert_eq!(
+            tm.current_period(),
+            GamePeriod::BetweenGames,
+            "landing in a break must move the PERIOD too — left in a play period the \
+             countdown's expiry runs the end-of-period transition instead of a kickoff"
+        );
+    }
+
+    #[test]
+    fn a_held_clock_is_left_alone() {
+        initialize();
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+        let jumped = wall + time::Duration::hours(2);
+
+        // Each hold is a separate reason the operator is deliberately holding the game.
+        // None of them may be overridden because a screen went to sleep.
+        let mut stopped = running_with_schedule(now, wall);
+        stopped.stop_clock(now).unwrap();
+        let stopped_before = stopped.game_clock_time(now);
+        stopped.observe_time_jump(now, jumped).unwrap();
+        assert_eq!(
+            stopped.game_clock_time(now),
+            stopped_before,
+            "stopped clock"
+        );
+        assert_eq!(
+            stopped.current_period(),
+            GamePeriod::FirstHalf,
+            "stopped clock"
+        );
+
+        let mut timeout = running_with_schedule(now, wall);
+        timeout.start_ref_timeout(now).unwrap();
+        let timeout_before = timeout.game_clock_time(now);
+        timeout.observe_time_jump(now, jumped).unwrap();
+        assert_eq!(
+            timeout.game_clock_time(now),
+            timeout_before,
+            "during a timeout"
+        );
+        assert_eq!(
+            timeout.current_period(),
+            GamePeriod::FirstHalf,
+            "during a timeout"
+        );
+
+        // A confirmation pause is only reachable at a period end, so this one is set
+        // up in the second half rather than through `running_with_schedule`.
+        let mut pause = TournamentManager::new(GameConfig::default());
+        pause.set_court_schedule(vec![ScheduledGame {
+            number: "1".into(),
+            start_time: wall + time::Duration::hours(1),
+            config: GameConfig::default(),
+        }]);
+        pause.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
+        pause.start_clock(now);
+        pause.observe_time_jump(now, wall).unwrap();
+        pause.pause_for_confirm(now).unwrap();
+        let pause_before = pause.game_clock_time(now);
+        pause.observe_time_jump(now, jumped).unwrap();
+        assert_eq!(
+            pause.game_clock_time(now),
+            pause_before,
+            "confirmation pause"
+        );
+        assert_eq!(
+            pause.current_period(),
+            GamePeriod::SecondHalf,
+            "confirmation pause"
+        );
+    }
+
+    #[test]
+    fn resuming_after_a_stop_does_not_fire_a_catch_up() {
+        // No tick runs while the clock is stopped, so the detector sees nothing during
+        // a hold. Without rebasing on resume, the first tick after the operator presses
+        // start reports the whole stopped period as lost and re-places the game they
+        // just started.
+        initialize();
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+        let mut tm = running_with_schedule(now, wall);
+
+        tm.stop_clock(now).unwrap();
+        let woke = now + Duration::from_millis(20);
+        tm.start_clock(woke);
+        let before = tm.game_clock_time(woke);
+
+        tm.observe_time_jump(woke, wall + time::Duration::hours(2))
+            .unwrap();
+
+        assert_eq!(
+            tm.game_clock_time(woke),
+            before,
+            "pressing start after a long hold must not trigger a catch-up"
+        );
+        assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
+    }
+
+    #[test]
+    fn manual_mode_takes_the_lost_time_off_and_starts_nothing() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+        tm.start_play_now(now).unwrap();
+        tm.start_clock(now);
+        assert!(tm.court_schedule().is_empty(), "precondition: manual mode");
+        let before = tm.game_clock_time(now).unwrap();
+
+        tm.observe_time_jump(now, wall).unwrap();
+        tm.observe_time_jump(now, wall + time::Duration::seconds(60))
+            .unwrap();
+
+        assert_eq!(
+            tm.game_clock_time(now).unwrap(),
+            before - Duration::from_secs(60),
+            "manual mode absorbs the lost time onto the running clock"
+        );
+        assert_eq!(
+            tm.current_period(),
+            GamePeriod::FirstHalf,
+            "manual mode never starts a game of its own"
+        );
+    }
+
+    #[test]
+    fn no_jump_leaves_every_clock_alone() {
+        initialize();
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+        let cases: &[(time::Duration, &str)] = &[
+            (time::Duration::seconds(5), "a gap below the threshold"),
+            (time::Duration::hours(-3), "a backwards wall clock"),
+        ];
+        for (step, what) in cases {
+            let mut tm = running_with_schedule(now, wall);
+            let before = tm.game_clock_time(now);
+            let period_before = tm.current_period();
+            tm.observe_time_jump(now, wall + *step).unwrap();
+            assert_eq!(tm.game_clock_time(now), before, "{what}");
+            assert_eq!(tm.current_period(), period_before, "{what}");
+        }
     }
 
     #[test]

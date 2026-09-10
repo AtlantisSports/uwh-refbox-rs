@@ -2644,6 +2644,37 @@ pub(in super::super) fn make_updates_page<'a>(
         None,
     )
     .into();
+
+    // A build the updater cannot install onto gets a version display and
+    // nothing else: no check, no status, no revert, no install. Returning the
+    // reduced column here rather than blanking slots below makes that
+    // structural — every route into download-and-swap begins with a button
+    // that this column simply does not contain.
+    //
+    // Keep the row order in step with the full column at the end of this
+    // function: banner, version, status, note, revert, footer.
+    if !crate::updater::release::self_update_supported() {
+        return column![
+            time_banner,
+            row![version_element, horizontal_space()]
+                .spacing(SPACING)
+                .height(Length::Fill),
+            row![horizontal_space()],
+            row![horizontal_space()],
+            row![horizontal_space()].height(Length::Fill),
+            row![
+                make_chrome_button(fl!("back"))
+                    .style(red_button)
+                    .on_press(Message::UpdatesBack),
+                horizontal_space(),
+            ]
+            .spacing(SPACING),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .into();
+    }
+
     let primary_element: Element<'a, Message> = match state {
         UpdateUiState::Checking
         | UpdateUiState::Downloading
@@ -2757,6 +2788,8 @@ pub(in super::super) fn make_updates_page<'a>(
     };
     let footer_row = row![footer_btn, horizontal_space(), footer_action].spacing(SPACING);
 
+    // The reduced non-Pi column near the top of this function mirrors these
+    // rows. Change one, check the other.
     column![
         time_banner,
         version_primary_row,

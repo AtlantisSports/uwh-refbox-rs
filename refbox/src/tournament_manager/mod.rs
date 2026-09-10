@@ -31,6 +31,7 @@ use infraction::*;
 mod game_stats;
 use game_stats::*;
 
+mod placement;
 mod time_jump;
 
 use crate::penalty_editor::IterHelp;

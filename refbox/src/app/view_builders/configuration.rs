@@ -2654,12 +2654,26 @@ pub(in super::super) fn make_updates_page<'a>(
     // Keep the row order in step with the full column at the end of this
     // function: banner, version, status, note, revert, footer.
     if !crate::updater::release::self_update_supported() {
+        // Blank for every state except RolledBack: an automatic startup revert can
+        // happen on any platform, and the operator still needs the explanation even
+        // though the rest of the update UI is hidden here. `Unknown` deliberately
+        // stays blank rather than showing "Unknown" — do not widen this match.
+        let reduced_status_row: Element<'a, Message> = match state {
+            UpdateUiState::RolledBack => row![
+                text(fl!("updates-rolled-back"))
+                    .size(MEDIUM_TEXT)
+                    .width(Length::Fill)
+            ]
+            .spacing(SPACING)
+            .into(),
+            _ => row![horizontal_space()].into(),
+        };
         return column![
             time_banner,
             row![version_element, horizontal_space()]
                 .spacing(SPACING)
                 .height(Length::Fill),
-            row![horizontal_space()],
+            reduced_status_row,
             row![horizontal_space()],
             row![horizontal_space()].height(Length::Fill),
             row![

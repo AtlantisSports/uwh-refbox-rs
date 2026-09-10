@@ -1,0 +1,15 @@
+Date,Time,Div,Pod,Rule,Game,Court,Light,Dark,,Group,Short Name,Filter Type,Ending Standings,,Games,Excluded Teams,Starting Seedings,Final Results,Timing Rule Name,Timing Rule Field,Timing Rule Value
+2026-07-10,08:30,O,RR,RR,1,1,Team A,Team B,,Open,O,Division,Standard,,"1,2",,,,RR,halfPlayDuration,720
+2026-07-10,09:02,O,RR,RR,2,1,Team C,Team D,,,,,,,,,,,RR,halfTimeDuration,180
+,,,,,,,,,,,,,,,,,,,RR,teamTimeoutCount,1
+,,,,,,,,,,,,,,,,,,,RR,teamTimeoutsCountedPerHalf,FALSE
+,,,,,,,,,,,,,,,,,,,RR,teamTimeoutDuration,60
+,,,,,,,,,,,,,,,,,,,RR,last2minStopTime,TRUE
+,,,,,,,,,,,,,,,,,,,RR,overtimeAllowed,FALSE
+,,,,,,,,,,,,,,,,,,,RR,preOvertimeBreak,180
+,,,,,,,,,,,,,,,,,,,RR,overtimeHalfPlayDuration,300
+,,,,,,,,,,,,,,,,,,,RR,overtimeHalfTimeDuration,60
+,,,,,,,,,,,,,,,,,,,RR,suddenDeathAllowed,FALSE
+,,,,,,,,,,,,,,,,,,,RR,preSuddenDeathDuration,60
+,,,,,,,,,,,,,,,,,,,RR,minimumBreak,240
+,,,,,,,,,,,,,,,,,,,RR,gameBlock,1920

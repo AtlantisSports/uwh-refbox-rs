@@ -1,6 +1,6 @@
 [package]
 name = "overlay"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 # grafton-ndi (behind the optional "ndi" feature below) requires 1.87; bumped from 1.85
 # because that dependency is Windows/vMix-specific to this crate, discussed and approved

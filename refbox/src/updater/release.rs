@@ -7,10 +7,17 @@ pub const SUM_ASSET: &str = "refbox-aarch64-linux.sha256";
 /// Whether this build may install the update it would download.
 ///
 /// `BIN_ASSET` is the Raspberry Pi build and it is the *only* binary the
-/// updater can fetch. On any other platform the download succeeds and its
-/// checksum verifies — it is a genuine, uncorrupted file — so nothing
-/// downstream can catch the mismatch, and the swap writes a Linux ARM binary
-/// over the running app. Gate the offer at the source instead.
+/// updater can fetch. Its checksum verifies on every platform — the file is
+/// genuine, just the wrong architecture — so the checksum is no defence
+/// against a platform mismatch.
+///
+/// The smoke test in the install path IS a defence: the downloaded binary is
+/// run with `--self-check` before any swap, and a wrong-architecture binary
+/// fails it, yielding `BadDownload` and leaving the install untouched. Do not
+/// remove that check on the strength of this gate — the two guard different
+/// things. This gate stops the operator being offered, and made to download,
+/// an update that could never apply; the smoke test stops a bad binary
+/// actually landing.
 ///
 /// Stated as "this build is the one that asset installs onto" rather than a
 /// list of excluded platforms: a new platform is then off by default, and

@@ -1231,7 +1231,23 @@ fn link_note_game(tm: &TournamentManager) -> LinkNoteGame {
 impl RefBoxApp {
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) -> Task<Message> {
         let mut task = Task::none();
-        if new_snapshot.current_period != self.snapshot.current_period {
+        // Read and clear in its own scope: `handle_game_start` below takes the same
+        // lock, and holding this guard across the call would deadlock.
+        let caught_up = { self.tm.lock().take_catch_up_pending() };
+        if caught_up {
+            // A catch-up after a sleep moves the period without a game having ended or
+            // begun in the ordinary sense. Reading its transition as a game ending
+            // would submit a result for a game that was slept through — the one thing
+            // the catch-up design forbids. So handle it explicitly rather than letting
+            // the period comparison below infer the wrong thing.
+            if new_snapshot.game_number != self.snapshot.game_number {
+                // A different game is running now, so the next-game info and the
+                // rosters both need the same refresh an ordinary kickoff gives them.
+                // Without this the court parks at 0:00 when the placed game ends, and
+                // the player grid keeps the previous game's cap numbers.
+                task = self.handle_game_start(&new_snapshot.game_number);
+            }
+        } else if new_snapshot.current_period != self.snapshot.current_period {
             if new_snapshot.current_period == GamePeriod::BetweenGames {
                 task = self.handle_game_end(&new_snapshot.game_number);
             } else if self.snapshot.current_period == GamePeriod::BetweenGames {
@@ -9972,6 +9988,10 @@ fn time_updater() -> impl Stream<Item = Message> {
             let tick = catch_unwind(AssertUnwindSafe(|| {
                 let mut tm_ = tm.lock();
                 let now = Instant::now();
+                // Spot a sleep before the tick that would otherwise free-run past it.
+                // Inside the existing guard, so a failure here is reported and retried
+                // exactly like any other bad tick rather than taking the app down.
+                tm_.observe_time_jump(now, time::OffsetDateTime::now_utc())?;
                 let (kind, snapshot) = tm_.updater_tick(now)?;
                 let next = next_updater_wake(clock_running, tm_.next_update_time(now), now);
                 Ok::<_, TournamentManagerError>((kind, snapshot, next))

@@ -2254,6 +2254,7 @@ impl RefBoxApp {
                         number: game.number.clone(),
                         start_time: game.start_time,
                         config: timing.clone().into(),
+                        timing: Some(timing.clone()),
                     }),
                     None => {
                         warn!(

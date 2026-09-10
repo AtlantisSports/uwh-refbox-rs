@@ -36,6 +36,32 @@ POST, the replayed-game repost loop, the stale restore note — are **not** fixe
 
 ---
 
+## Gates and rulings — settled, do not re-open
+
+**The spec's precondition is satisfied.** The spec opens with "On the affected Mac, before anything
+else: Settings → APPLY", and calls itself void if that does not correct the countdown. That test
+was **never run** — the tournament moved on and the broken state was gone. It was replaced by a
+stronger check: Eric confirmed the Mac was deliberately slept for about two hours, and the error
+was ~126 minutes. The sleep duration was established independently of the error and the two match,
+which is what the APPLY test could never have shown — APPLY would have corrected a stale countdown
+whatever caused it. Games 2 onward also ran correctly, which rules out a wrong machine clock, wrong
+court, or wrong schedule. Do not re-run the APPLY test and do not treat the spec as ungated.
+
+**Ruling (Eric, 2026-09-10): a game landed inside is started, however little time remains.**
+The spec's wording — "a game the catch-up lands *inside* has not been passed over: it continues" —
+is followed literally. Claude raised the boundary case and recommended treating a near-finished
+game as passed over; Eric overruled that. Two consequences are **accepted risks, not oversights**:
+
+- Landing seconds before a game's end starts it fresh at 0-0, and it ends almost at once, so a 0-0
+  result can reach the Portal — the outcome the spec rejects elsewhere.
+- In a knockout game a level score runs to overtime and then sudden death, which counts **up** with
+  no finish condition. The clock wedges there until an operator intervenes.
+
+Do not re-open this in implementation or review. **Do** carry both consequences into the PR body and
+into Eric's hardware walkthrough, so the risk is visible to whoever runs the next tournament.
+
+---
+
 ## Spec Corrections — read before starting
 
 Citations verified against master `3d593fdb` on 2026-09-10. **Every line number in the spec is
@@ -177,6 +203,10 @@ pub(crate) fn place(games: &[ScheduledGame], target: OffsetDateTime) -> Placemen
   loop → `PastLastGame`. An empty slice is `PastLastGame`.
 - Signed-to-unsigned conversions go through one small `positive(time::Duration) -> Duration`
   helper flooring at zero; every caller has already established the sign.
+- **`config` is not optional and must never be defaulted.** `Schedule::get_game_timing` returns
+  `Option`, and a `GameConfig::default()` stand-in would give that game the wrong period lengths —
+  so the catch-up would place the engine confidently at a position that does not exist. A game with
+  no timing rule is excluded from the court list entirely (Task 4), never guessed at.
 
 **Tests:** `regulation_length_is_both_halves_plus_half_time`, an
 `an_empty_schedule_is_past_the_last_game`, and one table-driven
@@ -196,8 +226,9 @@ the break; `2680` second half of the *later* game; `99_999` past the last.
 ## Task 3: The engine placement method
 
 **This is where the review effort belongs.** It is the only genuinely new engine capability: today
-the engine reaches a position only by playing through to it. There is no public period setter, and
-`set_game_clock_time` (`mod.rs:2351`) works only on a stopped clock and forces `Stopped`.
+the engine reaches a position only by playing through to it. There is no public period setter
+(`set_period_and_game_clock_time` is `#[cfg(test)]`), and `set_game_clock_time` (`mod.rs:2351`)
+works only on a stopped clock and forces `Stopped`.
 
 **Files:** `mod.rs`, immediately after `apply_next_game_start` (ends `:1409`), so the three ways the
 engine adopts a scheduled position sit together.
@@ -213,7 +244,7 @@ pub fn place_at_schedule_position(
 ) -> Result<()>;
 ```
 
-**Design requirements — all five are load-bearing:**
+**Design requirements — all seven are load-bearing:**
 
 1. **Two cases, different behaviour.**
    - `game.number == self.game_number`: the catch-up landed inside the game already running. It has
@@ -223,45 +254,57 @@ pub fn place_at_schedule_position(
      reset — read `start_game` (`:1517`) and `start_play_now` (`:2270`) and follow the established
      order: populate `next_game`, set the config, call `start_game(now)`, then override
      `current_period` and `clock_state`.
-   - `start_game` takes timing from `next_game` as a `TimingRule`, but `ScheduledGame` carries an
-     already-converted `GameConfig`. **Verified:** `start_game` overwrites `self.config` only when
-     `next_game.timing` is `Some` (`:1537-1540`), so populate `next_game` with `timing: None` and
-     set `self.config` from `game.config` *before* the call — it will survive. Run
-     `normalize_degenerate_overtime` on it yourself: a zero-length overtime crashed the app in the
-     field, and with `timing: None` `start_game` will not run it for you (`:1319-1325`).
-2. **Never call `end_game`.** It writes `last_game_info`, which is what drives a Portal submission
+   - `start_game` overwrites `self.config` only when `next_game.timing` is `Some` (`:1537-1540`), so
+     populate `next_game` with `timing: None` and set `self.config` from `game.config` *before* the
+     call — it will survive. Run `normalize_degenerate_overtime` yourself: with `timing: None`
+     `start_game` will not run it for you, and a zero-length overtime crashed the app in the field.
+2. **A directly-assigned period skips everything the normal advance does.** Every real period change
+   goes through a transition function; a bare `self.current_period = period` does not. Before
+   writing this, read `cull_penalties` (`:1064`, called from the transition at `:1783`) and the
+   `timeouts_used` handling, and decide **per case** what must be replicated. The same-game case is
+   the exposed one: it moves the period under live penalties and a live timeout count. State the
+   decision in a comment — "nothing needed here, because X" is a fine answer, silence is not.
+3. **Never call `end_game`.** It writes `last_game_info`, which drives the Portal submission
    (`app/mod.rs:2319, 7752, 7817`). A passed-over game must produce no result. Task 6 tests this.
-3. **Do not touch `last_game_info`.** A genuinely finished game's result may still be awaiting
+4. **Do not touch `last_game_info`.** A genuinely finished game's result may still be awaiting
    submission; clearing it here would drop a real result.
-4. **Do not re-base penalties** the way `set_game_clock_time` does — see Spec Correction 3.
-5. **Leave the clock running and say so.** `ClockState::CountingDown { start_time: now,
+5. **Do not re-base penalties** the way `set_game_clock_time` does — see Spec Correction 3.
+6. **Leave the clock running and say so.** `ClockState::CountingDown { start_time: now,
    time_remaining_at_start: time_remaining }`, and `send_clock_running(true)` if it was not already
    running — otherwise the updater sleeps through the change, the trap `apply_next_game_start`
    documents at `:1400-1404`.
+7. **The app will not notice a placed game the way it notices a started one.**
+   `handle_game_start` fires only on a `BetweenGames` → play transition (`app/mod.rs:1233-1237`),
+   and a placement from one game straight into another never passes through `BetweenGames`. So
+   `next_game` is never repopulated and the roster stays on the previous game — meaning the court
+   parks at 0:00 when the placed game ends, as though its schedule were finished. **Task 5 must
+   arrange the equivalent refresh; do not leave it to the snapshot transition.**
 
-**Tests** (in `mod.rs` `mod test`, from `:3109`). Use the accessors the existing tests already use;
-do not add public accessors to satisfy a test.
-- `placing_inside_the_running_game_keeps_its_score` — same game number: period and clock move, score
-  and number do not
+**Tests** (in `mod.rs` `mod test`, from `:3109`). Use the accessors the existing tests use; do not
+add public accessors to satisfy a test.
+- `placing_inside_the_running_game_keeps_its_score` — same number: period and clock move, score and
+  number do not
 - `placing_into_a_later_game_starts_it_fresh` — different number: new number, new period, clock set,
-  **score back to 0-0**, and the clock is running with the start/stop latch set
+  **score back to 0-0**, clock running with the start/stop latch set
 - `placing_into_a_later_game_adopts_its_timing_rule` — a `half_play_duration` of 999s on the target
   game reaches `tm.config()`
+- `placing_into_a_later_game_leaves_a_next_game_to_follow` — guards requirement 7: after placing,
+  the engine must not believe the court's schedule is finished
 
 - [ ] Write the tests
 - [ ] Run `cargo test -p refbox place_at_schedule_position` — expect FAIL (no such method)
 - [ ] Write the implementation
 - [ ] Run `cargo test -p refbox place_at_schedule_position` — expect PASS
-- [ ] Run `cargo test -p refbox` — the whole engine suite, `golden_traces_match_baseline` **unchanged**
+- [ ] Run `cargo test -p refbox` — whole engine suite, `golden_traces_match_baseline` **unchanged**
 - [ ] Commit: `feat(refbox): place the engine at a schedule position in one step`
 
 ---
 
 ## Task 4: Give the engine the court's schedule
 
-**Why:** the engine holds only `next_game` — one game ahead. Placement across boundaries needs the
-whole court list. The app owns `schedule` (`app/mod.rs:198`) and `current_court` (`:208`), and
-already builds court-filtered views with `Schedule::next_game_on_court`
+**Why:** the engine holds only `next_game` — one game ahead. Crossing boundaries needs the whole
+court list. The app owns `schedule` (`app/mod.rs:198`) and `current_court` (`:208`), and already
+builds court-filtered views with `Schedule::next_game_on_court`
 (`uwh-common/src/uwhportal/schedule.rs:565`) and `Schedule::get_game_timing` (`:553`).
 
 **Files:** `mod.rs` (field + setter), `app/mod.rs` (populate it).
@@ -276,18 +319,31 @@ pub fn set_court_schedule(&mut self, games: Vec<ScheduledGame>);   // sorts by s
 pub(crate) fn court_schedule(&self) -> &[ScheduledGame];
 ```
 
-**App wiring.** Build the list inside the existing
-`if let (Some(schedule), Some(pool)) = (&self.schedule, &self.current_court)` guard at
-`app/mod.rs:2248`, filtering `schedule.games.values()` on `game.court == *pool` and mapping each to
-a `ScheduledGame` whose config comes from `schedule.get_game_timing(&game.number)`.
+**Building the list.** Filter `schedule.games.values()` on `game.court == *pool`, and take each
+game's config from `schedule.get_game_timing(&game.number)`.
 
-**Then check every other site that changes the schedule or the court** — `app/mod.rs:2829, 2898,
-3017, 6700` and the court-change path at `:1747`. Anywhere either changes must refresh this list, or
-the catch-up places against another court's games. **Write one helper and call it from each site;
+**A game with no timing rule is excluded, not defaulted.** `get_game_timing` returns `Option`.
+Substituting `GameConfig::default()` would give that game plausible-looking but wrong period
+lengths, and the catch-up would then place the engine confidently at a position that does not
+exist — a wrong clock is worse than an uncorrected one. Drop the game from the list and `warn!`
+with its number.
+
+**Refresh it wherever the schedule or the court changes** — these are the real write sites, and
+they are *not* the `apply_next_game_start` call sites:
+
+| `app/mod.rs` | What happens there |
+|---|---|
+| `:1747-1748` | court and schedule both set together |
+| `:1988-1989` | cleared to manual mode |
+| `:2046-2047` | cleared to manual mode |
+| `:6642` | a freshly received schedule is stored |
+
+Clearing to manual mode must clear the court list too, or a catch-up after unlinking places against
+a schedule the operator has just disconnected from. **Write one helper and call it from all four;
 four copies is how one gets missed.**
 
-**Tests:** `the_court_schedule_round_trips`, and one asserting an out-of-order input comes back
-sorted by start time.
+**Tests:** `the_court_schedule_round_trips`; one asserting an out-of-order input comes back sorted;
+one asserting a game whose timing rule is missing is excluded rather than defaulted.
 
 - [ ] Write the tests
 - [ ] Run `cargo test -p refbox court_schedule` — expect FAIL
@@ -307,22 +363,61 @@ sorted by start time.
 pub(super) fn observe_time_jump(&mut self, now: Instant, wall_now: OffsetDateTime) -> Result<()>;
 ```
 
+**Order is fixed and behaviour-changing: `observe` runs FIRST, before every guard.** It rebases the
+detector on every call, so a tick that is guarded out still keeps the baseline current. Guarding
+before observing would let a held clock accumulate an arbitrary "gap" and fire a huge spurious
+catch-up the moment the hold ended.
+
 **Guards — a catch-up must NOT happen when:**
-- the clock is stopped (`!self.clock_is_running()`) — an operator is holding the game on purpose;
+- **the game clock is stopped** — use `self.clock_state.is_running()`, **not** `clock_is_running()`.
+  `clock_is_running()` reports the *timeout* clock whenever one exists (`mod.rs:208-216`), so it
+  answers a different question and would let a catch-up fire mid-timeout;
+- **a timeout is active** (`self.timeout_state.is_some()`) — the same operator hold by another name,
+  and nothing on the placement path clears a timeout;
 - a score-confirmation pause is active (`self.time_pause_confirmation.is_some()`);
-- the gap is backwards or below threshold (both already handled inside `JumpDetector`).
+- the gap is backwards or below threshold (already handled inside `JumpDetector`).
 
-The first two are the spec's deliberate choice: the schedule has moved on around a held clock, and
-re-placing would be defensible, but taking the game out of the operator's hands because a screen
-slept is worse than a stale clock they can see. **Log and return; do not correct.**
+These are the spec's deliberate choice: the schedule has moved on around a held clock, but taking
+the game out of the operator's hands because a screen slept is worse than a stale clock they can see.
 
-**Dispatch on `placement::place(&self.court_schedule, wall_now)`:**
+**No tick runs while the clock is stopped, so the detector never observes during a hold.**
+`next_updater_wake` returns `None` when the clock is not running (`app/mod.rs:9714-9720`), and the
+updater then blocks on the start/stop latch with no timer. A machine slept while stopped therefore
+resumes with a stale baseline and reports the entire stopped period as lost — re-placing the game
+the operator just started by hand. **Reset the detector when the clock resumes** (clear
+`jump_detector` in `start_clock`) so the first observation after a hold rebases instead of firing.
+This is the failure Task 5's naive stopped-clock test cannot catch, so test it directly:
+stop, sleep, start, assert nothing moved.
+
+**Manual mode is checked FIRST, before `place` is consulted.** An empty `court_schedule` and
+"past the last game" are different situations that `place` reports identically (Task 2 returns
+`PastLastGame` for an empty slice), and treating manual mode as past-the-last would zero a
+perfectly good manual clock.
+
+**Then dispatch on `placement::place(&self.court_schedule, wall_now)`:**
 
 | Placement | Action |
 |---|---|
-| `BeforeFirstGame` / `InBreak` | `clock_state = CountingDown { start_time: now, time_remaining_at_start: until_start }` |
+| `BeforeFirstGame` / `InBreak` | `current_period = BetweenGames` **and** `clock_state = CountingDown { start_time: now, time_remaining_at_start: until_start }` |
 | `InGame { index, period, time_remaining }` | clone `self.court_schedule[index]`, call `place_at_schedule_position` |
-| `PastLastGame` | `Stopped { clock_time: ZERO }` + `send_clock_running(false)` |
+| `PastLastGame` | `current_period = BetweenGames`, `Stopped { clock_time: ZERO }`, `send_clock_running(false)` |
+
+**Setting the period is not optional in the break cases.** Leaving `current_period` at, say,
+`FirstHalf` while the clock counts down to the next kickoff means the expiry runs `end_first_half`
+instead of starting a game — a wrong period with a right-looking clock.
+
+> **The sharpest interaction in this change, and it must be solved before Task 5 is called done.**
+> Moving `current_period` to `BetweenGames` makes the app's `apply_snapshot` call
+> `handle_game_end(&game_number)` (`app/mod.rs:1233-1235`), because that is how a game ending is
+> normally detected. On this path the game did **not** end — it was slept through — and
+> `handle_game_end` is a result-publishing path. Letting it fire would publish a result for a
+> passed-over game, breaking acceptance criterion 3 in the one place its own tests do not look.
+> Conversely a placement into a *different* game never reaches `handle_game_start` (Task 3
+> requirement 7), so the refresh that *should* happen does not.
+> **Decide explicitly how the app is told a catch-up happened rather than inferring it from the
+> period transition**, and write the decision into the plan's Deviations section. A distinct
+> `TickKind`, or an explicit call from the placement path, are both reasonable; silently relying on
+> `apply_snapshot` is not.
 
 Indexing `court_schedule[index]` is safe — `place` only returns an index into the slice it was
 given, and nothing mutates it in between. Say so in a comment.
@@ -350,11 +445,18 @@ let (kind, snapshot) = tm_.updater_tick(now)?;
 `updater_tick`'s signature stays unchanged deliberately: it has six call sites (`app/mod.rs:9914`,
 `zero_probe.rs:135, 328, 381`, `mod.rs:3183, 3233`) and none of the test ones want a wall clock.
 
+**Log the correction.** The spec's "no new UI" ruling makes the log the only record that anything
+happened, so every branch above emits one `info!` saying how much was lost and where it landed —
+including the guarded-out cases, which are the ones an operator will ask about.
+
 **Tests.** Each drives `observe_time_jump` twice — once to prime the detector, once with the jump.
 - `a_sleep_before_the_first_game_corrects_the_countdown` — **the reported fault**: kickoff 146 min
   out, sleep 126 min, assert the countdown reads ~20 min
-- `a_stopped_clock_is_left_alone` and `a_confirmation_pause_is_left_alone` — clock unchanged.
-  For the pause, drive the engine into `pause_for_confirm` the way `updater_tick` does (`:1875`)
+- `a_catch_up_into_a_break_sits_between_games` — asserts the *period* is `BetweenGames`, not just
+  that the clock looks right
+- `a_stopped_clock_is_left_alone`, `a_timeout_is_left_alone`, `a_confirmation_pause_is_left_alone`
+- `resuming_after_a_stop_does_not_fire_a_catch_up` — stop, sleep two hours, start; nothing moves.
+  Fails against a detector that is not reset on resume
 - `manual_mode_takes_the_lost_time_off_and_starts_nothing` — no court schedule; clock down by exactly
   the gap, period unchanged
 - `no_jump_leaves_every_clock_alone` — table over a below-threshold gap and a backwards gap
@@ -362,6 +464,7 @@ let (kind, snapshot) = tm_.updater_tick(now)?;
 - [ ] Write the tests
 - [ ] Run `cargo test -p refbox observe_time_jump` — expect FAIL (no such method)
 - [ ] Write the implementation and the app wiring
+- [ ] Resolve the `handle_game_end` / `handle_game_start` question above and record it in Deviations
 - [ ] Run `cargo test -p refbox && cargo clippy -p refbox --all-targets -- -D warnings`; `golden_traces_match_baseline` **unchanged**
 - [ ] Commit: `feat(refbox): catch the clocks up after the machine sleeps`
 
@@ -419,6 +522,10 @@ covered by Task 5's unit tests.
       re-bless. Read `golden_traces/README.md`
 - [ ] Read the new trace by eye: score returns to `B0/W0` at the catch-up, and the period goes from
       `FirstHalf` straight to `SecondHalf` with **no `HalfTime` line between**
+- [ ] Do **not** expect the trace to evidence the game *number*. `render()` deliberately omits game
+      numbers (`golden_traces/README.md`, "What is and isn't watched"), so the trace proves the
+      period and clock jump only; the number is proven by Task 3's unit test. Do not widen
+      `render()` to cover it — that re-blesses every existing trace
 - [ ] Run `just check` — fmt, lint, tests, audit
 - [ ] Also run `cargo clippy --workspace --all-targets --all-features -- -D warnings`: `just lint`
       is not `--all-targets`, and `just check` is host-only so a Windows-target break is invisible here
@@ -440,10 +547,11 @@ deviation commits.
 | # | Criterion | Proven by |
 |---|---|---|
 | 1 | Two-hour gap before game 1 → countdown reads the true time | Task 5 `a_sleep_before_the_first_game_corrects_the_countdown` |
-| 2 | Gap into a later game → that game, its number and timing rule, at the true position | Task 3 `..._starts_it_fresh` + `..._adopts_its_timing_rule`; Task 7 trace |
+| 2 | Gap into a later game → that game, its number and timing rule, at the true position | Task 3 `..._starts_it_fresh` + `..._adopts_its_timing_rule` (the number and rule); Task 7 trace (the period and clock jump only — golden does not watch game numbers) |
 | 3 | No Portal submission for a passed-over game; a game landed inside keeps its score | Task 6 both tests; Task 3 `placing_inside_the_running_game_keeps_its_score` |
 | 4 | A backwards wall-clock step changes no clock | Task 1 + Task 5 |
 | 5 | A gap below the threshold changes no clock | Task 1 + Task 5 |
 | 6 | No schedule → lost time off the clock, no game started | Task 5 `manual_mode_takes_the_lost_time_off_and_starts_nothing` |
 | 7 | `just check` clean | Task 7 |
+| — | Every catch-up and every guarded-out jump is logged | Task 5 "Log the correction" — with no UI, the log is the only record an operator can be pointed at |
 | 8 | **A real lid-shut sleep on a Mac leaves the countdown correct** | **Not provable here — Eric, on hardware.** No Mac in the dev environment and CI cannot suspend a machine. This is the only real proof the feature works. |

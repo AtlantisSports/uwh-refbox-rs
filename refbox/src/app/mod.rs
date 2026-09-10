@@ -5192,6 +5192,14 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::UpdatesCheck => {
+                // Defence in depth behind the view-level gate in `make_updates_page`:
+                // the check button isn't rendered off the Pi, but a future emitter
+                // (auto-check, CLI flag, shortcut) must not be able to reach the
+                // network for an update this build could never install.
+                if !crate::updater::release::self_update_supported() {
+                    warn!("Ignoring UpdatesCheck: self-update is not supported on this build");
+                    return Task::none();
+                }
                 if let AppState::Updates { ref mut state, .. } = self.app_state {
                     *state = UpdateUiState::Checking;
                 }
@@ -5241,6 +5249,16 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::UpdatesConfirmInstall => {
+                // Defence in depth behind the view-level gate in `make_updates_page`:
+                // the install button isn't rendered off the Pi, but a future emitter
+                // must not be able to reach the installer for an update this build
+                // could never install.
+                if !crate::updater::release::self_update_supported() {
+                    warn!(
+                        "Ignoring UpdatesConfirmInstall: self-update is not supported on this build"
+                    );
+                    return Task::none();
+                }
                 // Triggered by the Install button in the bottom-right of the
                 // footer when an update is available. Defensive re-check: never
                 // start an update if a game began.

@@ -5463,6 +5463,98 @@ mod test {
     }
 
     #[test]
+    fn a_game_slept_through_records_no_result() {
+        // The consequence that matters at a tournament: a phantom result on the portal
+        // moves points, standings and goal difference.
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+
+        tm.set_court_schedule(vec![
+            ScheduledGame {
+                number: "1".into(),
+                start_time: wall,
+                config: GameConfig::default(),
+            },
+            ScheduledGame {
+                number: "2".into(),
+                start_time: wall + time::Duration::hours(1),
+                config: GameConfig::default(),
+            },
+        ]);
+        tm.set_next_game(NextGameInfo {
+            number: "1".into(),
+            timing: None,
+            start_time: Some(wall),
+        });
+        tm.start_play_now(now).unwrap();
+        tm.start_clock(now);
+        tm.set_scores(BlackWhiteBundle { black: 5, white: 2 }, now);
+        assert_eq!(tm.game_number(), "1", "precondition: game 1 is running");
+        tm.observe_time_jump(now, wall).unwrap();
+
+        // Sleep past the end of game 1 and into game 2.
+        tm.observe_time_jump(now, wall + time::Duration::minutes(65))
+            .unwrap();
+
+        assert_eq!(tm.game_number(), "2", "the catch-up should land in game 2");
+        assert_eq!(
+            tm.last_game_info(),
+            None,
+            "a game the catch-up passed over must record no result"
+        );
+        assert_eq!(
+            tm.get_scores(),
+            BlackWhiteBundle { black: 0, white: 0 },
+            "the passed-over game's score must be discarded, not carried forward"
+        );
+    }
+
+    #[test]
+    fn a_finished_games_pending_result_survives_a_catch_up() {
+        // The mirror of the test above, and the reason requirement 3 must NOT be
+        // satisfied by clearing `last_game_info`: a genuinely finished game's result
+        // may still be waiting to be submitted when a catch-up happens.
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+
+        tm.set_court_schedule(vec![ScheduledGame {
+            number: "2".into(),
+            start_time: wall + time::Duration::hours(1),
+            config: GameConfig::default(),
+        }]);
+        tm.set_next_game(NextGameInfo {
+            number: "1".into(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(now).unwrap();
+        tm.add_score(Color::White, 3, now);
+        tm.stop_clock(now).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::ZERO);
+        tm.end_game(now);
+        let recorded = tm.last_game_info().cloned();
+        assert!(
+            recorded.is_some(),
+            "precondition: a real result was recorded"
+        );
+
+        tm.start_clock(now);
+        tm.observe_time_jump(now, wall).unwrap();
+        tm.observe_time_jump(now, wall + time::Duration::minutes(65))
+            .unwrap();
+
+        assert_eq!(
+            tm.last_game_info().cloned(),
+            recorded,
+            "a real result must survive a later catch-up"
+        );
+    }
+
+    #[test]
     fn test_next_update_time() {
         initialize();
         let config = GameConfig {

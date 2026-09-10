@@ -1587,22 +1587,6 @@ impl TournamentManager {
             return Ok(());
         }
 
-        // The correction has to be justified by the loss that triggered it. A
-        // tournament running late means the schedule already disagrees with where the
-        // game actually is; re-placing then abandons a live game because of the
-        // backlog, not because time moved — and a few seconds of clock correction
-        // would be enough to do it.
-        if !self.schedule_was_tracking_reality(wall_now, lost) {
-            info!(
-                "{} Lost {lost:?}, but the schedule already disagreed with where this \
-                 game was, so it cannot say where we are now; taking the lost time off \
-                 the clock instead of re-placing",
-                self.status_string(now)
-            );
-            self.absorb_lost_time(lost);
-            return Ok(());
-        }
-
         match place(&self.court_schedule, wall_now) {
             Placement::BeforeFirstGame { until_start } => {
                 self.wait_for_scheduled_game(now, 0, until_start, lost)
@@ -1673,29 +1657,6 @@ impl TournamentManager {
         }
 
         self.catch_up_pending = true;
-    }
-
-    /// Whether the schedule still described where the game actually was, just before
-    /// the jump. If it did not, it cannot describe where we are now either.
-    ///
-    /// Compares the engine's real position against the schedule's opinion of the moment
-    /// `lost` ago — the last moment the two clocks agreed. A tournament running behind
-    /// puts these permanently out of step, and it is exactly then that a few seconds of
-    /// clock correction would otherwise throw a live game forward into a later slot.
-    fn schedule_was_tracking_reality(&self, wall_now: OffsetDateTime, lost: Duration) -> bool {
-        let Ok(lost) = time::Duration::try_from(lost) else {
-            return false;
-        };
-
-        match place(&self.court_schedule, wall_now - lost) {
-            Placement::InGame { index, .. } => self
-                .court_schedule
-                .get(index)
-                .is_some_and(|game| game.number == self.game_number),
-            Placement::BeforeFirstGame { .. }
-            | Placement::InBreak { .. }
-            | Placement::PastLastGame => self.current_period == GamePeriod::BetweenGames,
-        }
     }
 
     /// Manual mode: no schedule to jump to, so just consume the lost time on whatever
@@ -5443,8 +5404,10 @@ mod test {
     fn a_small_clock_step_does_not_abandon_a_late_running_game() {
         // Tournaments run late, and a machine's clock can step by seconds on its own —
         // a Raspberry Pi has no battery-backed clock and takes its time from the
-        // network. The correction must be justified by the loss that caused it, or a
-        // few seconds of clock nudge throws a live game into the next slot.
+        // network. When the schedule already says a later game should be under way, a
+        // correction would throw the live game into that later slot and discard its
+        // score. The threshold is what stops it: nothing short of a real suspend is
+        // allowed to reach the schedule.
         initialize();
         let now = Instant::now();
         let wall = OffsetDateTime::now_utc();
@@ -5481,7 +5444,8 @@ mod test {
         assert_eq!(
             tm.game_number(),
             "1",
-            "a 12-second clock step must not abandon the game being played"
+            "a 12-second clock step is far below the threshold and must not abandon \
+             the game being played, even though the schedule says game 2 is due"
         );
         assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
         assert_eq!(
@@ -5627,12 +5591,12 @@ mod test {
         let before = tm.game_clock_time(now).unwrap();
 
         tm.observe_time_jump(now, wall).unwrap();
-        tm.observe_time_jump(now, wall + time::Duration::seconds(60))
+        tm.observe_time_jump(now, wall + time::Duration::minutes(10))
             .unwrap();
 
         assert_eq!(
             tm.game_clock_time(now).unwrap(),
-            before - Duration::from_secs(60),
+            before - Duration::from_secs(600),
             "manual mode absorbs the lost time onto the running clock"
         );
         assert_eq!(

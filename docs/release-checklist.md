@@ -81,12 +81,12 @@ unzip -Z refbox.zip | grep -E 'MacOS/refbox$|Raspberry Pi/refbox$'
       (`BIN_ASSET` / `SUM_ASSET` in `refbox/src/updater/release.rs`) and fails if either is
       missing or renamed. Copies of the Pi binary and its checksum also appear *inside* the zip
       under `Raspberry Pi/` and `rpi-sha256/` — that is normal and not a problem.
-- [ ] A macOS user opens `refbox.app` and it launches.
 - [ ] **On the Pi**, open Settings → App → Check Version and confirm the yellow **Check for
       Updates** button is present on that page. It is deliberately absent on Windows and macOS,
       where the update asset is the wrong binary — but nothing in CI runs on a Pi, so this is
       the only place that half of the gate is ever checked. If it is missing here, self-update
       is broken for the machines that actually use it.
+- [ ] A macOS user opens `refbox.app` and it launches.
 
 On that last point: macOS will warn about an unidentified developer, because the app is ad-hoc
 signed rather than notarised with a paid Apple certificate. That is expected and unrelated to the

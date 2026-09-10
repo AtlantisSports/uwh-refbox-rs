@@ -8,9 +8,16 @@ use time::OffsetDateTime;
 use tokio::time::{Duration, Instant};
 
 /// How far the monotonic clock must fall behind the wall clock, tick to tick, before
-/// [`JumpDetector::observe`] reports it. Below this, the gap is routine scheduling jitter
-/// or a small time-server nudge, not a sleep or a clock correction.
-pub(crate) const TIME_JUMP_THRESHOLD: Duration = Duration::from_secs(10);
+/// [`JumpDetector::observe`] reports it.
+///
+/// Five minutes, not seconds. What this triggers moves the game to where the schedule
+/// says it should be, and a tournament running behind means that is some way ahead of
+/// where the game actually is — so a threshold small enough to fire on a routine clock
+/// correction would throw a live game into a later slot and discard its score. A
+/// machine can step its clock by seconds unaided: a Raspberry Pi has no battery-backed
+/// clock and takes its time from the network at boot. Nothing short of a real suspend
+/// should be allowed to reach the schedule.
+pub(crate) const TIME_JUMP_THRESHOLD: Duration = Duration::from_secs(300);
 
 /// Watches the monotonic clock and the wall clock tick to tick and reports when the
 /// monotonic clock has fallen behind by more than [`TIME_JUMP_THRESHOLD`] — evidence the

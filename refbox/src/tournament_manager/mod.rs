@@ -1423,6 +1423,86 @@ impl TournamentManager {
         Ok(())
     }
 
+    /// Put the engine at a known position in a known game, in one step.
+    ///
+    /// Every other way into a game plays forward into it. This is the one place that
+    /// jumps: after the machine has been asleep, the true schedule position can be
+    /// several games away and there is no time in which to play through to it.
+    ///
+    /// Games between here and there are NOT played. Nothing is recorded for them and
+    /// nothing is enqueued for the portal — deliberately, so a tournament can see
+    /// exactly which games a sleep swallowed. In particular this never calls
+    /// `end_game`, which is what writes `last_game_info` and so what causes a result
+    /// to be submitted.
+    ///
+    /// A game already in progress that the catch-up lands *inside* is not restarted:
+    /// its score, penalties and stats stand. Only the period and clock move.
+    ///
+    /// The caller is responsible for telling the app a catch-up happened, so it can
+    /// refresh the next-game info and rosters — the engine deliberately does not
+    /// duplicate the app's schedule lookup here.
+    ///
+    /// See `docs/superpowers/specs/2026-09-10-sleep-clock-catchup-design.md`.
+    pub fn place_at_schedule_position(
+        &mut self,
+        now: Instant,
+        game: &ScheduledGame,
+        period: GamePeriod,
+        time_remaining: Duration,
+    ) -> Result<()> {
+        let was_running = self.clock_state.is_running();
+        let same_game = self.game_number == game.number;
+
+        info!(
+            "{} Catching up: placing at game {} {period:?} with {time_remaining:?} left \
+             (already in this game: {same_game})",
+            self.status_string(now),
+            game.number,
+        );
+
+        if !same_game {
+            // Route through the ordinary start sequence so a game reached by catching
+            // up gets exactly the reset every other new game gets. `start_game` reads
+            // the number from `next_game`, and overwrites `self.config` only when
+            // `next_game.timing` is `Some` — so passing `None` here lets the config
+            // set just below survive. The config is adopted exactly as the schedule
+            // supplied it: a timing rule says what is used, and rewriting one here
+            // would let a duration override a flag.
+            self.set_next_game(NextGameInfo {
+                number: game.number.clone(),
+                timing: None,
+                start_time: Some(game.start_time),
+            });
+            self.config = game.config.clone();
+            self.start_game(now);
+        }
+
+        self.current_period = period;
+        self.clock_state = ClockState::CountingDown {
+            start_time: now,
+            time_remaining_at_start: time_remaining,
+        };
+
+        if same_game {
+            // Assigning the period directly skips the transition that normally does
+            // this. A penalty that ran out during the time we slept through has to
+            // leave the active list, or it stays on screen against a player who is
+            // long since back in play. Not needed on the fresh-game path above:
+            // `start_game` clears the list outright.
+            //
+            // Deliberately NOT re-basing penalty start times the way
+            // `set_game_clock_time` does. That is right for an operator editing the
+            // clock; here the penalty genuinely has run for that long.
+            self.cull_penalties(now)?;
+        }
+
+        if !was_running {
+            self.send_clock_running(true);
+        }
+
+        Ok(())
+    }
+
     fn end_game(&mut self, now: Instant) {
         let was_running = self.clock_is_running();
 
@@ -4921,6 +5001,88 @@ mod test {
             .map(|game| game.number.as_str())
             .collect();
         assert_eq!(order, vec!["1", "2", "3"]);
+    }
+
+    #[test]
+    fn placing_inside_the_running_game_keeps_its_score() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let now = Instant::now();
+        tm.start_play_now(now).unwrap();
+        tm.set_scores(BlackWhiteBundle { black: 3, white: 1 }, now);
+        let number = tm.game_number();
+
+        let game = ScheduledGame {
+            number: number.clone(),
+            start_time: OffsetDateTime::UNIX_EPOCH,
+            config: GameConfig::default(),
+        };
+        tm.place_at_schedule_position(now, &game, GamePeriod::SecondHalf, Duration::from_secs(120))
+            .unwrap();
+
+        assert_eq!(tm.current_period(), GamePeriod::SecondHalf);
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(120)));
+        assert_eq!(tm.game_number(), number, "the game itself must not change");
+        assert_eq!(
+            tm.get_scores(),
+            BlackWhiteBundle { black: 3, white: 1 },
+            "a game the catch-up lands inside keeps the score already recorded"
+        );
+    }
+
+    #[test]
+    fn placing_into_a_later_game_starts_it_fresh() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let now = Instant::now();
+        tm.start_play_now(now).unwrap();
+        tm.set_scores(BlackWhiteBundle { black: 3, white: 1 }, now);
+
+        let game = ScheduledGame {
+            number: "77".into(),
+            start_time: OffsetDateTime::UNIX_EPOCH,
+            config: GameConfig::default(),
+        };
+        tm.place_at_schedule_position(now, &game, GamePeriod::FirstHalf, Duration::from_secs(300))
+            .unwrap();
+
+        assert_eq!(tm.game_number(), "77");
+        assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(300)));
+        assert_eq!(
+            tm.get_scores(),
+            BlackWhiteBundle { black: 0, white: 0 },
+            "the abandoned game's score must not carry into the new one"
+        );
+        assert!(
+            tm.clock_is_running(),
+            "a placed game runs, it is not parked"
+        );
+    }
+
+    #[test]
+    fn placing_into_a_later_game_adopts_its_timing_rule() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let now = Instant::now();
+        tm.start_play_now(now).unwrap();
+
+        let game = ScheduledGame {
+            number: "77".into(),
+            start_time: OffsetDateTime::UNIX_EPOCH,
+            config: GameConfig {
+                half_play_duration: Duration::from_secs(999),
+                ..Default::default()
+            },
+        };
+        tm.place_at_schedule_position(now, &game, GamePeriod::FirstHalf, Duration::from_secs(300))
+            .unwrap();
+
+        assert_eq!(
+            tm.config().half_play_duration,
+            Duration::from_secs(999),
+            "the placed game must run under its own timing rule, not the old game's"
+        );
     }
 
     #[test]

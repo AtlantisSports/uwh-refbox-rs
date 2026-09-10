@@ -2,6 +2,7 @@ use self::infraction::InfractionDetails;
 use super::{APP_NAME, fl};
 use crate::panic_text::panic_reason;
 use crate::portal_manager::link_session::NoteSite;
+use crate::tournament_manager::placement::ScheduledGame;
 use crate::{
     beep_test::{cadence::TournamentManager as BeepTestManager, snapshot::BeepTestSnapshot},
     config::{Config, CustomSite, GameSource, Mode, RemoteSource},
@@ -1746,6 +1747,7 @@ impl RefBoxApp {
         self.set_current_event_id(event_id);
         self.current_court = court;
         self.schedule = schedule;
+        self.refresh_court_schedule();
     }
 
     /// The site an Apply would leave the refbox pointed at, given the source
@@ -1987,6 +1989,7 @@ impl RefBoxApp {
         if event_changed {
             self.current_court = None;
             self.schedule = None;
+            self.refresh_court_schedule();
         }
         if let Some(ref mut edits) = self.edited_settings {
             if event_changed {
@@ -2045,6 +2048,7 @@ impl RefBoxApp {
         self.set_current_event_id(None);
         self.current_court = None;
         self.schedule = None;
+        self.refresh_court_schedule();
         // The player-number grid is otherwise only rewritten at kickoff, so
         // without this it would keep showing the previous site's cap numbers
         // until the next game starts. `clear_portal_selections_to_manual`
@@ -2210,6 +2214,44 @@ impl RefBoxApp {
             self.current_court.as_deref(),
             game_num,
         )
+    }
+
+    /// Push the selected court's game list into the engine, so a catch-up after the
+    /// machine has slept can find the true schedule position. The engine otherwise
+    /// knows only about the *next* game and cannot cross a game boundary.
+    ///
+    /// Called from every site that changes the schedule or the selected court —
+    /// including the clears back to manual mode, or a catch-up would place against a
+    /// schedule the operator has just disconnected from.
+    ///
+    /// A game whose timing rule cannot be resolved is left OUT rather than given a
+    /// default: default period lengths would put the engine confidently at a position
+    /// that does not exist, and a wrong running clock is worse than an uncorrected one.
+    fn refresh_court_schedule(&self) {
+        let games: Vec<ScheduledGame> = match (&self.schedule, &self.current_court) {
+            (Some(schedule), Some(court)) => schedule
+                .games
+                .values()
+                .filter(|game| game.court == *court)
+                .filter_map(|game| match schedule.get_game_timing(&game.number) {
+                    Some(timing) => Some(ScheduledGame {
+                        number: game.number.clone(),
+                        start_time: game.start_time,
+                        config: timing.clone().into(),
+                    }),
+                    None => {
+                        warn!(
+                            "Game {} on court {court} has no timing rule; leaving it out \
+                             of the catch-up schedule",
+                            game.number
+                        );
+                        None
+                    }
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        self.tm.lock().set_court_schedule(games);
     }
 
     fn handle_game_start(&mut self, new_game_num: &GameNumber) -> Task<Message> {
@@ -6658,6 +6700,7 @@ impl RefBoxApp {
                     if let Some(ref id) = self.current_event_id {
                         if *id == event_id {
                             self.schedule = Some(schedule);
+                            self.refresh_court_schedule();
                             if self.edited_settings.is_none() {
                                 let mut tm = self.tm.lock();
                                 if tm.current_period() == GamePeriod::BetweenGames {

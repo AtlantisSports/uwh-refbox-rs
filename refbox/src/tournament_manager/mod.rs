@@ -24,6 +24,7 @@ use uwh_common::{
 
 pub mod penalty;
 use penalty::*;
+use placement::ScheduledGame;
 
 pub mod infraction;
 use infraction::*;
@@ -31,7 +32,7 @@ use infraction::*;
 mod game_stats;
 use game_stats::*;
 
-mod placement;
+pub(crate) mod placement;
 mod time_jump;
 
 use crate::penalty_editor::IterHelp;
@@ -148,6 +149,11 @@ pub struct TournamentManager {
     start_stop_tx: watch::Sender<bool>,
     start_stop_rx: watch::Receiver<bool>,
     next_game: Option<NextGameInfo>,
+    /// Every game on the selected court, sorted by start time — what a catch-up
+    /// after a sleep needs to find the true schedule position. Distinct from
+    /// `next_game`, which is only ever one game ahead. Empty in manual mode, and
+    /// empty of any game whose timing rule could not be resolved.
+    court_schedule: Vec<ScheduledGame>,
     /// Set when the app has established that the selected court has no game after the
     /// one in progress. Distinct from `next_game: None`, which only means "not known
     /// yet" — this one is a definite answer, and it stops the engine both from
@@ -194,6 +200,7 @@ impl TournamentManager {
             start_stop_tx,
             start_stop_rx,
             next_game: None,
+            court_schedule: Vec::new(),
             no_next_game: false,
             schedule_linked: false,
             game_number_step: 1,
@@ -350,6 +357,22 @@ impl TournamentManager {
 
     pub fn game_number(&self) -> GameNumber {
         self.game_number.clone()
+    }
+
+    /// Replace the selected court's game list. Called by the app whenever the
+    /// schedule or the selected court changes, including a change to manual mode,
+    /// which clears it.
+    ///
+    /// Sorted here rather than trusting the caller: `placement::place` walks the
+    /// slice in order and would misreport a break for an out-of-order list.
+    pub fn set_court_schedule(&mut self, mut games: Vec<ScheduledGame>) {
+        games.sort_by_key(|game| game.start_time);
+        info!("Court schedule set: {} games", games.len());
+        self.court_schedule = games;
+    }
+
+    pub(crate) fn court_schedule(&self) -> &[ScheduledGame] {
+        &self.court_schedule
     }
 
     pub fn next_game_number(&self) -> GameNumber {
@@ -4864,6 +4887,40 @@ mod test {
         assert_eq!(tm.penalties.black, vec![]);
         assert_eq!(tm.penalties.white, vec![]);
         assert!(tm.has_reset);
+    }
+
+    fn sched(number: &str, offset_secs: i64) -> ScheduledGame {
+        ScheduledGame {
+            number: number.into(),
+            start_time: OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(offset_secs),
+            config: GameConfig::default(),
+        }
+    }
+
+    #[test]
+    fn the_court_schedule_round_trips() {
+        let mut tm = TournamentManager::new(GameConfig::default());
+        assert!(
+            tm.court_schedule().is_empty(),
+            "a fresh engine is in manual mode until told otherwise"
+        );
+        let games = vec![sched("1", 0), sched("2", 1800)];
+        tm.set_court_schedule(games.clone());
+        assert_eq!(tm.court_schedule(), games.as_slice());
+    }
+
+    #[test]
+    fn the_court_schedule_is_sorted_by_start_time() {
+        // `placement::place` walks the slice in order; an out-of-order list would
+        // make it report a break where a game actually is.
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_court_schedule(vec![sched("3", 3600), sched("1", 0), sched("2", 1800)]);
+        let order: Vec<&str> = tm
+            .court_schedule()
+            .iter()
+            .map(|game| game.number.as_str())
+            .collect();
+        assert_eq!(order, vec!["1", "2", "3"]);
     }
 
     #[test]

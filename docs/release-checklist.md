@@ -26,10 +26,17 @@ Crates to bump (own `version`, plus any internal path-dependency `version = "X.Y
 - `uwh-common`
 - `wireless-modes`
 - `overlay`
+- `overlay-bridge`
 - `led-panel-sim`
 - `schedule-processor`
 - `refbox`
 - **`wireless-remote`** ← separate workspace; do not skip it
+
+> Check this list against reality before trusting it — it has drifted once already, when
+> `overlay-bridge` was added to the workspace and not to this list. The crates that need
+> bumping are every `members` entry in the root `Cargo.toml` except `alphagen` (which stays
+> at `0.1.0`), plus `wireless-remote`. Never touch anything under `vendor/` — those version
+> numbers belong to third-party code.
 
 Steps:
 

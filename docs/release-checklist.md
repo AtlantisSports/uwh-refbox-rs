@@ -5,14 +5,27 @@ How to cut a release of this project.
 ## How a release is built
 
 Pushing a git tag of the form `vX.Y.Z` triggers `.github/workflows/release.yml`, which builds
-native **Windows**, **macOS** (Arm + Intel), and **Raspberry Pi** binaries and assembles them
-into a **draft** GitHub release (plus the loose Pi binary + `.sha256` for self-update). The
-release is created as a draft — it is not public until someone publishes it.
+native **Windows**, **macOS** and **Raspberry Pi** binaries and assembles them into a **draft**
+GitHub release. The release is created as a draft — it is not public until someone publishes it.
+
+There is **one download per platform**, each carrying the PDF guides under `Documents/`:
+
+| Download | What it is |
+|---|---|
+| `refbox-windows.zip` | `refbox.exe` plus `Documents/` |
+| `refbox-macos.dmg` | a disk image holding a **universal** `refbox.app` — one app that runs natively on both Intel and Apple-silicon Macs — plus an `Applications` shortcut and `Documents/` |
+| `refbox-raspberry-pi.zip` | the `refbox` binary and its `.sha256`, plus `Documents/` |
+
+Alongside them sit the loose `refbox-aarch64-linux` and `refbox-aarch64-linux.sha256`, which
+in-app self-update fetches by exact name.
+
+> The single combined `refbox.zip` was **retired on 2026-09-11**. If you are looking for it, it
+> is gone on purpose — take the download for your platform instead.
 
 The same workflow also builds the **overlay** for the Raspberry Pi and attaches it as three
 separate assets — `overlay.zip`, `overlay-aarch64-linux` and its `.sha256`. They are deliberately
-*not* inside `refbox.zip`. The overlay has no self-update, so a person copies the binary to the
-streaming machine by hand.
+*not* inside any of the refbox downloads. The overlay has no self-update, so a person copies the
+binary to the streaming machine by hand.
 
 ## Version bump (do this first, on its own commit/PR)
 
@@ -56,10 +69,9 @@ Steps:
 
 1. With the bump merged on `master`, push the tag: `git tag vX.Y.Z <master-sha> && git push origin vX.Y.Z`.
 2. Wait for `release.yml` to finish; a **draft** release appears under Releases.
-3. Download `refbox.zip` **and `overlay.zip`** from the draft and **verify the packaging** —
-   see below, both sections. Do not skip this: "test the platform builds" used to be all this
-   step said, and a macOS app that could not launch shipped in five consecutive releases before
-   anyone noticed.
+3. Download every asset from the draft and **verify the packaging** — see below, all sections.
+   Do not skip this: "test the platform builds" used to be all this step said, and a macOS app
+   that could not launch shipped in five consecutive releases before anyone noticed.
 4. When satisfied, **publish** the draft. (Keep `--draft=true` on any `gh release edit`, or it
    publishes early.)
 
@@ -67,39 +79,61 @@ Steps:
 
 Passing artifacts between jobs **strips the executable bit** — GitHub stores each artifact as a
 zip and does not preserve file permissions, so everything arrives as `644`. A `chmod` step in
-`release.yml` restores it. That step is the only automated guard: it fails the job if a path ever
-stops matching, but **no PR-time CI covers packaging at all**, because `release.yml` runs only on a
-`v*.*.*` tag. So the draft is the first and last chance to catch a bad build.
+`release.yml` restores it for the Pi binary before zipping. The macOS app no longer needs that
+treatment: it is assembled into the disk image on the macOS runner and never travels as loose
+files. **No PR-time CI covers packaging at all**, because `release.yml` runs only on a `v*.*.*`
+tag. So the draft is the first and last chance to catch a bad build.
 
-Check the zip itself, not just that it downloads:
+Check the archives themselves, not just that they download:
 
 ```bash
-unzip -Z refbox.zip | grep -E 'MacOS/refbox$|Raspberry Pi/refbox$'
+unzip -Z refbox-windows.zip | grep -E 'refbox\.exe$|Documents/.*\.pdf$'
+unzip -Z refbox-raspberry-pi.zip | grep -E 'refbox$|Documents/.*\.pdf$'
 ```
 
-- [ ] **Exactly three lines** come back — Arm bundle, Intel bundle, Pi binary. Fewer means a build
-      is missing, and an empty result must not be read as a pass.
-- [ ] Every one of them starts with `-rwxr-xr-x`. If any reads `-rw-r--r--`, the build is broken —
+- [ ] `refbox-windows.zip` lists `refbox.exe` **and five PDFs** under `Documents/`. An empty
+      result is a FAILURE, not a pass.
+- [ ] `refbox-raspberry-pi.zip` lists `refbox` **and five PDFs** under `Documents/`.
+- [ ] The `refbox` line starts with `-rwxr-xr-x`. If it reads `-rw-r--r--`, the build is broken —
       **do not publish.**
-- [ ] Folder names read `Mac (Arm processor)` / `Mac (Intel processor)` — no stray backslash.
-- [ ] `Windows/refbox.exe` is a file, not a folder containing another `refbox.exe`.
+- [ ] `refbox.exe` is a file, not a folder containing another `refbox.exe`.
 - [ ] The release carries `refbox-aarch64-linux` and `refbox-aarch64-linux.sha256` as **loose
-      assets** alongside `refbox.zip`. In-app self-update looks these up by exact name
-      (`BIN_ASSET` / `SUM_ASSET` in `refbox/src/updater/release.rs`) and fails if either is
-      missing or renamed. Copies of the Pi binary and its checksum also appear *inside* the zip
-      under `Raspberry Pi/` and `rpi-sha256/` — that is normal and not a problem.
+      assets**. In-app self-update looks these up by exact name (`BIN_ASSET` / `SUM_ASSET` in
+      `refbox/src/updater/release.rs`) and fails if either is missing or renamed. A copy of the
+      binary and its checksum also appears inside `refbox-raspberry-pi.zip` — that is normal.
+- [ ] `refbox.zip` is **absent**. It was retired on 2026-09-11; if it reappears, something has
+      been reverted.
 - [ ] **On the Pi**, open Settings → App → Check Version and confirm the yellow **Check for
       Updates** button is present on that page. It is deliberately absent on Windows and macOS,
       where the update asset is the wrong binary — but nothing in CI runs on a Pi, so this is
       the only place that half of the gate is ever checked. If it is missing here, self-update
       is broken for the machines that actually use it.
-- [ ] A macOS user opens `refbox.app` and it launches.
 
-On that last point: macOS will warn about an unidentified developer, because the app is ad-hoc
-signed rather than notarised with a paid Apple certificate. That is expected and unrelated to the
-packaging. Clear it via **System Settings → Privacy & Security → Open Anyway**. What you are
-checking for is the *different* error — *"The application 'refbox' can't be opened."* — which means
-the executable bit is missing.
+### The macOS disk image
+
+Mount `refbox-macos.dmg` and check:
+
+- [ ] It contains `refbox.app`, an `Applications` shortcut, and a `Documents` folder holding five
+      PDFs.
+- [ ] `refbox.app` launches on an **Intel** Mac.
+- [ ] `refbox.app` launches on an **Apple-silicon** Mac. One machine cannot prove a universal
+      build — both are required.
+- [ ] On the Apple-silicon Mac, with refbox running, open **Activity Monitor**, find `refbox`,
+      and read the **Kind** column. It must say **Apple**. If it says **Intel**, the universal
+      build silently failed and the Mac is running it through translation — **do not publish.**
+- [ ] The app shows its icon rather than a blank page.
+
+macOS will warn about an unidentified developer, because the app is ad-hoc signed rather than
+notarised. Apple code signing was **dropped on 2026-09-11**, so that warning is permanent and
+expected. Clear it via **System Settings → Privacy & Security → Open Anyway** — the older
+right-click → Open shortcut is unreliable on recent macOS versions. What you are checking for is
+the *different* error — *"The application 'refbox' can't be opened."* — which means a missing
+executable bit. The disk image exists partly to make that one impossible.
+
+**Sending the build to testers:** a draft release is visible only to people with write access to
+this repository, and its asset links require authentication — so the link cannot be shared.
+Download `refbox-macos.dmg` and send the **file**. Passing it through Windows or a cloud drive is
+the exact path that used to corrupt the old zip, so doing so is itself a test.
 
 ### The overlay assets
 
@@ -118,4 +152,4 @@ unzip -Z overlay.zip | grep -E 'Raspberry Pi/overlay$'
       **These always download non-executable** — GitHub serves release assets with no Unix mode, so
       whoever installs one runs `chmod +x`. Expected, not a defect. `overlay.zip` is the copy that
       arrives runnable.
-- [ ] `refbox.zip` contains **no** overlay files. The overlay is deliberately separate.
+- [ ] **None** of the refbox downloads contain overlay files. The overlay is deliberately separate.

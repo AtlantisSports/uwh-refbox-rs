@@ -432,8 +432,12 @@ git commit -m "docs(ci): rewrite the release checklist for per-platform download
 
 This is the only real verification. **Requires Eric's explicit go-ahead before the tag is pushed** — it runs the live release workflow.
 
-- [ ] **Step 1: Merge the branch to `master` first.** `release.yml` runs from the tagged commit, so the changes must be on the tagged commit.
-- [ ] **Step 2: Push a throwaway tag** — `git tag v0.5.2-rc1 <sha>` then `git push origin v0.5.2-rc1`. It matches the `v*.*.*` trigger and produces a **draft**, which is not public and which the in-app updater cannot see (it queries `/releases/latest`, which excludes drafts).
+- [ ] **Step 1: Do NOT merge first.** `release.yml` runs from whatever commit is tagged, and a tag
+      can point at any commit — including this branch's head. Rehearsing before the merge is the
+      whole point: it proves the packaging while the change can still be fixed inside the same PR.
+      (An earlier draft of this plan said to merge first. That was wrong and would have had the
+      untested packaging landing on `master` before anyone knew whether it worked.)
+- [ ] **Step 2: Push a throwaway tag at the branch head** — `git tag v0.5.2-rc1 <branch-sha>` then `git push origin v0.5.2-rc1`. It matches the `v*.*.*` trigger and produces a **draft**, which is not public and which the in-app updater cannot see (it queries `/releases/latest`, which excludes drafts).
 - [ ] **Step 3: Work the rewritten checklist** against the draft.
 - [ ] **Step 4: Eric downloads `refbox-macos.dmg` and sends it to Mac testers.** Draft assets need authentication, so the link cannot be shared — the file must be. Passing it through Windows and a cloud drive is exactly the path that used to corrupt the Mac build, so the sharing *is* the test.
 - [ ] **Step 5: Testers report** — does it launch (after Open Anyway), does the icon appear, and on Apple silicon does Activity Monitor say **Apple**.

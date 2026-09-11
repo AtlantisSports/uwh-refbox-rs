@@ -7752,7 +7752,7 @@ impl RefBoxApp {
                     &self.config.game
                 };
                 let behind_schedule = if self.config.show_behind_schedule_time {
-                    self.tm.lock().behind_schedule_shown(Instant::now())
+                    self.tm.lock().behind_schedule(Instant::now())
                 } else {
                     std::time::Duration::ZERO
                 };

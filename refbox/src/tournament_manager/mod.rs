@@ -2685,67 +2685,83 @@ impl TournamentManager {
         }
     }
 
-    /// How far behind its scheduled start times the run of games currently is, as a
-    /// positive duration (`ZERO` when on time, ahead, or before the first game).
-    /// Carries lateness across games; a longer scheduled break claws it back down to
-    /// the always-enforced minimum break. See
-    /// docs/superpowers/specs/2026-06-06-behind-schedule-indicator-design.md.
-    pub fn behind_schedule(&self, now: Instant) -> Duration {
-        if self.current_period == GamePeriod::BetweenGames {
-            // Before the first game has started there is no schedule anchor yet, so the
-            // event cannot be "behind". (The in-game branch below applies the same guard
-            // via `current_scheduled_start`.) Without this, the pre-game break countdown
-            // projects ~= the scheduled start and clock granularity leaks a sub-minute
-            // positive value, shown as "DELAY -0:0".
-            if self.current_scheduled_start.is_none() {
-                return Duration::ZERO;
-            }
-            // Project the next game's start from the *live* break clock. While the
-            // break counts down normally the projection holds steady (frozen);
-            // pausing it, sitting past zero, or editing it slides the projection --
-            // and the figure -- by exactly that amount. Floored at zero (on-time/ahead).
-            let Some(sched_next) = self.next_game_scheduled_start(now) else {
-                return Duration::ZERO;
-            };
-            let remaining_break = self.clock_state.clock_time(now).unwrap_or(Duration::ZERO);
-            let projected_next_start = now.checked_add(remaining_break).unwrap_or(now);
-            projected_next_start.saturating_duration_since(sched_next)
+    /// How late the NEXT game is projected to start, measured against its scheduled
+    /// start time, as a positive duration. `ZERO` when on time or ahead, and before the
+    /// first game. On the last game of a court there is no next start to measure
+    /// against, so it falls back to [`Self::own_lateness`] instead.
+    ///
+    /// A game must END by `next scheduled start - minimum_break` for the next game to
+    /// begin on time; this reports how far past that deadline the current game is
+    /// projected to run. Lateness is absorbed only by the real gap between scheduled
+    /// start times -- the Game Block plays no part. Where no published start time is
+    /// known -- manual mode, and portal mode whenever the next game has not been
+    /// identified -- `next_game_scheduled_start` falls back to the Game Block grid;
+    /// that is the only route by which the Game Block reaches this figure.
+    /// How late this game is running against its OWN scheduled start: the lateness it
+    /// began with, plus however much longer than its regulation it is projected to take
+    /// (less, when it plays short -- time edited down, or half-time skipped). Used only
+    /// when there is no next game to measure against; see [`Self::behind_schedule`].
+    fn own_lateness(&self, now: Instant) -> Duration {
+        let Some(sched_start) = self.current_scheduled_start else {
+            return Duration::ZERO;
+        };
+        let inherited = self.game_start_time.saturating_duration_since(sched_start);
+        let real_elapsed = now.saturating_duration_since(self.game_start_time);
+        let projected_total = real_elapsed + self.remaining_regulation(now);
+        let reg = self.config.regulation_play();
+        if projected_total >= reg {
+            inherited + (projected_total - reg)
         } else {
-            let Some(sched_start) = self.current_scheduled_start else {
-                return Duration::ZERO;
-            };
-            let inherited = self.game_start_time.saturating_duration_since(sched_start);
-            // Raw deviation tally: the game's projected total wall-clock duration minus
-            // the scheduled regulation play. Stoppages and edit-ups add; skipping a half
-            // early and edit-downs subtract (deviation can be negative). Shown on top of
-            // the lateness the game started with; floored at zero overall. The slot's
-            // slack (clawback) is NOT subtracted here — it is realised between games as
-            // the break compresses, so the figure steps down at the break when behind.
-            let real_elapsed = now.saturating_duration_since(self.game_start_time);
-            let projected_total = real_elapsed + self.remaining_regulation(now);
-            let reg = self.config.regulation_play();
-            if projected_total >= reg {
-                inherited + (projected_total - reg)
-            } else {
-                inherited.saturating_sub(reg - projected_total)
-            }
+            inherited.saturating_sub(reg - projected_total)
         }
     }
 
-    /// The behind-schedule figure as shown to the operator: the genuine, unrecoverable
-    /// delay. During a game the slot's spare time (`game_block_buffer`) is discounted --
-    /// this previews the exact step-down the engine applies at the break, so the figure
-    /// stays blank while the slot can still absorb the loss and is continuous across the
-    /// end of a game. Between games the engine has already applied that step-down, so the
-    /// raw figure is returned unchanged (no double discount). See
-    /// docs/superpowers/specs/2026-06-17-delay-display-threshold-design.md.
-    pub fn behind_schedule_shown(&self, now: Instant) -> Duration {
-        let raw = self.behind_schedule(now);
-        if self.current_period == GamePeriod::BetweenGames {
-            raw
-        } else {
-            raw.saturating_sub(self.config.game_block_buffer())
+    pub fn behind_schedule(&self, now: Instant) -> Duration {
+        // Before the first game has started there is no schedule anchor yet, so the
+        // event cannot be "behind". Without this, the pre-game break countdown
+        // projects ~= the scheduled start and clock granularity leaks a sub-minute
+        // positive value, shown as "DELAY -0:0".
+        if self.current_period == GamePeriod::BetweenGames && self.current_scheduled_start.is_none()
+        {
+            return Duration::ZERO;
         }
+        let Some(sched_next) = self.next_game_scheduled_start(now) else {
+            // No next game to be late for -- the last game on a court. The session is
+            // still running late, so fall back to how late THIS game is running against
+            // its own scheduled start. Once it has ended there is nothing left to be
+            // late for, so the figure stops.
+            if self.current_period == GamePeriod::BetweenGames {
+                return Duration::ZERO;
+            }
+            return Duration::from_secs(self.own_lateness(now).as_secs());
+        };
+
+        let projected_next_start = if self.current_period == GamePeriod::BetweenGames {
+            // The break clock is already running and is floored at the minimum break,
+            // so it projects the next start directly. Pausing it, sitting past zero, or
+            // editing it slides the projection -- and the figure -- by exactly that amount.
+            let remaining_break = self.clock_state.clock_time(now).unwrap_or(Duration::ZERO);
+            now.checked_add(remaining_break).unwrap_or(now)
+        } else {
+            // Project this game's end, then add the break that must follow it. Stoppages
+            // and edit-ups push the end out in real time; edit-downs and skipping a half
+            // early pull it in.
+            let projected_end = now
+                .checked_add(self.remaining_regulation(now))
+                .unwrap_or(now);
+            projected_end
+                .checked_add(self.config.minimum_break)
+                .unwrap_or(projected_end)
+        };
+
+        // The operator's DELAY label truncates to whole seconds, so a sub-second
+        // figure would render as a permanent "-0:00" -- and because the figure holds
+        // steady while the clock runs on schedule, it would sit there for a whole
+        // half. A scheduled start taken from the portal carries sub-second precision,
+        // so this is the normal case there, not an edge one. Report the second the
+        // label will show.
+        let behind = projected_next_start.saturating_duration_since(sched_next);
+        Duration::from_secs(behind.as_secs())
     }
 
     /// Returns `None` if there is no timeout, if the clock time would be negative, or if `now` is
@@ -3585,7 +3601,7 @@ mod test {
     }
 
     #[test]
-    fn test_behind_schedule_inherited_lateness_persists_in_manual_mode() {
+    fn test_behind_schedule_late_start_alone_is_absorbed_by_the_grid() {
         initialize();
         let config = GameConfig {
             half_play_duration: Duration::from_secs(10),
@@ -3605,11 +3621,14 @@ mod test {
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
         tm.end_game(g1);
         let g2 = g1 + Duration::from_secs(46);
-        tm.start_play_now(g2).unwrap(); // game 2 begins 6s late vs its 40s grid slot
-        assert_eq!(tm.behind_schedule(g2), Duration::from_secs(6));
+        tm.start_play_now(g2).unwrap(); // game 2 begins 6s late; next slot = g1+80
+        // Deadline for game 3 = (g1+80) - 2 = g1+78. Projected end = g2 + 23 = g1+69,
+        // plus the 2s break = g1+71, comfortably inside the deadline. A late start that
+        // the grid can still absorb is not a delay.
+        assert_eq!(tm.behind_schedule(g2), Duration::ZERO);
         assert_eq!(
             tm.behind_schedule(g2 + Duration::from_secs(5)),
-            Duration::from_secs(6)
+            Duration::ZERO
         );
     }
 
@@ -3640,9 +3659,9 @@ mod test {
         let a = tm.behind_schedule(start + Duration::from_secs(16));
         let b = tm.behind_schedule(start + Duration::from_secs(19));
         assert_eq!(a, b, "figure climbed while the clock was running");
-        // Projection reports the over-long clock as a frozen, nonzero figure: a 40s clock
-        // in a 10s half projects ~30s of extra play; raw tally = 30 (no buffer subtracted).
-        assert_eq!(a, Duration::from_secs(30));
+        // A 40s clock in a 10s half projects ~30s of extra play. Projected end at +16 is
+        // 16 + (24+3+10) = 53, plus the 2s break = 55, against a g1+38 deadline => 15.
+        assert_eq!(a, Duration::from_secs(15));
     }
 
     #[test]
@@ -3663,9 +3682,11 @@ mod test {
         tm.start_clock(start);
         tm.start_play_now(start).unwrap();
         tm.stop_clock(start + Duration::from_secs(10)).unwrap();
-        let t = start + Duration::from_secs(60); // 50s stopped: real 60 + remaining 120 - reg 130 = 50
+        let t = start + Duration::from_secs(60); // 50s stopped
+        // Projected end = 60 + 120 = 180, plus the 5s break = 185, against the
+        // (180 - 5) = 175 deadline => 5s past it.
         let before = tm.behind_schedule(t);
-        assert_eq!(before, Duration::from_secs(50));
+        assert_eq!(before, Duration::from_secs(5));
         tm.set_game_clock_time(tm.game_clock_time(t).unwrap() + Duration::from_secs(30))
             .unwrap();
         let after = tm.behind_schedule(t);
@@ -3693,9 +3714,10 @@ mod test {
         tm.start_clock(start);
         tm.start_play_now(start).unwrap();
         tm.stop_clock(start + Duration::from_secs(10)).unwrap();
-        let t = start + Duration::from_secs(100); // 90s stopped: real 100 + remaining 120 - reg 130 = 90
+        let t = start + Duration::from_secs(100); // 90s stopped
+        // Projected end = 100 + 120 = 220, plus the 5s break = 225, against 175 => 45.
         let before = tm.behind_schedule(t);
-        assert_eq!(before, Duration::from_secs(90));
+        assert_eq!(before, Duration::from_secs(45));
         tm.set_game_clock_time(tm.game_clock_time(t).unwrap() - Duration::from_secs(30))
             .unwrap();
         let after = tm.behind_schedule(t);
@@ -3707,7 +3729,7 @@ mod test {
     }
 
     #[test]
-    fn test_behind_schedule_grows_with_in_game_stoppage_beyond_buffer() {
+    fn test_behind_schedule_grows_with_in_game_stoppage() {
         initialize();
         // Slot 40; regulation 2*10+3=23; min_break 2 => buffer 15.
         let config = GameConfig {
@@ -3725,12 +3747,14 @@ mod test {
         tm.start_play_now(start).unwrap();
         let t1 = start + Duration::from_secs(5);
         tm.stop_clock(t1).unwrap();
-        let t2 = t1 + Duration::from_secs(20); // 20s stopped: real 25 + remaining 18 - reg 23 = 20
-        assert_eq!(tm.behind_schedule(t2), Duration::from_secs(20));
-        // 10s after the stop (real 15) + remaining 18 - reg 23 = 10.
+        // Deadline = (start+40) - 2 = start+38.
+        // After 5s of play the clock holds 5, so remaining regulation is 5+3+10 = 18.
+        let t2 = t1 + Duration::from_secs(20); // start+25: end 25+18 = 43, +2 = 45 => 5.
+        assert_eq!(tm.behind_schedule(t2), Duration::from_secs(5));
+        // 30s after the stop (start+35): projected end 35+18 = 53, +2 = 55 => 15.
         assert_eq!(
-            tm.behind_schedule(t1 + Duration::from_secs(10)),
-            Duration::from_secs(10)
+            tm.behind_schedule(t1 + Duration::from_secs(30)),
+            Duration::from_secs(15)
         );
     }
 
@@ -3751,14 +3775,17 @@ mod test {
         tm.start_clock(start);
         tm.start_play_now(start).unwrap();
         tm.stop_clock(start + Duration::from_secs(10)).unwrap();
-        tm.start_clock(start + Duration::from_secs(30)); // resume, 50s left on first half
-        tm.update(start + Duration::from_secs(80)).unwrap(); // first half hits 0 -> HalfTime
-        let t = start + Duration::from_secs(80);
+        tm.start_clock(start + Duration::from_secs(70)); // resume after a 60s stoppage
+        tm.update(start + Duration::from_secs(120)).unwrap(); // first half hits 0 -> HalfTime
+        let t = start + Duration::from_secs(120);
+        // Next slot starts at start+180. In HalfTime the clock holds 10 and the second
+        // half is 60, so projected end = 120 + 70 = 190, +5 break = 195 => 15.
         let before = tm.behind_schedule(t);
-        assert_eq!(before, Duration::from_secs(20));
-        tm.start_play_now(t).unwrap(); // skip remaining 10s of half-time
+        assert_eq!(before, Duration::from_secs(15));
+        tm.start_play_now(t).unwrap(); // skip the remaining 10s of half-time
+        // Skipping 10s of half-time pulls the projected end in by 10 => 5.
         let after = tm.behind_schedule(t);
-        assert_eq!(after, Duration::from_secs(10));
+        assert_eq!(after, Duration::from_secs(5));
     }
 
     #[test]
@@ -3846,50 +3873,45 @@ mod test {
 
     #[test]
     fn test_behind_schedule_accrues_during_time_pause() {
-        // Pausing the clock (the time-edit screen stops it) lets real time pass while
-        // the game clock is frozen. The raw tally climbs second-for-second with the
-        // pause (no buffer is subtracted in-game; the slot slack is realised at the break).
+        // Pausing the clock (the time-edit screen stops it) lets real time pass while the
+        // game clock is frozen, pushing the projected end -- and so the delay -- out
+        // second-for-second once the schedule can no longer absorb it.
         initialize();
         let mut tm = TournamentManager::new(behind_test_config());
         let start = Instant::now();
         tm.start_clock(start);
-        tm.start_play_now(start).unwrap(); // on time => no inherited lateness
+        tm.start_play_now(start).unwrap(); // on time; next slot = start+40
         // Run 5s on schedule, then pause (stop the clock) as the time-edit screen does.
         let pause_at = start + Duration::from_secs(5);
         tm.stop_clock(pause_at).unwrap();
-        // 14s into the pause: real 19 + remaining 18 - reg 23 = 14.
-        assert_eq!(
-            tm.behind_schedule(pause_at + Duration::from_secs(14)),
-            Duration::from_secs(14)
-        );
-        // 15s paused: real 20 + remaining 18 - reg 23 = 15.
-        assert_eq!(
-            tm.behind_schedule(pause_at + Duration::from_secs(15)),
-            Duration::from_secs(15)
-        );
-        // 16s paused: real 21 + remaining 18 - reg 23 = 16.
-        assert_eq!(
-            tm.behind_schedule(pause_at + Duration::from_secs(16)),
-            Duration::from_secs(16)
-        );
-        // 20s paused: real 25 + remaining 18 - reg 23 = 20.
+        // Next slot starts at start+40. The clock holds 5, so remaining regulation holds
+        // at 5+3+10 = 18 for the whole pause, and the figure is
+        // (projected end + 2s break) - (start+40).
+        // 20s paused (start+25): end 25+18 = 43, +2 = 45 => 5.
         assert_eq!(
             tm.behind_schedule(pause_at + Duration::from_secs(20)),
-            Duration::from_secs(20)
+            Duration::from_secs(5)
         );
-        // Resume; running back on schedule must NOT grow the figure further.
-        let resume = pause_at + Duration::from_secs(20);
+        // 25s paused (start+30): end 48, +2 = 50 => 10.
+        assert_eq!(
+            tm.behind_schedule(pause_at + Duration::from_secs(25)),
+            Duration::from_secs(10)
+        );
+        // Resume; running back on schedule must NOT grow the figure further. At
+        // start+33 the clock reads 2, so remaining is 15 and the projected end is
+        // still 48 => 10, exactly as it was at the moment of resuming.
+        let resume = pause_at + Duration::from_secs(25);
         tm.start_clock(resume);
         assert_eq!(
             tm.behind_schedule(resume + Duration::from_secs(3)),
-            Duration::from_secs(20)
+            Duration::from_secs(10)
         );
     }
 
     #[test]
     fn test_behind_schedule_accrues_during_ref_timeout() {
-        // A referee timeout freezes the game clock the same way; real time spent in the
-        // timeout feeds the raw tally second-for-second.
+        // A referee timeout freezes the game clock the same way, so real time spent in
+        // the timeout pushes the projected end out second-for-second.
         initialize();
         let mut tm = TournamentManager::new(behind_test_config());
         let start = Instant::now();
@@ -3897,23 +3919,24 @@ mod test {
         tm.start_play_now(start).unwrap();
         let to_at = start + Duration::from_secs(5);
         tm.start_ref_timeout(to_at).unwrap();
-        // 20s into the ref timeout: real 25 + remaining 18 - reg 23 = 20.
+        // Next slot starts at start+40; remaining regulation holds at 18.
+        // 20s in (start+25): end 43, +2 break = 45 => 5.
         assert_eq!(
             tm.behind_schedule(to_at + Duration::from_secs(20)),
-            Duration::from_secs(20)
+            Duration::from_secs(5)
         );
-        // 10s into the ref timeout: real 15 + remaining 18 - reg 23 = 10.
+        // 30s in (start+35): end 53, +2 = 55 => 15.
         assert_eq!(
-            tm.behind_schedule(to_at + Duration::from_secs(10)),
-            Duration::from_secs(10)
+            tm.behind_schedule(to_at + Duration::from_secs(30)),
+            Duration::from_secs(15)
         );
     }
 
     #[test]
-    fn test_behind_schedule_steps_down_by_slack_at_game_end() {
-        // The in-game figure is a raw tally (no buffer); the slot's slack is realised at
-        // the break. So when a game ends behind, the figure STEPS DOWN at the game-end
-        // boundary by exactly the slot slack (game_block - regulation_play - minimum_break).
+    fn test_behind_schedule_continuous_across_game_end() {
+        // Both sides of the game-end boundary answer the same question against the same
+        // next scheduled start: in-game via the projected end plus the break, between
+        // games via the running break clock. So the figure does not jump at the break.
         initialize();
         let mut tm = TournamentManager::new(behind_test_config());
         let start = Instant::now();
@@ -3928,28 +3951,25 @@ mod test {
         tm.update(start + Duration::from_secs(13)).unwrap(); // HalfTime -> SecondHalf
         tm.stop_clock(start + Duration::from_secs(23)).unwrap(); // full regulation played
         let end = start + Duration::from_secs(50); // game took 50s real vs its 40s slot
-        // In-game raw tally: real 50 + remaining 0 - reg 23 = 27.
+        // In-game: projected end = start+50 (nothing left to play), +2s break = start+52,
+        // against the start+40 slot => 12.
         let v_in_game = tm.behind_schedule(end); // sampled while still in the game
-        assert_eq!(v_in_game, Duration::from_secs(27));
+        assert_eq!(v_in_game, Duration::from_secs(12));
         tm.end_game(end);
-        // Between-games (unchanged branch): earliest next = end + min_break(2) = start+52;
-        // sched_next = start+40 => 12.
+        // Between games: earliest next = end + min_break(2) = start+52; same slot => 12.
         let v_between = tm.behind_schedule(end); // sampled immediately after, same instant
         assert_eq!(v_between, Duration::from_secs(12));
-        // The step-down equals the slot slack: 40 - 23 - 2 = 15.
-        let slack = behind_test_config().game_block
-            - behind_test_config().regulation_play()
-            - behind_test_config().minimum_break;
-        assert_eq!(slack, Duration::from_secs(15));
-        assert_eq!(v_in_game - v_between, slack);
+        assert_eq!(
+            v_in_game, v_between,
+            "figure jumped at the game-end boundary"
+        );
     }
 
     #[test]
     fn test_behind_schedule_long_portal_gap_absorbs_overrun() {
         // Portal mode: a deliberately long gap before the next game (e.g. a lunch break).
-        // During the game the figure is a RAW tally and shows the overrun (it is not
-        // absorbed in-game); the long gap is realised at the break, where the
-        // between-games figure drops to zero.
+        // The next game cannot start late because of this one, so the figure reads zero
+        // DURING the game as well as after it -- no phantom delay before a lunch break.
         initialize();
         let mut tm = TournamentManager::new(behind_test_config());
         let start = Instant::now();
@@ -3963,11 +3983,12 @@ mod test {
         });
         // Pause for 100s (a long stoppage) to build an overrun.
         tm.stop_clock(start).unwrap();
-        // In-game raw tally: real 100 + remaining 23 - reg 23 = 100; the overrun is shown,
-        // not absorbed.
-        assert!(
-            tm.behind_schedule(start + Duration::from_secs(100)) > Duration::ZERO,
-            "in-game figure should show the raw overrun, not absorb it"
+        // Even after a 100s stoppage the projected end is ~an hour inside the next
+        // scheduled start, so nothing is genuinely delayed.
+        assert_eq!(
+            tm.behind_schedule(start + Duration::from_secs(100)),
+            Duration::ZERO,
+            "a long scheduled gap should absorb the overrun in-game, not just at the break"
         );
         // End the game into the long gap. Because the next game is ~1h out, the
         // between-games figure reads zero.
@@ -4042,10 +4063,19 @@ mod test {
         tm.start_clock(start);
         tm.start_play_now(start).unwrap(); // on time => inherited 0
         tm.stop_clock(start).unwrap();
-        // real_elapsed 7 + remaining_regulation 0 - reg 0 = 7; inherited 0.
+        // remaining_regulation is 0, so the projected end is `now` and the figure is
+        // (now + 2s break) - the start+10 slot, saturating at zero.
         assert_eq!(
             tm.behind_schedule(start + Duration::from_secs(7)),
-            Duration::from_secs(7)
+            Duration::ZERO
+        );
+        assert_eq!(
+            tm.behind_schedule(start + Duration::from_secs(12)),
+            Duration::from_secs(4)
+        );
+        assert_eq!(
+            tm.behind_schedule(start + Duration::from_secs(20)),
+            Duration::from_secs(12)
         );
     }
 
@@ -4070,14 +4100,21 @@ mod test {
         tm.start_play_now(start).unwrap();
         let pause_at = start + Duration::from_secs(5);
         tm.stop_clock(pause_at).unwrap();
-        // Raw tally, single-period reg 20: 8s paused => real 13 + remaining 15 - 20 = 8;
-        // 12s paused => real 17 + remaining 15 - 20 = 12.
+        // Single-period: remaining regulation is just the clock, 15. The slot is
+        // start+30, so the figure is (projected end + 2s break) - (start+30).
+        // 8s paused (start+13): end 13+15 = 28, +2 = 30 => exactly on time, blank.
         assert_eq!(
             tm.behind_schedule(pause_at + Duration::from_secs(8)),
-            Duration::from_secs(8)
+            Duration::ZERO
         );
+        // 12s paused (start+17): end 32, +2 = 34 => 4.
         assert_eq!(
             tm.behind_schedule(pause_at + Duration::from_secs(12)),
+            Duration::from_secs(4)
+        );
+        // 20s paused (start+25): end 40, +2 = 42 => 12.
+        assert_eq!(
+            tm.behind_schedule(pause_at + Duration::from_secs(20)),
             Duration::from_secs(12)
         );
     }
@@ -4210,21 +4247,22 @@ mod test {
         let mut tm = TournamentManager::new(behind_real_slack_config());
         let start = Instant::now();
         tm.start_clock(start);
-        tm.start_play_now(start).unwrap(); // FirstHalf, clock 60, on time => inherited 0
-        // 30s of stoppage builds the figure: stop at +10 (clock frozen at 50),
-        // resume at +40. At resume real_elapsed=40, remaining_regulation =
-        // 50 (first half) + 10 (half-time) + 60 (second half) = 120; raw tally =
-        // 40 + 120 - 130 = 30.
+        tm.start_play_now(start).unwrap(); // FirstHalf, clock 60, on time
+        // 60s of stoppage builds the figure: stop at +10 (clock frozen at 50),
+        // resume at +70, where remaining regulation is
+        // 50 (first half) + 10 (half-time) + 60 (second half) = 120.
         tm.stop_clock(start + Duration::from_secs(10)).unwrap();
-        tm.start_clock(start + Duration::from_secs(40)); // resume, main clock running
-        tm.start_rugby_penalty_shot(start + Duration::from_secs(40))
+        tm.start_clock(start + Duration::from_secs(70)); // resume, main clock running
+        tm.start_rugby_penalty_shot(start + Duration::from_secs(70))
             .unwrap(); // main clock KEEPS running
         // During the shot the main clock advances, so real_elapsed grows while
         // remaining_regulation shrinks by the same amount: the figure is frozen.
-        let a = tm.behind_schedule(start + Duration::from_secs(41));
-        let b = tm.behind_schedule(start + Duration::from_secs(43));
+        // At start+71 the clock reads 49, so remaining is 49+10+60 = 119 and the
+        // projected end is 190; +5 break = 195 against the start+180 slot => 15.
+        let a = tm.behind_schedule(start + Duration::from_secs(71));
+        let b = tm.behind_schedule(start + Duration::from_secs(73));
         assert_eq!(a, b, "figure moved during a rugby penalty shot");
-        assert_eq!(a, Duration::from_secs(30));
+        assert_eq!(a, Duration::from_secs(15));
     }
 
     #[test]
@@ -4238,120 +4276,134 @@ mod test {
         tm.start_play_now(start).unwrap(); // FirstHalf, clock 60, inherited 0
         let to_at = start + Duration::from_secs(5); // clock frozen at 55
         tm.start_team_timeout(Color::Black, to_at).unwrap();
-        // remaining_regulation stays 55 + 10 + 60 = 125 while the main clock is frozen.
-        // 15s into the timeout: real 20 + 125 - 130 = 15.
+        // remaining_regulation stays 55 + 10 + 60 = 125 while the main clock is frozen,
+        // and the next slot starts at start+180.
+        // 60s into the timeout (start+65): end 65+125 = 190, +5 break = 195 => 15.
         assert_eq!(
-            tm.behind_schedule(to_at + Duration::from_secs(15)),
+            tm.behind_schedule(to_at + Duration::from_secs(60)),
             Duration::from_secs(15)
         );
-        // 25s into the timeout: real 30 + 125 - 130 = 25.
+        // 70s into the timeout (start+75): end 200, +5 = 205 => 25.
         assert_eq!(
-            tm.behind_schedule(to_at + Duration::from_secs(25)),
+            tm.behind_schedule(to_at + Duration::from_secs(70)),
             Duration::from_secs(25)
         );
     }
 
     #[test]
-    fn test_behind_schedule_shown_blanks_team_timeout_within_slack() {
-        // The user's case: a team timeout within the slot's spare time must NOT surface as
-        // delay. Raw figure climbs (existing behaviour) but the shown figure stays blank.
+    fn test_behind_schedule_floors_sub_second_values_so_delay_reads_blank() {
+        // The DELAY label truncates to whole seconds, so a sub-second figure would render
+        // as a permanent "-0:00" -- and it would sit there, because the figure holds
+        // steady while the clock runs on schedule. A portal scheduled start carries
+        // sub-second precision, so this is the ordinary case there, not an edge one.
         initialize();
-        let mut tm = TournamentManager::new(behind_real_slack_config()); // slack = 45s
+        let mut tm = TournamentManager::new(behind_test_config());
         let start = Instant::now();
         tm.start_clock(start);
-        tm.start_play_now(start).unwrap();
-        let to_at = start + Duration::from_secs(5);
-        tm.start_team_timeout(Color::Black, to_at).unwrap();
-        // Raw climbs to 15 and 25, both within the 45s slack -> shown stays zero (blank).
+        tm.start_play_now(start).unwrap(); // next slot = start+40
+        tm.stop_clock(start).unwrap(); // remaining regulation holds at 10+3+10 = 23
+        // The figure is (now + 23 + 2s break) - 40 = now - 15.
+        // At 15.3s that is 300ms, which must read blank rather than "-0:00".
         assert_eq!(
-            tm.behind_schedule(to_at + Duration::from_secs(15)),
-            Duration::from_secs(15)
-        );
-        assert_eq!(
-            tm.behind_schedule_shown(to_at + Duration::from_secs(15)),
+            tm.behind_schedule(start + Duration::from_millis(15_300)),
             Duration::ZERO
         );
+        // At 16.4s it is 1.4s, which the label shows as one second.
         assert_eq!(
-            tm.behind_schedule_shown(to_at + Duration::from_secs(25)),
-            Duration::ZERO
+            tm.behind_schedule(start + Duration::from_millis(16_400)),
+            Duration::from_secs(1)
         );
     }
 
     #[test]
-    fn test_behind_schedule_shown_shows_excess_beyond_slack() {
-        // Once the raw tally exceeds the slot's spare time, the shown figure is the excess.
+    fn test_behind_schedule_last_game_shows_its_own_lateness() {
+        // On the last game of a court there is no next game to be late for, but the
+        // session is still running late. Fall back to how late THIS game is running
+        // against its own scheduled start: the lateness it began with, grown by
+        // stoppages and shrunk by playing short.
         initialize();
-        let mut tm = TournamentManager::new(behind_test_config()); // slack = 15s
-        let start = Instant::now();
-        tm.start_clock(start);
-        tm.start_play_now(start).unwrap();
-        let pause_at = start + Duration::from_secs(5);
-        tm.stop_clock(pause_at).unwrap();
-        let t = pause_at + Duration::from_secs(20);
-        // Raw 20, slack 15 -> shown excess = 5.
-        assert_eq!(tm.behind_schedule(t), Duration::from_secs(20));
-        assert_eq!(tm.behind_schedule_shown(t), Duration::from_secs(5));
-    }
-
-    #[test]
-    fn test_behind_schedule_shown_continuous_across_game_end() {
-        // The in-game discount previews the engine's break step-down, so the shown figure
-        // does NOT jump at the end of a game (and the break is not double-discounted).
-        initialize();
-        let mut tm = TournamentManager::new(behind_test_config()); // slack = 15s
-        let start = Instant::now();
-        tm.start_clock(start);
-        tm.start_play_now(start).unwrap();
-        tm.update(start + Duration::from_secs(10)).unwrap(); // FirstHalf -> HalfTime
-        tm.update(start + Duration::from_secs(13)).unwrap(); // HalfTime -> SecondHalf
-        tm.stop_clock(start + Duration::from_secs(23)).unwrap();
-        let end = start + Duration::from_secs(50);
-        // In-game: raw 27, shown 27 - 15 = 12.
-        assert_eq!(tm.behind_schedule(end), Duration::from_secs(27));
-        let shown_in_game = tm.behind_schedule_shown(end);
-        assert_eq!(shown_in_game, Duration::from_secs(12));
-        tm.end_game(end);
-        // Between games: raw already stepped down to 12; shown unchanged = 12.
-        assert_eq!(tm.behind_schedule(end), Duration::from_secs(12));
-        let shown_between = tm.behind_schedule_shown(end);
-        assert_eq!(shown_between, Duration::from_secs(12));
-        // Smooth across the boundary -> no jump.
-        assert_eq!(shown_in_game, shown_between);
-    }
-
-    #[test]
-    fn test_behind_schedule_shown_equals_raw_with_no_slack() {
-        // A slot with no spare time has nothing to discount: shown == raw (today's behaviour).
-        initialize();
-        let mut config = behind_test_config();
-        config.game_block = Duration::from_secs(25); // == regulation_play(23) + minimum_break(2) => slack 0
-        let mut tm = TournamentManager::new(config);
-        let start = Instant::now();
-        tm.start_clock(start);
-        tm.start_play_now(start).unwrap();
-        let pause_at = start + Duration::from_secs(5);
-        tm.stop_clock(pause_at).unwrap();
-        let t = pause_at + Duration::from_secs(20);
-        assert_eq!(tm.behind_schedule_shown(t), tm.behind_schedule(t));
-        assert_eq!(tm.behind_schedule_shown(t), Duration::from_secs(20));
-    }
-
-    #[test]
-    fn test_behind_schedule_shown_blanks_recoverable_late_start() {
-        // A game that starts late but whose slot can recover it shows blank (stay-blank rule).
-        initialize();
-        let mut tm = TournamentManager::new(behind_test_config()); // slack = 15s
+        let mut tm = TournamentManager::new(behind_test_config()); // reg 23
         let g1 = Instant::now();
         tm.start_clock(g1);
-        tm.start_play_now(g1).unwrap();
+        tm.start_play_now(g1).unwrap(); // slot g1..g1+40
         tm.stop_clock(g1).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
         tm.end_game(g1);
-        let g2 = g1 + Duration::from_secs(46);
-        tm.start_play_now(g2).unwrap(); // game 2 begins 6s late vs its 40s slot
-        // Raw shows the 6s late start; slack 15 can recover it -> shown blank.
+
+        let g2 = g1 + Duration::from_secs(46); // starts 6s after its g1+40 slot
+        tm.start_play_now(g2).unwrap();
+        tm.set_no_next_game(); // this is the last game on the court
+
+        // It began 6s late and is otherwise on schedule, so it shows that 6s.
         assert_eq!(tm.behind_schedule(g2), Duration::from_secs(6));
-        assert_eq!(tm.behind_schedule_shown(g2), Duration::ZERO);
+
+        // A 10s stoppage adds to it: the game will now finish 10s later still.
+        tm.stop_clock(g2).unwrap();
+        assert_eq!(
+            tm.behind_schedule(g2 + Duration::from_secs(10)),
+            Duration::from_secs(16)
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_last_game_lateness_reduced_by_skipping_half_time() {
+        // The other half of the last-game rule: playing short pulls the delay back down.
+        // Skipping the rest of half-time means the game will finish earlier than its
+        // regulation implies, so the lateness it began with is reduced by that much.
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config()); // half 10, ht 3, reg 23
+        let g1 = Instant::now();
+        tm.start_clock(g1);
+        tm.start_play_now(g1).unwrap(); // slot g1..g1+40
+        tm.stop_clock(g1).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(g1);
+
+        let g2 = g1 + Duration::from_secs(46); // starts 6s late
+        tm.start_play_now(g2).unwrap();
+        tm.set_no_next_game(); // last game on the court
+        let ht = g2 + Duration::from_secs(10);
+        tm.update(ht).unwrap(); // first half runs out -> HalfTime, 3s on the clock
+        // Still exactly 6s late: it has played to schedule since starting late.
+        assert_eq!(tm.behind_schedule(ht), Duration::from_secs(6));
+
+        tm.start_play_now(ht).unwrap(); // skip the remaining 3s of half-time
+        // The game will now take 3s less than its regulation, so 6 - 3 = 3.
+        assert_eq!(tm.behind_schedule(ht), Duration::from_secs(3));
+    }
+
+    #[test]
+    fn test_behind_schedule_measures_against_next_start_minus_minimum_break() {
+        // The delay is how far this game's projected END falls past the deadline it must
+        // meet for the NEXT game to start on time: `next scheduled start - minimum_break`.
+        // Nothing else absorbs lateness -- not the Game Block, not a deviation tally.
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config()); // reg 23, min break 2
+        let g1 = Instant::now();
+        tm.start_clock(g1);
+        tm.start_play_now(g1).unwrap(); // game 1 anchors; next scheduled start = g1 + 40
+        tm.stop_clock(g1).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(g1);
+
+        let g2 = g1 + Duration::from_secs(46); // game 2 starts 6s after its g1+40 slot
+        tm.start_play_now(g2).unwrap(); // next scheduled start = (g1+40) + 40 = g1+80
+        tm.stop_clock(g2).unwrap(); // hold the clock so real time accrues
+
+        // Deadline for game 3 to start on time: (g1+80) - 2 = g1+78.
+        // At g2+15 the projected end is g2 + 15 + remaining 23 = g1 + 84.
+        // 84 - 78 = 6. The 6s late start alone is absorbed by the schedule; only the
+        // part that eats into the minimum break is delay.
+        assert_eq!(
+            tm.behind_schedule(g2 + Duration::from_secs(15)),
+            Duration::from_secs(6)
+        );
+
+        // Nine seconds earlier the projected end exactly meets the deadline -> blank.
+        assert_eq!(
+            tm.behind_schedule(g2 + Duration::from_secs(9)),
+            Duration::ZERO
+        );
     }
 
     #[test]
@@ -4365,15 +4417,16 @@ mod test {
         tm.start_play_now(start).unwrap(); // FirstHalf, clock 60, inherited 0
         let ps_at = start + Duration::from_secs(5); // clock frozen at 55
         tm.start_penalty_shot(ps_at).unwrap();
-        // remaining_regulation stays 55 + 10 + 60 = 125 while the main clock is frozen.
-        // 15s into the shot: real 20 + 125 - 130 = 15.
+        // remaining_regulation stays 55 + 10 + 60 = 125 while the main clock is frozen,
+        // and the next slot starts at start+180.
+        // 60s into the shot (start+65): end 190, +5 break = 195 => 15.
         assert_eq!(
-            tm.behind_schedule(ps_at + Duration::from_secs(15)),
+            tm.behind_schedule(ps_at + Duration::from_secs(60)),
             Duration::from_secs(15)
         );
-        // 25s into the shot: real 30 + 125 - 130 = 25.
+        // 70s into the shot (start+75): end 200, +5 = 205 => 25.
         assert_eq!(
-            tm.behind_schedule(ps_at + Duration::from_secs(25)),
+            tm.behind_schedule(ps_at + Duration::from_secs(70)),
             Duration::from_secs(25)
         );
     }
@@ -4398,11 +4451,12 @@ mod test {
         // During the pause the main clock is a frozen 10ms stub, so for any sample `t`:
         // real_elapsed = t - start, remaining_regulation = 10ms, reg = 130 =>
         // figure = (t - start) + 10ms - 130s.
-        let a = tm.behind_schedule(start + Duration::from_secs(135));
-        let b = tm.behind_schedule(start + Duration::from_secs(140));
-        // 135 + 0.010 - 130 = 5.010s; 140 + 0.010 - 130 = 10.010s.
-        assert_eq!(a, Duration::from_millis(5010));
-        assert_eq!(b, Duration::from_millis(10010));
+        let a = tm.behind_schedule(start + Duration::from_secs(180));
+        let b = tm.behind_schedule(start + Duration::from_secs(185));
+        // (t + 0.010 + 5s break) - 180s slot: 180 => 5.010s; 185 => 10.010s, each
+        // floored to the whole second the DELAY label shows.
+        assert_eq!(a, Duration::from_secs(5));
+        assert_eq!(b, Duration::from_secs(10));
         assert!(b > a, "figure did not climb during the confirm pause");
     }
 
@@ -4422,15 +4476,16 @@ mod test {
         tm.start_play_now(start).unwrap(); // FirstHalf, game_start_time = start, inherited 0
         tm.stop_clock(start).unwrap(); // must be stopped to set the period
         tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(30));
-        // remaining_regulation is ZERO in SuddenDeath, reg = 130:
-        // 135s elapsed: 135 + 0 - 130 = 5.
+        // remaining_regulation is ZERO in SuddenDeath, so the projected end is `now`
+        // and the figure is (now + 5s break) - the start+180 slot.
+        // 180s elapsed: 180 + 5 - 180 = 5.
         assert_eq!(
-            tm.behind_schedule(start + Duration::from_secs(135)),
+            tm.behind_schedule(start + Duration::from_secs(180)),
             Duration::from_secs(5)
         );
-        // 150s elapsed: 150 + 0 - 130 = 20.
+        // 195s elapsed: 195 + 5 - 180 = 20.
         assert_eq!(
-            tm.behind_schedule(start + Duration::from_secs(150)),
+            tm.behind_schedule(start + Duration::from_secs(195)),
             Duration::from_secs(20)
         );
     }
@@ -4450,22 +4505,28 @@ mod test {
         tm.stop_clock(g1).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
         let end1 = g1 + Duration::from_secs(230); // game took 230s real vs its 180s slot
-        // In-game just before end: real 230 + remaining 0 - reg 130 = 100 (>> slack 45).
-        assert_eq!(tm.behind_schedule(end1), Duration::from_secs(100));
+        // In-game just before end: projected end g1+230, +5s break = g1+235, against the
+        // g1+180 slot => 55.
+        let in_game1 = tm.behind_schedule(end1);
+        assert_eq!(in_game1, Duration::from_secs(55));
         tm.end_game(end1);
         // Between games: break = max(min_break 5, sched_next g1+180 - end1) = 5;
         // projected next = end1 + 5 = g1+235; sched_next = g1+180 => residual 55.
         let residual1 = tm.behind_schedule(end1);
         assert_eq!(residual1, Duration::from_secs(55));
+        assert_eq!(
+            in_game1, residual1,
+            "figure jumped at the game-end boundary"
+        );
 
         // --- Game 2: starts at the compressed break (g1+235), plays clean. ---
         let g2 = g1 + Duration::from_secs(235);
         tm.start_play_now(g2).unwrap(); // current_scheduled_start g1+180 => inherited 55
-        // While it plays cleanly (clock running on schedule) the figure holds at the
-        // inherited 55: at +10 real 10 + remaining_reg 120 - 130 = 0, plus inherited 55.
+        // Playing cleanly, its projected end is g1+365; +5s break = g1+370 against the
+        // g1+360 slot => 10. The compressed break has already clawed most of it back.
         assert_eq!(
             tm.behind_schedule(g2 + Duration::from_secs(10)),
-            Duration::from_secs(55)
+            Duration::from_secs(10)
         );
         tm.stop_clock(g2).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
@@ -4480,10 +4541,11 @@ mod test {
 
         // --- Game 3: starts at g1+370, plays clean; the run recovers to ZERO. ---
         let g3 = g1 + Duration::from_secs(370);
-        tm.start_play_now(g3).unwrap(); // current_scheduled_start g1+360 => inherited 10
+        tm.start_play_now(g3).unwrap(); // slot g1+360..g1+540
+        // Projected end g1+500, +5s break = g1+505 against the g1+540 slot => on time.
         assert_eq!(
             tm.behind_schedule(g3 + Duration::from_secs(10)),
-            Duration::from_secs(10)
+            Duration::ZERO
         );
         tm.stop_clock(g3).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));

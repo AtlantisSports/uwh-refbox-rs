@@ -21,43 +21,11 @@ jobs:
         name: refbox-windows
         path: target/release/refbox.exe
 
-  build-macos-arm:
-    name: Build release on macos-latest for arm target
+  build-macos:
+    name: Build the universal macOS app
     runs-on: macos-latest
 
-    steps:
-    - uses: actions/checkout@v5
-    - uses: Swatinem/rust-cache@v2
-    - name: Install cargo-bundle from crates.io
-      uses: baptiste0928/cargo-install@v3
-      with:
-        crate: cargo-bundle
-    - name: Versions
-      run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version && cargo bundle --version
-    # cargo-bundle globs the `icon` path from `[package.metadata.bundle]` against
-    # the PROCESS working directory, not the package root — it calls glob::glob
-    # on the raw pattern with no join. Run from `refbox/` so
-    # `resources/AppIcon.png` resolves; from the workspace root it matched
-    # nothing and the icon was dropped SILENTLY (no warning), which is why the
-    # app has never had one. The bundle still lands under the workspace
-    # `target/` because cargo-bundle takes its output directory from
-    # `cargo metadata`. `--format osx` skips the .dmg we build and never ship.
-    - name: Bundle the macOS app
-      working-directory: refbox
-      run: cargo bundle --release --target aarch64-apple-darwin --format osx
-    - name: Verify the bundle carries its icon
-      run: |
-        APP='target/aarch64-apple-darwin/release/bundle/osx/refbox.app'
-        ls "$APP/Contents/Resources/"*.icns
-        grep -q CFBundleIconFile "$APP/Contents/Info.plist"
-    - uses: actions/upload-artifact@v4
-      with:
-        name: refbox-macos-arm
-        path: target/aarch64-apple-darwin/release/bundle/osx/refbox.app
-
-  build-macos-x86:
-    name: Build release on macos-latest for x86 target
-    runs-on: macos-latest
+    needs: [fetch-docs]
 
     steps:
     - uses: actions/checkout@v5
@@ -69,20 +37,70 @@ jobs:
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version && cargo bundle --version
     - run: rustup target add x86_64-apple-darwin
-    # Run from `refbox/` so the bundle icon path resolves, and skip the unused
-    # .dmg — see the arm job above for why.
-    - name: Bundle the macOS app
+    # cargo-bundle globs the `icon` path from `[package.metadata.bundle]` against
+    # the PROCESS working directory, not the package root — it calls glob::glob
+    # on the raw pattern with no join. Run from `refbox/` so
+    # `resources/AppIcon.png` resolves; from the workspace root it matched
+    # nothing and the icon was dropped SILENTLY (no warning), which is why the
+    # app had no icon for five releases. The bundle still lands under the
+    # workspace `target/` because cargo-bundle takes its output directory from
+    # `cargo metadata`. `--format osx` produces the .app only; the .dmg is
+    # assembled explicitly so its contents can be controlled.
+    - name: Bundle the macOS app (Apple silicon)
       working-directory: refbox
-      run: cargo bundle --release --target x86_64-apple-darwin --format osx
-    - name: Verify the bundle carries its icon
+      run: cargo bundle --release --target aarch64-apple-darwin --format osx
+    - name: Build the Intel binary
+      run: cargo build --release --target x86_64-apple-darwin -p refbox
+    # Fuse the two executables into one that carries both architectures, then
+    # re-sign. macOS REFUSES to launch an arm64 binary with no valid signature,
+    # and rewriting the executable inside a bundle can invalidate the ad-hoc
+    # signature the linker applied. Re-signing is cheap and idempotent; the
+    # alternative is a build that passes CI and dies on launch.
+    - name: Fuse into a universal binary
       run: |
-        APP='target/x86_64-apple-darwin/release/bundle/osx/refbox.app'
+        APP='target/aarch64-apple-darwin/release/bundle/osx/refbox.app'
+        lipo -create \
+          target/aarch64-apple-darwin/release/refbox \
+          target/x86_64-apple-darwin/release/refbox \
+          -output "$APP/Contents/MacOS/refbox"
+        codesign --force --sign - "$APP"
+    - name: Verify the app is universal, signed, and has its icon
+      run: |
+        APP='target/aarch64-apple-darwin/release/bundle/osx/refbox.app'
+        ARCHS=$(lipo -archs "$APP/Contents/MacOS/refbox")
+        echo "Architectures: $ARCHS"
+        echo "$ARCHS" | grep -qw arm64
+        echo "$ARCHS" | grep -qw x86_64
+        codesign --verify --verbose "$APP"
         ls "$APP/Contents/Resources/"*.icns
         grep -q CFBundleIconFile "$APP/Contents/Info.plist"
+    - uses: actions/download-artifact@v5
+      with:
+        name: refbox-docs
+        path: docs-pdfs
+    # `ditto` rather than `cp -R`: it is Apple's own tool for copying bundles and
+    # preserves their structure and permissions exactly. The `Applications`
+    # symlink is what lets someone drag the app across in the mounted window.
+    - name: Assemble the disk image
+      run: |
+        APP='target/aarch64-apple-darwin/release/bundle/osx/refbox.app'
+        mkdir -p dmg-staging/Documents
+        ditto "$APP" 'dmg-staging/refbox.app'
+        ln -s /Applications dmg-staging/Applications
+        cp docs-pdfs/*.pdf dmg-staging/Documents/
+        hdiutil create -volname 'refbox' -srcfolder dmg-staging -ov -format UDZO refbox-macos.dmg
+    - name: Verify the disk image mounts and carries what it should
+      run: |
+        MOUNT=$(mktemp -d)
+        hdiutil attach refbox-macos.dmg -mountpoint "$MOUNT" -nobrowse -readonly
+        test -x "$MOUNT/refbox.app/Contents/MacOS/refbox"
+        test "$(ls "$MOUNT/Documents/"*.pdf | wc -l)" -eq "$(ls docs-pdfs/*.pdf | wc -l)"
+        test -L "$MOUNT/Applications"
+        hdiutil detach "$MOUNT"
     - uses: actions/upload-artifact@v4
       with:
-        name: refbox-macos-x86
-        path: target/x86_64-apple-darwin/release/bundle/osx/refbox.app
+        name: refbox-macos-dmg
+        path: refbox-macos.dmg
 
   build-rpi:
     name: Build release on linux for aarch64 (Raspberry Pi)
@@ -113,8 +131,8 @@ jobs:
 
   # The overlay ships on refbox's release as separate assets -- it has no self-update
   # of its own, so a person copies the binary to the streaming machine by hand.
-  # Deliberately NOT added to refbox.zip: docs/release-checklist.md asserts on that
-  # zip's exact contents, and mixing the two blurs what "the refbox" is.
+  # Deliberately NOT added to the refbox downloads: docs/release-checklist.md
+  # asserts on their exact contents, and mixing the two blurs what "the refbox" is.
   build-overlay-rpi:
     name: Build the overlay for aarch64 (Raspberry Pi)
     runs-on: ubuntu-latest
@@ -142,34 +160,56 @@ jobs:
         name: overlay-rpi-sha256
         path: target/aarch64-unknown-linux-gnu/release/overlay.sha256
 
+  # The guides live on Google Drive, not in this repo. They are fetched once here
+  # and shared, because the macOS disk image is assembled on the macOS runner
+  # while the zips are assembled on Linux -- both need the same files.
+  fetch-docs:
+    name: Fetch the PDF guides
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download PDFs from Google Drive
+      run: |
+        mkdir -p docs-pdfs
+        curl -L "https://drive.usercontent.google.com/download?id=1Momxds_2oyPTEZHgcuSxnTxI_HbGeaN8&export=download" -o "docs-pdfs/Getting Started Guide - English.pdf"
+        curl -L "https://drive.usercontent.google.com/download?id=13eHCCmBH-IEUwIODaqpbbz_LiZQBBh0p&export=download" -o "docs-pdfs/Getting Started Guide - Spanish (Guía de Inicio).pdf"
+        curl -L "https://drive.usercontent.google.com/download?id=1sJTdKHKjul6Pa7eV44APEQBFaxwQSvYy&export=download" -o "docs-pdfs/Providing App Credentials - English.pdf"
+        curl -L "https://drive.usercontent.google.com/download?id=1skrUYTEYBgHs4T-dl3AobwklfJR3ZGE1&export=download" -o "docs-pdfs/Refbox User Manual.pdf"
+        curl -L "https://drive.usercontent.google.com/download?id=1FLtJwc8gb5vuSRVPUNLxKhT1ufcOSa-w&export=download" -o "docs-pdfs/Refbox User Manual with Fouls.pdf"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: refbox-docs
+        path: docs-pdfs
+
   upload-release:
     name: Upload release artifacts
     runs-on: ubuntu-latest
 
-    needs: [build-windows, build-macos-arm, build-macos-x86, build-rpi, build-overlay-rpi]
+    needs: [build-windows, build-macos, build-rpi, build-overlay-rpi, fetch-docs]
 
     steps:
     - uses: actions/download-artifact@v5
       with:
         name: refbox-windows
-        path: 'release/Windows'
+        path: 'windows'
     - uses: actions/download-artifact@v5
       with:
-        name: refbox-macos-arm
-        path: 'release/Mac (Arm processor)/refbox.app'
-    - uses: actions/download-artifact@v5
-      with:
-        name: refbox-macos-x86
-        path: 'release/Mac (Intel processor)/refbox.app'
+        name: refbox-macos-dmg
+        path: .
     - uses: actions/download-artifact@v5
       with:
         name: refbox-rpi
-        path: 'release/Raspberry Pi'
+        path: 'raspberry-pi'
     - uses: actions/download-artifact@v5
       with:
         name: refbox-rpi-sha256
-        path: 'release/rpi-sha256'
-    # Into overlay-release/, NOT release/ -- release/ is what becomes refbox.zip.
+        path: 'raspberry-pi'
+    - uses: actions/download-artifact@v5
+      with:
+        name: refbox-docs
+        path: docs-pdfs
+    # Into overlay-release/, NOT the refbox folders -- the overlay ships as its own
+    # assets and is deliberately absent from every refbox download.
     - uses: actions/download-artifact@v5
       with:
         name: overlay-rpi
@@ -178,24 +218,26 @@ jobs:
       with:
         name: overlay-rpi-sha256
         path: 'overlay-release/Raspberry Pi'
-    # Artifact upload/download normalises every file to 0644, which leaves the
-    # macOS app bundles and the Pi binary unrunnable: macOS reports "The
-    # application refbox can't be opened". Restore the executable bit before
-    # zipping. chmod fails loudly if a path is ever wrong, so a future layout
-    # change cannot silently ship an unrunnable build again.
-    - name: Restore executable permissions
+    - name: Package the Windows download
       run: |
-        chmod +x 'release/Mac (Arm processor)/refbox.app/Contents/MacOS/refbox'
-        chmod +x 'release/Mac (Intel processor)/refbox.app/Contents/MacOS/refbox'
-        chmod +x 'release/Raspberry Pi/refbox'
-    # Artifact upload/download normalises every file to 0644. A ZIP preserves the
-    # executable bit; a bare release asset cannot, because GitHub serves assets as
-    # opaque HTTP blobs with no Unix mode. So overlay.zip is the copy that arrives
-    # runnable, and the loose binary below always needs `chmod +x` -- that is
-    # expected and documented, not a defect.
-    #
-    # Folder naming matches refbox's own, so Windows/macOS overlay builds are
-    # additive later.
+        mkdir -p windows/Documents
+        cp docs-pdfs/*.pdf windows/Documents/
+        cd windows && zip -r ../refbox-windows.zip .
+    # Artifact upload/download normalises every file to 0644, which leaves the Pi
+    # binary unrunnable. Restore the executable bit before zipping; a ZIP preserves
+    # it. chmod fails loudly if a path is ever wrong, so a future layout change
+    # cannot silently ship an unrunnable build again. The macOS app needs none of
+    # this now: it travels inside the disk image, which keeps its own permissions.
+    - name: Package the Raspberry Pi download
+      run: |
+        chmod +x raspberry-pi/refbox
+        mkdir -p raspberry-pi/Documents
+        cp docs-pdfs/*.pdf raspberry-pi/Documents/
+        cd raspberry-pi && zip -r ../refbox-raspberry-pi.zip .
+    # A bare release asset cannot carry the executable bit -- GitHub serves assets
+    # as opaque HTTP blobs with no Unix mode -- so whoever installs a loose binary
+    # runs `chmod +x`. Expected and documented, not a defect; the zips are the
+    # copies that arrive runnable.
     - name: Package the overlay
       run: |
         chmod +x 'overlay-release/Raspberry Pi/overlay'
@@ -204,27 +246,19 @@ jobs:
       run: |
         cp 'overlay-release/Raspberry Pi/overlay' overlay-aarch64-linux
         cp 'overlay-release/Raspberry Pi/overlay.sha256' overlay-aarch64-linux.sha256
-    - name: Download PDFs from Google Drive
-      run: |
-        curl -L "https://drive.usercontent.google.com/download?id=1Momxds_2oyPTEZHgcuSxnTxI_HbGeaN8&export=download" -o "release/Getting Started Guide - English.pdf"
-        curl -L "https://drive.usercontent.google.com/download?id=13eHCCmBH-IEUwIODaqpbbz_LiZQBBh0p&export=download" -o "release/Getting Started Guide - Spanish (Guía de Inicio).pdf"
-        curl -L "https://drive.usercontent.google.com/download?id=1sJTdKHKjul6Pa7eV44APEQBFaxwQSvYy&export=download" -o "release/Providing App Credentials - English.pdf"
-        curl -L "https://drive.usercontent.google.com/download?id=1skrUYTEYBgHs4T-dl3AobwklfJR3ZGE1&export=download" -o "release/Refbox User Manual.pdf"
-        curl -L "https://drive.usercontent.google.com/download?id=1FLtJwc8gb5vuSRVPUNLxKhT1ufcOSa-w&export=download" -o "release/Refbox User Manual with Fouls.pdf"
-    - name: Zip release
-      run: cd release && zip -r ../refbox.zip .
-    - uses: actions/download-artifact@v5
-      with:
-        name: refbox-rpi
-        path: pi-standalone
+    # These two asset names are load-bearing: in-app self-update looks them up by
+    # exact string (BIN_ASSET / SUM_ASSET in refbox/src/updater/release.rs) and
+    # fails if either is missing or renamed. Do not rename them.
     - name: Stage standalone Pi assets
       run: |
-        cp pi-standalone/refbox refbox-aarch64-linux
-        cp release/rpi-sha256/refbox.sha256 refbox-aarch64-linux.sha256
+        cp raspberry-pi/refbox refbox-aarch64-linux
+        cp raspberry-pi/refbox.sha256 refbox-aarch64-linux.sha256
     - uses: softprops/action-gh-release@v2
       with:
         files: |
-          refbox.zip
+          refbox-windows.zip
+          refbox-macos.dmg
+          refbox-raspberry-pi.zip
           refbox-aarch64-linux
           refbox-aarch64-linux.sha256
           overlay.zip

@@ -83,8 +83,13 @@ single-period game, so nothing is misread during the changeover.
 ### `uwh-common`
 
 - Add `single_period: bool` to `TimingRule` (`src/uwhportal/schedule.rs`).
-- In the `TimingRule -> GameConfig` conversion, replace
-  `single_half: half_time_duration == Duration::ZERO` with `single_half: single_period`.
+- **There are TWO magic-zero reads in that file, not one.** Both must switch to `single_period`:
+  - `:323` — `single_half: half_time_duration == Duration::ZERO`.
+  - `:341` — the `game_block` fallback derives regulation time as
+    `if half_time_duration == Duration::ZERO { half_play_duration } else { 2 * half_play + half_time }`.
+    **Missed in the first draft of this spec and found by reading the code.** Left alone, a
+    single-period game whose half-time now carries a real unused number would derive a game block
+    of `2 × half + half_time` — roughly double — silently mis-sizing every slot for that rule.
 
 This is the highest-blast-radius crate in the workspace. Per `.claude/rules/workspace.md`, every
 dependant is checked after the change: `refbox`, `schedule-processor`, `overlay`, `overlay-bridge`,
@@ -92,6 +97,14 @@ dependant is checked after the change: `refbox`, `schedule-processor`, `overlay`
 
 ### `schedule-processor`
 
+- **Where the check goes:** a new `check_no_zero_durations` in `src/schedule_checks.rs`, added to
+  `run_schedule_checks`. Both authoring paths converge there — `main.rs:267-268` parses CSV or JSON
+  and `main.rs:319` runs the checks — so one implementation covers both, and neither loader needs
+  changing.
+- **The CSV path needs no parser work.** Rows become `"fieldName": value` JSON fragments that are
+  joined and deserialised into `TimingRule` (`csv_parser.rs:137-144`), so adding the field to the
+  struct and to `TIMING_RULE_FIELDS` makes `singlePeriod` authorable as an ordinary boolean, exactly
+  like `overtimeAllowed`.
 - Reject any zero duration when building a schedule, naming the timing rule and the setting.
   **Blocks the build; not a warning** — Eric's requirement is that the builder *cannot* pass a zero.
   The fields, exhaustively: `halfPlayDuration`, `halfTimeDuration`, `teamTimeoutDuration`,

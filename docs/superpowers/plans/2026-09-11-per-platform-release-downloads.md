@@ -467,8 +467,9 @@ queries `/releases/latest`, which excludes drafts and pre-releases
 - [ ] **Step 2a: Claude inspects the draft's assets** (agreed 2026-09-11, to be done in a later
       session). Confirms all eight assets are present and `refbox.zip` is absent, then opens
       `refbox-windows.zip` and `refbox-raspberry-pi.zip` to check their contents and stored
-      permission bits. Must use Python's `zipfile` — **`zip` and `unzip` are not installed on this
-      machine**. Claude **cannot** check the `.dmg`; that needs a Mac and is Eric's leg.
+      permission bits, with `unzip -Z` (which lists both) or Python's `zipfile`. **`zip` itself is
+      not installed on this machine**, but nothing here needs to create an archive. Claude
+      **cannot** check the `.dmg`; that needs a Mac and is Eric's leg.
       **Blocked until a draft exists** — this cannot run before the PR is merged and a release is
       cut, so there is nothing to inspect until then.
 - [ ] **Step 3: Send the file, not the link.** A draft is visible only to people with write access

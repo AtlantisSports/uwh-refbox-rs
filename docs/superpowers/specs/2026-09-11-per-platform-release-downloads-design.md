@@ -21,7 +21,7 @@ implementation.
 | Apple code signing / notarisation | **Dropped.** Not a dependency of this work. macOS will warn "unidentified developer" and users right-click → Open. | Eric |
 | Universal binary and `.dmg` | Both. Universal first. | Eric |
 | Release shape | Split per platform. | Eric |
-| The five PDF guides | **In every platform download**, each in its own folder, so platform-specific documents can be added later without rework. | Eric |
+| The five PDF guides | **In every platform download**, under a `Documents/` folder, so platform-specific documents can be added there later without rework. | Eric |
 | Changeover | **Clean break.** `refbox.zip` disappears in the same release the new downloads appear. Eric confirmed he knows what written instructions point at it. | Eric |
 | Windows code signing | Still undecided, and explicitly **out of scope** here. | — |
 
@@ -31,7 +31,7 @@ implementation.
 |---|---|
 | `refbox-windows.zip` | `refbox.exe` + `Documents/` |
 | `refbox-macos.dmg` | universal `refbox.app` + `Applications` shortcut + `Documents/` |
-| `refbox-raspberry-pi.zip` | `refbox` binary, executable bit set + `Documents/` |
+| `refbox-raspberry-pi.zip` | `refbox` binary, executable bit set, its `refbox.sha256` + `Documents/` |
 | `refbox-aarch64-linux` | **unchanged** |
 | `refbox-aarch64-linux.sha256` | **unchanged** |
 | `overlay.zip`, `overlay-aarch64-linux`, `overlay-aarch64-linux.sha256` | **unchanged** |
@@ -49,7 +49,12 @@ Providing App Credentials, Refbox User Manual, Refbox User Manual with Fouls.
    against the process working directory, not the package root, and drops the icon *silently* on
    no match. This was fixed in `81fd427c`; the fix must survive the job restructure. The existing
    assertion that `.icns` and `CFBundleIconFile` are present must survive with it.
-3. **No code signing.** Nothing in this work may introduce a dependency on a certificate.
+3. **No *certificate* signing — but ad-hoc signing is REQUIRED.** Nothing here may depend on a
+   purchased certificate (Apple signing was dropped). That is not the same as "do not sign":
+   macOS refuses to launch an arm64 binary with no valid signature, and rewriting the executable
+   inside the bundle can invalidate the one the linker applied. The universal app **must** be
+   re-signed with `codesign --force --sign -` after `lipo`, and that signature verified. Omitting
+   this produces a build that passes every CI check and dies instantly on Apple silicon.
 4. **The overlay is untouched.** It already ships as separate assets and stays that way.
 
 ## Design
@@ -61,9 +66,11 @@ Providing App Credentials, Refbox User Manual, Refbox User Manual with Fouls.
 1. Bundle the app for `aarch64-apple-darwin` with `--format osx`, run from `refbox/` (constraint 2).
 2. Build the `x86_64-apple-darwin` binary separately.
 3. `lipo -create` the two executables into one and write it over
-   `refbox.app/Contents/MacOS/refbox`.
-4. Assert `lipo -archs` on the result reports **both** `x86_64` and `arm64`. A silent failure to
-   fuse must fail the release, not ship a half-built app.
+   `refbox.app/Contents/MacOS/refbox`, then **re-sign ad-hoc** with
+   `codesign --force --sign -` (see constraint 3 — this step is not optional).
+4. Assert `lipo -archs` on the result reports **both** `x86_64` and `arm64`, and that
+   `codesign --verify` passes. A silent failure to fuse or to sign must fail the release, not
+   ship a half-built app.
 5. Assert the icon is present, as today.
 6. Stage `refbox.app`, an `Applications` symlink and `Documents/`, then `hdiutil create` the
    `.dmg`. `hdiutil` is used rather than `cargo bundle --format dmg` because the contents need to
@@ -96,25 +103,36 @@ normalises artifact permissions to `0644` — and the loose Pi assets are staged
 ## Verification
 
 **Nothing here can be verified locally.** There is no Mac on this machine, and `just check` only
-exercises the host platform. The only real proof is a release run.
+exercises the host platform — it does not read the release workflow at all. No PR-time CI covers
+packaging either, because `release.yml` runs only on a `v*.*.*` tag.
 
-1. Push a throwaway tag (e.g. `v0.5.2-rc1`). The workflow builds and creates a **draft** release,
-   which is not public. A draft cannot reach Pis in the field: the in-app updater queries
-   `/releases/latest`, which excludes drafts and pre-releases (`refbox/src/updater/net.rs:6,16`).
-2. Inspect the draft: all eight expected assets are present — three platform downloads, two
-   loose Pi assets, three overlay assets — `refbox.zip` is absent, each zip
-   contains `Documents/` with five PDFs, and the Pi binary is executable.
-3. **Draft releases cannot be shared.** GitHub shows a draft only to users with write access and
-   its asset links require authentication. Eric downloads `refbox-macos.dmg` from the draft and
-   sends the file to testers directly. Passing it through Windows and a cloud service is exactly
-   the path that used to corrupt the Mac build, so the act of sharing is itself the test.
-4. Testers need at least one Intel Mac and one Apple-silicon Mac between them. They must be told
-   in advance that macOS will refuse the app on first launch — right-click → Open — because it is
-   unsigned. Otherwise a working build gets reported as broken.
-5. On an Apple-silicon Mac: Activity Monitor → find refbox → the **Kind** column must read
-   **Apple**. If it reads **Intel**, the universal build failed and the Mac is running it under
+**Eric's decision, 2026-09-11:** no throwaway rehearsal tag. The branch merges, and verification
+happens against the **draft of the next real release**, which is not published until Mac users
+have confirmed it works. A draft is safe to sit on: it is not public, and the in-app updater
+cannot see it (it queries `/releases/latest`, which excludes drafts).
+
+1. Cut the release as `docs/release-checklist.md` describes. A draft appears.
+2. Work the rewritten checklist against it — the eight expected assets, the contents and
+   permission bits of both zips, and the absence of `refbox.zip`.
+3. **Draft releases cannot be shared by link.** GitHub shows a draft only to users with write
+   access and its asset links require authentication. Eric downloads `refbox-macos.dmg` and sends
+   the **file** to testers. Passing it through Windows or a cloud drive is exactly the path that
+   used to corrupt the Mac build, so the act of sharing is itself the test.
+4. Testers need at least one Intel Mac and one Apple-silicon Mac between them. Tell them in
+   advance that macOS will refuse the app on first launch and must be cleared via **System
+   Settings → Privacy & Security → Open Anyway** — the right-click → Open shortcut is unreliable
+   on recent macOS versions. Otherwise a working build gets reported as broken.
+5. On an Apple-silicon Mac: Activity Monitor → find `refbox` → the **Kind** column must read
+   **Apple**. **Intel** means the universal build silently failed and the Mac is running it under
    translation.
-6. Delete the throwaway tag and draft afterwards.
+6. **Publish only once testers confirm.** That gate is what makes merging before verification safe.
+
+**What no automated check covers:** that exactly five guides are present. The dmg step compares
+the number of PDFs that went in against the number that came out, which proves the copy worked
+but not that Drive returned all five — and the `curl` calls do not use `--fail`, so an HTTP error
+is written into the file and `curl` still exits 0. The five-guide count is asserted by the human
+checklist only. This matches the pre-existing behaviour and was left deliberately: Eric declined
+a content check in that job on 2026-09-11.
 
 ## Files changed
 

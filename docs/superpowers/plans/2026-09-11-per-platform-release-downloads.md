@@ -242,6 +242,11 @@ The app now travels inside the disk image and never round-trips through the arti
 
 - [ ] **Step 6: In `upload-release`, delete the `Download PDFs from Google Drive` step and download the artifact instead**
 
+Place this **with the other downloads at the top of the job** — immediately after the
+`refbox-rpi-sha256` download and before the overlay downloads. It must come before every step
+that copies out of `docs-pdfs/`, which Task 3 adds further down. Leaving it where the old curl
+step was (near the end) puts it *after* those copies and the job dies on `cp`.
+
 ```yaml
     - uses: actions/download-artifact@v5
       with:
@@ -298,7 +303,7 @@ git commit -m "feat(ci): assemble a macOS disk image with the guides"
 
 Delete the now-unused second `refbox-rpi` download into `pi-standalone` and the `refbox-rpi-sha256` download into `release/rpi-sha256`.
 
-- [ ] **Step 2: Replace the chmod, zip and staging steps**
+- [ ] **Step 2: Replace the refbox chmod, zip and Pi-staging steps — leave the overlay's `Package the overlay` and `Stage standalone overlay assets` steps exactly as they are**
 
 ```yaml
     # GitHub normalises artifact permissions to 0644, so the Pi binary arrives
@@ -357,14 +362,32 @@ grep -n 'refbox\.zip\|pi-standalone\|rpi-sha256/' .github/workflows/release.yml
 
 Expected: `YAML OK`, and the grep prints **nothing**. `refbox.zip` must not appear at all.
 
-- [ ] **Step 6: Confirm every artifact name resolves**
+- [ ] **Step 6: Confirm the job graph and every artifact name actually resolve**
+
+Two lists side by side cannot fail for a missing `needs:` edge — a job that downloads an artifact
+from a job it does not wait for passes a name comparison and then loses the race at release time.
+Assert both properties instead:
 
 ```bash
-echo "--- uploaded ---"; grep -A2 'upload-artifact' .github/workflows/release.yml | grep 'name:' | sort -u
-echo "--- downloaded ---"; grep -A2 'download-artifact' .github/workflows/release.yml | grep 'name:' | sort -u
+python3 - <<'EOF'
+import yaml
+jobs = yaml.safe_load(open('.github/workflows/release.yml'))['jobs']
+for name, job in jobs.items():
+    for dep in job.get('needs', []):
+        assert dep in jobs, f"{name} needs a job that does not exist: {dep}"
+assert 'fetch-docs' in jobs['build-macos'].get('needs', []), "build-macos must wait for fetch-docs"
+uploads = {s['with']['name'] for j in jobs.values() for s in j['steps']
+           if 'upload-artifact' in str(s.get('uses', ''))}
+for name, job in jobs.items():
+    for s in job['steps']:
+        if 'download-artifact' in str(s.get('uses', '')):
+            assert s['with']['name'] in uploads, f"{name} downloads an artifact nobody uploads: {s['with']['name']}"
+print("job graph and artifact names resolve")
+EOF
 ```
 
-Expected: every downloaded name appears in the uploaded list. A download with no matching upload fails the release at the worst possible moment.
+Expected: `job graph and artifact names resolve`. Break it on purpose once — delete
+`needs: [fetch-docs]` from `build-macos` and confirm it goes red — before trusting it.
 
 - [ ] **Step 7: Commit**
 
@@ -428,20 +451,30 @@ git commit -m "docs(ci): rewrite the release checklist for per-platform download
 
 ---
 
-### Task 5: The draft-release rehearsal
+### Task 5: Verification against the real release draft
 
-This is the only real verification. **Requires Eric's explicit go-ahead before the tag is pushed** — it runs the live release workflow.
+**Eric's decision, 2026-09-11:** no throwaway rehearsal tag. The branch merges, and verification
+happens against the draft of the next real release, which is **not published** until Mac users
+confirm it works. That publish gate is what makes merging before verification safe.
 
-- [ ] **Step 1: Do NOT merge first.** `release.yml` runs from whatever commit is tagged, and a tag
-      can point at any commit — including this branch's head. Rehearsing before the merge is the
-      whole point: it proves the packaging while the change can still be fixed inside the same PR.
-      (An earlier draft of this plan said to merge first. That was wrong and would have had the
-      untested packaging landing on `master` before anyone knew whether it worked.)
-- [ ] **Step 2: Push a throwaway tag at the branch head** — `git tag v0.5.2-rc1 <branch-sha>` then `git push origin v0.5.2-rc1`. It matches the `v*.*.*` trigger and produces a **draft**, which is not public and which the in-app updater cannot see (it queries `/releases/latest`, which excludes drafts).
-- [ ] **Step 3: Work the rewritten checklist** against the draft.
-- [ ] **Step 4: Eric downloads `refbox-macos.dmg` and sends it to Mac testers.** Draft assets need authentication, so the link cannot be shared — the file must be. Passing it through Windows and a cloud drive is exactly the path that used to corrupt the Mac build, so the sharing *is* the test.
-- [ ] **Step 5: Testers report** — does it launch (after Open Anyway), does the icon appear, and on Apple silicon does Activity Monitor say **Apple**.
-- [ ] **Step 6: Clean up** — delete the draft release in the GitHub UI, then remove the throwaway tag with `git push --delete origin v0.5.2-rc1` and `git tag -d v0.5.2-rc1`.
+A draft is safe to leave sitting: it is not public, and the in-app updater cannot see it — it
+queries `/releases/latest`, which excludes drafts and pre-releases
+(`refbox/src/updater/net.rs:6,16`).
+
+- [ ] **Step 1: Merge the PR**, then cut the release as `docs/release-checklist.md` describes.
+- [ ] **Step 2: Work the rewritten checklist** against the draft — the eight expected assets, the
+      contents and permission bits of both zips, and the absence of `refbox.zip`.
+- [ ] **Step 3: Send the file, not the link.** A draft is visible only to people with write access
+      and its asset links need authentication. Eric downloads `refbox-macos.dmg` and sends it.
+      Passing it through Windows or a cloud drive is the exact path that used to corrupt the old
+      zip, so doing so is itself a test.
+- [ ] **Step 4: Brief the testers first.** macOS will refuse the app on first launch; it is cleared
+      via **System Settings → Privacy & Security → Open Anyway**, not the right-click → Open
+      shortcut, which is unreliable on recent macOS versions. Without this a working build gets
+      reported as broken. At least one Intel and one Apple-silicon Mac are needed between them.
+- [ ] **Step 5: Testers report** — does it launch, does the icon appear, and on Apple silicon does
+      Activity Monitor's **Kind** column read **Apple** rather than **Intel**.
+- [ ] **Step 6: Publish only once they confirm.**
 
 ---
 
@@ -454,3 +487,5 @@ Record anything that diverged from this plan here, rather than in separate commi
 - **Commits were not made per task.** All four tasks were applied to the working tree first; splitting intermingled edits to a single workflow file into four commits afterwards carried more risk than value. Committed by file instead.
 - **Code review, 2026-09-11, four findings.** Three fixed: the Pi checklist grep never matched the binary (`/refbox$` requires a folder that no longer exists); the dmg's PDF count was a hardcoded `5` and now compares guides-in against guides-out; the executable-bit comment sat above the Windows step rather than the Pi step that performs the chmod. One reported and **not** acted on: the Google Drive `curl -L` calls lack `--fail`, so an HTTP error is written into the `.pdf` and curl still exits 0. That is pre-existing behaviour moved unchanged, in the same area as the PDF-validity check Eric declined — his call, not a silent fix.
 - **`zip` is not installed on this machine**, so the corrected Pi grep could not be tested locally. The regex was chosen to match whether the archive stores the entry as `refbox` or `./refbox`, removing the dependency on that untested detail. It is first exercised for real during the Task 5 rehearsal.
+- **Second review, 2026-09-11, over the prose documents.** Eight findings, seven fixed: the spec's "no code signing" constraint contradicted the ad-hoc `codesign` the implementation depends on (the worst of them — building from the spec alone would have shipped an app that dies on Apple silicon); the plan placed the docs download after the steps that copy from it; "replace the chmod, zip and staging steps" read as including the overlay's; Task 3 Step 6 could not fail for the missing-`needs:` defect it claimed to catch; the spec's asset table omitted the Pi checksum; "each in its own folder" read as one folder per PDF; and both documents still described the abandoned rehearsal-tag flow.
+- **Not fixed, deliberately:** nothing automated asserts that exactly five guides are present. The dmg step compares guides-in against guides-out, which proves the copy but not that Drive returned all five, and `curl` still lacks `--fail`. Restoring a count check means putting a guard back into the job where Eric declined one on 2026-09-11. The five-guide count is asserted by the human checklist instead, and this matches pre-existing behaviour.

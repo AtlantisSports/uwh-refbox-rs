@@ -2685,18 +2685,32 @@ impl TournamentManager {
         }
     }
 
-    /// How late the NEXT game is projected to start, measured against its scheduled
-    /// start time, as a positive duration. `ZERO` when on time or ahead, and before the
-    /// first game. On the last game of a court there is no next start to measure
-    /// against, so it falls back to [`Self::own_lateness`] instead.
-    ///
-    /// A game must END by `next scheduled start - minimum_break` for the next game to
-    /// begin on time; this reports how far past that deadline the current game is
-    /// projected to run. Lateness is absorbed only by the real gap between scheduled
-    /// start times -- the Game Block plays no part. Where no published start time is
-    /// known -- manual mode, and portal mode whenever the next game has not been
-    /// identified -- `next_game_scheduled_start` falls back to the Game Block grid;
-    /// that is the only route by which the Game Block reaches this figure.
+    /// Play time left before this game can end, including overtime once it is under
+    /// way. Sudden death is open-ended, so it contributes nothing beyond the clock in
+    /// hand; overtime is only counted from the pre-overtime break onwards, because
+    /// until then it is not known whether it will be played at all.
+    fn remaining_play(&self, now: Instant) -> Duration {
+        let remaining_current = self.clock_state.clock_time(now).unwrap_or(Duration::ZERO);
+        let cfg = &self.config;
+        match self.current_period {
+            GamePeriod::FirstHalf | GamePeriod::HalfTime | GamePeriod::SecondHalf => {
+                self.remaining_regulation(now)
+            }
+            GamePeriod::PreOvertime => {
+                remaining_current
+                    + cfg.ot_half_play_duration
+                    + cfg.ot_half_time_duration
+                    + cfg.ot_half_play_duration
+            }
+            GamePeriod::OvertimeFirstHalf => {
+                remaining_current + cfg.ot_half_time_duration + cfg.ot_half_play_duration
+            }
+            GamePeriod::OvertimeHalfTime => remaining_current + cfg.ot_half_play_duration,
+            GamePeriod::OvertimeSecondHalf | GamePeriod::PreSuddenDeath => remaining_current,
+            GamePeriod::SuddenDeath | GamePeriod::BetweenGames => Duration::ZERO,
+        }
+    }
+
     /// How late this game is running against its OWN scheduled start: the lateness it
     /// began with, plus however much longer than its regulation it is projected to take
     /// (less, when it plays short -- time edited down, or half-time skipped). Used only
@@ -2716,6 +2730,21 @@ impl TournamentManager {
         }
     }
 
+    /// How late the NEXT game is projected to start, measured against its scheduled
+    /// start time, as a positive duration. `ZERO` when on time or ahead, and before the
+    /// first game.
+    ///
+    /// A game must END by `next scheduled start - minimum_break` for the next game to
+    /// begin on time; this reports how far past that deadline the current game is
+    /// projected to run. Lateness is absorbed only by the real gap between scheduled
+    /// start times -- the Game Block plays no part. Where no published start time is
+    /// known -- manual mode, and portal mode whenever the next game has not been
+    /// identified -- `next_game_scheduled_start` falls back to the Game Block grid;
+    /// that is the only route by which the Game Block reaches this figure.
+    ///
+    /// When no next scheduled start is known at all it falls back to
+    /// [`Self::own_lateness`]. That is the last game on a court, and also any point at
+    /// which the operator has cleared the portal's next-game information mid-game.
     pub fn behind_schedule(&self, now: Instant) -> Duration {
         // Before the first game has started there is no schedule anchor yet, so the
         // event cannot be "behind". Without this, the pre-game break countdown
@@ -2726,10 +2755,11 @@ impl TournamentManager {
             return Duration::ZERO;
         }
         let Some(sched_next) = self.next_game_scheduled_start(now) else {
-            // No next game to be late for -- the last game on a court. The session is
-            // still running late, so fall back to how late THIS game is running against
-            // its own scheduled start. Once it has ended there is nothing left to be
-            // late for, so the figure stops.
+            // No next scheduled start known -- the last game on a court, or the operator
+            // having cleared the portal's next-game information mid-game. The session is
+            // still running late either way, so fall back to how late THIS game is
+            // running against its own scheduled start. Once it has ended there is
+            // nothing left to be late for, so the figure stops.
             if self.current_period == GamePeriod::BetweenGames {
                 return Duration::ZERO;
             }
@@ -2746,9 +2776,7 @@ impl TournamentManager {
             // Project this game's end, then add the break that must follow it. Stoppages
             // and edit-ups push the end out in real time; edit-downs and skipping a half
             // early pull it in.
-            let projected_end = now
-                .checked_add(self.remaining_regulation(now))
-                .unwrap_or(now);
+            let projected_end = now.checked_add(self.remaining_play(now)).unwrap_or(now);
             projected_end
                 .checked_add(self.config.minimum_break)
                 .unwrap_or(projected_end)
@@ -4146,7 +4174,7 @@ mod test {
     }
 
     #[test]
-    fn test_behind_schedule_climbs_in_overtime_beyond_buffer() {
+    fn test_behind_schedule_frozen_in_overtime_until_the_clock_stops() {
         initialize();
         // regulation = 2*10 + 4 = 24; block 30, min_break 2 => buffer 4.
         let config = GameConfig {
@@ -4177,13 +4205,19 @@ mod test {
         let in_ot = start + Duration::from_secs(24 + 8);
         tm.update(in_ot).unwrap();
         assert_eq!(tm.current_period, GamePeriod::OvertimeFirstHalf);
+        // Overtime running normally has a fixed end, so the figure holds steady --
+        // the clock counts down exactly as fast as real time passes.
         let v1 = tm.behind_schedule(in_ot);
         let v2 = tm.behind_schedule(in_ot + Duration::from_secs(3));
-        assert!(
-            v1 > Duration::ZERO,
-            "overtime did not push the figure past the buffer"
+        assert!(v1 > Duration::ZERO, "overtime did not register as a delay");
+        assert_eq!(v1, v2, "figure moved while overtime ran on schedule");
+        // Stopping the clock in overtime does push the projected end out, second for
+        // second, exactly as it does during regulation.
+        tm.stop_clock(in_ot).unwrap();
+        assert_eq!(
+            tm.behind_schedule(in_ot + Duration::from_secs(5)),
+            v1 + Duration::from_secs(5)
         );
-        assert!(v2 > v1, "figure did not climb during overtime");
     }
 
     #[test]
@@ -4370,6 +4404,45 @@ mod test {
         tm.start_play_now(ht).unwrap(); // skip the remaining 3s of half-time
         // The game will now take 3s less than its regulation, so 6 - 3 = 3.
         assert_eq!(tm.behind_schedule(ht), Duration::from_secs(3));
+    }
+
+    #[test]
+    fn test_behind_schedule_projects_through_remaining_overtime() {
+        // In overtime the game plainly has time left to run, so the projected end must
+        // include it. Otherwise the figure assumes the game ends now and under-reports
+        // by the whole of the remaining overtime -- worst exactly where it matters, in
+        // a final.
+        initialize();
+        // regulation = 2*10 + 4 = 24; slot 30, min_break 2.
+        // Overtime: pre-break 2, halves 10 with 2 between.
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(4),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(30),
+            overtime_allowed: true,
+            pre_overtime_break: Duration::from_secs(2),
+            ot_half_play_duration: Duration::from_secs(10),
+            ot_half_time_duration: Duration::from_secs(2),
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // slot start..start+30
+        // Level scores send it to overtime. FirstHalf 0..10, HalfTime 10..14,
+        // SecondHalf 14..24, PreOvertime 24..26, OvertimeFirstHalf from 26.
+        tm.update(start + Duration::from_secs(11)).unwrap();
+        tm.update(start + Duration::from_secs(15)).unwrap();
+        tm.update(start + Duration::from_secs(25)).unwrap();
+        tm.update(start + Duration::from_secs(27)).unwrap();
+        let in_ot = start + Duration::from_secs(32); // 6s into the overtime first half
+        tm.update(in_ot).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::OvertimeFirstHalf);
+        // Still to play: 4 left of this half + 2 half-time + 10 second half = 16.
+        // Projected end start+48, +2s break = start+50, against the start+30 slot => 20.
+        assert_eq!(tm.behind_schedule(in_ot), Duration::from_secs(20));
     }
 
     #[test]

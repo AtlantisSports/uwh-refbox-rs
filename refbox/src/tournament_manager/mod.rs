@@ -2715,13 +2715,18 @@ impl TournamentManager {
     /// began with, plus however much longer than its regulation it is projected to take
     /// (less, when it plays short -- time edited down, or half-time skipped). Used only
     /// when there is no next game to measure against; see [`Self::behind_schedule`].
+    ///
+    /// Projects with [`Self::remaining_play`], not `remaining_regulation`, so that
+    /// overtime counts here exactly as it does on the next-game path. The game most
+    /// likely to reach overtime is the last one on a court -- often a final -- and that
+    /// is precisely the game this fallback serves.
     fn own_lateness(&self, now: Instant) -> Duration {
         let Some(sched_start) = self.current_scheduled_start else {
             return Duration::ZERO;
         };
         let inherited = self.game_start_time.saturating_duration_since(sched_start);
         let real_elapsed = now.saturating_duration_since(self.game_start_time);
-        let projected_total = real_elapsed + self.remaining_regulation(now);
+        let projected_total = real_elapsed + self.remaining_play(now);
         let reg = self.config.regulation_play();
         if projected_total >= reg {
             inherited + (projected_total - reg)
@@ -4027,6 +4032,43 @@ mod test {
     }
 
     #[test]
+    fn test_behind_schedule_in_game_against_a_portal_published_start() {
+        // The portal path, in game, producing a NONZERO figure. The other portal tests
+        // all assert ZERO, so without this one a sign error or a wrong anchor in
+        // `next_game_scheduled_start` would ship green.
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config()); // reg 23, min break 2
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start).unwrap(); // hold remaining regulation at 10 + 3 + 10 = 23
+
+        // The portal says the next game starts in 10s. This game needs 23 more to play
+        // plus a 2s break before that game can start: 25 against 10 => 15s late.
+        tm.set_next_game(NextGameInfo {
+            number: "2".to_string(),
+            timing: None,
+            start_time: Some(OffsetDateTime::now_utc() + time::Duration::seconds(10)),
+        });
+        assert_eq!(
+            tm.behind_schedule(start + Duration::from_secs(5)),
+            Duration::from_secs(15)
+        );
+
+        // Bring the published start five seconds nearer and the figure grows by exactly
+        // five. A fixed offset or an inverted sign cannot satisfy both readings.
+        tm.set_next_game(NextGameInfo {
+            number: "2".to_string(),
+            timing: None,
+            start_time: Some(OffsetDateTime::now_utc() + time::Duration::seconds(5)),
+        });
+        assert_eq!(
+            tm.behind_schedule(start + Duration::from_secs(5)),
+            Duration::from_secs(20)
+        );
+    }
+
+    #[test]
     fn test_behind_schedule_far_future_portal_time_is_safe() {
         // A portal scheduled start an extreme distance in the future (e.g. a fat-fingered
         // date) must never panic and must produce a finite, sensible figure. With the next
@@ -4442,6 +4484,45 @@ mod test {
         // Still to play: 4 left of this half + 2 half-time + 10 second half = 16.
         // Projected end start+48, +2s break = start+50, against the start+30 slot => 20.
         assert_eq!(tm.behind_schedule(in_ot), Duration::from_secs(20));
+    }
+
+    #[test]
+    fn test_behind_schedule_last_game_projects_through_remaining_overtime() {
+        // The last game on a court takes the own-lateness fallback, and that path must
+        // project through overtime exactly as the next-game path does. Otherwise the
+        // game most likely to reach overtime -- the last one on the court, often a
+        // final -- is the one whose delay is under-reported, by the whole of the
+        // remaining overtime.
+        initialize();
+        // regulation = 2*10 + 4 = 24; slot 30, min_break 2.
+        // Overtime: pre-break 2, halves 10 with 2 between.
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(4),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(30),
+            overtime_allowed: true,
+            pre_overtime_break: Duration::from_secs(2),
+            ot_half_play_duration: Duration::from_secs(10),
+            ot_half_time_duration: Duration::from_secs(2),
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // starts on time => inherited lateness 0
+        tm.set_no_next_game(); // the last game on this court
+        tm.update(start + Duration::from_secs(11)).unwrap();
+        tm.update(start + Duration::from_secs(15)).unwrap();
+        tm.update(start + Duration::from_secs(25)).unwrap();
+        tm.update(start + Duration::from_secs(27)).unwrap();
+        let in_ot = start + Duration::from_secs(32); // 6s into the overtime first half
+        tm.update(in_ot).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::OvertimeFirstHalf);
+        // Still to play: 4 left of this half + 2 half-time + 10 second half = 16.
+        // Projected total 32 + 16 = 48, against a 24s regulation => 24s late.
+        assert_eq!(tm.behind_schedule(in_ot), Duration::from_secs(24));
     }
 
     #[test]

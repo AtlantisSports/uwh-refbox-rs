@@ -12,7 +12,7 @@ pub fn run_schedule_checks(schedule: &Schedule) -> Result<(), Box<dyn std::error
     check_game_group_types(schedule);
     check_groups_have_games(schedule)?;
     check_unique_timing_rule_names(schedule)?;
-    check_no_zero_durations(schedule)?;
+    check_flag_gated_durations(schedule)?;
     check_game_timing_rules(schedule)?;
     check_game_overlap(schedule)?;
     check_same_team_in_game(schedule)?;
@@ -700,47 +700,187 @@ fn check_game_references(schedule: &Schedule) -> Result<(), Box<dyn std::error::
     }
 }
 
-/// Refuse any zero-length duration. Every duration carries a real number and
-/// the on/off flag alone decides whether it is used — a zero must never stand
-/// in for "this feature is off". A mode hidden in a magic value is unreadable,
-/// and for the playing durations it has been a source of crashes.
+/// A duration a timing rule leaves at zero even though the rule will use it.
+// `Debug` only - nothing clones, copies or compares one.
+#[derive(Debug)]
+struct ZeroDuration {
+    /// The Portal's own field name, so the organiser can find the box to fill in.
+    field: &'static str,
+    /// Why this rule needs the duration, and what to do instead of zeroing it.
+    /// A full clause, because the remedy is not the same shape for every row:
+    /// most switches are turned OFF to drop the duration, but half-time is
+    /// dropped by turning single-period ON. A single shared closing sentence
+    /// gets that one backwards.
+    /// `None` where every rule needs the duration whatever its switches say.
+    reason: Option<&'static str>,
+}
+
+/// Every duration this rule will actually use but has left at zero.
 ///
-/// `gameBlock` is checked only when present: absent means "derive it", which is
-/// legal. `teamTimeoutCount` is a count, not a duration, and is not checked.
-fn check_no_zero_durations(schedule: &Schedule) -> Result<(), Box<dyn std::error::Error>> {
-    for rule in &schedule.timing_rules {
-        let mut zeroed: Vec<&str> = Vec::new();
-        let fields: [(&str, Duration); 8] = [
-            ("halfPlayDuration", rule.half_play_duration),
-            ("halfTimeDuration", rule.half_time_duration),
-            ("teamTimeoutDuration", rule.team_timeout_duration),
-            ("overtimeHalfPlayDuration", rule.ot_half_play_duration),
-            ("overtimeHalfTimeDuration", rule.ot_half_time_duration),
-            ("preOvertimeBreak", rule.pre_overtime_break),
-            ("preSuddenDeathDuration", rule.pre_sudden_death_duration),
-            ("minimumBreak", rule.minimum_break),
-        ];
-        for (name, value) in fields {
-            if value.is_zero() {
-                zeroed.push(name);
-            }
-        }
-        if rule.game_block == Some(Duration::ZERO) {
-            zeroed.push("gameBlock");
-        }
-        if !zeroed.is_empty() {
-            return Err(format!(
-                "Timing rule '{}' sets {} to zero. No duration may be zero - give it a real \
-                 length, and use the matching on/off setting to say whether it is used. For a \
-                 single-period game set 'singlePeriod' to TRUE and leave 'halfTimeDuration' at a \
-                 normal length.",
-                rule.name,
-                zeroed.join(", ")
-            )
-            .into());
-        }
+/// A duration is only checked when its own switch says the rule uses it: a rule
+/// with overtime turned off may carry zeros in all three overtime fields, and
+/// that is correct, not a fault. This mirrors the Portal's `AddDurationRules`,
+/// which gates each field with `.When(...)` and refuses only what the rule uses.
+///
+/// The half-time gate is `single_period` being FALSE. A single-period game has no
+/// half-time, so a zero there is legal; a two-period game must have a real one.
+/// Writing this gate the other way round checks half-time only for single-period
+/// games, which is exactly backwards.
+///
+/// The Portal's own predicates read `!= false` / `!= true` because its flags are
+/// nullable, so an absent flag makes the gate fire. Our flags are plain `bool`
+/// and `single_period` carries `#[serde(default)]`, so an absent `singlePeriod`
+/// arrives as `false` and the gate fires just the same. Do not introduce an
+/// `Option` here to "match" them - the behaviours already agree.
+fn flag_gated_zero_durations(rule: &TimingRule) -> Vec<ZeroDuration> {
+    // One row per duration: the value, whether this rule uses it, and the switch
+    // that decides. A new duration is one row here, not a new branch elsewhere.
+    let checks = [
+        (rule.half_play_duration, true, "halfPlayDuration", None),
+        (rule.minimum_break, true, "minimumBreak", None),
+        (
+            rule.half_time_duration,
+            !rule.single_period,
+            "halfTimeDuration",
+            Some(
+                "this rule is not marked as a single-period game. Give it a real \
+                 length, or mark the rule as single-period.",
+            ),
+        ),
+        (
+            rule.team_timeout_duration,
+            rule.team_timeout_count != 0,
+            "teamTimeoutDuration",
+            Some(
+                "it allows team timeouts. Give it a real length, or set the team \
+                 timeout count to zero.",
+            ),
+        ),
+        (
+            rule.ot_half_play_duration,
+            rule.overtime_allowed,
+            "overtimeHalfPlayDuration",
+            Some("it allows overtime. Give it a real length, or turn overtime off."),
+        ),
+        (
+            rule.ot_half_time_duration,
+            rule.overtime_allowed,
+            "overtimeHalfTimeDuration",
+            Some("it allows overtime. Give it a real length, or turn overtime off."),
+        ),
+        (
+            rule.pre_overtime_break,
+            rule.overtime_allowed,
+            "preOvertimeBreak",
+            Some("it allows overtime. Give it a real length, or turn overtime off."),
+        ),
+        (
+            rule.pre_sudden_death_duration,
+            rule.sudden_death_allowed,
+            "preSuddenDeathDuration",
+            Some(
+                "it allows sudden death. Give it a real length, or turn sudden \
+                 death off.",
+            ),
+        ),
+        // Ours only - the Portal has no Game Block check. Absent means "derive
+        // it", which is legal, so absence is expressed as "not used" like every
+        // other row rather than as a branch after the fold.
+        (
+            rule.game_block.unwrap_or(Duration::ZERO),
+            rule.game_block.is_some(),
+            "gameBlock",
+            // The one OPTIONAL field, so its remedy is the opposite of the
+            // always-required ones: leaving it out is legal and a zero is not.
+            // Saying "every timing rule needs a real one" here would push an
+            // organiser into inventing a slot length.
+            Some(
+                "it is the slot length for the whole game. Give it the real \
+                 length, or leave the field out entirely and refbox works one \
+                 out from the other durations.",
+            ),
+        ),
+    ];
+
+    checks
+        .into_iter()
+        .filter(|(value, is_used, _, _)| *is_used && value.is_zero())
+        .map(|(_, _, field, reason)| ZeroDuration { field, reason })
+        .collect()
+}
+
+/// Read by a tournament organiser who has to go and fix it, so it names the rule,
+/// the field as the Portal labels it, and the switch that makes it required.
+fn zero_duration_message(rule: &TimingRule, zero: &ZeroDuration) -> String {
+    match zero.reason {
+        Some(reason) => format!(
+            "Timing rule '{}' sets {} to zero, but {}",
+            rule.name, zero.field, reason
+        ),
+        None => format!(
+            "Timing rule '{}' sets {} to zero. Every timing rule needs a real one.",
+            rule.name, zero.field
+        ),
     }
-    Ok(())
+}
+
+/// Refuse a timing rule that leaves a duration at zero while the switch that uses
+/// it is on.
+///
+/// Mirrors the validator on the Portal's `fix/reject-zero-playing-durations`,
+/// which is not on their main branch yet. Until it lands this is the only gate,
+/// and it covers every rule a PERSON can author: no Portal client has a
+/// timing-rule editor, so an authored rule reaches an event through this tool.
+///
+/// It is NOT the only way in, and a green run here is not proof that no game can
+/// be played on a rule this would have refused:
+///
+/// - The Portal exposes `PUT /api/events/{slug}/schedule/timing-rules/{id}`
+///   (`api/Controllers/EventScheduleController.cs:890`). No client calls it, but
+///   anyone with edit rights on the event can call it directly, and it validates
+///   nothing until their branch lands. THEIR change closes that, not this one.
+/// - A refbox pointed at a custom or third-party site takes that site's timing
+///   rules straight from it (`docs/third-party-integration.md`). Those never come
+///   near this tool, and nothing on the refbox side re-checks them - the
+///   normaliser that used to absorb a degenerate overtime was removed on the base
+///   branch.
+///
+/// Should a Portal timing-rule editor ever be built, it needs this same guard.
+///
+/// Every offending rule is reported, not just the first: an organiser fixing a
+/// schedule wants the whole list in one pass.
+fn check_flag_gated_durations(schedule: &Schedule) -> Result<(), Box<dyn std::error::Error>> {
+    let mut invalid_rules = Vec::new();
+
+    for rule in &schedule.timing_rules {
+        let zeros = flag_gated_zero_durations(rule);
+        if zeros.is_empty() {
+            continue;
+        }
+        for zero in &zeros {
+            error!("{}", zero_duration_message(rule, zero));
+        }
+        invalid_rules.push(format!(
+            "{} ({})",
+            rule.name,
+            zeros.iter().map(|z| z.field).collect::<Vec<_>>().join(", ")
+        ));
+    }
+
+    if invalid_rules.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Found {} with a zero duration the rule still uses: {}",
+            if invalid_rules.len() == 1 {
+                "a timing rule"
+            } else {
+                "timing rules"
+            },
+            invalid_rules.join("; ")
+        )
+        .into())
+    }
 }
 
 fn calculate_occupied_times(schedule: &Schedule) -> IndexMap<String, Duration> {
@@ -803,54 +943,7 @@ mod tests {
     #[test]
     fn a_rule_with_no_zero_durations_passes() {
         let schedule = schedule_with_rules(vec![a_valid_rule()]);
-        assert!(check_no_zero_durations(&schedule).is_ok());
-    }
-
-    #[test]
-    fn every_duration_field_is_rejected_at_zero() {
-        // Exhaustive on purpose: a new duration on TimingRule that nobody adds
-        // here would otherwise be silently unguarded.
-        let setters: Vec<(&str, fn(&mut TimingRule))> = vec![
-            ("halfPlayDuration", |r| {
-                r.half_play_duration = Duration::ZERO
-            }),
-            ("halfTimeDuration", |r| {
-                r.half_time_duration = Duration::ZERO
-            }),
-            ("teamTimeoutDuration", |r| {
-                r.team_timeout_duration = Duration::ZERO
-            }),
-            ("overtimeHalfPlayDuration", |r| {
-                r.ot_half_play_duration = Duration::ZERO
-            }),
-            ("overtimeHalfTimeDuration", |r| {
-                r.ot_half_time_duration = Duration::ZERO
-            }),
-            ("preOvertimeBreak", |r| {
-                r.pre_overtime_break = Duration::ZERO
-            }),
-            ("preSuddenDeathDuration", |r| {
-                r.pre_sudden_death_duration = Duration::ZERO
-            }),
-            ("minimumBreak", |r| r.minimum_break = Duration::ZERO),
-            ("gameBlock", |r| r.game_block = Some(Duration::ZERO)),
-        ];
-        for (field, set) in setters {
-            let mut rule = a_valid_rule();
-            set(&mut rule);
-            let schedule = schedule_with_rules(vec![rule]);
-            let err = check_no_zero_durations(&schedule)
-                .expect_err(&format!("a zero {field} must be refused"))
-                .to_string();
-            assert!(
-                err.contains(field),
-                "the message must name the setting, got: {err}"
-            );
-            assert!(
-                err.contains("RR"),
-                "the message must name the rule, got: {err}"
-            );
-        }
+        assert!(check_flag_gated_durations(&schedule).is_ok());
     }
 
     #[test]
@@ -860,7 +953,7 @@ mod tests {
         let mut rule = a_valid_rule();
         rule.game_block = None;
         let schedule = schedule_with_rules(vec![rule]);
-        assert!(check_no_zero_durations(&schedule).is_ok());
+        assert!(check_flag_gated_durations(&schedule).is_ok());
     }
 
     #[test]
@@ -880,13 +973,355 @@ mod tests {
         assert_eq!(occupied["RR"], Duration::from_secs(720 * 2 + 180 + 240));
     }
 
+    /// The table is only worth anything if each row fires for its own field and
+    /// stays quiet for every other, so each pair is asserted in both directions.
+    fn fields_flagged(rule: &TimingRule) -> Vec<&'static str> {
+        flag_gated_zero_durations(rule)
+            .into_iter()
+            .map(|z| z.field)
+            .collect()
+    }
+
     #[test]
-    fn a_single_period_rule_still_needs_a_real_half_time() {
-        // The whole point of the flag: single-period does NOT license a zero.
+    fn a_sound_rule_flags_nothing() {
+        assert_eq!(fields_flagged(&a_valid_rule()), Vec::<&str>::new());
+    }
+
+    /// Both switch combinations leave every OTHER duration legal, so whichever
+    /// field the caller zeroes is the only one that may be reported.
+    const BOTH_SWITCH_SETTINGS: [(bool, bool, bool, u16); 2] =
+        [(false, false, false, 1), (true, true, true, 0)];
+
+    fn with_switches(settings: (bool, bool, bool, u16)) -> TimingRule {
+        let (single_period, overtime, sudden_death, timeouts) = settings;
+        let mut rule = a_valid_rule();
+        rule.single_period = single_period;
+        rule.overtime_allowed = overtime;
+        rule.sudden_death_allowed = sudden_death;
+        rule.team_timeout_count = timeouts;
+        rule
+    }
+
+    #[test]
+    fn a_zero_half_play_duration_is_refused_whatever_the_switches() {
+        // Driven across both switch settings on purpose. Against a_valid_rule()'s
+        // defaults alone this test passes even if the row's gate is changed from
+        // `true` to `!single_period` - so the one thing its name claims would go
+        // unguarded.
+        for settings in BOTH_SWITCH_SETTINGS {
+            let mut rule = with_switches(settings);
+            rule.half_play_duration = Duration::ZERO;
+            assert_eq!(
+                fields_flagged(&rule),
+                vec!["halfPlayDuration"],
+                "switches {settings:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_zero_minimum_break_is_refused_whatever_the_switches() {
+        for settings in BOTH_SWITCH_SETTINGS {
+            let mut rule = with_switches(settings);
+            rule.minimum_break = Duration::ZERO;
+            assert_eq!(
+                fields_flagged(&rule),
+                vec!["minimumBreak"],
+                "switches {settings:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_duration_on_the_type_has_a_row_in_the_table() {
+        // Not circular: this asks `TimingRule` itself what it serialises, so a
+        // duration added there fails here rather than shipping unguarded. Mirrors
+        // `timing_rule_field_names_match_the_type` in csv_parser.rs.
+        //
+        // This carries the exhaustiveness rationale of the deleted
+        // `every_duration_field_is_rejected_at_zero`. The per-pair tests each
+        // cover one row; none of them notices a row that was never written.
+        const NOT_DURATIONS: [&str; 7] = [
+            "name",
+            "teamTimeoutCount",
+            "teamTimeoutsCountedPerHalf",
+            "overtimeAllowed",
+            "suddenDeathAllowed",
+            "singlePeriod",
+            "last2minStopTime",
+        ];
+
+        let mut rule = with_switches((false, true, true, 1));
+        rule.half_play_duration = Duration::ZERO;
+        rule.half_time_duration = Duration::ZERO;
+        rule.team_timeout_duration = Duration::ZERO;
+        rule.ot_half_play_duration = Duration::ZERO;
+        rule.ot_half_time_duration = Duration::ZERO;
+        rule.pre_overtime_break = Duration::ZERO;
+        rule.pre_sudden_death_duration = Duration::ZERO;
+        rule.minimum_break = Duration::ZERO;
+        rule.game_block = Some(Duration::ZERO);
+
+        let serde_json::Value::Object(map) = serde_json::to_value(&rule).unwrap() else {
+            panic!("a TimingRule should serialise to a JSON object");
+        };
+        let mut on_the_type: Vec<&str> = map
+            .keys()
+            .map(String::as_str)
+            .filter(|key| !NOT_DURATIONS.contains(key))
+            .collect();
+        on_the_type.sort_unstable();
+
+        let mut covered = fields_flagged(&rule);
+        covered.sort_unstable();
+
+        assert_eq!(
+            covered, on_the_type,
+            "every duration on TimingRule needs a row in the `checks` table"
+        );
+
+        // Compile-time half of the same guard. The check above reads SERIALISED
+        // keys, which cannot see an `Option` field that is `None` under
+        // `skip_serializing_if` - `gameBlock`'s exact shape - so a future
+        // duration of that shape would be invisible to it. This destructure has
+        // no `..`, so adding any field to `TimingRule` stops this file compiling
+        // until somebody decides whether it needs a row.
+        let TimingRule {
+            name: _,
+            team_timeout_count: _,
+            team_timeouts_counted_per_half: _,
+            overtime_allowed: _,
+            sudden_death_allowed: _,
+            single_period: _,
+            last_2_min_stop_time: _,
+            half_play_duration: _,
+            half_time_duration: _,
+            team_timeout_duration: _,
+            ot_half_play_duration: _,
+            ot_half_time_duration: _,
+            pre_overtime_break: _,
+            pre_sudden_death_duration: _,
+            minimum_break: _,
+            game_block: _,
+        } = a_valid_rule();
+    }
+
+    #[test]
+    fn a_two_period_rule_needs_a_real_half_time() {
+        let mut rule = a_valid_rule();
+        rule.single_period = false;
+        rule.half_time_duration = Duration::ZERO;
+        assert_eq!(fields_flagged(&rule), vec!["halfTimeDuration"]);
+    }
+
+    #[test]
+    fn a_single_period_rule_may_leave_half_time_at_zero() {
+        // The gate is `singlePeriod != true`: a single-period game has no
+        // half-time, so a zero is correct rather than a fault. The Portal
+        // accepts this shape, and refusing it here would block uploads they
+        // allow. Replaces `a_single_period_rule_still_needs_a_real_half_time`,
+        // which encoded the blanket rule the PO overruled on 2026-09-12.
         let mut rule = a_valid_rule();
         rule.single_period = true;
         rule.half_time_duration = Duration::ZERO;
-        let schedule = schedule_with_rules(vec![rule]);
-        assert!(check_no_zero_durations(&schedule).is_err());
+        assert_eq!(fields_flagged(&rule), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn a_rule_allowing_timeouts_needs_a_real_timeout_length() {
+        let mut rule = a_valid_rule();
+        rule.team_timeout_count = 1;
+        rule.team_timeout_duration = Duration::ZERO;
+        assert_eq!(fields_flagged(&rule), vec!["teamTimeoutDuration"]);
+    }
+
+    #[test]
+    fn a_rule_allowing_no_timeouts_may_leave_the_timeout_length_at_zero() {
+        let mut rule = a_valid_rule();
+        rule.team_timeout_count = 0;
+        rule.team_timeout_duration = Duration::ZERO;
+        assert_eq!(fields_flagged(&rule), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn overtime_on_needs_all_three_overtime_durations() {
+        // All three are reported at once, not just the first: an organiser
+        // fixing the rule wants the whole list in one pass.
+        let mut rule = a_valid_rule();
+        rule.overtime_allowed = true;
+        rule.ot_half_play_duration = Duration::ZERO;
+        rule.ot_half_time_duration = Duration::ZERO;
+        rule.pre_overtime_break = Duration::ZERO;
+        assert_eq!(
+            fields_flagged(&rule),
+            vec![
+                "overtimeHalfPlayDuration",
+                "overtimeHalfTimeDuration",
+                "preOvertimeBreak"
+            ]
+        );
+    }
+
+    #[test]
+    fn overtime_off_may_leave_all_three_overtime_durations_at_zero() {
+        // The commonest real shape by far: the round-robin rule in every one of
+        // our exports carries zeros here with overtime switched off.
+        let mut rule = a_valid_rule();
+        rule.overtime_allowed = false;
+        rule.ot_half_play_duration = Duration::ZERO;
+        rule.ot_half_time_duration = Duration::ZERO;
+        rule.pre_overtime_break = Duration::ZERO;
+        assert_eq!(fields_flagged(&rule), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn sudden_death_on_needs_a_real_pre_sudden_death_break() {
+        let mut rule = a_valid_rule();
+        rule.sudden_death_allowed = true;
+        rule.pre_sudden_death_duration = Duration::ZERO;
+        assert_eq!(fields_flagged(&rule), vec!["preSuddenDeathDuration"]);
+    }
+
+    #[test]
+    fn sudden_death_off_may_leave_the_pre_sudden_death_break_at_zero() {
+        let mut rule = a_valid_rule();
+        rule.sudden_death_allowed = false;
+        rule.pre_sudden_death_duration = Duration::ZERO;
+        assert_eq!(fields_flagged(&rule), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn a_present_zero_game_block_is_still_refused() {
+        // Ours only - the Portal has no Game Block check - so nothing upstream
+        // would catch this if the row were dropped.
+        let mut rule = a_valid_rule();
+        rule.game_block = Some(Duration::ZERO);
+        assert_eq!(fields_flagged(&rule), vec!["gameBlock"]);
+    }
+
+    #[test]
+    fn the_message_names_the_rule_the_field_and_the_switch() {
+        let mut rule = a_valid_rule();
+        rule.overtime_allowed = true;
+        rule.ot_half_play_duration = Duration::ZERO;
+        let zeros = flag_gated_zero_durations(&rule);
+        let msg = zero_duration_message(&rule, &zeros[0]);
+        assert!(msg.contains("RR"), "must name the rule, got: {msg}");
+        assert!(
+            msg.contains("overtimeHalfPlayDuration"),
+            "must name the field, got: {msg}"
+        );
+        assert!(
+            msg.contains("it allows overtime"),
+            "must name the switch that makes it required, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn the_half_time_message_names_the_real_remedy() {
+        // Half-time is the only gate phrased as a negative. A single shared
+        // closing sentence ("or turn that setting off") inverted on it and told
+        // the organiser to do the opposite of the fix, so each row now carries
+        // its own remedy. Asserted as a whole sentence because that is what is
+        // read; asserting the fragments separately still passes if they are
+        // assembled into nonsense.
+        let mut rule = a_valid_rule();
+        rule.half_time_duration = Duration::ZERO;
+        let zeros = flag_gated_zero_durations(&rule);
+        assert_eq!(
+            zero_duration_message(&rule, &zeros[0]),
+            "Timing rule 'RR' sets halfTimeDuration to zero, but this rule is not marked \
+             as a single-period game. Give it a real length, or mark the rule as \
+             single-period."
+        );
+    }
+
+    #[test]
+    fn a_positive_gate_message_says_to_turn_that_feature_off() {
+        let mut rule = a_valid_rule();
+        rule.overtime_allowed = true;
+        rule.ot_half_play_duration = Duration::ZERO;
+        let zeros = flag_gated_zero_durations(&rule);
+        assert_eq!(
+            zero_duration_message(&rule, &zeros[0]),
+            "Timing rule 'RR' sets overtimeHalfPlayDuration to zero, but it allows \
+             overtime. Give it a real length, or turn overtime off."
+        );
+    }
+
+    #[test]
+    fn an_always_required_duration_does_not_invent_a_switch() {
+        let mut rule = a_valid_rule();
+        rule.half_play_duration = Duration::ZERO;
+        let zeros = flag_gated_zero_durations(&rule);
+        let msg = zero_duration_message(&rule, &zeros[0]);
+        assert!(
+            !msg.contains("but"),
+            "there is no switch to name for an always-required duration, got: {msg}"
+        );
+        assert!(msg.contains("Every timing rule needs"), "got: {msg}");
+    }
+
+    #[test]
+    fn check_flag_gated_durations_names_every_offending_rule_not_just_the_first() {
+        // The blanket check this replaced returned on the first bad rule, so an
+        // organiser fixed one, re-ran, and found another.
+        let mut first = a_valid_rule();
+        first.half_play_duration = Duration::ZERO;
+        let mut second = a_valid_rule();
+        second.name = "FINALS".to_string();
+        second.minimum_break = Duration::ZERO;
+
+        let err = check_flag_gated_durations(&schedule_with_rules(vec![first, second]))
+            .expect_err("both rules are invalid");
+        let msg = err.to_string();
+        assert!(msg.contains("RR"), "should name the first rule, got: {msg}");
+        assert!(
+            msg.contains("FINALS"),
+            "should name the second rule too, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn the_production_finals_shape_is_refused() {
+        // The exact shape every one of our JSON exports carried before this
+        // branch: overtime allowed, all three overtime durations zero, only the
+        // pre-sudden-death break filled in. The Portal refuses it (verified live
+        // against their API), and `normalize_degenerate_overtime` used to be the
+        // thing that stopped it crashing refbox at the end of such a game.
+        let mut rule = a_valid_rule();
+        rule.name = "FINALS".to_string();
+        rule.overtime_allowed = true;
+        rule.sudden_death_allowed = true;
+        rule.ot_half_play_duration = Duration::ZERO;
+        rule.ot_half_time_duration = Duration::ZERO;
+        rule.pre_overtime_break = Duration::ZERO;
+        rule.pre_sudden_death_duration = Duration::from_secs(60);
+
+        assert!(
+            check_flag_gated_durations(&schedule_with_rules(vec![rule])).is_err(),
+            "the shape that crashed the app must not reach an upload"
+        );
+    }
+
+    #[test]
+    fn run_schedule_checks_refuses_a_rule_whose_switched_on_duration_is_zero() {
+        // Guards the WIRING, not the check. Every other test here calls
+        // `check_flag_gated_durations` directly, so deleting its line in
+        // `run_schedule_checks` would leave the whole suite green and the gate
+        // silently gone. That exact gap got past the Game Block review.
+        let mut rule = a_valid_rule();
+        rule.overtime_allowed = true;
+        rule.ot_half_play_duration = Duration::ZERO;
+
+        let refused = run_schedule_checks(&schedule_with_rules(vec![rule]))
+            .expect_err("a zero duration the rule uses must stop the schedule loading");
+        assert!(
+            refused.to_string().contains("zero duration"),
+            "must be refused for the zero duration, not something else: {refused}"
+        );
+
+        run_schedule_checks(&schedule_with_rules(vec![a_valid_rule()]))
+            .expect("the same schedule with sound durations passes");
     }
 }

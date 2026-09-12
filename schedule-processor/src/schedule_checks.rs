@@ -747,9 +747,17 @@ fn calculate_occupied_times(schedule: &Schedule) -> IndexMap<String, Duration> {
     let mut occupied_time_map: IndexMap<String, Duration> = IndexMap::new();
 
     for rule in &schedule.timing_rules {
-        let occupied_time =
-            2 * rule.half_play_duration + rule.half_time_duration + rule.minimum_break;
-        occupied_time_map.insert(rule.name.clone(), occupied_time);
+        // Mirrors the regulation-time derivation in uwh-common's TimingRule ->
+        // GameConfig conversion. A single-period game has one period and no
+        // half-time break, so counting two halves plus a break it never takes
+        // holds the court far longer than the game does and reports overlaps
+        // between games that do not overlap.
+        let regulation = if rule.single_period {
+            rule.half_play_duration
+        } else {
+            2 * rule.half_play_duration + rule.half_time_duration
+        };
+        occupied_time_map.insert(rule.name.clone(), regulation + rule.minimum_break);
     }
     occupied_time_map
 }
@@ -853,6 +861,23 @@ mod tests {
         rule.game_block = None;
         let schedule = schedule_with_rules(vec![rule]);
         assert!(check_no_zero_durations(&schedule).is_ok());
+    }
+
+    #[test]
+    fn a_single_period_game_occupies_one_half_not_two() {
+        // A court is held for the play plus the gap after it. One period of 12
+        // minutes plus a 4-minute break is 16 minutes -- NOT 12 + 12 + 3 + 4.
+        // Over-counting here reports overlaps between games that do not overlap.
+        let mut rule = a_valid_rule();
+        rule.single_period = true;
+        let occupied = calculate_occupied_times(&schedule_with_rules(vec![rule]));
+        assert_eq!(occupied["RR"], Duration::from_secs(720 + 240));
+    }
+
+    #[test]
+    fn a_two_half_game_still_occupies_both_halves_and_the_break() {
+        let occupied = calculate_occupied_times(&schedule_with_rules(vec![a_valid_rule()]));
+        assert_eq!(occupied["RR"], Duration::from_secs(720 * 2 + 180 + 240));
     }
 
     #[test]

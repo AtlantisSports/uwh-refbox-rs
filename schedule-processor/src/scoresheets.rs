@@ -2466,6 +2466,7 @@ pub fn generate_example_rule_sheets(
                 team_timeouts_counted_per_half: per_half,
                 overtime_allowed: ot_allowed,
                 sudden_death_allowed: sd_allowed,
+                single_period: false,
                 last_2_min_stop_time: false,
                 half_play_duration: std::time::Duration::from_secs(15 * 60),
                 half_time_duration: std::time::Duration::from_secs(3 * 60),

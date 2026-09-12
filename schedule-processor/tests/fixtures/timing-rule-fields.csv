@@ -10,6 +10,7 @@ Date,Time,Div,Pod,Rule,Game,Court,Light,Dark,,Group,Short Name,Filter Type,Endin
 ,,,,,,,,,,,,,,,,,,,RR,overtimeHalfPlayDuration,300
 ,,,,,,,,,,,,,,,,,,,RR,overtimeHalfTimeDuration,60
 ,,,,,,,,,,,,,,,,,,,RR,suddenDeathAllowed,FALSE
+,,,,,,,,,,,,,,,,,,,RR,singlePeriod,FALSE
 ,,,,,,,,,,,,,,,,,,,RR,preSuddenDeathDuration,60
 ,,,,,,,,,,,,,,,,,,,RR,minimumBreak,240
 ,,,,,,,,,,,,,,,,,,,RR,gameBlock,1920

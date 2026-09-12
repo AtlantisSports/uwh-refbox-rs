@@ -606,11 +606,12 @@ pub(crate) fn parse_group(
 /// it can only ever be a mistake, so it gets its own message rather than being
 /// advertised as valid. `timing_rule_field_names_match_the_type` keeps this
 /// list honest against `TimingRule` itself.
-const TIMING_RULE_FIELDS: [&str; 14] = [
+const TIMING_RULE_FIELDS: [&str; 15] = [
     "teamTimeoutCount",
     "teamTimeoutsCountedPerHalf",
     "overtimeAllowed",
     "suddenDeathAllowed",
+    "singlePeriod",
     "last2minStopTime",
     "halfPlayDuration",
     "halfTimeDuration",
@@ -808,6 +809,7 @@ mod tests {
             team_timeouts_counted_per_half: false,
             overtime_allowed: false,
             sudden_death_allowed: false,
+            single_period: false,
             last_2_min_stop_time: false,
             half_play_duration: Duration::from_secs(720),
             half_time_duration: Duration::from_secs(180),

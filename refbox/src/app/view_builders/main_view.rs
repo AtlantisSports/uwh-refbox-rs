@@ -14,6 +14,21 @@ use uwh_common::{
     uwhportal::schedule::Schedule,
 };
 
+/// The smallest projected lateness worth putting in front of the operator. Below a
+/// minute the next game is, for practical purposes, starting on time: a slip that
+/// small is within the noise of a single stoppage and there is nothing to act on.
+const DELAY_DISPLAY_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The DELAY label for a projected lateness, or `None` when the indicator should stay
+/// blank. From the threshold up it shows the whole figure, not the part above it.
+fn delay_label(behind_schedule: std::time::Duration) -> Option<String> {
+    if behind_schedule >= DELAY_DISPLAY_THRESHOLD {
+        Some(format!("-{}", time_string(behind_schedule)))
+    } else {
+        None
+    }
+}
+
 // View builder takes app-state slices; grouping into a context struct is a separate refactor across all view_builders. Filed as a Findings-Backlog item in AUDIT-PLAN.md (Unit 3, 2026-05-13).
 #[allow(clippy::too_many_arguments)]
 pub(in super::super) fn build_main_view<'a>(
@@ -36,11 +51,7 @@ pub(in super::super) fn build_main_view<'a>(
         ..
     } = data;
 
-    let behind_label = if behind_schedule > std::time::Duration::ZERO {
-        Some(format!("-{}", time_string(behind_schedule)))
-    } else {
-        None
-    };
+    let behind_label = delay_label(behind_schedule);
     let time_button = make_game_time_button(
         snapshot,
         true,
@@ -492,4 +503,39 @@ pub(in super::super) fn build_main_view<'a>(
     .spacing(0)
     .height(Length::Fill)
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn delay_label_is_blank_when_not_behind() {
+        assert_eq!(delay_label(Duration::ZERO), None);
+    }
+
+    #[test]
+    fn delay_label_is_blank_below_one_minute() {
+        assert_eq!(delay_label(Duration::from_secs(59)), None);
+        // The sub-second case the engine's rounding used to guard against: without a
+        // threshold this would light the indicator and print "-0:00".
+        assert_eq!(delay_label(Duration::from_millis(500)), None);
+    }
+
+    #[test]
+    fn delay_label_appears_at_exactly_one_minute() {
+        assert_eq!(
+            delay_label(Duration::from_secs(60)),
+            Some("-1:00".to_string())
+        );
+    }
+
+    #[test]
+    fn delay_label_shows_the_full_figure_not_the_excess_over_the_threshold() {
+        assert_eq!(
+            delay_label(Duration::from_secs(90)),
+            Some("-1:30".to_string())
+        );
+    }
 }

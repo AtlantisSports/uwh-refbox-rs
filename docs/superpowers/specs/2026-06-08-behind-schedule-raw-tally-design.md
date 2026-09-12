@@ -1,3 +1,16 @@
+> **SUPERSEDED on 2026-09-11.** The raw deviation tally this document specifies has been retired
+> from the engine entirely -- it fed nothing but the display -- and `behind_schedule_shown` with it.
+>
+> DELAY is now measured against the **next game's published start time**: a game must end by
+> `next scheduled start - minimum_break`, and DELAY is how far past that point it is projected to
+> run. The Game Block plays no part in it. On the last game of a court, where there is no next
+> game, it falls back to how late that game is running against its own scheduled start. The
+> indicator also stays **blank below one minute**. Superseded by the commits
+> `fix(refbox): show delay against the next scheduled start`,
+> `fix(refbox): project the delay through remaining overtime`,
+> `fix(refbox): keep the delay indicator blank below a minute` and
+> `fix(refbox): project the last game's delay through overtime`.
+
 # Design: Behind-schedule in-game figure = raw deviation tally (no in-game buffer)
 
 Date: 2026-06-08

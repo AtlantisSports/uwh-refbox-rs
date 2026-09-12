@@ -1,3 +1,19 @@
+> **CALCULATION SUPERSEDED on 2026-09-11. The display is not.**
+> What this document specifies that still stands: the **Show Behind Schedule Time** setting, the
+> quiet red `-M:SS` figure, and its place on the main time bar. What no longer stands is what the
+> figure *means* and how it is worked out -- the "how far behind its scheduled start times the run
+> of games is" tally described below no longer exists.
+>
+> DELAY is now measured against the **next game's published start time**: a game must end by
+> `next scheduled start - minimum_break`, and DELAY is how far past that point it is projected to
+> run. The Game Block plays no part in it. On the last game of a court, where there is no next
+> game, it falls back to how late that game is running against its own scheduled start. The
+> indicator also stays **blank below one minute**. Superseded by the commits
+> `fix(refbox): show delay against the next scheduled start`,
+> `fix(refbox): project the delay through remaining overtime`,
+> `fix(refbox): keep the delay indicator blank below a minute` and
+> `fix(refbox): project the last game's delay through overtime`.
+
 # Design: Persistent "Behind Schedule" indicator + App-Options toggle
 
 Date: 2026-06-06

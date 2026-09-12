@@ -248,6 +248,16 @@ pub struct TimingRule {
     pub overtime_allowed: bool,
     #[serde(rename = "suddenDeathAllowed")]
     pub sudden_death_allowed: bool,
+    /// One playing period and no half-time break. Replaces the former
+    /// convention where a zero `halfTimeDuration` carried this meaning: a mode
+    /// belongs in a flag, not in a magic value. `half_time_duration` still
+    /// carries a real, unused number when this is set — exactly as
+    /// `ot_half_play_duration` does when `overtime_allowed` is false.
+    ///
+    /// `default` so a rule from a Portal predating the field reads as two
+    /// halves, which is correct: no current event is a single-period game.
+    #[serde(default, rename = "singlePeriod")]
+    pub single_period: bool,
     #[serde(default, rename = "last2minStopTime")]
     pub last_2_min_stop_time: bool,
     #[serde(with = "secs_only_duration", rename = "halfPlayDuration")]
@@ -284,6 +294,7 @@ impl Into<GameConfig> for TimingRule {
             team_timeouts_counted_per_half,
             overtime_allowed,
             sudden_death_allowed,
+            single_period,
             // Discarded on purpose, and this is NOT a bug to fix by wiring it
             // to the clock. The setting is carried for DISPLAY only: the
             // game-info screen shows it so the operator can see the rule
@@ -320,7 +331,7 @@ impl Into<GameConfig> for TimingRule {
             timeouts_counted_per_half: team_timeouts_counted_per_half,
             overtime_allowed,
             sudden_death_allowed,
-            single_half: half_time_duration == Duration::ZERO,
+            single_half: single_period,
             half_play_duration,
             half_time_duration,
             team_timeout_duration,
@@ -338,7 +349,7 @@ impl Into<GameConfig> for TimingRule {
                 // games at). This matches schedule-processor's slot math. Using the
                 // refbox default nominal_break here was the bug: the portal never
                 // sends nominal_break, so it injected a 15-min default gap.
-                let regulation = if half_time_duration == Duration::ZERO {
+                let regulation = if single_period {
                     half_play_duration
                 } else {
                     2 * half_play_duration + half_time_duration
@@ -1010,6 +1021,7 @@ mod tests {
             team_timeouts_counted_per_half: true,
             overtime_allowed: true,
             sudden_death_allowed: true,
+            single_period: false,
             last_2_min_stop_time: false,
             half_play_duration: Duration::from_secs(900),
             half_time_duration: Duration::from_secs(180),
@@ -1024,7 +1036,7 @@ mod tests {
         let serialized = serde_json::to_string(&timing_rule).unwrap();
         assert_eq!(
             serialized,
-            r#"{"name":"RR","teamTimeoutCount":1,"teamTimeoutsCountedPerHalf":true,"overtimeAllowed":true,"suddenDeathAllowed":true,"last2minStopTime":false,"halfPlayDuration":900,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":180,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240}"#
+            r#"{"name":"RR","teamTimeoutCount":1,"teamTimeoutsCountedPerHalf":true,"overtimeAllowed":true,"suddenDeathAllowed":true,"singlePeriod":false,"last2minStopTime":false,"halfPlayDuration":900,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":180,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240}"#
         );
     }
 
@@ -1040,6 +1052,7 @@ mod tests {
                 team_timeouts_counted_per_half: true,
                 overtime_allowed: true,
                 sudden_death_allowed: true,
+                single_period: false,
                 last_2_min_stop_time: false,
                 half_play_duration: Duration::from_secs(900),
                 half_time_duration: Duration::from_secs(180),
@@ -1075,9 +1088,46 @@ mod tests {
     }
 
     #[test]
+    fn single_period_flag_drives_single_half_not_the_zero() {
+        // The flag is what decides, and a real positive half-time is simply unused.
+        let json = r#"{"name":"RR","teamTimeoutCount":1,"teamTimeoutsCountedPerHalf":false,"overtimeAllowed":false,"suddenDeathAllowed":false,"singlePeriod":true,"halfPlayDuration":600,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":60,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240}"#;
+        let rule: TimingRule = serde_json::from_str(json).unwrap();
+        assert!(rule.single_period);
+        let config: GameConfig = rule.into();
+        assert!(
+            config.single_half,
+            "the flag must decide, not the half-time value"
+        );
+    }
+
+    #[test]
+    fn a_missing_single_period_field_means_two_halves() {
+        let json = r#"{"name":"RR","teamTimeoutCount":1,"teamTimeoutsCountedPerHalf":false,"overtimeAllowed":false,"suddenDeathAllowed":false,"halfPlayDuration":600,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":60,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240}"#;
+        let rule: TimingRule = serde_json::from_str(json).unwrap();
+        assert!(!rule.single_period);
+        let config: GameConfig = rule.into();
+        assert!(!config.single_half);
+    }
+
+    #[test]
+    fn game_block_regulation_follows_the_flag_not_the_zero() {
+        // The second magic-zero read. A single-period rule whose half-time now
+        // carries a real unused number must still derive one half of play, not
+        // two halves plus the break.
+        let json = r#"{"name":"RR","teamTimeoutCount":1,"teamTimeoutsCountedPerHalf":false,"overtimeAllowed":false,"suddenDeathAllowed":false,"singlePeriod":true,"halfPlayDuration":600,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":60,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240}"#;
+        let rule: TimingRule = serde_json::from_str(json).unwrap();
+        let config: GameConfig = rule.into();
+        // regulation = half_play (600) + minimum_break (240) = 840.
+        // NOT 600 * 2 + 180 + 240 = 1620.
+        assert_eq!(config.game_block, Duration::from_secs(840));
+    }
+
+    #[test]
     fn test_timing_rule_game_block_single_half_derived() {
-        // halfTimeDuration == 0 signals single-half; regulation = half_play only.
-        let json = r#"{"name":"RR","teamTimeoutCount":0,"teamTimeoutsCountedPerHalf":false,"overtimeAllowed":false,"suddenDeathAllowed":false,"halfPlayDuration":600,"halfTimeDuration":0,"teamTimeoutDuration":0,"overtimeHalfPlayDuration":0,"overtimeHalfTimeDuration":0,"preOvertimeBreak":0,"preSuddenDeathDuration":0,"minimumBreak":120}"#;
+        // `singlePeriod` signals one period; regulation = half_play only. The
+        // half-time now carries a real, unused number and the expected block is
+        // unchanged at 720 — which is the point: the flag decides, not the value.
+        let json = r#"{"name":"RR","teamTimeoutCount":0,"teamTimeoutsCountedPerHalf":false,"overtimeAllowed":false,"suddenDeathAllowed":false,"singlePeriod":true,"halfPlayDuration":600,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":60,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":120}"#;
         let rule: TimingRule = serde_json::from_str(json).unwrap();
         let config: GameConfig = rule.into();
         // single half: regulation = 600; minimum_break = 120 -> 720
@@ -1305,16 +1355,20 @@ mod tests {
     }
 
     #[test]
-    fn test_timing_rule_single_half_when_no_halftime_break() {
-        // Regression test for the bug fixed in commit 6907ef8:
-        // a TimingRule with halftime_duration == ZERO is the signal for a single-half game.
-        // The pre-fix check (half_play_duration == ZERO) was impossible to be true.
+    fn test_zero_halftime_alone_no_longer_signals_single_half() {
+        // Was `test_timing_rule_single_half_when_no_halftime_break`, which asserted
+        // the opposite: that a zero halfTimeDuration signalled a single-half game
+        // (the convention introduced in commit 6907ef8). That convention is gone —
+        // `singlePeriod` now carries the meaning — so this guards its removal. A
+        // zero half-time is itself refused at authoring time; if one somehow
+        // arrives, it is a zero-length break and NOT a mode switch.
         let rule = TimingRule {
             name: "Test".to_string(),
             team_timeout_count: 0,
             team_timeouts_counted_per_half: false,
             overtime_allowed: false,
             sudden_death_allowed: false,
+            single_period: false,
             last_2_min_stop_time: false,
             half_play_duration: Duration::from_secs(900),
             half_time_duration: Duration::ZERO,
@@ -1328,8 +1382,8 @@ mod tests {
         };
         let config: GameConfig = rule.into();
         assert!(
-            config.single_half,
-            "TimingRule with halftime_duration == ZERO should produce single_half == true"
+            !config.single_half,
+            "a zero half-time must no longer be read as a single-period game"
         );
     }
 
@@ -1341,6 +1395,7 @@ mod tests {
             team_timeouts_counted_per_half: false,
             overtime_allowed: false,
             sudden_death_allowed: false,
+            single_period: false,
             last_2_min_stop_time: false,
             half_play_duration: Duration::from_secs(900),
             half_time_duration: Duration::from_secs(120),
@@ -1504,6 +1559,7 @@ mod tests {
                 team_timeouts_counted_per_half: true,
                 overtime_allowed: true,
                 sudden_death_allowed: true,
+                single_period: false,
                 last_2_min_stop_time: false,
                 half_play_duration: Duration::from_secs(900),
                 half_time_duration: Duration::from_secs(180),
@@ -1865,6 +1921,7 @@ mod tests {
                 team_timeouts_counted_per_half: true,
                 overtime_allowed: false,
                 sudden_death_allowed: false,
+                single_period: false,
                 last_2_min_stop_time: false,
                 half_play_duration: Duration::from_secs(600),
                 half_time_duration: Duration::from_secs(120),

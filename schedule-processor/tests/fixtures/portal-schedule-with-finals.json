@@ -1516,7 +1516,8 @@
       "overtimeHalfTimeDuration": 0,
       "preOvertimeBreak": 0,
       "preSuddenDeathDuration": 0,
-      "minimumBreak": 180
+      "minimumBreak": 180,
+      "gameBlock": 1500
     },
     {
       "name": "FINALS",
@@ -1533,7 +1534,8 @@
       "overtimeHalfTimeDuration": 0,
       "preOvertimeBreak": 0,
       "preSuddenDeathDuration": 60,
-      "minimumBreak": 180
+      "minimumBreak": 180,
+      "gameBlock": 1860
     }
   ],
   "standingsOrder": [

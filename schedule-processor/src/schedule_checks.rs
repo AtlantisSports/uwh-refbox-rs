@@ -2,7 +2,7 @@ use indexmap::{IndexMap, IndexSet};
 use log::{error, warn};
 use std::time::Duration;
 use time::OffsetDateTime;
-use uwh_common::uwhportal::schedule::*;
+use uwh_common::{config::Game as GameConfig, uwhportal::schedule::*};
 
 // TODO: Validate final results calculation ( i.e. that the group exists or that the games exist )
 
@@ -13,6 +13,7 @@ pub fn run_schedule_checks(schedule: &Schedule) -> Result<(), Box<dyn std::error
     check_groups_have_games(schedule)?;
     check_unique_timing_rule_names(schedule)?;
     check_flag_gated_durations(schedule)?;
+    check_game_block(schedule)?;
     check_game_timing_rules(schedule)?;
     check_game_overlap(schedule)?;
     check_same_team_in_game(schedule)?;
@@ -902,6 +903,145 @@ fn calculate_occupied_times(schedule: &Schedule) -> IndexMap<String, Duration> {
     occupied_time_map
 }
 
+/// How a timing rule's authored Game Block measures up against the game it has
+/// to hold.
+///
+/// Deliberately mirrors refbox's own three-tier `game_block_validity`
+/// (`refbox/src/app/view_builders/configuration.rs`), with `Missing` added
+/// because the builder sees rules before a Game Block is guaranteed. Both read
+/// the minimum and the timeout allotment from the same shared `GameConfig`, so
+/// the arithmetic cannot drift apart. The tiering itself is a second copy of
+/// refbox's, and the two deliberately part company over a missing Game Block:
+/// refbox only ever sees one after the conversion has filled it in with the
+/// minimum, so its editor shows `Tight` where the builder refuses outright.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum GameBlockStatus {
+    /// No Game Block authored at all.
+    Missing,
+    /// Shorter than the game plus the minimum break.
+    TooShort {
+        minimum: Duration,
+    },
+    /// Long enough, but with no more spare time than the teams' timeouts could
+    /// use, so nothing is left to recover a delay with.
+    Tight,
+    Ok,
+}
+
+fn game_block_status(rule: &TimingRule) -> GameBlockStatus {
+    // Tested on the rule itself, before the conversion below: converting fills a
+    // missing Game Block in with the minimum, which would leave "never authored"
+    // indistinguishable from "authored at exactly the minimum".
+    if rule.game_block.is_none() {
+        return GameBlockStatus::Missing;
+    }
+
+    let config = game_config(rule);
+    let minimum = config.game_block_minimum();
+
+    if config.game_block < minimum {
+        GameBlockStatus::TooShort { minimum }
+    } else if config.game_block_buffer() <= config.team_timeout_allotment() {
+        GameBlockStatus::Tight
+    } else {
+        GameBlockStatus::Ok
+    }
+}
+
+/// The timing rule as refbox reads it, which is where the sizing rules live.
+///
+/// Only call this for a rule that HAS a Game Block. The conversion fills a missing
+/// one in with the minimum, so after it "never authored" and "authored at exactly
+/// the minimum" are the same value and cannot be told apart.
+fn game_config(rule: &TimingRule) -> GameConfig {
+    debug_assert!(
+        rule.game_block.is_some(),
+        "game_config fills a missing Game Block in with the minimum - test \
+         rule.game_block before converting, never after"
+    );
+    rule.clone().into()
+}
+
+/// `1500` -> `"25:00"`. Minutes and seconds, as an organiser reads a Game Block
+/// off the schedule. refbox formats its own through `matrix_drawing`, which this
+/// crate does not depend on, so the two are independent and may drift.
+fn format_mins_secs(duration: Duration) -> String {
+    let secs = duration.as_secs();
+    format!("{}:{:02}", secs / 60, secs % 60)
+}
+
+/// Every one of these is read by a tournament organiser who will act on it, so
+/// each names the rule it is about and the values that decide the verdict.
+fn missing_message(rule: &TimingRule) -> String {
+    format!(
+        "Timing rule '{}' has no Game Block. Every timing rule needs one.",
+        rule.name
+    )
+}
+
+fn too_short_message(rule: &TimingRule) -> String {
+    // The minimum is read from the same config as the value printed beside it, so
+    // the two numbers in the sentence cannot disagree.
+    let config = game_config(rule);
+    format!(
+        "Timing rule '{}' has a Game Block of {}, which is shorter than the {} this game \
+         needs (the playing time plus the minimum break).",
+        rule.name,
+        format_mins_secs(config.game_block),
+        format_mins_secs(config.game_block_minimum()),
+    )
+}
+
+/// The tight band runs from the minimum up to the timeout allotment, so the spare
+/// time is stated rather than called absent: at the bottom of the band it reads
+/// `0:00`, and further up it is real minutes in hand.
+fn tight_message(rule: &TimingRule) -> String {
+    let config = game_config(rule);
+    format!(
+        "Timing rule '{}' has a Game Block of {}, which leaves only {} spare - too \
+         little to absorb small delays.",
+        rule.name,
+        format_mins_secs(config.game_block),
+        format_mins_secs(config.game_block_buffer()),
+    )
+}
+
+/// Refuse a Game Block that cannot hold its own game, and warn about one with no
+/// room to recover a delay.
+///
+/// The Game Block is the total time the schedule sets aside for a game. It is
+/// authored alongside the schedule and nothing here computes one: a rule that
+/// does not carry it is refused rather than filled in, because a guessed slot
+/// length that looks plausible is worse than an obvious gap.
+fn check_game_block(schedule: &Schedule) -> Result<(), Box<dyn std::error::Error>> {
+    let mut invalid_rules = Vec::new();
+
+    for rule in &schedule.timing_rules {
+        match game_block_status(rule) {
+            GameBlockStatus::Missing => {
+                error!("{}", missing_message(rule));
+                invalid_rules.push(rule.name.clone());
+            }
+            GameBlockStatus::TooShort { .. } => {
+                error!("{}", too_short_message(rule));
+                invalid_rules.push(rule.name.clone());
+            }
+            GameBlockStatus::Tight => warn!("{}", tight_message(rule)),
+            GameBlockStatus::Ok => {}
+        }
+    }
+
+    if invalid_rules.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Found timing rules with an invalid Game Block: {}",
+            invalid_rules.join(", ")
+        )
+        .into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1323,5 +1463,211 @@ mod tests {
 
         run_schedule_checks(&schedule_with_rules(vec![a_valid_rule()]))
             .expect("the same schedule with sound durations passes");
+    }
+
+    /// Matches the real 71-game export's round-robin rule: two 10-minute halves
+    /// and a 2-minute half-time (22:00 of play) plus a 3-minute minimum break,
+    /// so the smallest legal Game Block is 25:00. Both teams together may take
+    /// four 1-minute timeouts, so "tight" runs from 25:00 up to 29:00 inclusive.
+    fn a_rule(game_block: Option<Duration>) -> TimingRule {
+        TimingRule {
+            name: "RR".to_string(),
+            team_timeout_count: 1,
+            team_timeouts_counted_per_half: true,
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            last_2_min_stop_time: false,
+            half_play_duration: Duration::from_secs(600),
+            half_time_duration: Duration::from_secs(120),
+            team_timeout_duration: Duration::from_secs(60),
+            ot_half_play_duration: Duration::from_secs(300),
+            ot_half_time_duration: Duration::from_secs(60),
+            pre_overtime_break: Duration::from_secs(180),
+            pre_sudden_death_duration: Duration::from_secs(60),
+            minimum_break: Duration::from_secs(180),
+            game_block,
+            single_period: false,
+        }
+    }
+
+    #[test]
+    fn a_missing_game_block_is_reported_missing() {
+        assert_eq!(game_block_status(&a_rule(None)), GameBlockStatus::Missing);
+    }
+
+    #[test]
+    fn a_game_block_one_second_below_the_minimum_is_too_short() {
+        let status = game_block_status(&a_rule(Some(Duration::from_secs(1499))));
+        assert_eq!(
+            status,
+            GameBlockStatus::TooShort {
+                minimum: Duration::from_secs(1500)
+            }
+        );
+    }
+
+    #[test]
+    fn a_game_block_exactly_at_the_minimum_is_tight_not_too_short() {
+        // The boundary is legal: a slot that exactly fits the game and the
+        // minimum break may be uploaded, but it has no room to recover at all.
+        assert_eq!(
+            game_block_status(&a_rule(Some(Duration::from_secs(1500)))),
+            GameBlockStatus::Tight
+        );
+    }
+
+    #[test]
+    fn a_game_block_with_spare_equal_to_the_timeout_allotment_is_tight() {
+        // 25:00 minimum + 4:00 of timeouts. Equal counts as tight, matching
+        // refbox's editor, which turns yellow at exactly this point.
+        assert_eq!(
+            game_block_status(&a_rule(Some(Duration::from_secs(1740)))),
+            GameBlockStatus::Tight
+        );
+    }
+
+    #[test]
+    fn a_game_block_one_second_past_the_timeout_allotment_is_ok() {
+        assert_eq!(
+            game_block_status(&a_rule(Some(Duration::from_secs(1741)))),
+            GameBlockStatus::Ok
+        );
+    }
+
+    #[test]
+    fn a_single_period_rule_is_sized_by_one_period_not_two() {
+        // A single-period game plays one 10-minute period, so its minimum is
+        // 13:00, not the 23:00 that counting two halves would give. A 16:40
+        // block is comfortably fine; spelling the formula out by hand here
+        // instead of reusing the shared one would call it far too short.
+        let mut rule = a_rule(Some(Duration::from_secs(1000)));
+        // The flag is the switch now, not a zero half-time. Zeroing the half-time
+        // as well keeps the rule realistic: `check_flag_gated_durations` permits a
+        // zero there precisely because a single-period game has no half-time.
+        rule.single_period = true;
+        rule.half_time_duration = Duration::ZERO;
+        assert_eq!(game_block_status(&rule), GameBlockStatus::Ok);
+    }
+
+    #[test]
+    fn durations_read_as_minutes_and_seconds() {
+        assert_eq!(format_mins_secs(Duration::from_secs(1500)), "25:00");
+        assert_eq!(format_mins_secs(Duration::from_secs(1741)), "29:01");
+        assert_eq!(format_mins_secs(Duration::ZERO), "0:00");
+    }
+
+    #[test]
+    fn the_missing_message_names_the_rule() {
+        let msg = missing_message(&a_rule(None));
+        assert!(msg.contains("RR"), "got: {msg}");
+        assert!(msg.contains("no Game Block"), "got: {msg}");
+    }
+
+    #[test]
+    fn the_too_short_message_names_the_rule_its_value_and_the_minimum() {
+        let rule = a_rule(Some(Duration::from_secs(1200)));
+        let msg = too_short_message(&rule);
+        assert!(msg.contains("RR"), "got: {msg}");
+        // Ordered on purpose: asserting the two numbers separately still passes
+        // if they are swapped, which reads as "shorten a block already too short".
+        assert!(
+            msg.contains("of 20:00, which is shorter than the 25:00"),
+            "should state the authored value then the minimum, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn the_tight_message_names_the_value_and_the_spare_time() {
+        // 26:00 block against a 25:00 minimum: 1:00 spare, which is what the
+        // organiser needs to see - the warning fires well above zero spare.
+        let msg = tight_message(&a_rule(Some(Duration::from_secs(1560))));
+        assert!(
+            msg.contains("26:00"),
+            "should state the authored value, got: {msg}"
+        );
+        assert!(
+            msg.contains("1:00"),
+            "should state the real spare time, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn check_game_block_names_every_offending_rule_not_just_the_first() {
+        let mut missing = a_rule(None);
+        missing.name = "FINALS".to_string();
+        let too_short = a_rule(Some(Duration::from_secs(600)));
+        let schedule = schedule_with_rules(vec![too_short, missing]);
+
+        let err = check_game_block(&schedule).expect_err("both rules are invalid");
+        let msg = err.to_string();
+        assert!(msg.contains("RR"), "should name the short rule, got: {msg}");
+        assert!(
+            msg.contains("FINALS"),
+            "should name the rule missing a Game Block too, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn check_game_block_accepts_a_tight_rule() {
+        let schedule = schedule_with_rules(vec![a_rule(Some(Duration::from_secs(1500)))]);
+        assert!(
+            check_game_block(&schedule).is_ok(),
+            "a tight Game Block warns, it does not refuse the upload"
+        );
+    }
+
+    #[test]
+    fn check_game_block_accepts_a_comfortable_rule() {
+        // Nothing else drives the `Ok` tier through the check itself, so a
+        // regression that started refusing healthy schedules would go unseen.
+        let schedule = schedule_with_rules(vec![a_rule(Some(Duration::from_secs(1741)))]);
+        assert!(
+            check_game_block(&schedule).is_ok(),
+            "a Game Block with room to spare passes without comment"
+        );
+    }
+
+    #[test]
+    fn a_rule_allowing_no_timeouts_is_tight_only_at_the_minimum() {
+        // With no team timeouts there is no allotment to compare against, so the
+        // tight band collapses onto the boundary itself: exactly the minimum is
+        // tight, one second above it is fine.
+        let mut at_minimum = a_rule(Some(Duration::from_secs(1500)));
+        at_minimum.team_timeout_count = 0;
+        assert_eq!(game_block_status(&at_minimum), GameBlockStatus::Tight);
+
+        let mut just_above = a_rule(Some(Duration::from_secs(1501)));
+        just_above.team_timeout_count = 0;
+        assert_eq!(game_block_status(&just_above), GameBlockStatus::Ok);
+    }
+
+    #[test]
+    fn run_schedule_checks_refuses_a_schedule_whose_rule_has_no_game_block() {
+        // Guards the WIRING, not the check. Every other test here calls
+        // `check_game_block` directly, so deleting its line in `run_schedule_checks`
+        // would leave the whole suite green and the gate silently gone.
+        let refused = run_schedule_checks(&schedule_with_rules(vec![a_rule(None)]))
+            .expect_err("a rule with no Game Block must stop the schedule loading");
+        assert!(
+            refused.to_string().contains("Game Block"),
+            "must be refused for the Game Block, not for something else: {refused}"
+        );
+
+        run_schedule_checks(&schedule_with_rules(vec![a_rule(Some(
+            Duration::from_secs(1800),
+        ))]))
+        .expect("the same schedule with a sound Game Block passes");
+    }
+
+    #[test]
+    fn the_tight_message_reads_zero_spare_at_the_minimum() {
+        // The commonest real case, not a corner: the 71-game export's own
+        // round-robin rule sits exactly on its minimum, so this is the sentence
+        // most organisers will actually see.
+        let msg = tight_message(&a_rule(Some(Duration::from_secs(1500))));
+        assert!(
+            msg.contains("of 25:00, which leaves only 0:00 spare"),
+            "got: {msg}"
+        );
     }
 }

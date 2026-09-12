@@ -2748,8 +2748,8 @@ impl TournamentManager {
     pub fn behind_schedule(&self, now: Instant) -> Duration {
         // Before the first game has started there is no schedule anchor yet, so the
         // event cannot be "behind". Without this, the pre-game break countdown
-        // projects ~= the scheduled start and clock granularity leaks a sub-minute
-        // positive value, shown as "DELAY -0:0".
+        // projects ~= the scheduled start and clock granularity leaks a small
+        // positive value, reporting a delay that does not exist.
         if self.current_period == GamePeriod::BetweenGames && self.current_scheduled_start.is_none()
         {
             return Duration::ZERO;
@@ -2782,12 +2782,12 @@ impl TournamentManager {
                 .unwrap_or(projected_end)
         };
 
-        // The operator's DELAY label truncates to whole seconds, so a sub-second
-        // figure would render as a permanent "-0:00" -- and because the figure holds
-        // steady while the clock runs on schedule, it would sit there for a whole
-        // half. A scheduled start taken from the portal carries sub-second precision,
-        // so this is the normal case there, not an edge one. Report the second the
-        // label will show.
+        // Report whole seconds, so this figure is exactly the one the operator's
+        // label renders. (A scheduled start taken from the portal carries sub-second
+        // precision, so the raw value is fractional as a matter of course, not as an
+        // edge case.) Whether it is shown at all is a display decision and lives with
+        // the label -- see `delay_label` in `app/view_builders/main_view.rs`, which
+        // keeps the indicator blank below a minute.
         let behind = projected_next_start.saturating_duration_since(sched_next);
         Duration::from_secs(behind.as_secs())
     }
@@ -4325,11 +4325,10 @@ mod test {
     }
 
     #[test]
-    fn test_behind_schedule_floors_sub_second_values_so_delay_reads_blank() {
-        // The DELAY label truncates to whole seconds, so a sub-second figure would render
-        // as a permanent "-0:00" -- and it would sit there, because the figure holds
-        // steady while the clock runs on schedule. A portal scheduled start carries
-        // sub-second precision, so this is the ordinary case there, not an edge one.
+    fn test_behind_schedule_reports_whole_seconds() {
+        // The figure is reported in whole seconds, so it matches what the label would
+        // render. A portal scheduled start carries sub-second precision, so a fractional
+        // raw value is the ordinary case there, not an edge one.
         initialize();
         let mut tm = TournamentManager::new(behind_test_config());
         let start = Instant::now();
@@ -4337,12 +4336,12 @@ mod test {
         tm.start_play_now(start).unwrap(); // next slot = start+40
         tm.stop_clock(start).unwrap(); // remaining regulation holds at 10+3+10 = 23
         // The figure is (now + 23 + 2s break) - 40 = now - 15.
-        // At 15.3s that is 300ms, which must read blank rather than "-0:00".
+        // At 15.3s that is 300ms, which rounds down to nothing.
         assert_eq!(
             tm.behind_schedule(start + Duration::from_millis(15_300)),
             Duration::ZERO
         );
-        // At 16.4s it is 1.4s, which the label shows as one second.
+        // At 16.4s it is 1.4s, reported as one whole second.
         assert_eq!(
             tm.behind_schedule(start + Duration::from_millis(16_400)),
             Duration::from_secs(1)

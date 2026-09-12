@@ -18,6 +18,10 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
+    /// A hand-written minimal payload, NOT an export — which is why its timing rule omits
+    /// `singlePeriod` while the real-shape fixture below carries it. The omission is deliberate
+    /// and load-bearing: it keeps one test on the `#[serde(default)]` path, so a change that
+    /// made the field mandatory to deserialise would fail here rather than at a tournament.
     const HAPPY_PATH_JSON: &str = r#"{
         "games": [
             {
@@ -51,10 +55,10 @@ mod tests {
                 "halfPlayDuration": 600,
                 "halfTimeDuration": 120,
                 "teamTimeoutDuration": 60,
-                "overtimeHalfPlayDuration": 300,
-                "overtimeHalfTimeDuration": 60,
-                "preOvertimeBreak": 180,
-                "preSuddenDeathDuration": 60,
+                "overtimeHalfPlayDuration": 0,
+                "overtimeHalfTimeDuration": 0,
+                "preOvertimeBreak": 0,
+                "preSuddenDeathDuration": 0,
                 "minimumBreak": 180
             }
         ],
@@ -105,6 +109,23 @@ mod tests {
     /// A real 71-game tournament export, with only the club names replaced. Every structural
     /// relationship — game numbers, courts, times, seedings, group membership — is untouched,
     /// which is what makes the schedule checks below meaningful.
+    ///
+    /// THREE things in the `timingRules` block are not as exported — everything else, including
+    /// every game, court, time and seeding, is verbatim:
+    ///
+    /// 1. The FINALS rule's `overtimeAllowed`, which the export had as `true` alongside three
+    ///    zeroed overtime durations. That combination is refused by `check_flag_gated_durations`,
+    ///    and it contradicts `finals_timing_rule()` in the tournament manager, which already reads
+    ///    that rule as sudden-death-only. Corrected to `false` rather than given invented lengths.
+    /// 2 & 3. A `singlePeriod: false` key added to each of the two rules, because the Portal marks
+    ///    that field required and rejects its absence at model binding, so a real export under the
+    ///    current contract carries it.
+    ///
+    /// Two consequences worth knowing: no rule here now has overtime switched on, so the
+    /// overtime-on paths are covered by `the_production_finals_shape_is_refused` in
+    /// `schedule_checks.rs` rather than by this file; and because both rules now state
+    /// `singlePeriod`, this fixture no longer exercises the `#[serde(default)]` path for it —
+    /// `HAPPY_PATH_JSON` above is what keeps that covered.
     const REAL_SHAPE_JSON: &str =
         include_str!("../tests/fixtures/portal-schedule-with-finals.json");
 

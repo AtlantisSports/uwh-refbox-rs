@@ -1360,10 +1360,10 @@ mismatch between your schedule and your team list is easy to ship without notici
 | `userId` | optional | Portal user ID, matched against call 6's response to show a name. **Opaque and unvalidated** — unlike event and team IDs it is a plain string with no prefix rule and no length rule, so any value parses. A value that matches nothing in call 6 just means no name is shown. |
 | `teamId` | optional | Team ID, **long form** — used when an official is assigned by team rather than by person, in which case `userId` is absent. It is validated exactly like any other team ID, so a malformed one fails the entire schedule parse, not just this assignment. If it can't be resolved to a team name, the raw ID is displayed. |
 
-#### `TimingRule` (`uwh-common/src/uwhportal/schedule.rs:241`) — all fifteen fields
+#### `TimingRule` (`uwh-common/src/uwhportal/schedule.rs:241`) — all sixteen fields
 
 **Every duration here is a whole number of seconds — not milliseconds.** The code enforces this with
-a custom `secs_only_duration` serializer (`uwh-common/src/uwhportal/schedule.rs:588-627`); a
+a custom `secs_only_duration` serializer (`uwh-common/src/uwhportal/schedule.rs:636-675`); a
 fractional or millisecond value will not parse.
 
 | # | JSON field | Type | Required? | Meaning |
@@ -1373,16 +1373,41 @@ fractional or millisecond value will not parse.
 | 3 | `teamTimeoutsCountedPerHalf` | bool | required | Whether the count in #2 resets each half |
 | 4 | `overtimeAllowed` | bool | required | |
 | 5 | `suddenDeathAllowed` | bool | required | |
-| 6 | `last2minStopTime` | bool | optional, defaults to `false` | |
-| 7 | `halfPlayDuration` | integer seconds | required | |
-| 8 | `halfTimeDuration` | integer seconds | required | `0` signals a single-half game |
-| 9 | `teamTimeoutDuration` | integer seconds | required | |
-| 10 | `overtimeHalfPlayDuration` | integer seconds | required | |
-| 11 | `overtimeHalfTimeDuration` | integer seconds | required | |
-| 12 | `preOvertimeBreak` | integer seconds | required | |
-| 13 | `preSuddenDeathDuration` | integer seconds | required | |
-| 14 | `minimumBreak` | integer seconds | required | Minimum gap the schedule packs between games |
-| 15 | `gameBlock` | integer seconds | optional | Total scheduled slot length for the game. If omitted, refbox works one out itself from the other durations (`uwh-common/src/uwhportal/schedule.rs:334-347`) — a stub server can simply leave it out. |
+| 6 | `singlePeriod` | bool | optional, defaults to `false` | The game is played as one period with no half-time. **This flag, not a zero `halfTimeDuration`, is what makes a game single-period.** |
+| 7 | `last2minStopTime` | bool | optional, defaults to `false` | |
+| 8 | `halfPlayDuration` | integer seconds | required | |
+| 9 | `halfTimeDuration` | integer seconds | required | Unused when `singlePeriod` is `true`. **No longer a mode switch:** a `0` here does not mean a single-half game. See #6. |
+| 10 | `teamTimeoutDuration` | integer seconds | required | |
+| 11 | `overtimeHalfPlayDuration` | integer seconds | required | |
+| 12 | `overtimeHalfTimeDuration` | integer seconds | required | |
+| 13 | `preOvertimeBreak` | integer seconds | required | |
+| 14 | `preSuddenDeathDuration` | integer seconds | required | |
+| 15 | `minimumBreak` | integer seconds | required | Minimum gap the schedule packs between games |
+| 16 | `gameBlock` | integer seconds | optional | Total scheduled slot length for the game. If omitted, refbox works one out itself from the other durations (`uwh-common/src/uwhportal/schedule.rs:345-359`) — a stub server can simply leave it out. |
+
+**Which durations may be `0`.** A duration only matters when the setting that uses it is switched
+on, and only then must it be positive. Sending `0` for a switched-off feature is correct and
+expected — it is what the schedule builder uploads. (refbox itself never sends a timing rule; it
+only receives them.) Omitting the field instead is **not** supported: every field marked required
+above must be present.
+
+| Duration | Must be positive when |
+|---|---|
+| `halfPlayDuration` | always |
+| `minimumBreak` | always |
+| `halfTimeDuration` | `singlePeriod` is `false` |
+| `teamTimeoutDuration` | `teamTimeoutCount` is not `0` |
+| `overtimeHalfPlayDuration`, `overtimeHalfTimeDuration`, `preOvertimeBreak` | `overtimeAllowed` is `true` |
+| `preSuddenDeathDuration` | `suddenDeathAllowed` is `true` |
+| `gameBlock` | it is present — omit it rather than sending `0` |
+
+> ⚠️ **refbox does not enforce any of this, and will not correct it.** These gates are checked by
+> the schedule builder before an upload, and by the Portal's own API. A refbox reading a schedule
+> from *your* server applies the timing rule exactly as sent — a rule that breaks the table above
+> is not rejected and not normalised, it is played. Treat the table as a requirement rather than a
+> recommendation: a zero-length overtime period or score-confirmation pause has crashed refbox at
+> the end of a game, and the workaround that used to absorb that shape has been removed now that
+> the authoring paths refuse it.
 
 #### Worked example: a complete two-game schedule
 
@@ -1425,6 +1450,7 @@ tournament:
       "teamTimeoutsCountedPerHalf": true,
       "overtimeAllowed": true,
       "suddenDeathAllowed": true,
+      "singlePeriod": false,
       "last2minStopTime": false,
       "halfPlayDuration": 900,
       "halfTimeDuration": 180,

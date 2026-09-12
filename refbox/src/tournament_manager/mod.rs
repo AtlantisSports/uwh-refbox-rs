@@ -1313,19 +1313,6 @@ impl TournamentManager {
         min(time_remaining_at_start, MAX_TIME_VAL)
     }
 
-    /// A portal timing rule can enable overtime while leaving every overtime
-    /// period zero-length. The portal "FINALS" rule does exactly this: zero
-    /// overtime halves and a zero pre-overtime break, with sudden death properly
-    /// configured. That really means "no timed overtime — sudden death decides a
-    /// tie". Honor that intent so the engine never builds a zero-length overtime
-    /// or zero-length score-confirm pause (which crashed the app at the end of
-    /// such a game). Applied to configs adopted from a portal timing rule.
-    fn normalize_degenerate_overtime(config: &mut GameConfig) {
-        if config.overtime_allowed && config.ot_half_play_duration.is_zero() {
-            config.overtime_allowed = false;
-        }
-    }
-
     /// Arm the mid-break reset: the point during a between-games countdown at which
     /// the finished game's score and penalties clear from the display,
     /// `post_game_duration` before the next game starts.
@@ -1375,9 +1362,7 @@ impl TournamentManager {
         };
 
         if let Some(ref timing) = next_game_info.timing {
-            let mut config: GameConfig = timing.clone().into();
-            Self::normalize_degenerate_overtime(&mut config);
-            self.config = config;
+            self.config = timing.clone().into();
         }
 
         let time_remaining_at_start = self.calc_time_to_next_game(now, now);
@@ -1536,7 +1521,6 @@ impl TournamentManager {
 
         if let Some(timing) = self.next_game.take().and_then(|info| info.timing) {
             self.config = timing.into();
-            Self::normalize_degenerate_overtime(&mut self.config);
         }
 
         info!(
@@ -8720,54 +8704,29 @@ mod test {
         assert_eq!(tm.next_update_time(after), None);
     }
 
-    #[test]
-    fn test_normalize_degenerate_overtime() {
-        // Overtime "allowed" but zero-length overtime periods (the FINALS rule):
-        // treat as no overtime.
-        let mut zero_ot = GameConfig {
-            overtime_allowed: true,
-            ot_half_play_duration: Duration::ZERO,
-            ..Default::default()
-        };
-        TournamentManager::normalize_degenerate_overtime(&mut zero_ot);
-        assert!(!zero_ot.overtime_allowed);
-
-        // Real overtime is left enabled.
-        let mut real_ot = GameConfig {
-            overtime_allowed: true,
-            ot_half_play_duration: Duration::from_secs(180),
-            ..Default::default()
-        };
-        TournamentManager::normalize_degenerate_overtime(&mut real_ot);
-        assert!(real_ot.overtime_allowed);
-
-        // Overtime already off is left off.
-        let mut no_ot = GameConfig {
-            overtime_allowed: false,
-            ot_half_play_duration: Duration::ZERO,
-            ..Default::default()
-        };
-        TournamentManager::normalize_degenerate_overtime(&mut no_ot);
-        assert!(!no_ot.overtime_allowed);
-    }
-
-    /// A faithful copy of the portal "FINALS" timing rule that crashed the app:
-    /// overtime "allowed" but every overtime period zero-length, sudden death
-    /// properly configured.
+    /// A finals timing rule as it must now be authored: sudden death decides a
+    /// tie, so overtime is switched OFF by its own flag and every duration
+    /// carries a real number whether or not it is used.
+    ///
+    /// It used to be a copy of the portal rule that crashed the app — overtime
+    /// "allowed" with every overtime period zero-length — which the engine
+    /// absorbed by quietly switching overtime off. That shape is now refused at
+    /// authoring time, so the engine adopts a timing rule exactly as sent.
     fn finals_timing_rule() -> TimingRule {
         TimingRule {
             name: "FINALS".to_string(),
             team_timeout_count: 1,
             team_timeouts_counted_per_half: true,
-            overtime_allowed: true,
+            overtime_allowed: false,
             sudden_death_allowed: true,
+            single_period: false,
             last_2_min_stop_time: false,
             half_play_duration: Duration::from_secs(600),
             half_time_duration: Duration::from_secs(120),
             team_timeout_duration: Duration::from_secs(60),
-            ot_half_play_duration: Duration::ZERO,
-            ot_half_time_duration: Duration::ZERO,
-            pre_overtime_break: Duration::ZERO,
+            ot_half_play_duration: Duration::from_secs(300),
+            ot_half_time_duration: Duration::from_secs(60),
+            pre_overtime_break: Duration::from_secs(180),
             pre_sudden_death_duration: Duration::from_secs(60),
             minimum_break: Duration::from_secs(180),
             game_block: None,
@@ -8775,9 +8734,10 @@ mod test {
     }
 
     #[test]
-    fn test_finals_next_game_disables_overtime() {
+    fn test_finals_next_game_adopts_the_rule_as_sent() {
         // The actual production path: a FINALS rule arrives as the next game and
-        // is adopted via apply_next_game_start, which must normalize overtime off.
+        // is adopted via apply_next_game_start. The flags are taken exactly as
+        // authored — nothing infers them from a duration.
         initialize();
         let mut tm = TournamentManager::new(GameConfig::default());
         tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(60));
@@ -8792,10 +8752,9 @@ mod test {
     }
 
     #[test]
-    fn test_finals_normalized_nonzero_pause_and_tie_to_sudden_death() {
+    fn test_finals_nonzero_pause_and_tie_to_sudden_death() {
         initialize();
-        let mut config: GameConfig = finals_timing_rule().into();
-        TournamentManager::normalize_degenerate_overtime(&mut config);
+        let config: GameConfig = finals_timing_rule().into();
         assert!(!config.overtime_allowed);
         let mut tm = TournamentManager::new(config);
 

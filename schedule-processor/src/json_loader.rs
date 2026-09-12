@@ -110,7 +110,7 @@ mod tests {
     /// relationship — game numbers, courts, times, seedings, group membership — is untouched,
     /// which is what makes the schedule checks below meaningful.
     ///
-    /// THREE things in the `timingRules` block are not as exported — everything else, including
+    /// FOUR things in the `timingRules` block are not as exported — everything else, including
     /// every game, court, time and seeding, is verbatim:
     ///
     /// 1. The FINALS rule's `overtimeAllowed`, which the export had as `true` alongside three
@@ -120,12 +120,17 @@ mod tests {
     /// 2 & 3. A `singlePeriod: false` key added to each of the two rules, because the Portal marks
     ///    that field required and rejects its absence at model binding, so a real export under the
     ///    current contract carries it.
+    /// 4. A `gameBlock` added to each rule (1500s for RR, 1860s for FINALS). The export predates
+    ///    the field and carried none; the two values are read off its own start-to-start gaps
+    ///    rather than invented, so the fixture stays truthful while meeting `check_game_block`,
+    ///    which refuses a rule that carries no Game Block at all.
     ///
-    /// Two consequences worth knowing: no rule here now has overtime switched on, so the
+    /// Three consequences worth knowing: no rule here now has overtime switched on, so the
     /// overtime-on paths are covered by `the_production_finals_shape_is_refused` in
-    /// `schedule_checks.rs` rather than by this file; and because both rules now state
+    /// `schedule_checks.rs` rather than by this file; because both rules now state
     /// `singlePeriod`, this fixture no longer exercises the `#[serde(default)]` path for it —
-    /// `HAPPY_PATH_JSON` above is what keeps that covered.
+    /// `HAPPY_PATH_JSON` above is what keeps that covered; and RR's 1500s block sits exactly on
+    /// its own minimum, so it is deliberately the `Tight` case that warns without refusing.
     const REAL_SHAPE_JSON: &str =
         include_str!("../tests/fixtures/portal-schedule-with-finals.json");
 

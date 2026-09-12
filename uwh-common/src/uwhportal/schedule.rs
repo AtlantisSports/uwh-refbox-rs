@@ -1139,7 +1139,7 @@ mod tests {
         // Reported bug: 10-min halves + 2-min half-time + 4-min gap must derive a
         // 26:00 Game Block (regulation 1320 + minimum_break 240 = 1560), NOT 37:00
         // (which is regulation + the 15-min default nominal_break).
-        let json = r#"{"name":"RR","teamTimeoutCount":0,"teamTimeoutsCountedPerHalf":false,"overtimeAllowed":false,"suddenDeathAllowed":false,"halfPlayDuration":600,"halfTimeDuration":120,"teamTimeoutDuration":0,"overtimeHalfPlayDuration":0,"overtimeHalfTimeDuration":0,"preOvertimeBreak":0,"preSuddenDeathDuration":0,"minimumBreak":240}"#;
+        let json = r#"{"name":"RR","teamTimeoutCount":0,"teamTimeoutsCountedPerHalf":false,"overtimeAllowed":false,"suddenDeathAllowed":false,"halfPlayDuration":600,"halfTimeDuration":120,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":60,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240}"#;
         let rule: TimingRule = serde_json::from_str(json).unwrap();
         assert_eq!(rule.game_block, None);
         let config: GameConfig = rule.into();

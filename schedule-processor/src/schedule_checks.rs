@@ -12,6 +12,7 @@ pub fn run_schedule_checks(schedule: &Schedule) -> Result<(), Box<dyn std::error
     check_game_group_types(schedule);
     check_groups_have_games(schedule)?;
     check_unique_timing_rule_names(schedule)?;
+    check_no_zero_durations(schedule)?;
     check_game_timing_rules(schedule)?;
     check_game_overlap(schedule)?;
     check_same_team_in_game(schedule)?;
@@ -699,6 +700,49 @@ fn check_game_references(schedule: &Schedule) -> Result<(), Box<dyn std::error::
     }
 }
 
+/// Refuse any zero-length duration. Every duration carries a real number and
+/// the on/off flag alone decides whether it is used — a zero must never stand
+/// in for "this feature is off". A mode hidden in a magic value is unreadable,
+/// and for the playing durations it has been a source of crashes.
+///
+/// `gameBlock` is checked only when present: absent means "derive it", which is
+/// legal. `teamTimeoutCount` is a count, not a duration, and is not checked.
+fn check_no_zero_durations(schedule: &Schedule) -> Result<(), Box<dyn std::error::Error>> {
+    for rule in &schedule.timing_rules {
+        let mut zeroed: Vec<&str> = Vec::new();
+        let fields: [(&str, Duration); 8] = [
+            ("halfPlayDuration", rule.half_play_duration),
+            ("halfTimeDuration", rule.half_time_duration),
+            ("teamTimeoutDuration", rule.team_timeout_duration),
+            ("overtimeHalfPlayDuration", rule.ot_half_play_duration),
+            ("overtimeHalfTimeDuration", rule.ot_half_time_duration),
+            ("preOvertimeBreak", rule.pre_overtime_break),
+            ("preSuddenDeathDuration", rule.pre_sudden_death_duration),
+            ("minimumBreak", rule.minimum_break),
+        ];
+        for (name, value) in fields {
+            if value.is_zero() {
+                zeroed.push(name);
+            }
+        }
+        if rule.game_block == Some(Duration::ZERO) {
+            zeroed.push("gameBlock");
+        }
+        if !zeroed.is_empty() {
+            return Err(format!(
+                "Timing rule '{}' sets {} to zero. No duration may be zero - give it a real \
+                 length, and use the matching on/off setting to say whether it is used. For a \
+                 single-period game set 'singlePeriod' to TRUE and leave 'halfTimeDuration' at a \
+                 normal length.",
+                rule.name,
+                zeroed.join(", ")
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
 fn calculate_occupied_times(schedule: &Schedule) -> IndexMap<String, Duration> {
     let mut occupied_time_map: IndexMap<String, Duration> = IndexMap::new();
 
@@ -708,4 +752,116 @@ fn calculate_occupied_times(schedule: &Schedule) -> IndexMap<String, Duration> {
         occupied_time_map.insert(rule.name.clone(), occupied_time);
     }
     occupied_time_map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn schedule_with_rules(timing_rules: Vec<TimingRule>) -> Schedule {
+        Schedule {
+            event_id: EventId::from_partial("test-event"),
+            games: Default::default(),
+            non_game_entries: vec![],
+            groups: vec![],
+            timing_rules,
+            standings_order: None,
+            final_results_order: None,
+            referees_by_game_number: None,
+        }
+    }
+
+    fn a_valid_rule() -> TimingRule {
+        TimingRule {
+            name: "RR".to_string(),
+            team_timeout_count: 1,
+            team_timeouts_counted_per_half: false,
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            single_period: false,
+            last_2_min_stop_time: false,
+            half_play_duration: Duration::from_secs(720),
+            half_time_duration: Duration::from_secs(180),
+            team_timeout_duration: Duration::from_secs(60),
+            ot_half_play_duration: Duration::from_secs(300),
+            ot_half_time_duration: Duration::from_secs(60),
+            pre_overtime_break: Duration::from_secs(180),
+            pre_sudden_death_duration: Duration::from_secs(60),
+            minimum_break: Duration::from_secs(240),
+            game_block: Some(Duration::from_secs(1920)),
+        }
+    }
+
+    #[test]
+    fn a_rule_with_no_zero_durations_passes() {
+        let schedule = schedule_with_rules(vec![a_valid_rule()]);
+        assert!(check_no_zero_durations(&schedule).is_ok());
+    }
+
+    #[test]
+    fn every_duration_field_is_rejected_at_zero() {
+        // Exhaustive on purpose: a new duration on TimingRule that nobody adds
+        // here would otherwise be silently unguarded.
+        let setters: Vec<(&str, fn(&mut TimingRule))> = vec![
+            ("halfPlayDuration", |r| {
+                r.half_play_duration = Duration::ZERO
+            }),
+            ("halfTimeDuration", |r| {
+                r.half_time_duration = Duration::ZERO
+            }),
+            ("teamTimeoutDuration", |r| {
+                r.team_timeout_duration = Duration::ZERO
+            }),
+            ("overtimeHalfPlayDuration", |r| {
+                r.ot_half_play_duration = Duration::ZERO
+            }),
+            ("overtimeHalfTimeDuration", |r| {
+                r.ot_half_time_duration = Duration::ZERO
+            }),
+            ("preOvertimeBreak", |r| {
+                r.pre_overtime_break = Duration::ZERO
+            }),
+            ("preSuddenDeathDuration", |r| {
+                r.pre_sudden_death_duration = Duration::ZERO
+            }),
+            ("minimumBreak", |r| r.minimum_break = Duration::ZERO),
+            ("gameBlock", |r| r.game_block = Some(Duration::ZERO)),
+        ];
+        for (field, set) in setters {
+            let mut rule = a_valid_rule();
+            set(&mut rule);
+            let schedule = schedule_with_rules(vec![rule]);
+            let err = check_no_zero_durations(&schedule)
+                .expect_err(&format!("a zero {field} must be refused"))
+                .to_string();
+            assert!(
+                err.contains(field),
+                "the message must name the setting, got: {err}"
+            );
+            assert!(
+                err.contains("RR"),
+                "the message must name the rule, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_absent_game_block_is_not_a_zero() {
+        // `gameBlock` is optional. Absent means "derive it", which is legal;
+        // only a present zero is an error.
+        let mut rule = a_valid_rule();
+        rule.game_block = None;
+        let schedule = schedule_with_rules(vec![rule]);
+        assert!(check_no_zero_durations(&schedule).is_ok());
+    }
+
+    #[test]
+    fn a_single_period_rule_still_needs_a_real_half_time() {
+        // The whole point of the flag: single-period does NOT license a zero.
+        let mut rule = a_valid_rule();
+        rule.single_period = true;
+        rule.half_time_duration = Duration::ZERO;
+        let schedule = schedule_with_rules(vec![rule]);
+        assert!(check_no_zero_durations(&schedule).is_err());
+    }
 }

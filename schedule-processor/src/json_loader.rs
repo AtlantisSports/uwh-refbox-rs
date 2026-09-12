@@ -51,10 +51,10 @@ mod tests {
                 "halfPlayDuration": 600,
                 "halfTimeDuration": 120,
                 "teamTimeoutDuration": 60,
-                "overtimeHalfPlayDuration": 0,
-                "overtimeHalfTimeDuration": 0,
-                "preOvertimeBreak": 0,
-                "preSuddenDeathDuration": 0,
+                "overtimeHalfPlayDuration": 300,
+                "overtimeHalfTimeDuration": 60,
+                "preOvertimeBreak": 180,
+                "preSuddenDeathDuration": 60,
                 "minimumBreak": 180
             }
         ],

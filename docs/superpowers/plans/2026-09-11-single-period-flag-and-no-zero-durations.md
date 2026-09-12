@@ -558,4 +558,42 @@ If Steps 1-3 are clean there is nothing to commit. If a dependant crate needed a
 
 ## Deviations
 
-Record here if execution diverges from this plan. Do not create standalone deviation commits.
+All six tasks completed 2026-09-11. `just check` exits 0. Eight commits, branch unpushed.
+
+1. **Tasks 3 and 4 were committed together.** The plan had Task 3 commit a check that Task 4's
+   fixtures would then fail. Combining them keeps every commit green and bisectable.
+
+2. **A seventh piece of work was added, with Eric's approval:** `calculate_occupied_times` in
+   `schedule_checks.rs` sized every game as two halves plus a break. It was already wrong for
+   single-period games and this branch made it worse, because the half-time it adds is now a real
+   number rather than zero — a 12-minute single period read as 31 minutes instead of 16, which
+   would report overlaps between games that do not overlap. Fixed here rather than deferred,
+   because the regression is one this branch introduces. It was a **third** site reasoning about
+   game length from the old assumption; the spec had found only two.
+
+3. **Task 5 rewrote the FINALS fixture and two tests instead of deleting them.** The plan said to
+   delete tests that encoded the old normalisation. Two of them also covered behaviour worth
+   keeping — that the score-confirm pause is not zero-length, and that a tie goes to sudden death.
+   The fixture now expresses a finals rule as one must now be authored, so that coverage survives.
+   Only `test_normalize_degenerate_overtime`, which tested nothing but the removed function, was
+   deleted.
+
+4. **An obsolete uwh-common test was inverted rather than deleted.**
+   `test_timing_rule_single_half_when_no_halftime_break` asserted the zero *meant* single-period.
+   It is now `test_zero_halftime_alone_no_longer_signals_single_half`, so the removal has a guard
+   instead of an absence.
+
+5. **One extra fixture cleaned.** `test_timing_rule_game_block_uses_schedule_minimum_break` still
+   carried zeroed overtime durations. Verified its assertion does not move (1560s) before changing
+   it. There is now no zero-duration idiom anywhere in either crate.
+
+## What the verification does and does not prove
+
+`zero_probe` passes, and its report shows the dangerous shape — overtime allowed with a zero
+overtime half — reporting a recoverable tick failure rather than crashing or hanging. **But the
+probe builds `GameConfig` values directly and never goes through a portal timing rule, which was
+the only path `normalize_degenerate_overtime` ever ran on.** So the probe did not exercise the
+deleted code and is not, by itself, evidence the deletion is safe. What makes it safe is that the
+input is refused at authoring time (Task 3).
+
+`just check` is host-only: it does not cover Windows or aarch64.

@@ -995,16 +995,19 @@ fn format_block(duration: Duration) -> String {
 /// Every one of these is read by a tournament organiser who will act on it, so
 /// each names the rule it is about and the values that decide the verdict.
 fn missing_message(rule: &TimingRule) -> String {
-    // Aligned with the Portal's own refusal for this fault (uwhportal PR #965):
-    // an organiser hitting it in either tool is told the same thing. The spelling
-    // hint is not filler - `gameBlock` carries `#[serde(default)]`, so a misspelt
-    // column vanishes silently instead of erroring, and the organiser is looking
-    // at a spreadsheet that visibly contains the column.
+    // Follows the Portal's own refusal for this fault (uwhportal PR #965) so an
+    // organiser meets the same guidance in either tool - MINUS its closing hint to
+    // check the spreadsheet column's spelling, which cannot apply here.
+    // `parse_timing_rule_row` (csv_parser.rs) rejects any field name outside
+    // `TIMING_RULE_FIELDS` with its own message, naming the spreadsheet row and
+    // listing the valid names, so a misspelt column never reaches this gate. The
+    // only route to `Missing` is a .json schedule, where there is no column at
+    // all. The Portal needs the hint because it receives JSON from anywhere and a
+    // misspelt key there does vanish silently; we catch it upstream instead.
     format!(
         "Timing rule '{}' has no Game Block. Add a gameBlock field, in seconds, \
          covering the whole slot from this game's start to the next game's start \
-         on the same court. Check the spelling of the column if your spreadsheet \
-         already has one.",
+         on the same court.",
         rule.name
     )
 }
@@ -1702,8 +1705,7 @@ mod tests {
             msg,
             "Timing rule 'RR' has no Game Block. Add a gameBlock field, in seconds, \
              covering the whole slot from this game's start to the next game's start \
-             on the same court. Check the spelling of the column if your spreadsheet \
-             already has one."
+             on the same court."
         );
     }
 

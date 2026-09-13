@@ -915,11 +915,16 @@ enum GameBlockStatus {
     Missing,
     /// Shorter than the game plus the minimum break.
     TooShort {
+        block: Duration,
         minimum: Duration,
     },
     /// Long enough, but with no more spare time than the teams' timeouts could
     /// use, so nothing is left to recover a delay with.
-    Tight,
+    Tight {
+        block: Duration,
+        spare: Duration,
+        allotment: Duration,
+    },
     Ok,
 }
 
@@ -935,9 +940,16 @@ fn game_block_status(rule: &TimingRule) -> GameBlockStatus {
     let minimum = config.game_block_minimum();
 
     if config.game_block < minimum {
-        GameBlockStatus::TooShort { minimum }
+        GameBlockStatus::TooShort {
+            block: config.game_block,
+            minimum,
+        }
     } else if config.game_block_buffer() <= config.team_timeout_allotment() {
-        GameBlockStatus::Tight
+        GameBlockStatus::Tight {
+            block: config.game_block,
+            spare: config.game_block_buffer(),
+            allotment: config.team_timeout_allotment(),
+        }
     } else {
         GameBlockStatus::Ok
     }
@@ -972,10 +984,11 @@ fn format_mins_secs(duration: Duration) -> String {
 /// error they got back was raw serde output. The Portal states seconds for the
 /// same reason.
 fn format_block(duration: Duration) -> String {
+    let secs = duration.as_secs();
     format!(
-        "{} ({} seconds)",
+        "{} ({secs} second{})",
         format_mins_secs(duration),
-        duration.as_secs()
+        if secs == 1 { "" } else { "s" }
     )
 }
 
@@ -996,15 +1009,15 @@ fn missing_message(rule: &TimingRule) -> String {
     )
 }
 
-fn too_short_message(rule: &TimingRule, minimum: Duration) -> String {
-    // `minimum` is the value `game_block_status` already computed and carried on
-    // the variant. Recomputing it here meant two independent derivations of one
-    // number, able to drift apart with the test reading only the carried one.
+fn too_short_message(rule: &TimingRule, block: Duration, minimum: Duration) -> String {
+    // BOTH figures come from the one `GameConfig` `game_block_status` already
+    // built. Deriving either here again would let the two halves of one sentence
+    // come from two sources with nothing tying them together.
     format!(
         "Timing rule '{}' has a Game Block of {}, which is shorter than the {} this game \
          needs (the playing time plus the minimum break).",
         rule.name,
-        format_block(game_config(rule).game_block),
+        format_block(block),
         format_block(minimum),
     )
 }
@@ -1021,14 +1034,33 @@ fn too_short_message(rule: &TimingRule, minimum: Duration) -> String {
 /// `game_block_buffer`, which does not subtract timeouts. The timeout allotment
 /// is only the threshold that decides whether this tier fires, so the sentence
 /// says the timeouts COULD use that time rather than that they already have.
-fn tight_message(rule: &TimingRule) -> String {
-    let config = game_config(rule);
+fn tight_message(
+    rule: &TimingRule,
+    block: Duration,
+    spare: Duration,
+    allotment: Duration,
+) -> String {
+    // The threshold clause is conditional because BOTH halves of it can be false.
+    // The tier fires on `<=`, so "less than" is wrong at the equal boundary the
+    // code deliberately treats as tight; and a rule with `teamTimeoutCount = 0`
+    // has a zero allotment, reaching this tier only at exactly zero spare -
+    // citing timeouts to a rule that allows none. Same fault as the "leaves no
+    // spare time" draft rejected for being false across most of the band.
+    let threshold = if allotment.is_zero() {
+        String::new()
+    } else {
+        format!(
+            " - no more than the {} the teams' timeouts could use",
+            format_mins_secs(allotment)
+        )
+    };
     format!(
         "Timing rule '{}' has a Game Block of {}, which leaves {} spare beyond the \
-         game and its minimum break - less than the teams' timeouts could use.",
+         game and its minimum break{}.",
         rule.name,
-        format_block(config.game_block),
-        format_mins_secs(config.game_block_buffer()),
+        format_block(block),
+        format_mins_secs(spare),
+        threshold,
     )
 }
 
@@ -1055,10 +1087,16 @@ enum GameBlockReport {
 fn game_block_report(rule: &TimingRule) -> Option<GameBlockReport> {
     match game_block_status(rule) {
         GameBlockStatus::Missing => Some(GameBlockReport::Refused(missing_message(rule))),
-        GameBlockStatus::TooShort { minimum } => {
-            Some(GameBlockReport::Refused(too_short_message(rule, minimum)))
-        }
-        GameBlockStatus::Tight => Some(GameBlockReport::Warned(tight_message(rule))),
+        GameBlockStatus::TooShort { block, minimum } => Some(GameBlockReport::Refused(
+            too_short_message(rule, block, minimum),
+        )),
+        GameBlockStatus::Tight {
+            block,
+            spare,
+            allotment,
+        } => Some(GameBlockReport::Warned(tight_message(
+            rule, block, spare, allotment,
+        ))),
         GameBlockStatus::Ok => None,
     }
 }
@@ -1281,6 +1319,20 @@ mod tests {
         assert_eq!(
             covered, on_the_type,
             "every duration on TimingRule needs a row in the `checks` table"
+        );
+
+        // The exemption above only subtracts a NAME. Tie it to the gate that is
+        // supposed to own it, or deleting `check_game_block` from
+        // `run_schedule_checks` would leave `gameBlock` exempted here and guarded
+        // by nothing - the wiring-gap class this file's other tests exist to close.
+        assert_eq!(OWNED_BY_ANOTHER_GATE, ["gameBlock"]);
+        let mut no_block = a_valid_rule();
+        no_block.game_block = None;
+        let refused = run_schedule_checks(&schedule_with_rules(vec![no_block]))
+            .expect_err("the gate named in OWNED_BY_ANOTHER_GATE must still refuse");
+        assert!(
+            refused.to_string().contains("Game Block"),
+            "must be refused for the Game Block: {refused}"
         );
 
         // Compile-time half of the same guard. The check above reads SERIALISED
@@ -1575,11 +1627,11 @@ mod tests {
 
     #[test]
     fn a_game_block_one_second_below_the_minimum_is_too_short() {
-        let status = game_block_status(&a_rule(Some(Duration::from_secs(1499))));
         assert_eq!(
-            status,
+            game_block_status(&a_rule(Some(Duration::from_secs(1499)))),
             GameBlockStatus::TooShort {
-                minimum: Duration::from_secs(1500)
+                block: Duration::from_secs(1499),
+                minimum: Duration::from_secs(1500),
             }
         );
     }
@@ -1590,17 +1642,26 @@ mod tests {
         // minimum break may be uploaded, but it has no room to recover at all.
         assert_eq!(
             game_block_status(&a_rule(Some(Duration::from_secs(1500)))),
-            GameBlockStatus::Tight
+            GameBlockStatus::Tight {
+                block: Duration::from_secs(1500),
+                spare: Duration::ZERO,
+                allotment: Duration::from_secs(240),
+            }
         );
     }
 
     #[test]
     fn a_game_block_with_spare_equal_to_the_timeout_allotment_is_tight() {
         // 25:00 minimum + 4:00 of timeouts. Equal counts as tight, matching
-        // refbox's editor, which turns yellow at exactly this point.
+        // refbox's editor, which turns yellow at exactly this point. The tier
+        // fires on `<=`, which is why the warning may not say "less than".
         assert_eq!(
             game_block_status(&a_rule(Some(Duration::from_secs(1740)))),
-            GameBlockStatus::Tight
+            GameBlockStatus::Tight {
+                block: Duration::from_secs(1740),
+                spare: Duration::from_secs(240),
+                allotment: Duration::from_secs(240),
+            }
         );
     }
 
@@ -1648,26 +1709,36 @@ mod tests {
 
     #[test]
     fn the_too_short_message_names_the_rule_its_value_and_the_minimum() {
-        let rule = a_rule(Some(Duration::from_secs(1200)));
-        let msg = too_short_message(&rule, Duration::from_secs(1500));
-        assert!(msg.contains("RR"), "got: {msg}");
+        // Driven through `game_block_report` so the minimum comes from the real
+        // derivation. Handing the figure in as a literal made this test pass on
+        // its own arithmetic while the rule's actual minimum could be anything.
+        let report = game_block_report(&a_rule(Some(Duration::from_secs(1200))));
+        let Some(GameBlockReport::Refused(msg)) = report else {
+            panic!("a too-short Game Block must refuse, got: {report:?}")
+        };
         // Ordered on purpose: asserting the two numbers separately still passes
         // if they are swapped, which reads as "shorten a block already too short".
-        assert!(
-            msg.contains("of 20:00 (1200 seconds), which is shorter than the 25:00 (1500 seconds)"),
-            "should state the authored value then the minimum, both units, got: {msg}"
+        assert_eq!(
+            msg,
+            "Timing rule 'RR' has a Game Block of 20:00 (1200 seconds), which is shorter \
+             than the 25:00 (1500 seconds) this game needs (the playing time plus the \
+             minimum break)."
         );
     }
 
     #[test]
     fn the_tight_message_names_the_value_and_the_spare_time() {
-        // 26:00 block against a 25:00 minimum: 1:00 spare, which is what the
-        // organiser needs to see - the warning fires well above zero spare.
+        // 26:00 block against a 25:00 minimum: 1:00 spare, and the threshold that
+        // raised the warning is stated so the organiser can judge it.
+        let report = game_block_report(&a_rule(Some(Duration::from_secs(1560))));
+        let Some(GameBlockReport::Warned(msg)) = report else {
+            panic!("a tight Game Block must warn, got: {report:?}")
+        };
         assert_eq!(
-            tight_message(&a_rule(Some(Duration::from_secs(1560)))),
+            msg,
             "Timing rule 'RR' has a Game Block of 26:00 (1560 seconds), which leaves 1:00 \
-             spare beyond the game and its minimum break - less than the teams' timeouts \
-             could use."
+             spare beyond the game and its minimum break - no more than the 4:00 the \
+             teams' timeouts could use."
         );
     }
 
@@ -1714,7 +1785,10 @@ mod tests {
         // tight, one second above it is fine.
         let mut at_minimum = a_rule(Some(Duration::from_secs(1500)));
         at_minimum.team_timeout_count = 0;
-        assert_eq!(game_block_status(&at_minimum), GameBlockStatus::Tight);
+        assert!(matches!(
+            game_block_status(&at_minimum),
+            GameBlockStatus::Tight { .. }
+        ));
 
         let mut just_above = a_rule(Some(Duration::from_secs(1501)));
         just_above.team_timeout_count = 0;
@@ -1765,15 +1839,37 @@ mod tests {
     }
 
     #[test]
+    fn the_tight_message_cites_no_timeouts_to_a_rule_that_allows_none() {
+        // `teamTimeoutCount = 0` gives a zero allotment, so this tier is reached
+        // only at exactly zero spare. The threshold clause is dropped rather than
+        // printed as "no more than the 0:00 the teams' timeouts could use", which
+        // would tell an organiser about timeouts their rule does not grant.
+        let mut rule = a_rule(Some(Duration::from_secs(1500)));
+        rule.team_timeout_count = 0;
+        let Some(GameBlockReport::Warned(msg)) = game_block_report(&rule) else {
+            panic!("a block at the minimum must warn")
+        };
+        assert_eq!(
+            msg,
+            "Timing rule 'RR' has a Game Block of 25:00 (1500 seconds), which leaves 0:00 \
+             spare beyond the game and its minimum break."
+        );
+        assert!(!msg.contains("timeout"), "got: {msg}");
+    }
+
+    #[test]
     fn the_tight_message_reads_zero_spare_at_the_minimum() {
         // The commonest real case, not a corner: the 71-game export's own
         // round-robin rule sits exactly on its minimum, so this is the sentence
-        // most organisers will actually see.
-        let msg = tight_message(&a_rule(Some(Duration::from_secs(1500))));
-        assert!(
-            msg.contains("leaves 0:00 spare"),
-            "should state the figure, got: {msg}"
-        );
+        // most organisers will actually see. It states the figure and passes no
+        // verdict - the Portal accepts this shape precisely because real round
+        // robins run with zero buffer.
+        let Some(GameBlockReport::Warned(msg)) =
+            game_block_report(&a_rule(Some(Duration::from_secs(1500))))
+        else {
+            panic!("a block at the minimum must warn")
+        };
+        assert!(msg.contains("leaves 0:00 spare"), "got: {msg}");
         assert!(
             !msg.contains("too little"),
             "must not call a schedule the Portal accepts inadequate, got: {msg}"

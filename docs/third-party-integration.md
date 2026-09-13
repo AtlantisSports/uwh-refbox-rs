@@ -1383,7 +1383,7 @@ fractional or millisecond value will not parse.
 | 13 | `preOvertimeBreak` | integer seconds | required | |
 | 14 | `preSuddenDeathDuration` | integer seconds | required | |
 | 15 | `minimumBreak` | integer seconds | required | Minimum gap the schedule packs between games |
-| 16 | `gameBlock` | integer seconds | optional | Total scheduled slot length for the game. If omitted, refbox works one out itself from the other durations (`uwh-common/src/uwhportal/schedule.rs:345-359`) — a stub server can simply leave it out. |
+| 16 | `gameBlock` | integer seconds | **optional for a site refbox reads directly; REQUIRED by the Portal and by `schedule-processor`** | Total scheduled slot length for the game. If omitted, refbox works one out itself from the other durations (`uwh-common/src/uwhportal/schedule.rs:345-359`), so a stub server may leave it out. A schedule you intend to UPLOAD may not: both the Portal and the schedule builder refuse a timing rule carrying no Game Block. The leniency here is about what refbox tolerates, not about what is accepted upstream. |
 
 **Which durations may be `0`.** A duration only matters when the setting that uses it is switched
 on, and only then must it be positive. Sending `0` for a switched-off feature is correct and
@@ -1399,7 +1399,7 @@ above must be present.
 | `teamTimeoutDuration` | `teamTimeoutCount` is not `0` |
 | `overtimeHalfPlayDuration`, `overtimeHalfTimeDuration`, `preOvertimeBreak` | `overtimeAllowed` is `true` |
 | `preSuddenDeathDuration` | `suddenDeathAllowed` is `true` |
-| `gameBlock` | it is present — omit it rather than sending `0` |
+| `gameBlock` | **not in this table any more.** `schedule-processor` checks it separately and refuses both an absent one and one too short to hold its game, naming both figures. A `0` is refused as too short rather than as a zero. |
 
 > ⚠️ **refbox does not enforce any of this, and will not correct it.** These gates are checked by
 > the schedule builder before an upload, and by the Portal's own API. A refbox reading a schedule

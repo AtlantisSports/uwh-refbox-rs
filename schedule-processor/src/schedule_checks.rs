@@ -784,23 +784,12 @@ fn flag_gated_zero_durations(rule: &TimingRule) -> Vec<ZeroDuration> {
                  death off.",
             ),
         ),
-        // Ours only - the Portal has no Game Block check. This row is about a
-        // PRESENT zero only: absence is expressed as "not used" like every other
-        // row rather than as a branch after the fold. Absence is not silently
-        // legal, though - `check_game_block` refuses it for the schedule as a
-        // whole. Keep the two consistent: this remedy must never suggest
-        // removing the field. `run_schedule_checks` short-circuits on `?`, so the
-        // organiser meets the contradiction ACROSS TWO RUNS - remove the field as
-        // told, re-run, get refused for its absence - never both in one pass.
-        (
-            rule.game_block.unwrap_or(Duration::ZERO),
-            rule.game_block.is_some(),
-            "gameBlock",
-            Some(
-                "it is the slot length for the whole game. Give it the real \
-                 length.",
-            ),
-        ),
+        // `gameBlock` is deliberately ABSENT from this table - `check_game_block`
+        // owns it end to end. It is the one duration whose fault needs two numbers
+        // ("a Game Block of 0:00, which is shorter than the 25:00 this game
+        // needs"), which matches the Portal's own refusal, and this table's rows
+        // can only state a fixed remedy. Splitting it across both gates is what
+        // produced a pair of messages giving opposite advice.
     ];
 
     checks
@@ -1121,14 +1110,17 @@ mod tests {
     }
 
     #[test]
-    fn an_absent_game_block_is_not_a_zero() {
-        // This check is about a PRESENT zero: an absent `gameBlock` is not one,
-        // so it passes HERE. It does not survive the schedule as a whole -
-        // `check_game_block` refuses a rule that carries none.
-        let mut rule = a_valid_rule();
-        rule.game_block = None;
-        let schedule = schedule_with_rules(vec![rule]);
-        assert!(check_flag_gated_durations(&schedule).is_ok());
+    fn the_durations_gate_ignores_the_game_block_entirely() {
+        // Neither an absent nor a zero Game Block is this gate's business any
+        // more. Both are refused, but by `check_game_block`, which can state the
+        // numbers. Asserted here so re-adding a row to the table fails loudly.
+        let mut absent = a_valid_rule();
+        absent.game_block = None;
+        assert!(check_flag_gated_durations(&schedule_with_rules(vec![absent])).is_ok());
+
+        let mut zero = a_valid_rule();
+        zero.game_block = Some(Duration::ZERO);
+        assert!(check_flag_gated_durations(&schedule_with_rules(vec![zero])).is_ok());
     }
 
     #[test]
@@ -1216,6 +1208,11 @@ mod tests {
         // This carries the exhaustiveness rationale of the deleted
         // `every_duration_field_is_rejected_at_zero`. The per-pair tests each
         // cover one row; none of them notices a row that was never written.
+        // A duration may be absent from the table ONLY if a named gate owns it.
+        // Widening this list is a decision, not a fix: anything added here is a
+        // duration nothing in this file checks.
+        const OWNED_BY_ANOTHER_GATE: [&str; 1] = ["gameBlock"]; // `check_game_block`
+
         const NOT_DURATIONS: [&str; 7] = [
             "name",
             "teamTimeoutCount",
@@ -1243,7 +1240,7 @@ mod tests {
         let mut on_the_type: Vec<&str> = map
             .keys()
             .map(String::as_str)
-            .filter(|key| !NOT_DURATIONS.contains(key))
+            .filter(|key| !NOT_DURATIONS.contains(key) && !OWNED_BY_ANOTHER_GATE.contains(key))
             .collect();
         on_the_type.sort_unstable();
 
@@ -1366,12 +1363,26 @@ mod tests {
     }
 
     #[test]
-    fn a_present_zero_game_block_is_still_refused() {
-        // Ours only - the Portal has no Game Block check - so nothing upstream
-        // would catch this if the row were dropped.
+    fn a_present_zero_game_block_is_refused_by_the_game_block_gate_with_both_numbers() {
+        // This duration is not in the table - `check_game_block` owns it - so the
+        // zero must still be refused, and refused with the sentence that names
+        // both numbers. That is the Portal's own stated behaviour for a block
+        // shorter than its game, so the two sides tell an organiser the same thing.
         let mut rule = a_valid_rule();
         rule.game_block = Some(Duration::ZERO);
-        assert_eq!(fields_flagged(&rule), vec!["gameBlock"]);
+        assert_eq!(
+            fields_flagged(&rule),
+            Vec::<&str>::new(),
+            "the durations gate must not claim gameBlock any more"
+        );
+        match game_block_report(&rule) {
+            Some(GameBlockReport::Refused(m)) => assert_eq!(
+                m,
+                "Timing rule 'RR' has a Game Block of 0:00, which is shorter than the \
+                 31:00 this game needs (the playing time plus the minimum break)."
+            ),
+            other => panic!("a zero Game Block must be refused, got: {other:?}"),
+        }
     }
 
     #[test]
@@ -1717,26 +1728,6 @@ mod tests {
             Some(GameBlockReport::Warned(m)) => assert!(m.contains("leaves only"), "got: {m}"),
             other => panic!("a tight Game Block must warn, not refuse, got: {other:?}"),
         }
-    }
-
-    #[test]
-    fn the_zero_game_block_remedy_never_advises_removing_the_field() {
-        // The two gates met for the first time when this branch was rebased onto
-        // the merged duration work. The duration message used to end "or leave
-        // the field out entirely", which `check_game_block` then refuses. The
-        // organiser meets that across TWO runs, not one: `run_schedule_checks`
-        // short-circuits on `?`, so this gate returns before the Game Block gate
-        // is reached. Asserted as a WHOLE sentence, like every sibling remedy
-        // test here - checking for the absence of one phrase still passes if the
-        // same advice returns in different words.
-        let mut rule = a_valid_rule();
-        rule.game_block = Some(Duration::ZERO);
-        let zeros = flag_gated_zero_durations(&rule);
-        assert_eq!(
-            zero_duration_message(&rule, &zeros[0]),
-            "Timing rule 'RR' sets gameBlock to zero, but it is the slot length \
-             for the whole game. Give it the real length."
-        );
     }
 
     #[test]

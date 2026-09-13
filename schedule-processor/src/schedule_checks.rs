@@ -784,21 +784,20 @@ fn flag_gated_zero_durations(rule: &TimingRule) -> Vec<ZeroDuration> {
                  death off.",
             ),
         ),
-        // Ours only - the Portal has no Game Block check. Absent means "derive
-        // it", which is legal, so absence is expressed as "not used" like every
-        // other row rather than as a branch after the fold.
+        // Ours only - the Portal has no Game Block check. This row is about a
+        // PRESENT zero only: absence is expressed as "not used" like every other
+        // row rather than as a branch after the fold. Absence is not silently
+        // legal, though - `check_game_block` refuses it for the schedule as a
+        // whole. Keep the two consistent: this remedy must never suggest
+        // removing the field, or the same run tells the organiser to do
+        // something the next check rejects.
         (
             rule.game_block.unwrap_or(Duration::ZERO),
             rule.game_block.is_some(),
             "gameBlock",
-            // The one OPTIONAL field, so its remedy is the opposite of the
-            // always-required ones: leaving it out is legal and a zero is not.
-            // Saying "every timing rule needs a real one" here would push an
-            // organiser into inventing a slot length.
             Some(
                 "it is the slot length for the whole game. Give it the real \
-                 length, or leave the field out entirely and refbox works one \
-                 out from the other durations.",
+                 length.",
             ),
         ),
     ];
@@ -1006,6 +1005,29 @@ fn tight_message(rule: &TimingRule) -> String {
     )
 }
 
+/// What a rule's Game Block gets the organiser: a sentence, and whether it stops
+/// the upload.
+///
+/// The tier-to-sentence mapping lives here rather than inside `check_game_block`'s
+/// match so a test can prove every tier still produces its own sentence. Logged
+/// output cannot be observed from a test, and the returned error is built from
+/// rule names, so with the mapping inlined a whole arm could be deleted with the
+/// suite still green.
+#[derive(Clone, PartialEq, Eq, Debug)]
+enum GameBlockReport {
+    Refused(String),
+    Warned(String),
+}
+
+fn game_block_report(rule: &TimingRule) -> Option<GameBlockReport> {
+    match game_block_status(rule) {
+        GameBlockStatus::Missing => Some(GameBlockReport::Refused(missing_message(rule))),
+        GameBlockStatus::TooShort { .. } => Some(GameBlockReport::Refused(too_short_message(rule))),
+        GameBlockStatus::Tight => Some(GameBlockReport::Warned(tight_message(rule))),
+        GameBlockStatus::Ok => None,
+    }
+}
+
 /// Refuse a Game Block that cannot hold its own game, and warn about one with no
 /// room to recover a delay.
 ///
@@ -1017,17 +1039,13 @@ fn check_game_block(schedule: &Schedule) -> Result<(), Box<dyn std::error::Error
     let mut invalid_rules = Vec::new();
 
     for rule in &schedule.timing_rules {
-        match game_block_status(rule) {
-            GameBlockStatus::Missing => {
-                error!("{}", missing_message(rule));
+        match game_block_report(rule) {
+            Some(GameBlockReport::Refused(message)) => {
+                error!("{message}");
                 invalid_rules.push(rule.name.clone());
             }
-            GameBlockStatus::TooShort { .. } => {
-                error!("{}", too_short_message(rule));
-                invalid_rules.push(rule.name.clone());
-            }
-            GameBlockStatus::Tight => warn!("{}", tight_message(rule)),
-            GameBlockStatus::Ok => {}
+            Some(GameBlockReport::Warned(message)) => warn!("{message}"),
+            None => {}
         }
     }
 
@@ -1035,7 +1053,12 @@ fn check_game_block(schedule: &Schedule) -> Result<(), Box<dyn std::error::Error
         Ok(())
     } else {
         Err(format!(
-            "Found timing rules with an invalid Game Block: {}",
+            "Found {} with an invalid Game Block: {}",
+            if invalid_rules.len() == 1 {
+                "a timing rule"
+            } else {
+                "timing rules"
+            },
             invalid_rules.join(", ")
         )
         .into())
@@ -1088,8 +1111,9 @@ mod tests {
 
     #[test]
     fn an_absent_game_block_is_not_a_zero() {
-        // `gameBlock` is optional. Absent means "derive it", which is legal;
-        // only a present zero is an error.
+        // This check is about a PRESENT zero: an absent `gameBlock` is not one,
+        // so it passes HERE. It does not survive the schedule as a whole -
+        // `check_game_block` refuses a rule that carries none.
         let mut rule = a_valid_rule();
         rule.game_block = None;
         let schedule = schedule_with_rules(vec![rule]);
@@ -1657,6 +1681,48 @@ mod tests {
             Duration::from_secs(1800),
         ))]))
         .expect("the same schedule with a sound Game Block passes");
+    }
+
+    #[test]
+    fn every_tier_produces_its_own_sentence() {
+        // Deleting an arm used to leave the suite green: the sentences go to the
+        // log, which a test cannot observe, and the returned error is built from
+        // rule names rather than from the sentences. Same class as the wiring gap
+        // the first review of this branch caught.
+        assert_eq!(
+            game_block_report(&a_rule(Some(Duration::from_secs(1741)))),
+            None
+        );
+
+        match game_block_report(&a_rule(None)) {
+            Some(GameBlockReport::Refused(m)) => assert!(m.contains("no Game Block"), "got: {m}"),
+            other => panic!("a missing Game Block must refuse, got: {other:?}"),
+        }
+        match game_block_report(&a_rule(Some(Duration::from_secs(600)))) {
+            Some(GameBlockReport::Refused(m)) => assert!(m.contains("shorter than"), "got: {m}"),
+            other => panic!("a too-short Game Block must refuse, got: {other:?}"),
+        }
+        match game_block_report(&a_rule(Some(Duration::from_secs(1500)))) {
+            Some(GameBlockReport::Warned(m)) => assert!(m.contains("leaves only"), "got: {m}"),
+            other => panic!("a tight Game Block must warn, not refuse, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_absent_game_block_advice_does_not_contradict_the_other_gate() {
+        // The two gates met for the first time when this branch was rebased onto
+        // the merged duration work. The duration message used to end "or leave
+        // the field out entirely", which `check_game_block` then refuses - the
+        // same run telling the organiser to do two opposite things.
+        let mut rule = a_valid_rule();
+        rule.game_block = Some(Duration::ZERO);
+        let zeros = flag_gated_zero_durations(&rule);
+        let msg = zero_duration_message(&rule, &zeros[0]);
+        assert!(
+            !msg.contains("leave the field out"),
+            "must not advise removing a field the Game Block gate requires: {msg}"
+        );
+        assert!(msg.contains("Give it the real length"), "got: {msg}");
     }
 
     #[test]

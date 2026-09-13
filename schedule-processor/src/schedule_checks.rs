@@ -965,11 +965,33 @@ fn format_mins_secs(duration: Duration) -> String {
     format!("{}:{:02}", secs / 60, secs % 60)
 }
 
+/// `1500` -> `"25:00 (1500 seconds)"`. Both units, because the two readers need
+/// different ones: `25:00` is how an organiser reads a slot off a schedule, and
+/// the seconds are what the spreadsheet cell accepts. Printing only `25:00` sent
+/// an organiser to type `25:00` into a cell that takes an integer, and the parse
+/// error they got back was raw serde output. The Portal states seconds for the
+/// same reason.
+fn format_block(duration: Duration) -> String {
+    format!(
+        "{} ({} seconds)",
+        format_mins_secs(duration),
+        duration.as_secs()
+    )
+}
+
 /// Every one of these is read by a tournament organiser who will act on it, so
 /// each names the rule it is about and the values that decide the verdict.
 fn missing_message(rule: &TimingRule) -> String {
+    // Aligned with the Portal's own refusal for this fault (uwhportal PR #965):
+    // an organiser hitting it in either tool is told the same thing. The spelling
+    // hint is not filler - `gameBlock` carries `#[serde(default)]`, so a misspelt
+    // column vanishes silently instead of erroring, and the organiser is looking
+    // at a spreadsheet that visibly contains the column.
     format!(
-        "Timing rule '{}' has no Game Block. Every timing rule needs one.",
+        "Timing rule '{}' has no Game Block. Add a gameBlock field, in seconds, \
+         covering the whole slot from this game's start to the next game's start \
+         on the same court. Check the spelling of the column if your spreadsheet \
+         already has one.",
         rule.name
     )
 }
@@ -982,8 +1004,8 @@ fn too_short_message(rule: &TimingRule, minimum: Duration) -> String {
         "Timing rule '{}' has a Game Block of {}, which is shorter than the {} this game \
          needs (the playing time plus the minimum break).",
         rule.name,
-        format_mins_secs(game_config(rule).game_block),
-        format_mins_secs(minimum),
+        format_block(game_config(rule).game_block),
+        format_block(minimum),
     )
 }
 
@@ -1378,8 +1400,9 @@ mod tests {
         match game_block_report(&rule) {
             Some(GameBlockReport::Refused(m)) => assert_eq!(
                 m,
-                "Timing rule 'RR' has a Game Block of 0:00, which is shorter than the \
-                 31:00 this game needs (the playing time plus the minimum break)."
+                "Timing rule 'RR' has a Game Block of 0:00 (0 seconds), which is shorter \
+                 than the 31:00 (1860 seconds) this game needs (the playing time plus the \
+                 minimum break)."
             ),
             other => panic!("a zero Game Block must be refused, got: {other:?}"),
         }
@@ -1605,8 +1628,13 @@ mod tests {
     #[test]
     fn the_missing_message_names_the_rule() {
         let msg = missing_message(&a_rule(None));
-        assert!(msg.contains("RR"), "got: {msg}");
-        assert!(msg.contains("no Game Block"), "got: {msg}");
+        assert_eq!(
+            msg,
+            "Timing rule 'RR' has no Game Block. Add a gameBlock field, in seconds, \
+             covering the whole slot from this game's start to the next game's start \
+             on the same court. Check the spelling of the column if your spreadsheet \
+             already has one."
+        );
     }
 
     #[test]
@@ -1617,8 +1645,8 @@ mod tests {
         // Ordered on purpose: asserting the two numbers separately still passes
         // if they are swapped, which reads as "shorten a block already too short".
         assert!(
-            msg.contains("of 20:00, which is shorter than the 25:00"),
-            "should state the authored value then the minimum, got: {msg}"
+            msg.contains("of 20:00 (1200 seconds), which is shorter than the 25:00 (1500 seconds)"),
+            "should state the authored value then the minimum, both units, got: {msg}"
         );
     }
 

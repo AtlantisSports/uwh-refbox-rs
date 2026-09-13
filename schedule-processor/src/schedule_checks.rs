@@ -1009,16 +1009,25 @@ fn too_short_message(rule: &TimingRule, minimum: Duration) -> String {
     )
 }
 
-/// The tight band runs from the minimum up to the timeout allotment, so the spare
-/// time is stated rather than called absent: at the bottom of the band it reads
-/// `0:00`, and further up it is real minutes in hand.
+/// States the figures and the comparison that raised them, and passes no verdict.
+///
+/// It used to end "too little to absorb small delays", which called a normal
+/// schedule inadequate: the Portal accepts a block equal to the minimum precisely
+/// because real round robins run with zero buffer (uwhportal PR #965), and both
+/// real fixtures in this repo sit in this band. A warning that fires on every
+/// genuine schedule and scolds it teaches an organiser to scroll past it.
+///
+/// The spare figure is the block MINUS the game and its minimum break -
+/// `game_block_buffer`, which does not subtract timeouts. The timeout allotment
+/// is only the threshold that decides whether this tier fires, so the sentence
+/// says the timeouts COULD use that time rather than that they already have.
 fn tight_message(rule: &TimingRule) -> String {
     let config = game_config(rule);
     format!(
-        "Timing rule '{}' has a Game Block of {}, which leaves only {} spare - too \
-         little to absorb small delays.",
+        "Timing rule '{}' has a Game Block of {}, which leaves {} spare beyond the \
+         game and its minimum break - less than the teams' timeouts could use.",
         rule.name,
-        format_mins_secs(config.game_block),
+        format_block(config.game_block),
         format_mins_secs(config.game_block_buffer()),
     )
 }
@@ -1654,14 +1663,11 @@ mod tests {
     fn the_tight_message_names_the_value_and_the_spare_time() {
         // 26:00 block against a 25:00 minimum: 1:00 spare, which is what the
         // organiser needs to see - the warning fires well above zero spare.
-        let msg = tight_message(&a_rule(Some(Duration::from_secs(1560))));
-        assert!(
-            msg.contains("26:00"),
-            "should state the authored value, got: {msg}"
-        );
-        assert!(
-            msg.contains("1:00"),
-            "should state the real spare time, got: {msg}"
+        assert_eq!(
+            tight_message(&a_rule(Some(Duration::from_secs(1560)))),
+            "Timing rule 'RR' has a Game Block of 26:00 (1560 seconds), which leaves 1:00 \
+             spare beyond the game and its minimum break - less than the teams' timeouts \
+             could use."
         );
     }
 
@@ -1753,7 +1759,7 @@ mod tests {
             other => panic!("a too-short Game Block must refuse, got: {other:?}"),
         }
         match game_block_report(&a_rule(Some(Duration::from_secs(1500)))) {
-            Some(GameBlockReport::Warned(m)) => assert!(m.contains("leaves only"), "got: {m}"),
+            Some(GameBlockReport::Warned(m)) => assert!(m.contains("spare beyond"), "got: {m}"),
             other => panic!("a tight Game Block must warn, not refuse, got: {other:?}"),
         }
     }
@@ -1765,8 +1771,12 @@ mod tests {
         // most organisers will actually see.
         let msg = tight_message(&a_rule(Some(Duration::from_secs(1500))));
         assert!(
-            msg.contains("of 25:00, which leaves only 0:00 spare"),
-            "got: {msg}"
+            msg.contains("leaves 0:00 spare"),
+            "should state the figure, got: {msg}"
+        );
+        assert!(
+            !msg.contains("too little"),
+            "must not call a schedule the Portal accepts inadequate, got: {msg}"
         );
     }
 }

@@ -596,10 +596,11 @@ pub(crate) fn parse_group(
 /// the same type from the Portal and must keep tolerating fields the Portal
 /// adds later. Here that leniency hides operator typos: a name serde does not
 /// recognise is dropped. For the twelve required fields the rule then fails as
-/// a missing field, which is loud but cryptic; for the two carrying
-/// `#[serde(default)]` — `last2minStopTime` and `gameBlock` — the value simply
-/// vanishes with no error at all. So the spelling is checked here, against a
-/// spreadsheet, where the operator can act on what they are told.
+/// a missing field, which is loud but cryptic; for the three carrying
+/// `#[serde(default)]` — `singlePeriod`, `last2minStopTime` and `gameBlock` —
+/// the value simply vanishes with no error at all. So the spelling is checked
+/// here, against a spreadsheet, where the operator can act on what they are
+/// told.
 ///
 /// `name` is deliberately NOT in this list. It is a field of `TimingRule`, but
 /// it arrives from the separate "Timing Rule Name" column; in the field column

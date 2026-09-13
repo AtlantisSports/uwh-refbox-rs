@@ -789,8 +789,9 @@ fn flag_gated_zero_durations(rule: &TimingRule) -> Vec<ZeroDuration> {
         // row rather than as a branch after the fold. Absence is not silently
         // legal, though - `check_game_block` refuses it for the schedule as a
         // whole. Keep the two consistent: this remedy must never suggest
-        // removing the field, or the same run tells the organiser to do
-        // something the next check rejects.
+        // removing the field. `run_schedule_checks` short-circuits on `?`, so the
+        // organiser meets the contradiction ACROSS TWO RUNS - remove the field as
+        // told, re-run, get refused for its absence - never both in one pass.
         (
             rule.game_block.unwrap_or(Duration::ZERO),
             rule.game_block.is_some(),
@@ -807,6 +808,16 @@ fn flag_gated_zero_durations(rule: &TimingRule) -> Vec<ZeroDuration> {
         .filter(|(value, is_used, _, _)| *is_used && value.is_zero())
         .map(|(_, _, field, reason)| ZeroDuration { field, reason })
         .collect()
+}
+
+/// "a timing rule" or "timing rules". Shared by both gates: an organiser can meet
+/// either in one session, and they read wrong together if only one is corrected.
+fn timing_rules_plural(count: usize) -> &'static str {
+    if count == 1 {
+        "a timing rule"
+    } else {
+        "timing rules"
+    }
 }
 
 /// Read by a tournament organiser who has to go and fix it, so it names the rule,
@@ -872,11 +883,7 @@ fn check_flag_gated_durations(schedule: &Schedule) -> Result<(), Box<dyn std::er
     } else {
         Err(format!(
             "Found {} with a zero duration the rule still uses: {}",
-            if invalid_rules.len() == 1 {
-                "a timing rule"
-            } else {
-                "timing rules"
-            },
+            timing_rules_plural(invalid_rules.len()),
             invalid_rules.join("; ")
         )
         .into())
@@ -978,16 +985,16 @@ fn missing_message(rule: &TimingRule) -> String {
     )
 }
 
-fn too_short_message(rule: &TimingRule) -> String {
-    // The minimum is read from the same config as the value printed beside it, so
-    // the two numbers in the sentence cannot disagree.
-    let config = game_config(rule);
+fn too_short_message(rule: &TimingRule, minimum: Duration) -> String {
+    // `minimum` is the value `game_block_status` already computed and carried on
+    // the variant. Recomputing it here meant two independent derivations of one
+    // number, able to drift apart with the test reading only the carried one.
     format!(
         "Timing rule '{}' has a Game Block of {}, which is shorter than the {} this game \
          needs (the playing time plus the minimum break).",
         rule.name,
-        format_mins_secs(config.game_block),
-        format_mins_secs(config.game_block_minimum()),
+        format_mins_secs(game_config(rule).game_block),
+        format_mins_secs(minimum),
     )
 }
 
@@ -1009,11 +1016,17 @@ fn tight_message(rule: &TimingRule) -> String {
 /// the upload.
 ///
 /// The tier-to-sentence mapping lives here rather than inside `check_game_block`'s
-/// match so a test can prove every tier still produces its own sentence. Logged
-/// output cannot be observed from a test, and the returned error is built from
-/// rule names, so with the mapping inlined a whole arm could be deleted with the
-/// suite still green.
-#[derive(Clone, PartialEq, Eq, Debug)]
+/// match so a test can assert it: logged output cannot be observed from a test,
+/// and the returned error is built from rule names, so inlined it was the
+/// SENTENCES that went unchecked - swapping one tier's message for another's, or
+/// for an empty string, left the suite green. (Deleting an arm outright was
+/// always a compile error; an earlier version of this comment said otherwise.)
+/// Still NOT covered is the log LEVEL: turning `check_game_block`'s `warn!` into
+/// an `error!` passes every test, because `Warned` vs `Refused` is asserted here
+/// rather than at the macro.
+// `Clone` deliberately absent: nothing clones a report. Matches `ZeroDuration`
+// above, which carries the same note.
+#[derive(PartialEq, Eq, Debug)]
 enum GameBlockReport {
     Refused(String),
     Warned(String),
@@ -1022,7 +1035,9 @@ enum GameBlockReport {
 fn game_block_report(rule: &TimingRule) -> Option<GameBlockReport> {
     match game_block_status(rule) {
         GameBlockStatus::Missing => Some(GameBlockReport::Refused(missing_message(rule))),
-        GameBlockStatus::TooShort { .. } => Some(GameBlockReport::Refused(too_short_message(rule))),
+        GameBlockStatus::TooShort { minimum } => {
+            Some(GameBlockReport::Refused(too_short_message(rule, minimum)))
+        }
         GameBlockStatus::Tight => Some(GameBlockReport::Warned(tight_message(rule))),
         GameBlockStatus::Ok => None,
     }
@@ -1054,11 +1069,7 @@ fn check_game_block(schedule: &Schedule) -> Result<(), Box<dyn std::error::Error
     } else {
         Err(format!(
             "Found {} with an invalid Game Block: {}",
-            if invalid_rules.len() == 1 {
-                "a timing rule"
-            } else {
-                "timing rules"
-            },
+            timing_rules_plural(invalid_rules.len()),
             invalid_rules.join(", ")
         )
         .into())
@@ -1590,7 +1601,7 @@ mod tests {
     #[test]
     fn the_too_short_message_names_the_rule_its_value_and_the_minimum() {
         let rule = a_rule(Some(Duration::from_secs(1200)));
-        let msg = too_short_message(&rule);
+        let msg = too_short_message(&rule, Duration::from_secs(1500));
         assert!(msg.contains("RR"), "got: {msg}");
         // Ordered on purpose: asserting the two numbers separately still passes
         // if they are swapped, which reads as "shorten a block already too short".
@@ -1709,20 +1720,23 @@ mod tests {
     }
 
     #[test]
-    fn the_absent_game_block_advice_does_not_contradict_the_other_gate() {
+    fn the_zero_game_block_remedy_never_advises_removing_the_field() {
         // The two gates met for the first time when this branch was rebased onto
         // the merged duration work. The duration message used to end "or leave
-        // the field out entirely", which `check_game_block` then refuses - the
-        // same run telling the organiser to do two opposite things.
+        // the field out entirely", which `check_game_block` then refuses. The
+        // organiser meets that across TWO runs, not one: `run_schedule_checks`
+        // short-circuits on `?`, so this gate returns before the Game Block gate
+        // is reached. Asserted as a WHOLE sentence, like every sibling remedy
+        // test here - checking for the absence of one phrase still passes if the
+        // same advice returns in different words.
         let mut rule = a_valid_rule();
         rule.game_block = Some(Duration::ZERO);
         let zeros = flag_gated_zero_durations(&rule);
-        let msg = zero_duration_message(&rule, &zeros[0]);
-        assert!(
-            !msg.contains("leave the field out"),
-            "must not advise removing a field the Game Block gate requires: {msg}"
+        assert_eq!(
+            zero_duration_message(&rule, &zeros[0]),
+            "Timing rule 'RR' sets gameBlock to zero, but it is the slot length \
+             for the whole game. Give it the real length."
         );
-        assert!(msg.contains("Give it the real length"), "got: {msg}");
     }
 
     #[test]

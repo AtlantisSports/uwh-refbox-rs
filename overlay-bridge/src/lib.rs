@@ -12,6 +12,7 @@ pub mod config;
 pub mod discovery;
 pub mod feed;
 pub mod game_feed;
+pub mod local_roster;
 pub mod portal;
 pub mod server;
 pub mod state;

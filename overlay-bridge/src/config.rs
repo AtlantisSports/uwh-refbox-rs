@@ -52,6 +52,23 @@ pub const DEFAULT_REFBOX_HOST: &str = "127.0.0.1";
 pub const DEFAULT_REFBOX_PORT: u16 = 8000;
 pub const DEFAULT_PORT: u16 = 8099;
 
+/// Where team and player names come from: the Portal (the existing, default behaviour), or two
+/// local CSV files, for an event with no Portal access at all -- see `local_roster`'s module doc.
+/// The toggle discussed with Eric 2026-09-09 ("RefBox [i.e. Portal-URL] or local").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+pub enum RosterSource {
+    Portal,
+    Local,
+}
+
+impl Default for RosterSource {
+    /// Matches every run before this setting existed: nothing changes for an operator who never
+    /// touches this toggle.
+    fn default() -> Self {
+        RosterSource::Portal
+    }
+}
+
 /// The bridge's persisted settings. Every field is `Option`, not a bare value with some
 /// in-band "unset" sentinel: `Settings::default()` (every field `None`) is what a missing or
 /// corrupt settings file resolves to (see the module doc), and `None` is what [`resolve`] treats
@@ -71,6 +88,14 @@ pub struct Settings {
     pub refbox_port: Option<u16>,
     /// The bridge's own HTTP server port.
     pub port: Option<u16>,
+    /// Whether team/player names come from the Portal or from local CSV files.
+    pub roster_source: Option<RosterSource>,
+    /// Path to the local schedule CSV (game number, black team, white team). Only consulted when
+    /// `roster_source` is [`RosterSource::Local`].
+    pub schedule_csv_path: Option<String>,
+    /// Path to the local roster CSV (team, cap number, player name). Only consulted when
+    /// `roster_source` is [`RosterSource::Local`].
+    pub roster_csv_path: Option<String>,
 }
 
 /// Resolves one setting under the bridge's standing precedence rule (see the module doc): an
@@ -88,6 +113,9 @@ pub struct Overrides {
     pub refbox_host: Option<String>,
     pub refbox_port: Option<u16>,
     pub port: Option<u16>,
+    pub roster_source: Option<RosterSource>,
+    pub schedule_csv_path: Option<String>,
+    pub roster_csv_path: Option<String>,
 }
 
 /// Every setting the running bridge needs, already resolved -- **one value per setting, with no
@@ -117,6 +145,16 @@ pub struct Resolved {
     /// could not be worked out (a choice then still applies for this run -- the status page says
     /// plainly that it will not be remembered).
     pub settings_path: Option<PathBuf>,
+    /// Whether team/player names come from the Portal or from local CSV files.
+    pub roster_source: RosterSource,
+    /// Path to the local schedule CSV, if one has been set. Unlike `refbox`/`port`, this stays
+    /// `Option` even once resolved: there is no sensible default path to fall back to, and
+    /// `roster_source: Local` with no path set yet is a legitimate, non-fatal state -- team names
+    /// simply stay blank until one is set, the same "never fatal" contract `portal.rs` follows.
+    pub schedule_csv_path: Option<String>,
+    /// Path to the local roster CSV, if one has been set. See `schedule_csv_path` for why this
+    /// stays `Option`.
+    pub roster_csv_path: Option<String>,
 }
 
 impl Default for Resolved {
@@ -125,6 +163,9 @@ impl Default for Resolved {
             refbox: RefboxAddress::new(DEFAULT_REFBOX_HOST, DEFAULT_REFBOX_PORT),
             port: DEFAULT_PORT,
             settings_path: None,
+            roster_source: RosterSource::default(),
+            schedule_csv_path: None,
+            roster_csv_path: None,
         }
     }
 }
@@ -137,6 +178,9 @@ impl Resolved {
             refbox_host: Some(self.refbox.host.clone()),
             refbox_port: Some(self.refbox.port),
             port: Some(self.port),
+            roster_source: Some(self.roster_source),
+            schedule_csv_path: self.schedule_csv_path.clone(),
+            roster_csv_path: self.roster_csv_path.clone(),
         }
     }
 }
@@ -168,6 +212,13 @@ pub fn resolve_all(
         ),
         port: resolve(overrides.port, stored.port, defaults.port),
         settings_path,
+        roster_source: resolve(
+            overrides.roster_source,
+            stored.roster_source,
+            defaults.roster_source,
+        ),
+        schedule_csv_path: overrides.schedule_csv_path.or(stored.schedule_csv_path),
+        roster_csv_path: overrides.roster_csv_path.or(stored.roster_csv_path),
     }
 }
 
@@ -273,6 +324,31 @@ pub fn remember_refbox_address(path: &Path, host: &str, port: u16) -> bool {
     }
 }
 
+/// Remembers the operator's choice of roster source (and, for [`RosterSource::Local`], the two
+/// file paths) in the settings file at `path`, leaving every other setting exactly as it is --
+/// same read-modify-write reasoning as [`remember_refbox_address`], and the same "never fails
+/// loudly" contract.
+pub fn remember_roster_source(
+    path: &Path,
+    source: RosterSource,
+    schedule_csv_path: Option<String>,
+    roster_csv_path: Option<String>,
+) -> bool {
+    let settings = Settings {
+        roster_source: Some(source),
+        schedule_csv_path,
+        roster_csv_path,
+        ..load_from(path)
+    };
+    match confy::store_path(path, &settings) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("could not remember the chosen roster source: {e}");
+            false
+        }
+    }
+}
+
 /// The shared implementation behind [`load`] and this module's own tests: loads from an
 /// arbitrary path (via `confy::load_path`) rather than the OS-standard one, so a test can point
 /// it at a throwaway file instead of touching a real user's config directory. A *missing* path is
@@ -356,6 +432,7 @@ mod tests {
             refbox_host: Some("192.168.1.50".to_string()),
             refbox_port: Some(9000),
             port: Some(9001),
+            ..Settings::default()
         };
 
         confy::store_path(&file.0, &settings)
@@ -441,6 +518,7 @@ mod tests {
             refbox_host: Some("127.0.0.1".to_string()),
             refbox_port: Some(8000),
             port: Some(9001),
+            ..Settings::default()
         };
         confy::store_path(&file.0, &before).expect("writing the starting settings should succeed");
 
@@ -488,6 +566,7 @@ mod tests {
             refbox_host: Some("10.0.0.9".to_string()),
             refbox_port: Some(8123),
             port: Some(9001),
+            ..Settings::default()
         };
 
         let resolved = resolve_all(overrides, stored, Some(PathBuf::from("/tmp/settings.toml")));
@@ -522,6 +601,9 @@ mod tests {
             refbox: RefboxAddress::new("192.168.1.50", 8123),
             port: 9001,
             settings_path: None,
+            roster_source: RosterSource::Local,
+            schedule_csv_path: Some("C:\\schedule.csv".to_string()),
+            roster_csv_path: Some("C:\\roster.csv".to_string()),
         };
 
         let round_tripped = resolve_all(Overrides::default(), resolved.to_settings(), None);

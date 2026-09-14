@@ -8,8 +8,15 @@ rust-version = "1.85"
 [dependencies]
 # The bridge's own HTTP server -- serves the tables vMix (and any other third party) polls. The
 # one new dependency for this task, approved by Eric 2026-08-26 (phase-1 plan and task 6's brief).
-axum = "0.8"
+# "multipart" is an explicit feature (not assumed default) for the roster-source CSV upload form
+# (server.rs's `post_roster_source`) -- a browser file input submits a file's bytes, never a real
+# filesystem path, so that route reads a multipart body instead of a plain form.
+axum = { version = "0.8", features = ["multipart"] }
 clap = { version = "4", features = ["derive"] }
+# Reads the local schedule/roster CSVs for events with no Portal access (local_roster.rs).
+# Already a workspace dependency (`schedule-processor/Cargo.toml`'s own `csv = "1"`), so this
+# does not add a new library to the workspace's dependency graph.
+csv = "1"
 # Persists the bridge's own settings (Task 7) -- the same crate `refbox` itself already uses for
 # exactly this (`refbox/Cargo.toml`'s own `confy = "1.0"`), so this does not add a new library to
 # the workspace's dependency graph.
@@ -17,8 +24,9 @@ confy = "1.0"
 futures = "0.3"
 # Same version and feature set as `overlay`'s own use of reqwest (it talks to the same portal
 # endpoints), so this does not add a new library to the workspace's dependency graph -- it is
-# already resolved in Cargo.lock.
-reqwest = { version = "0.12", features = ["gzip"] }
+# already resolved in Cargo.lock. "multipart" is used only by this crate's own tests, to submit
+# the roster-source form's file inputs the same way a real browser does.
+reqwest = { version = "0.12", features = ["gzip", "multipart"] }
 # Derives (de)serialization for `config::Settings` (Task 7). Already used across the workspace
 # (`uwh-common`, `refbox`); the "derive" feature is what `#[derive(Serialize, Deserialize)]` needs.
 serde = { version = "1", features = ["derive"] }
@@ -42,3 +50,7 @@ uwh-common = { version = "0.5", path = "../uwh-common" }
 # both test-only: Cargo's resolver only unifies these into the "tokio" used by test/bench targets
 # of this crate, not into the plain library/binary build.
 tokio = { version = "1", features = ["io-util", "test-util"], default-features = false }
+# Writes fixture CSV files for local_roster.rs's tests. Already a workspace dependency
+# (`refbox/Cargo.toml`'s own `tempfile = "3"`, dev-only there too), so this does not add a new
+# library to the workspace's dependency graph.
+tempfile = "3"

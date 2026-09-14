@@ -32,6 +32,21 @@ struct Cli {
     /// setting when passed; otherwise the last value used is remembered, falling back to 8099.
     #[clap(long)]
     port: Option<u16>,
+
+    /// Where team and player names come from: `portal` (the default) or `local` (two CSV files,
+    /// for an event with no Portal access -- see `--schedule-csv-path`/`--roster-csv-path`).
+    #[clap(long, value_enum)]
+    roster_source: Option<config::RosterSource>,
+
+    /// Path to the local schedule CSV (game number, black team, white team). Only used when
+    /// `--roster-source local` is in effect.
+    #[clap(long)]
+    schedule_csv_path: Option<String>,
+
+    /// Path to the local roster CSV (team, cap number, player name). Only used when
+    /// `--roster-source local` is in effect.
+    #[clap(long)]
+    roster_csv_path: Option<String>,
 }
 
 impl Cli {
@@ -43,6 +58,9 @@ impl Cli {
             refbox_host: self.refbox_host.clone(),
             refbox_port: self.refbox_port,
             port: self.port,
+            roster_source: self.roster_source,
+            schedule_csv_path: self.schedule_csv_path.clone(),
+            roster_csv_path: self.roster_csv_path.clone(),
         }
     }
 }

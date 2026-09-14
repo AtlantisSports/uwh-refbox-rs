@@ -111,21 +111,27 @@ impl State {
                 self.snapshot = snapshot;
             }
             StateUpdate::GameData(game_data) => {
-                if let Some(ref event_id) = self.snapshot.event_id {
-                    if game_data.event_id == *event_id
-                        && game_data.game_number == *self.snapshot.game_number()
-                    {
-                        self.black = TeamInfo::from(game_data.black);
-                        self.white = TeamInfo::from(game_data.white);
-                        self.start_time = game_data.start_time;
-                        self.referees = game_data.referees.into_iter().map(Member::from).collect();
-                        self.pool = game_data.pool;
-                    } else {
-                        warn!(
-                            "Received game data for incorrect game: {} in event {}",
-                            game_data.game_number, game_data.event_id
-                        );
-                    }
+                // Two ways this is trusted: a portal id on both sides that agree (the original,
+                // event-scoped rule), or no portal id on either side at all -- the no-portal/
+                // local-CSV case (`bridge_network.rs`), where a game number match is the only
+                // check there is anything to make (see `network::GameData::event_id`'s doc). One
+                // side having an id and the other not is never a match either way.
+                let identity_matches = match (&self.snapshot.event_id, &game_data.event_id) {
+                    (Some(current), Some(incoming)) => incoming == current,
+                    (None, None) => true,
+                    _ => false,
+                };
+                if identity_matches && game_data.game_number == *self.snapshot.game_number() {
+                    self.black = TeamInfo::from(game_data.black);
+                    self.white = TeamInfo::from(game_data.white);
+                    self.start_time = game_data.start_time;
+                    self.referees = game_data.referees.into_iter().map(Member::from).collect();
+                    self.pool = game_data.pool;
+                } else {
+                    warn!(
+                        "Received game data for incorrect game: {} (event {:?})",
+                        game_data.game_number, game_data.event_id
+                    );
                 }
             }
             StateUpdate::EventLogos(event_id, logos) => {
@@ -298,8 +304,24 @@ async fn main() {
         }
     };
 
+    // Every page draws assuming a fixed 3840x1080 canvas (see `pages::mod`'s
+    // `draw_texture_both!` family, which hardcodes a 1920 split). The *window* `window_conf()`
+    // asks for that same size, but the OS is free to hand back something smaller -- on a
+    // machine whose combined monitor width doesn't reach 3840, it does, silently, and every
+    // page whose layout goes further right than the window actually got is cropped out of
+    // the captured picture entirely (see `ndi_output.rs`'s doc for the same constraint on the
+    // alpha side of this). Rendering into a fixed-size offscreen target instead removes that
+    // dependency on the real display altogether: the picture handed to NDI is always the full
+    // 3840x1080 the design assumes, on any machine, regardless of what the visible window's
+    // own size ends up being.
+    let canvas = render_target(3840, 1080);
+    canvas.texture.set_filter(FilterMode::Nearest);
+    let mut canvas_camera = Camera2D::from_display_rect(Rect::new(0., 0., 3840., 1080.));
+    canvas_camera.render_target = Some(canvas.clone());
+
     loop {
         assert!(!net_worker.is_finished(), "Networking thread panikd!");
+        set_camera(&canvas_camera);
         clear_background(BLACK);
 
         if let Ok(received_state) = rx.try_recv() {
@@ -356,10 +378,35 @@ async fn main() {
             }
         }
 
+        // The full, uncropped 3840x1080 picture -- from the offscreen canvas, never from
+        // `get_screen_data()` (the visible window), which may be smaller than that on this
+        // machine (see `canvas`'s doc above).
         #[cfg(feature = "ndi")]
         if let Some(ndi_output) = ndi_output.as_mut() {
-            ndi_output.send_frame(&get_screen_data());
+            // Without this, `get_texture_data` below can read the canvas before this frame's
+            // batched draw calls have actually been submitted to the GPU -- the same reason
+            // macroquad's own `get_screen_data()` flushes before its own read.
+            unsafe {
+                macroquad::window::get_internal_gl().flush();
+            }
+            ndi_output.send_frame(&canvas.texture.get_texture_data());
         }
+
+        // A scaled-down local preview in the actual window, so there is still something to
+        // look at on this machine even though the real picture now lives in `canvas` -- NDI is
+        // the real delivery path (see the module doc), this is only for on-site troubleshooting.
+        set_default_camera();
+        clear_background(BLACK);
+        draw_texture_ex(
+            &canvas.texture,
+            0.,
+            0.,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(vec2(screen_width(), screen_height())),
+                ..Default::default()
+            },
+        );
 
         next_frame().await;
     }

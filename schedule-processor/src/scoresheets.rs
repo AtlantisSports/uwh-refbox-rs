@@ -1450,6 +1450,71 @@ fn render_html_simple(
     html
 }
 
+/// Builds the Time Outs block for the Simple (Team Refs) sheet.
+///
+/// That sheet's table is six columns wide, and each team's three columns are
+/// headed 1st Half, 2nd Half and OT / SD, so the cells for each team must total
+/// three columns and line up under those headings. This is not the same shape
+/// as `render_html_simple`, whose three columns have no OT / SD heading and are
+/// split 2 + 1; copying that sheet's geometry here misaligns the whole block.
+///
+/// Returns `(white_cells, black_cells)`. The block carries no headings of its
+/// own: the sheet already labels these three columns above the scoring row, so
+/// repeating them here would only risk the two rows disagreeing.
+fn team_refs_timeout_cells(to_count: u16, to_per_half: bool) -> (String, String) {
+    // Team timeouts are never available in overtime or sudden death, so the
+    // third column is a not-available box under every rule, and a per-game
+    // timeout box stops at the two half columns rather than spanning all three.
+    const OT_WHITE: &str = "<td class='speckled-white'></td>";
+    const OT_BLACK: &str = "<td class='speckled-black'></td>";
+    // The two half columns are 12.5% of the page each; the merged box is 25%,
+    // the width render_html_simple uses these leading spaces at. Cells are
+    // centred, so they push the "of N" right and leave the left of the box
+    // clear to write the count in. Omitted in the narrow boxes, where the
+    // padding would not fit alongside the text.
+    const LEAD: &str = "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+
+    if to_count == 0 {
+        // No timeouts are allowed. Building the boxes in a loop that runs zero
+        // times instead leaves the sheet with a blank row.
+        //
+        // The two half columns take the same shape a real box would: split
+        // where the halves are counted separately, merged where they are not.
+        // A single-period game arrives here merged, so its box sits under the
+        // one Game column rather than being cut in two beneath it.
+        let (white_halves, black_halves) = if to_per_half {
+            (
+                "<td class='speckled-white'></td><td class='speckled-white'></td>",
+                "<td class='speckled-black'></td><td class='speckled-black'></td>",
+            )
+        } else {
+            (
+                "<td class='speckled-white' colspan='2'></td>",
+                "<td class='speckled-black' colspan='2'></td>",
+            )
+        };
+        (
+            format!("{white_halves}{OT_WHITE}"),
+            format!("{black_halves}{OT_BLACK}"),
+        )
+    } else if to_per_half {
+        (
+            format!(
+                "<td class='to-white'>of {to_count}</td><td class='to-white'>of {to_count}</td>{OT_WHITE}"
+            ),
+            format!(
+                "<td class='to-black'>of {to_count}</td><td class='to-black'>of {to_count}</td>{OT_BLACK}"
+            ),
+        )
+    } else {
+        // Counted per game: one box across both halves, but not overtime.
+        (
+            format!("<td class='to-white' colspan='2'>{LEAD}of {to_count}</td>{OT_WHITE}"),
+            format!("<td class='to-black' colspan='2'>{LEAD}of {to_count}</td>{OT_BLACK}"),
+        )
+    }
+}
+
 // Simple (Team Refs) scoresheet layout - similar to Simple but uses team-based referee assignments
 #[allow(clippy::too_many_arguments)]
 fn render_html_simple_team_refs(
@@ -1535,43 +1600,12 @@ fn render_html_simple_team_refs(
         ts_keeper_team
     );
 
-    // Timeout headers and cells (same logic as render_html_simple)
+    // Timeout cells, aligned to this sheet's 1st Half / 2nd Half / OT-SD columns.
     // A single-period game has no halves for a timeout to belong to, so its Time
     // Outs block is drawn merged, as it is for a rule counting them per game.
     let to_per_half = tr.team_timeouts_counted_per_half && !tr.single_period;
-    let to_count = tr.team_timeout_count as usize;
-    let (to_half_headers_row, to_white_cells, to_black_cells) = if to_per_half {
-        let hdr = "<tr><th class='to-white-half' colspan='2'>1st Half</th><th class='to-white-half' colspan='2'>2nd Half</th><th class='to-black-half' colspan='2'>1st Half</th><th class='to-black-half' colspan='2'>2nd Half</th></tr>".to_string();
-        let mut w = String::new();
-        let mut b = String::new();
-        for _ in 0..to_count {
-            w.push_str("<td class='to-white'></td><td class='to-white'></td><td class='to-white'></td><td class='to-white'></td>");
-            b.push_str("<td class='to-black'></td><td class='to-black'></td><td class='to-black'></td><td class='to-black'></td>");
-        }
-        (hdr, w, b)
-    } else {
-        let hdr = String::new();
-        let mut w = String::new();
-        let mut b = String::new();
-        for i in 0..to_count {
-            let span = if to_count == 1 {
-                4
-            } else {
-                4 / to_count.max(1)
-            };
-            w.push_str(&format!(
-                "<td class='to-white' colspan='{}'>{}</td>",
-                span,
-                i + 1
-            ));
-            b.push_str(&format!(
-                "<td class='to-black' colspan='{}'>{}</td>",
-                span,
-                i + 1
-            ));
-        }
-        (hdr, w, b)
-    };
+    let (to_white_cells, to_black_cells) =
+        team_refs_timeout_cells(tr.team_timeout_count, to_per_half);
 
     // A single-period game has one scoring column per team rather than two
     // halves. Merging the two narrow half columns gives a Game column the same
@@ -1642,13 +1676,26 @@ fn render_html_simple_team_refs(
       /* Section headers (Time Outs, Timed Penalties, Final Scores) */
       table.unified th.section-header { background:#fff; font-weight:bold; }
 
-      /* Time Outs half headers */
-      table.unified th.to-white-half { background:#fff; font-weight:bold; font-size:11px; }
-      table.unified th.to-black-half { background:#d0d0d0; font-weight:bold; font-size:11px; }
-
       /* Time Out cells */
       table.unified td.to-white { height:32px; background:#fff; }
       table.unified td.to-black { height:32px; background:#d0d0d0; }
+
+      /* Not-available boxes, drawn where a rule allows no team timeouts.
+         Taken from render_html_simple, but kept at this sheet's own 32px row
+         height so the row does not stand taller than a normal timeout row. */
+      table.unified td.speckled-white { height:32px; background:#fff; position:relative; }
+      table.unified td.speckled-black { height:32px; background:#d0d0d0; position:relative; }
+      table.unified td.speckled-white::before,
+      table.unified td.speckled-black::before {
+        content: "X";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 14px;
+        color: #9b9b9b;
+        font-weight: 600;
+      }
 
       /* Final score cells - 25% taller (50 * 1.25 = 62) */
       table.unified td.final-white { height:62px; background:#fff; font-size:18px; font-weight:bold; }
@@ -1714,8 +1761,6 @@ fn render_html_simple_team_refs(
     <tr>
       <th class='section-header' colspan='6'>Time Outs</th>
     </tr>
-    <!-- Time Outs half headers (if per-half) -->
-    {to_half_headers_row}
     <!-- Time Out cells row for white -->
     <tr>
       {to_white_cells}
@@ -1770,7 +1815,6 @@ fn render_html_simple_team_refs(
         score_rows = score_rows,
         white_team = html_escape(&white_label),
         black_team = html_escape(&black_label),
-        to_half_headers_row = to_half_headers_row,
         to_white_cells = to_white_cells,
         to_black_cells = to_black_cells,
     );
@@ -2799,8 +2843,154 @@ pub(crate) fn html_escape(s: &str) -> String {
 mod tests {
     use super::{
         SheetStyle, browser_candidates, style_needs_rosters, style_needs_sanctioning_logo,
-        style_needs_tournament_logo,
+        style_needs_tournament_logo, team_refs_timeout_cells,
     };
+
+    /// Total width of a run of cells, counting each `<td>`/`<th>` as its
+    /// `colspan` or, where it has none, as a single column.
+    fn columns(cells: &str) -> usize {
+        cells
+            .split('<')
+            .filter(|tag| tag.starts_with("td") || tag.starts_with("th"))
+            .map(|tag| {
+                tag.split_once("colspan='")
+                    .and_then(|(_, rest)| rest.split_once('\''))
+                    .and_then(|(n, _)| n.parse::<usize>().ok())
+                    .unwrap_or(1)
+            })
+            .sum()
+    }
+
+    #[test]
+    fn columns_helper_counts_colspans() {
+        // Guard the guard: if this miscounts, every assertion below is worthless.
+        assert_eq!(columns(""), 0);
+        assert_eq!(columns("<td class='to-white'></td>"), 1);
+        assert_eq!(columns("<td class='to-white' colspan='3'></td>"), 3);
+        assert_eq!(
+            columns("<td colspan='2'></td><td></td><th colspan='4'>1st Half</th>"),
+            7
+        );
+    }
+
+    #[test]
+    fn zero_timeouts_draw_boxes_rather_than_an_empty_row() {
+        // A rule allowing no team timeouts used to build its cells with a loop
+        // that ran zero times, leaving the sheet with a blank row where the
+        // "not available" boxes belong. Live for Wollongong, whose rules all
+        // allow none.
+        for per_half in [false, true] {
+            let (white, black) = team_refs_timeout_cells(0, per_half);
+            assert!(
+                !white.trim().is_empty() && !black.trim().is_empty(),
+                "zero timeouts (per_half={per_half}) must still draw cells"
+            );
+            assert!(
+                white.contains("speckled-white") && black.contains("speckled-black"),
+                "zero timeouts (per_half={per_half}) must draw the not-available boxes"
+            );
+        }
+    }
+
+    #[test]
+    fn every_timeout_layout_is_three_columns_per_team() {
+        // The sheet's table is six columns wide, three per team. Every one of
+        // these cases used to overflow it — eight columns at one timeout,
+        // sixteen at two counted per half.
+        for count in [0, 1, 2, 3, 5] {
+            for per_half in [false, true] {
+                let (white, black) = team_refs_timeout_cells(count, per_half);
+                assert_eq!(
+                    columns(&white),
+                    3,
+                    "white cells, count={count}, per_half={per_half}: {white}"
+                );
+                assert_eq!(
+                    columns(&black),
+                    3,
+                    "black cells, count={count}, per_half={per_half}: {black}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn overtime_never_offers_a_timeout() {
+        // Team timeouts are never available in overtime or sudden death, so the
+        // third column is a not-available box whatever the rule says, and a
+        // per-game box must stop at the two half columns rather than span all
+        // three.
+        for count in [0, 1, 2, 3, 5] {
+            for per_half in [false, true] {
+                let (white, black) = team_refs_timeout_cells(count, per_half);
+                let last_white = white.rsplit("<td").next().unwrap_or_default();
+                let last_black = black.rsplit("<td").next().unwrap_or_default();
+                assert!(
+                    last_white.contains("speckled-white"),
+                    "OT/SD must be not-available (count={count}, per_half={per_half}): {white}"
+                );
+                assert!(
+                    last_black.contains("speckled-black"),
+                    "OT/SD must be not-available (count={count}, per_half={per_half}): {black}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_per_game_timeout_box_covers_both_halves() {
+        // Counted per game rather than per half, one box serves both halves —
+        // but still not overtime, so it spans two columns, not three.
+        let (white, black) = team_refs_timeout_cells(1, false);
+        assert!(
+            white.contains("to-white' colspan='2'"),
+            "expected a box spanning both half columns, got {white}"
+        );
+        assert!(
+            black.contains("to-black' colspan='2'"),
+            "expected a box spanning both half columns, got {black}"
+        );
+    }
+
+    #[test]
+    fn each_half_gets_its_own_box_when_counted_per_half() {
+        // Counted per half, each half needs a box of its own. Serving both from
+        // one merged box would halve the allowance the sheet shows.
+        let (white, black) = team_refs_timeout_cells(1, true);
+        assert!(
+            !white.contains("colspan="),
+            "per-half boxes must not be merged, got {white}"
+        );
+        assert_eq!(
+            white.matches("class='to-white'").count(),
+            2,
+            "expected one writable box per half, got {white}"
+        );
+        assert_eq!(
+            black.matches("class='to-black'").count(),
+            2,
+            "expected one writable box per half, got {black}"
+        );
+    }
+
+    #[test]
+    fn the_box_states_the_number_of_timeouts_allowed() {
+        // The count is what a referee reads off the box, so it has to be the
+        // rule's own number rather than a fixed one.
+        for count in [1, 2, 3] {
+            for per_half in [false, true] {
+                let (white, black) = team_refs_timeout_cells(count, per_half);
+                assert!(
+                    white.contains(&format!("of {count}")),
+                    "white box must read 'of {count}' (per_half={per_half}), got {white}"
+                );
+                assert!(
+                    black.contains(&format!("of {count}")),
+                    "black box must read 'of {count}' (per_half={per_half}), got {black}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn cmas_official_needs_rosters() {
@@ -3059,6 +3249,30 @@ mod tests {
         assert!(
             !html.contains("1st Half"),
             "the Time Outs block must not keep its half split"
+        );
+        // The check above cannot fail on its own: this sheet's Time Outs block
+        // has no headings, so "1st Half" appears nowhere regardless. Assert the
+        // geometry instead, which is what actually differs — a single-period
+        // game merges its box across the Game column.
+        assert!(
+            html.contains("to-white' colspan='2'"),
+            "a single-period game must merge its Time Outs box across the Game column"
+        );
+    }
+
+    #[test]
+    fn a_single_period_game_with_no_timeouts_gets_one_merged_box() {
+        // Wollongong's live configuration: a single-period round robin whose
+        // rules allow no team timeouts. The not-available box must span the one
+        // Game column, not be cut in two beneath it.
+        let (white, black) = team_refs_timeout_cells(0, false);
+        assert!(
+            white.contains("speckled-white' colspan='2'"),
+            "expected one merged not-available box, got {white}"
+        );
+        assert!(
+            black.contains("speckled-black' colspan='2'"),
+            "expected one merged not-available box, got {black}"
         );
     }
 

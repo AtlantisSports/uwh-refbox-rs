@@ -98,7 +98,7 @@ use std::{
 
 use axum::{
     Form, Json, Router,
-    extract::State,
+    extract::{Multipart, State},
     http::{HeaderMap, StatusCode, header},
     response::{Html, Redirect},
     routing::{get, post},
@@ -119,6 +119,7 @@ use crate::{
     config, discovery,
     feed::{Connection, ConnectionState, ConnectionStatus, FeedMessage, FeedTarget, RefboxAddress},
     game_feed,
+    local_roster::LocalRoster,
     portal::{Directory, TeamNames},
     state::{Display, LiveState},
     status::{self, Notice, ScanOutcome},
@@ -141,6 +142,25 @@ pub struct AppState {
     /// outer `RwLock`) so [`refresh_once`] can clone a handle out and drop the lock before making
     /// any network call -- no lock guard in this module is ever held across an `.await`.
     directory: RwLock<Option<Arc<Directory>>>,
+    /// Team and player names from local CSV files instead of the Portal, for an event with no
+    /// Portal access at all -- see `local_roster`'s module doc and `config::RosterSource`. `None`
+    /// whenever `roster_source` is [`config::RosterSource::Portal`], and also (with a message in
+    /// [`AppState::notice`]) if `Local` was chosen but the files could not be loaded -- either
+    /// way, names simply stay blank rather than the bridge failing to start, the same
+    /// "never fatal" contract `portal.rs` follows.
+    ///
+    /// A `RwLock`, unlike the Portal directory's own timer-driven rebuild: this is only ever
+    /// replaced by an explicit operator action on the status page ([`post_roster_source`]), never
+    /// on its own, since a local file only changes when an operator edits it.
+    local_roster: RwLock<Option<LocalRoster>>,
+    /// The operator's current choice of where team/player names come from, and the two file
+    /// paths configured for the local-CSV case -- kept here, separately from `local_roster`
+    /// itself, so the status page can show what is *configured* even when `local_roster` is
+    /// `None` because loading it failed (a typo'd path is more useful shown back to the operator
+    /// than silently dropped).
+    roster_source: RwLock<config::RosterSource>,
+    schedule_csv_path: RwLock<Option<String>>,
+    roster_csv_path: RwLock<Option<String>>,
     /// The bridge's connection to the refbox right now, and (since Task 7) when it last dropped --
     /// see [`Connection`] and [`crate::feed::ConnectionStatus`]. The only writer is
     /// [`crate::feed::Supervisor::run`], via the handle [`AppState::connection_handle`] hands out;
@@ -220,9 +240,14 @@ impl AppState {
     /// happen: forgetting one in `main.rs` left the bridge silently reading a default address
     /// instead of the configured one, with nothing failing to say so. See [`config::Resolved`].
     pub fn new(settings: config::Resolved) -> Self {
+        let local_roster = load_local_roster(&settings);
         Self {
             live: RwLock::new(LiveState::new(GameSnapshot::default(), Instant::now())),
             directory: RwLock::new(None),
+            local_roster: RwLock::new(local_roster),
+            roster_source: RwLock::new(settings.roster_source),
+            schedule_csv_path: RwLock::new(settings.schedule_csv_path),
+            roster_csv_path: RwLock::new(settings.roster_csv_path),
             connection: ConnectionState::new(),
             target: FeedTarget::new(settings.refbox),
             settings_path: settings.settings_path,
@@ -352,11 +377,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/fouls", get(get_fouls))
         .route("/warnings", get(get_warnings))
         .route("/nextgame", get(get_next_game))
+        .route("/roster", get(get_roster))
         .route("/game", get(get_game))
         .route("/status.json", get(get_status))
         .route("/", get(get_status_page))
         .route("/page.json", get(get_page_json))
         .route("/refbox", post(post_refbox))
+        .route("/roster-source", post(post_roster_source))
         .route("/scan", post(post_scan))
         .with_state(state)
 }
@@ -403,6 +430,15 @@ async fn get_warnings(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<S
     let display = current_display(&state);
     let rosters = current_rosters(&state, &display.snapshot);
     Json(tables::warnings(&display, &rosters, is_connected(&state)))
+}
+
+/// The full pre-game roster reveal -- every player on both teams for the game currently on
+/// screen, unlike `/penalties`/`/fouls`/`/warnings`'s rosters, which only ever resolve the
+/// handful of cap numbers actually in play. See [`full_rosters_for_game`] and `tables::roster`.
+async fn get_roster(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<String, String>>> {
+    let display = current_display(&state);
+    let rosters = full_rosters_for_game(&state, &display.snapshot);
+    Json(tables::roster(&rosters, is_connected(&state)))
 }
 
 async fn get_next_game(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<String, String>>> {
@@ -488,6 +524,9 @@ fn page_data(state: &Arc<AppState>, headers: &HeaderMap) -> status::PageData {
         white_score: served("whiteScore"),
         black_team: served("blackTeam"),
         black_score: served("blackScore"),
+        roster_source: *read_lock(&state.roster_source),
+        schedule_csv_path: read_lock(&state.schedule_csv_path).clone().unwrap_or_default(),
+        roster_csv_path: read_lock(&state.roster_csv_path).clone().unwrap_or_default(),
         base_url,
         settings_file: config::settings_location(),
         scan_network: discovery::suggested_scan_network(&address),
@@ -566,6 +605,163 @@ async fn post_refbox(
     let notice = choose_refbox(&state, &form.address).await;
     *write_lock(&state.notice) = Some(notice);
     Ok(Redirect::to("/"))
+}
+
+/// What the operator submitted on the roster-source form: `source` is the `<select>`'s value
+/// (`"portal"` or `"local"`); each file is `Some` only when the operator actually chose one this
+/// submission. A browser never hands a page the real filesystem path of a file it picked --
+/// only its contents -- so the two CSVs travel as uploaded bytes, not typed paths (see
+/// [`csv_upload_dir`]).
+///
+/// A disabled file input (the two are disabled whenever `UWH Portal` is selected -- see
+/// `status::render_page`) submits nothing at all, and an enabled-but-untouched one submits an
+/// empty file with no filename; [`read_uploaded_file`] treats both as "nothing chosen", which is
+/// what makes "leave it blank to keep using what's already saved" work with no extra logic here.
+#[derive(Debug, Default)]
+struct RosterSourceUpload {
+    source: String,
+    schedule_csv: Option<Vec<u8>>,
+    roster_csv: Option<Vec<u8>>,
+}
+
+/// `POST /roster-source` -- change where team and player names come from (the UWH Portal, or two
+/// uploaded CSV files), and remember the choice for next time. Refused on the same terms as
+/// [`post_refbox`]; see [`refuse_cross_site`].
+///
+/// A multipart body, not a plain form like [`post_refbox`]'s: the two CSV fields are file inputs,
+/// because no browser will hand a page the real filesystem path of a file it picked -- only its
+/// contents.
+async fn post_roster_source(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    multipart: Multipart,
+) -> ActionResult {
+    refuse_cross_site(&headers)?;
+    let upload = read_roster_source_upload(multipart).await;
+    let notice = choose_roster_source(&state, upload).await;
+    *write_lock(&state.notice) = Some(notice);
+    Ok(Redirect::to("/"))
+}
+
+/// Reads the roster-source form's multipart body into a [`RosterSourceUpload`]. A field this
+/// crate does not recognise, or one that fails to read, is simply skipped -- an unreadable or
+/// unexpected field must produce "nothing chosen here", the same as an operator who left it
+/// blank, never a bare 400 for a browser quirk this crate does not control.
+async fn read_roster_source_upload(mut multipart: Multipart) -> RosterSourceUpload {
+    let mut upload = RosterSourceUpload::default();
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or_default().to_string();
+        match name.as_str() {
+            "source" => upload.source = field.text().await.unwrap_or_default(),
+            "schedule_csv" => upload.schedule_csv = read_uploaded_file(field).await,
+            "roster_csv" => upload.roster_csv = read_uploaded_file(field).await,
+            _ => {}
+        }
+    }
+    upload
+}
+
+/// The bytes of one uploaded file field, or `None` if the operator did not actually choose a file
+/// for it -- a disabled input submits nothing at all, and an enabled-but-untouched one submits an
+/// empty file with no filename, which this treats the same way.
+async fn read_uploaded_file(field: axum::extract::multipart::Field<'_>) -> Option<Vec<u8>> {
+    let chosen = field.file_name().is_some_and(|name| !name.is_empty());
+    if !chosen {
+        return None;
+    }
+    let bytes = field.bytes().await.ok()?;
+    (!bytes.is_empty()).then(|| bytes.to_vec())
+}
+
+/// Where uploaded CSV files are saved -- next to the settings file, in a dedicated subdirectory,
+/// so the bridge never needs the operator's browser to hand back a real filesystem path (no
+/// browser does, for its own file inputs -- see [`RosterSourceUpload`]). Falls back to the OS
+/// temp directory if the settings file's own location could not be worked out (see
+/// `config::settings_path`), the same "never fatal" fallback the settings file itself uses.
+///
+/// Deterministic and fixed (`csv-files/schedule.csv`, `csv-files/roster.csv`), not named after
+/// whatever the operator's own file was called: there is only ever one current schedule file and
+/// one current roster file, and a fixed destination is what lets a re-upload simply replace it.
+fn csv_upload_dir(state: &AppState) -> PathBuf {
+    let base = state
+        .settings_path
+        .as_ref()
+        .and_then(|path| path.parent())
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(std::env::temp_dir);
+    let dir = base.join("csv-files");
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        eprintln!("could not create {}: {e}", dir.display());
+    }
+    dir
+}
+
+/// Saves one uploaded CSV's bytes to `dir/filename`, overwriting whatever was there before --
+/// see [`csv_upload_dir`] for why there is deliberately only ever one file kept per role.
+fn save_uploaded_csv(dir: &std::path::Path, filename: &str, bytes: &[u8]) {
+    if let Err(e) = std::fs::write(dir.join(filename), bytes) {
+        eprintln!("could not save the uploaded {filename}: {e}");
+    }
+}
+
+/// Applies the operator's roster-source submission: parses `source`, saves whichever file(s) were
+/// actually uploaded this time, loads the local files when `Local` is what was chosen (reporting
+/// a plain-English failure rather than silently leaving names blank), updates the running state,
+/// and remembers the choice for next time the same way [`choose_refbox`] remembers an address.
+async fn choose_roster_source(state: &AppState, upload: RosterSourceUpload) -> Notice {
+    let source = match upload.source.as_str() {
+        "local" => config::RosterSource::Local,
+        _ => config::RosterSource::Portal,
+    };
+
+    // Only touch the stored path when a file was actually uploaded this submission -- leaving a
+    // file input untouched (or disabled, switching to Portal) must not throw away a file already
+    // saved from an earlier submission.
+    if let Some(bytes) = &upload.schedule_csv {
+        let dir = csv_upload_dir(state);
+        save_uploaded_csv(&dir, "schedule.csv", bytes);
+        *write_lock(&state.schedule_csv_path) =
+            dir.join("schedule.csv").to_str().map(str::to_string);
+    }
+    if let Some(bytes) = &upload.roster_csv {
+        let dir = csv_upload_dir(state);
+        save_uploaded_csv(&dir, "roster.csv", bytes);
+        *write_lock(&state.roster_csv_path) = dir.join("roster.csv").to_str().map(str::to_string);
+    }
+
+    let schedule_path = read_lock(&state.schedule_csv_path).clone();
+    let roster_path = read_lock(&state.roster_csv_path).clone();
+
+    let (loaded, notice) = match source {
+        config::RosterSource::Portal => (
+            None,
+            Notice::done("Team and player names now come from the UWH Portal."),
+        ),
+        config::RosterSource::Local => {
+            match try_load_local_roster(schedule_path.as_deref(), roster_path.as_deref()) {
+                Ok(loaded) => (
+                    Some(loaded),
+                    Notice::done("Team and player names now come from the uploaded CSV files."),
+                ),
+                Err(message) => (
+                    None,
+                    Notice::problem(format!(
+                        "Switched to Local, but {message} -- choose a schedule CSV and a roster \
+                         CSV and save again. Nothing else was changed."
+                    )),
+                ),
+            }
+        }
+    };
+
+    *write_lock(&state.local_roster) = loaded;
+    *write_lock(&state.roster_source) = source;
+
+    if let Some(path) = &state.settings_path {
+        config::remember_roster_source(path, source, schedule_path, roster_path);
+    }
+
+    notice
 }
 
 /// The scan form. Both fields are text, and both are `serde(default)`, for the same reason as
@@ -772,24 +968,160 @@ fn is_connected(state: &AppState) -> bool {
     state.connection.get().is_live()
 }
 
-/// Looks up `game_number`'s team names, court and start time from the currently-known Portal
-/// directory. `None` if no event has been learned from the feed yet, or if the directory itself
-/// has nothing cached for that game -- in both cases the caller's fallback is the same as
-/// `tables`' own: render blank name columns rather than an error.
+/// Loads the local roster files named by `settings`, if `roster_source` calls for them. `None`
+/// whenever the source is [`config::RosterSource::Portal`]; also `None` (with a message on
+/// stderr, never a panic) if `Local` was chosen but either path is unset or the files could not
+/// be read -- the bridge still starts, with names simply staying blank until a valid pair of
+/// paths is configured. See [`AppState::local_roster`].
+fn load_local_roster(settings: &config::Resolved) -> Option<LocalRoster> {
+    if !matches!(settings.roster_source, config::RosterSource::Local) {
+        return None;
+    }
+    match try_load_local_roster(
+        settings.schedule_csv_path.as_deref(),
+        settings.roster_csv_path.as_deref(),
+    ) {
+        Ok(loaded) => Some(loaded),
+        Err(message) => {
+            eprintln!(
+                "roster source is set to local, but {message} -- team and player names will \
+                 stay blank until this is fixed"
+            );
+            None
+        }
+    }
+}
+
+/// Attempts to load the local roster files, returning a plain-English error message on failure
+/// (rather than logging it itself) so both the startup path ([`load_local_roster`], reported to
+/// stderr) and the status page ([`post_roster_source`], reported as an operator-facing
+/// [`Notice`]) can present the same failure their own way.
+fn try_load_local_roster(
+    schedule_path: Option<&str>,
+    roster_path: Option<&str>,
+) -> Result<LocalRoster, String> {
+    let (Some(schedule_path), Some(roster_path)) = (schedule_path, roster_path) else {
+        return Err(
+            "the schedule and/or roster CSV path is not set".to_string()
+        );
+    };
+    LocalRoster::load(
+        std::path::Path::new(schedule_path),
+        std::path::Path::new(roster_path),
+    )
+    .map_err(|e| format!("could not load the local roster files: {e}"))
+}
+
+/// Looks up `game_number`'s team names, court and start time. From the local roster files if
+/// `roster_source` is [`config::RosterSource::Local`] (court and start time are always `None` in
+/// that case -- a local file carries neither); otherwise from the currently-known Portal
+/// directory. `None` if the relevant source has nothing cached (or configured) for that game --
+/// in every case the caller's fallback is the same as `tables`' own: render blank name columns
+/// rather than an error.
 fn names_for_game(state: &AppState, game_number: &str) -> Option<TeamNames> {
+    if let Some(local) = read_lock(&state.local_roster).as_ref() {
+        let (black, white) = local.team_names_for(game_number.parse().ok()?)?;
+        return Some(TeamNames {
+            dark: Some(black.to_string()),
+            light: Some(white.to_string()),
+            court: None,
+            start_time: None,
+        });
+    }
     read_lock(&state.directory).as_ref()?.names_for(game_number)
 }
 
 /// Builds a [`Rosters`] for `snapshot`'s current game, ready to hand to `tables::penalties`,
 /// `tables::fouls` or `tables::warnings`. Empty (never a panic, never a partial team) if no
-/// event is known yet, or if either side's team id or roster has not been resolved -- the cap
-/// number alone still renders in that case, per `tables`' own contract.
+/// source has anything resolved for this game -- the cap number alone still renders in that
+/// case, per `tables`' own contract.
 fn current_rosters(state: &AppState, snapshot: &GameSnapshot) -> Rosters {
+    if let Some(local) = read_lock(&state.local_roster).as_ref() {
+        return build_rosters_local(local, snapshot);
+    }
     let directory = read_lock(&state.directory);
     let Some(directory) = directory.as_ref() else {
         return Rosters::default();
     };
     build_rosters(directory, snapshot.game_number(), snapshot)
+}
+
+/// The local-roster counterpart of [`build_rosters`]: teams are named directly in the schedule
+/// file rather than reached via a `TeamId`, so this looks them up by name instead.
+fn build_rosters_local(local: &LocalRoster, snapshot: &GameSnapshot) -> Rosters {
+    let Ok(game_number) = snapshot.game_number().parse::<u32>() else {
+        return Rosters::default();
+    };
+    let Some((black_name, white_name)) = local.team_names_for(game_number) else {
+        return Rosters::default();
+    };
+    Rosters {
+        black: roster_for_local(local, black_name, snapshot, Color::Black),
+        white: roster_for_local(local, white_name, snapshot, Color::White),
+    }
+}
+
+/// The local-roster counterpart of [`roster_for`]: resolved only for the cap numbers that
+/// actually appear in `color`'s penalties, fouls and warnings in `snapshot`, same as the Portal
+/// path, just keyed by team name instead of [`TeamId`].
+fn roster_for_local(
+    local: &LocalRoster,
+    team_name: &str,
+    snapshot: &GameSnapshot,
+    color: Color,
+) -> HashMap<u8, String> {
+    cap_numbers_for(snapshot, color)
+        .filter_map(|cap| {
+            local
+                .player_name(team_name, cap)
+                .map(|name| (cap, name.to_string()))
+        })
+        .collect()
+}
+
+/// Both teams' *complete* rosters for `snapshot`'s current game, ready to hand to
+/// `tables::roster` -- every player, not just whoever has a current penalty, foul or warning
+/// (contrast [`current_rosters`]). Empty (never a panic) if no source has anything resolved for
+/// this game.
+fn full_rosters_for_game(state: &AppState, snapshot: &GameSnapshot) -> tables::FullRosters {
+    if let Some(local) = read_lock(&state.local_roster).as_ref() {
+        let Ok(game_number) = snapshot.game_number().parse::<u32>() else {
+            return tables::FullRosters::default();
+        };
+        let Some((black_name, white_name)) = local.team_names_for(game_number) else {
+            return tables::FullRosters::default();
+        };
+        return tables::FullRosters {
+            black: local
+                .full_roster(black_name)
+                .into_iter()
+                .map(|(cap, name)| (cap, name.to_string()))
+                .collect(),
+            white: local
+                .full_roster(white_name)
+                .into_iter()
+                .map(|(cap, name)| (cap, name.to_string()))
+                .collect(),
+        };
+    }
+
+    let directory = read_lock(&state.directory);
+    let Some(directory) = directory.as_ref() else {
+        return tables::FullRosters::default();
+    };
+    let Some(team_ids) = directory.team_ids_for(snapshot.game_number()) else {
+        return tables::FullRosters::default();
+    };
+    tables::FullRosters {
+        black: team_ids
+            .black
+            .map(|id| directory.full_roster(&id))
+            .unwrap_or_default(),
+        white: team_ids
+            .white
+            .map(|id| directory.full_roster(&id))
+            .unwrap_or_default(),
+    }
 }
 
 /// See [`current_rosters`]. Split out so it takes a plain `&Directory` -- easier to exercise from
@@ -3700,6 +4032,29 @@ mod tests {
             .unwrap_or_else(|e| panic!("POST {path} should get a reply: {e}"))
     }
 
+    /// The same as [`post_with_site`], for the roster-source form's multipart body -- its two
+    /// file fields cannot be sent as plain form fields, the same reason they are file inputs on
+    /// the real page (see `RosterSourceUpload`'s doc).
+    async fn post_multipart_with_site(
+        addr: SocketAddr,
+        path: &str,
+        form: reqwest::multipart::Form,
+        site: &str,
+    ) -> reqwest::Response {
+        reqwest::Client::new()
+            .post(format!("http://{addr}{path}"))
+            .header("Sec-Fetch-Site", site)
+            .multipart(form)
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("POST {path} should get a reply: {e}"))
+    }
+
+    /// One uploaded CSV field, the way a browser's file input submits it: a filename and bytes.
+    fn csv_part(filename: &str, contents: &str) -> reqwest::multipart::Part {
+        reqwest::multipart::Part::bytes(contents.as_bytes().to_vec()).file_name(filename.to_string())
+    }
+
     #[tokio::test]
     async fn a_page_on_another_site_cannot_switch_which_refbox_is_on_air() {
         // The bridge has no password and binds every interface, so this is the whole defence: any
@@ -3798,6 +4153,136 @@ mod tests {
             page.contains("that is not a network address"),
             "the operator's own submission must reach the handler and be answered by it, got:\n\
              {page}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_page_on_another_site_cannot_change_the_roster_source() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        let form = reqwest::multipart::Form::new()
+            .text("source", "local")
+            .part("schedule_csv", csv_part("schedule.csv", "gameNumber,blackTeam,whiteTeam\n"))
+            .part("roster_csv", csv_part("roster.csv", "team,capNumber,rosterName\n"));
+        let response = post_multipart_with_site(addr, "/roster-source", form, "cross-site").await;
+
+        assert_eq!(
+            response.status().as_u16(),
+            403,
+            "a cross-site form post must be refused outright"
+        );
+        assert_eq!(
+            *read_lock(&state.roster_source),
+            config::RosterSource::Portal,
+            "a refused request must not even reach the handler that changes the roster source"
+        );
+        assert!(
+            read_lock(&state.notice).is_none(),
+            "a refused request must not even reach the handler that writes the page's notice"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_status_page_s_own_roster_source_form_switches_to_the_uploaded_csv_files() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        let form = reqwest::multipart::Form::new()
+            .text("source", "local")
+            .part(
+                "schedule_csv",
+                csv_part("schedule.csv", "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n"),
+            )
+            .part(
+                "roster_csv",
+                csv_part("roster.csv", "team,capNumber,rosterName\nChengdu,2,Li Wei\n"),
+            );
+        let response = post_multipart_with_site(addr, "/roster-source", form, "same-origin").await;
+
+        assert_eq!(response.status().as_u16(), 200);
+        assert_eq!(
+            *read_lock(&state.roster_source),
+            config::RosterSource::Local,
+            "the operator's own submission must switch the roster source as requested"
+        );
+        assert_eq!(
+            read_lock(&state.local_roster)
+                .as_ref()
+                .expect("the two uploaded CSV files should have loaded")
+                .team_names_for(1),
+            Some(("Chengdu", "Beijing")),
+            "the files uploaded in the form must actually be the ones that get loaded"
+        );
+    }
+
+    #[tokio::test]
+    async fn switching_to_local_before_any_file_is_uploaded_reports_a_problem_but_keeps_the_bridge_serving()
+     {
+        let (first_addr, _first) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "14")).await;
+        let (state, addr, tasks) = bridge_reading(first_addr).await;
+        wait_for_scores(&state, 2, 1).await;
+
+        // No file parts at all -- what a disabled (or left-untouched) file input submits.
+        let form = reqwest::multipart::Form::new().text("source", "local");
+        let response = post_multipart_with_site(addr, "/roster-source", form, "same-origin").await;
+
+        assert_eq!(response.status().as_u16(), 200);
+        assert_eq!(
+            *read_lock(&state.roster_source),
+            config::RosterSource::Local,
+            "the operator's choice of source is kept even though no files have been uploaded yet"
+        );
+        assert!(
+            read_lock(&state.local_roster).is_none(),
+            "no roster data should be in effect when no file has ever been uploaded"
+        );
+        let still = get_json(addr, "/scorebug").await;
+        assert_eq!(
+            still[0]["blackScore"].as_str(),
+            Some("2"),
+            "the bridge must keep serving the game it already had -- switching mode with nothing \
+             uploaded must not take the graphic off air"
+        );
+
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn leaving_the_file_fields_blank_keeps_using_the_previously_uploaded_files() {
+        let state = Arc::new(AppState::new(config::Resolved::default()));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+
+        let upload = reqwest::multipart::Form::new()
+            .text("source", "local")
+            .part(
+                "schedule_csv",
+                csv_part("schedule.csv", "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n"),
+            )
+            .part(
+                "roster_csv",
+                csv_part("roster.csv", "team,capNumber,rosterName\nChengdu,2,Li Wei\n"),
+            );
+        post_multipart_with_site(addr, "/roster-source", upload, "same-origin").await;
+
+        // Switch to Portal and back to Local, neither submission carrying a file -- exactly what
+        // the disabled-while-Portal, then re-enabled-but-untouched file inputs submit.
+        let to_portal = reqwest::multipart::Form::new().text("source", "portal");
+        post_multipart_with_site(addr, "/roster-source", to_portal, "same-origin").await;
+        let back_to_local = reqwest::multipart::Form::new().text("source", "local");
+        let response =
+            post_multipart_with_site(addr, "/roster-source", back_to_local, "same-origin").await;
+
+        assert_eq!(response.status().as_u16(), 200);
+        assert_eq!(
+            read_lock(&state.local_roster)
+                .as_ref()
+                .expect("the file uploaded earlier should still be there")
+                .team_names_for(1),
+            Some(("Chengdu", "Beijing")),
+            "switching away and back with nothing re-uploaded must not lose the earlier upload"
         );
     }
 }

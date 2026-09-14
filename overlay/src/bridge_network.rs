@@ -30,7 +30,7 @@ use uwh_common::{
     uwhportal::schedule::EventId,
 };
 
-use crate::network::{GameData, StateUpdate, TeamInfoRaw};
+use crate::network::{GameData, MemberRaw, StateUpdate, TeamInfoRaw};
 
 /// The `/game` schema version this client understands. Bumped only when a field is
 /// removed, renamed, or changes meaning (`overlay-bridge/src/game_feed.rs`'s own rule) --
@@ -59,7 +59,6 @@ struct Timeout {
 struct Penalty {
     team: String,
     number: u8,
-    #[allow(dead_code)] // not yet surfaced by the renderer; kept for parity with the contract
     player: Option<String>,
     secs_remaining: Option<u32>,
     total_dismissal: bool,
@@ -227,49 +226,143 @@ fn build_snapshot(feed: &GameFeed) -> Option<GameSnapshot> {
     })
 }
 
-/// A minimal `GameData` carrying just the team names the feed already resolved -- not a
-/// full roster, and no player photos (see the module-level TODO for that follow-up).
+/// A `GameData` carrying the team names the feed already resolved, and full team rosters when
+/// `full_roster` has them (fetched separately -- see [`fetch_full_roster`]), falling back to
+/// per-player names for whoever currently has a penalty ([`members_with_known_names`]) when it
+/// doesn't. No player photos: a CSV-sourced roster has none, per design, and this doesn't
+/// distinguish that from a Portal-sourced one not having resolved one yet -- both are simply
+/// absent, the same "absent, not impossible" modelling the roster-from-local-file design settled
+/// on.
 ///
 /// `snapshot` must be the `GameSnapshot` just built from this same `feed` by
-/// [`build_snapshot`]: `State::update_state`'s `GameData` handling only applies an update
-/// whose `event_id` and `game_number` match what's *already* in the renderer's state, so
-/// this borrows both from the snapshot we're about to send instead of recomputing them,
-/// to guarantee they agree.
+/// [`build_snapshot`]: `State::update_state`'s `GameData` handling matches against the
+/// game number (and, when there is a portal id, that too) already in the renderer's state, so
+/// this borrows both from the snapshot we're about to send instead of recomputing them, to
+/// guarantee they agree. **`event_id` is carried through as-is, `None` included** -- with no
+/// portal at all, `event_id` is always `None`, and `update_state` treats that as its own valid
+/// match rule (game number alone), not as "reject this update".
 ///
-/// Returns `None` when there's no event id (that match can never succeed without one) or
-/// either team name is missing.
-fn build_game_data(feed: &GameFeed, snapshot: &GameSnapshot) -> Option<GameData> {
+/// Returns `None` only when either team name is missing -- unlike before, the absence of a
+/// portal id is no longer a reason to give up.
+fn build_game_data(
+    feed: &GameFeed,
+    snapshot: &GameSnapshot,
+    full_roster: Option<&(Vec<MemberRaw>, Vec<MemberRaw>)>,
+) -> Option<GameData> {
+    let (black_members, white_members) = match full_roster {
+        Some((black, white)) if !black.is_empty() || !white.is_empty() => {
+            (black.clone(), white.clone())
+        }
+        _ => (
+            members_with_known_names(feed, "BLACK"),
+            members_with_known_names(feed, "WHITE"),
+        ),
+    };
+
     Some(GameData {
         pool: String::new(),
         start_time: String::new(),
         referees: Vec::new(),
         black: TeamInfoRaw {
             team_name: feed.black_team.clone()?,
+            members: black_members,
             ..Default::default()
         },
         white: TeamInfoRaw {
             team_name: feed.white_team.clone()?,
+            members: white_members,
             ..Default::default()
         },
         game_number: snapshot.game_number().clone(),
-        event_id: snapshot.event_id.clone()?,
+        event_id: snapshot.event_id.clone(),
     })
 }
 
-/// TODO(follow-up): team rosters and player photos for the roster page still need
-/// `network.rs`'s existing portal-fetching code (`GameData`/`TeamInfoRaw`/`EventLogos`),
-/// keyed off this feed's `event_id`/`portal_base_url` -- which also happens to fix the
-/// wrong-portal bug on this path too, since those are now bridge-resolved rather than
-/// read from this crate's own static config. That code is currently private to
-/// `network.rs`; wiring it in needs either a small `pub(crate)` visibility change there or
-/// a deliberate duplication, and should be its own follow-up rather than folded in here.
+/// Every player from `feed`'s current penalties whose name the bridge has already resolved, for
+/// `team_code` (`"BLACK"`/`"WHITE"`). Not a full roster -- just enough for `flag.rs`'s existing
+/// name lookup (which searches this same `members` list by cap number) to find a name for
+/// whoever is currently flagged for a penalty. Used only as a fallback when the bridge's
+/// `/roster` endpoint (see [`fetch_full_roster`]) hasn't resolved anything yet or is
+/// unreachable -- a cap number with no resolved name is simply omitted, matching `flag.rs`'s own
+/// fallback of showing the number alone.
+fn members_with_known_names(feed: &GameFeed, team_code: &str) -> Vec<MemberRaw> {
+    feed.penalties
+        .iter()
+        .flatten()
+        .filter(|p| p.team == team_code)
+        .filter_map(|p| {
+            Some(MemberRaw {
+                name: p.player.clone()?,
+                role: None,
+                number: Some(p.number),
+                picture: None,
+                geared_picture: None,
+            })
+        })
+        .collect()
+}
+
+/// One row of the bridge's `GET /roster` table (`overlay-bridge/src/tables.rs`'s `roster`
+/// function): every player on both teams for the game currently on screen, unlike this crate's
+/// own `/game` feed, which only ever carries the handful of players with a current penalty. Like
+/// every vMix table, values are plain strings even where the underlying type isn't -- `number`
+/// needs parsing back to a cap number.
+#[derive(Debug, Clone, Deserialize)]
+struct RosterRow {
+    team: String,
+    number: String,
+    player: String,
+}
+
+/// Fetches the bridge's full roster for both teams. `None` on any failure (network error, bad
+/// status, unparseable body) -- the caller falls back to [`members_with_known_names`], the same
+/// "never invent a value, degrade to what's already known" rule the rest of this module follows.
+/// `Some` with possibly-empty lists means the fetch succeeded but nothing is resolved yet (no
+/// game selected, or an empty roster file) -- also falls back, since an empty roster is no more
+/// useful than none at all.
+async fn fetch_full_roster(
+    client: &reqwest::Client,
+    roster_url: &str,
+) -> Option<(Vec<MemberRaw>, Vec<MemberRaw>)> {
+    let text = client
+        .get(roster_url)
+        .send()
+        .await
+        .ok()?
+        .text()
+        .await
+        .ok()?;
+    let rows: Vec<RosterRow> = serde_json::from_str(&text).ok()?;
+
+    let member_from = |row: &RosterRow| MemberRaw {
+        name: row.player.clone(),
+        role: None,
+        number: row.number.parse().ok(),
+        picture: None,
+        geared_picture: None,
+    };
+    let black: Vec<MemberRaw> = rows
+        .iter()
+        .filter(|r| r.team == "BLACK")
+        .map(member_from)
+        .collect();
+    let white: Vec<MemberRaw> = rows
+        .iter()
+        .filter(|r| r.team == "WHITE")
+        .map(member_from)
+        .collect();
+    Some((black, white))
+}
+
 #[tokio::main]
 pub async fn networking_thread(
     state_tx: crossbeam_channel::Sender<StateUpdate>,
     config: crate::AppConfig,
 ) {
     let client = reqwest::Client::new();
-    let url = format!("{}/game", config.bridge_url.trim_end_matches('/'));
+    let bridge_url = config.bridge_url.trim_end_matches('/');
+    let url = format!("{bridge_url}/game");
+    let roster_url = format!("{bridge_url}/roster");
     let mut interval = tokio::time::interval(POLL_INTERVAL);
     let mut schema_mismatch_warned = false;
 
@@ -327,12 +420,18 @@ pub async fn networking_thread(
             Some(snapshot) => {
                 debug!("Got snapshot from overlay-bridge!");
 
+                // A second request, not part of the /game feed itself: the pre-game reveal
+                // needs every player on both rosters, not just whoever currently has a
+                // penalty. Fetched every tick, same as /game -- rosters change rarely, but
+                // there's no cheap way to know when, and this is a small response.
+                let full_roster = fetch_full_roster(&client, &roster_url).await;
+
                 // The snapshot must be sent -- and therefore applied by the renderer --
                 // before the game data that depends on it: `State::update_state`'s
                 // `GameData` handling only accepts an update whose `event_id` and
                 // `game_number` match what's *already* in `self.snapshot`, so sending
                 // this first on the same in-order channel is what makes that match land.
-                let game_data = build_game_data(&feed, &snapshot);
+                let game_data = build_game_data(&feed, &snapshot, full_roster.as_ref());
 
                 state_tx
                     .send(StateUpdate::Snapshot(snapshot))

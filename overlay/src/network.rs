@@ -226,7 +226,11 @@ pub struct GameData {
     pub black: TeamInfoRaw,
     pub white: TeamInfoRaw,
     pub game_number: GameNumber,
-    pub event_id: EventId,
+    /// `None` when there is no portal id at all -- the no-portal/local-CSV case
+    /// (`bridge_network.rs`), where matching falls back to game number alone (see
+    /// `State::update_state`'s `GameData` handling in `main.rs`). Always `Some` on this
+    /// (portal-connected) path: fetching game data at all requires a real event id.
+    pub event_id: Option<EventId>,
 }
 
 async fn fetch_game_referees(
@@ -430,7 +434,7 @@ async fn fetch_game_data(
                     referees,
                     black,
                     white,
-                    event_id,
+                    event_id: Some(event_id),
                     game_number: game_number.clone(),
                 })
                 .map_err(|e| error!("Couldn't send data: {e}"))
@@ -575,7 +579,7 @@ pub async fn networking_thread(
                         if next_game_data.is_some()
                             && new_snapshot.event_id.is_some()
                             && next_game_data.as_ref().unwrap().game_number == *new_snapshot.game_number()
-                            && next_game_data.as_ref().unwrap().event_id == *new_snapshot.event_id.as_ref().unwrap()
+                            && next_game_data.as_ref().unwrap().event_id.as_ref() == new_snapshot.event_id.as_ref()
                         {
                             let next_game_data = next_game_data.take().unwrap();
                             info!("Sending cached game data for next game");
@@ -610,7 +614,7 @@ pub async fn networking_thread(
                     && new_snapshot.next_game_number().is_some()
                     && (next_game_data.is_none()
                         || next_game_data.as_ref().unwrap().game_number != *new_snapshot.next_game_number().unwrap()
-                        || next_game_data.as_ref().unwrap().event_id != *new_snapshot.event_id.as_ref().unwrap())
+                        || next_game_data.as_ref().unwrap().event_id.as_ref() != new_snapshot.event_id.as_ref())
                 {
                     let game_data_tx_ = game_data_tx.clone();
                     let uwhportal_url_ = uwhportal_url.clone();
@@ -631,7 +635,7 @@ pub async fn networking_thread(
                     info!("Got game data from network for game: {} / event: {:?}", game_data.game_number, game_data.event_id);
                     if let Some(ref snapshot) = last_snapshot {
                         if let Some(ref event_id) = snapshot.event_id {
-                            if game_data.event_id == *event_id {
+                            if game_data.event_id.as_ref() == Some(event_id) {
                                 if game_data.game_number == *snapshot.game_number() {
                                     info!("Sending game data for event: {:?}, game: {}", event_id, game_data.game_number);
                                     state_tx

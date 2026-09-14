@@ -233,6 +233,19 @@ impl Directory {
             .cloned()
     }
 
+    /// Every player cached for `team`, sorted by cap number -- for a pre-game reveal, which needs
+    /// every player, not just the handful [`Self::player_name`] resolves for a current penalty,
+    /// foul or warning. Empty if `team`'s roster has never been fetched successfully, never an
+    /// error, matching [`Self::player_name`]'s own fallback.
+    pub fn full_roster(&self, team: &TeamId) -> Vec<(u8, String)> {
+        let Some(roster) = read_lock(&self.rosters).get(team).cloned() else {
+            return Vec::new();
+        };
+        let mut players: Vec<(u8, String)> = roster.into_iter().collect();
+        players.sort_unstable_by_key(|(cap, _)| *cap);
+        players
+    }
+
     /// The team ids assigned to `game_number`'s dark and light slots, as cached by the most
     /// recent successful [`refresh_schedule`]. This is what makes the roster half of this
     /// directory reachable from outside: [`refresh_roster`] and [`player_name`] both require a
@@ -752,6 +765,32 @@ mod tests {
             directory.player_name(&team, 2).as_deref(),
             Some("A. Fisher")
         );
+    }
+
+    #[tokio::test]
+    async fn full_roster_returns_every_cached_player_sorted_by_cap_number() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local listener");
+        let addr = listener.local_addr().expect("local_addr");
+        let directory = directory_at(format!("http://{addr}"));
+        let team = team_2529b();
+
+        let server = tokio::spawn(serve_one(listener, "200 OK", ROSTER_FIXTURE.to_string()));
+        let ok = directory.refresh_roster(&team).await;
+        server.await.expect("mock server task");
+        assert!(ok, "fetch against the fixture body should succeed");
+
+        let roster = directory.full_roster(&team);
+        assert_eq!(roster.len(), 12);
+        assert!(roster.windows(2).all(|pair| pair[0].0 < pair[1].0));
+        assert!(roster.contains(&(2, "A. Fisher".to_string())));
+    }
+
+    #[test]
+    fn full_roster_for_an_unfetched_team_is_empty() {
+        let directory = directory_at("http://portal.invalid".to_string());
+        assert_eq!(directory.full_roster(&team_2529b()), Vec::new());
     }
 
     #[tokio::test]

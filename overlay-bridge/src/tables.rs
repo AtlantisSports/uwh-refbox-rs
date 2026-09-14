@@ -204,6 +204,12 @@ pub fn scorebug(
     };
 
     let mut row = BTreeMap::new();
+    // Added 2026-09-09 (Eric): lets a title display the game number and, more importantly, gives
+    // the operator a way to see which game the bridge is currently keying its team names on --
+    // see the local-roster backlog note's "gameNumber column" section for why this matters more
+    // for that than for telling vMix which game is on (the existing blackTeam/whiteTeam columns
+    // already do that once a caller supplies names).
+    row.insert("gameNumber".to_string(), snapshot.game_number().clone());
     row.insert("blackTeam".to_string(), black_team);
     row.insert("blackScore".to_string(), black_score);
     row.insert("whiteTeam".to_string(), white_team);
@@ -370,6 +376,42 @@ pub fn warnings(
         (Some(Color::White), bundle.white.as_slice()),
     ];
     finish_table(event_rows(&buckets, rosters), connected)
+}
+
+/// Both teams' complete rosters, for [`roster`] -- unlike [`Rosters`], **not** filtered down to
+/// just the cap numbers that appear in a current penalty, foul or warning. Built by
+/// `crate::portal::Directory::full_roster` (Portal) or
+/// `crate::local_roster::LocalRoster::full_roster` (a local CSV), sorted by cap number ascending.
+pub type FullRosters = BlackWhiteBundle<Vec<(u8, String)>>;
+
+/// The `/roster` table: every player on both teams for the game currently on screen -- a
+/// pre-game reveal, not a lookup for a penalty/foul/warning. Rows are grouped by team (black
+/// first, then white), each already sorted by cap number ascending by whichever `full_roster`
+/// call built `rosters`.
+///
+/// **Deliberately not padded to a fixed row count**, unlike every other table in this module: a
+/// reveal needs however many players are actually on each roster, and a vMix title reading this
+/// (or `overlay`'s own reveal page) has to handle a variable count either way, since two teams
+/// essentially never carry the same roster size. See the local-roster backlog note's "roster
+/// reveal" section.
+///
+/// `connected` is passed straight through to [`finish_table`] -- see that function's doc and the
+/// module doc's "The `connected` column" section.
+pub fn roster(rosters: &FullRosters, connected: bool) -> Vec<BTreeMap<String, String>> {
+    let mut rows = Vec::new();
+    for (color, players) in [
+        (Color::Black, &rosters.black),
+        (Color::White, &rosters.white),
+    ] {
+        for (number, name) in players {
+            let mut row = BTreeMap::new();
+            row.insert("team".to_string(), color_code(color).to_string());
+            row.insert("number".to_string(), number.to_string());
+            row.insert("player".to_string(), name.clone());
+            rows.push(row);
+        }
+    }
+    finish_table(rows, connected)
 }
 
 /// Shared row-building logic for `/fouls` and `/warnings`: merges `buckets` (each a team-labelled
@@ -671,6 +713,18 @@ mod tests {
         assert_eq!(get(row, "clock"), "3:47");
         assert_eq!(get(row, "clockSeconds"), "227");
         assert_eq!(get(row, "period"), "Second Half");
+    }
+
+    #[test]
+    fn scorebug_serves_the_game_number_the_snapshot_reports() {
+        let display = display_with(GameSnapshot {
+            game_number: "8".to_string(),
+            ..base_snapshot()
+        });
+        let rows = scorebug(&display, None, true);
+        let row = row0(&rows);
+
+        assert_eq!(get(row, "gameNumber"), "8");
     }
 
     #[test]
@@ -1390,6 +1444,80 @@ mod tests {
 
         assert_eq!(get(row, "player"), "NGUYEN");
     }
+
+    // ---------------------------------------------------------------------------- roster reveal
+
+    fn full_rosters(black: Vec<(u8, &str)>, white: Vec<(u8, &str)>) -> FullRosters {
+        FullRosters {
+            black: black.into_iter().map(|(n, s)| (n, s.to_string())).collect(),
+            white: white.into_iter().map(|(n, s)| (n, s.to_string())).collect(),
+        }
+    }
+
+    #[test]
+    fn roster_has_the_columns_the_backlog_note_settled_on() {
+        let rosters = full_rosters(vec![(7, "SMITH")], vec![]);
+        let rows = roster(&rosters, true);
+        let row = row0(&rows);
+
+        for column in ["team", "number", "player"] {
+            assert!(row.contains_key(column), "missing column {column:?}");
+        }
+        assert_eq!(row.len(), 4, "team, number, player, plus connected");
+    }
+
+    #[test]
+    fn roster_serves_every_player_on_both_teams_not_just_the_ones_with_a_penalty() {
+        let rosters = full_rosters(
+            vec![(1, "ALPHA"), (2, "BRAVO"), (3, "CHARLIE")],
+            vec![(9, "DELTA")],
+        );
+        let rows = roster(&rosters, true);
+
+        assert_eq!(
+            rows.len(),
+            4,
+            "3 black + 1 white, none of them ever penalised"
+        );
+        let black: Vec<&str> = rows
+            .iter()
+            .filter(|row| get(row, "team") == "BLACK")
+            .map(|row| get(row, "player"))
+            .collect();
+        assert_eq!(black, vec!["ALPHA", "BRAVO", "CHARLIE"]);
+        assert_eq!(get(&rows[3], "team"), "WHITE");
+        assert_eq!(get(&rows[3], "player"), "DELTA");
+    }
+
+    #[test]
+    fn roster_is_not_padded_a_short_roster_serves_exactly_as_many_rows_as_it_has() {
+        let rosters = full_rosters(vec![(1, "ONLY")], vec![]);
+        let rows = roster(&rosters, true);
+
+        assert_eq!(
+            rows.len(),
+            1,
+            "unlike every padded table, a roster reveal must not invent blank rows"
+        );
+    }
+
+    #[test]
+    fn an_empty_roster_serves_zero_rows_not_a_blank_padding_row() {
+        let rows = roster(&FullRosters::default(), true);
+        assert_eq!(rows.len(), 0);
+    }
+
+    #[test]
+    fn roster_blanks_every_value_but_keeps_connected_when_disconnected() {
+        let rosters = full_rosters(vec![(7, "SMITH")], vec![]);
+        let rows = roster(&rosters, false);
+        let row = row0(&rows);
+
+        assert_eq!(get(row, "connected"), "false");
+        assert_eq!(get(row, "player"), "");
+        assert_eq!(get(row, "number"), "");
+    }
+
     /// The exact column set every vMix table serves. **Pinned deliberately, and a failure here is a
     /// question rather than a list to update.**
     ///
@@ -1444,6 +1572,7 @@ mod tests {
                 "clockSeconds",
                 "connected",
                 "equalFouls",
+                "gameNumber",
                 "period",
                 "timeout",
                 "timeoutClock",

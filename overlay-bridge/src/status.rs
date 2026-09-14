@@ -150,6 +150,16 @@ pub struct PageData {
     pub black_score: String,
     /// The refbox currently chosen -- what the supervisor is connected to, or trying to reach.
     pub refbox_address: RefboxAddress,
+    /// Where team and player names currently come from.
+    pub roster_source: crate::config::RosterSource,
+    /// Where the two uploaded CSV files are currently saved on this computer, empty string when
+    /// nothing has ever been uploaded. Not shown as a path -- a file input cannot be pre-filled
+    /// with one anyway -- only used to tell the operator whether a file is on file at all (see
+    /// `render_page`'s `schedule_uploaded`/`roster_uploaded`). Kept regardless of `roster_source`
+    /// so switching to "Local" and back to "UWH Portal" and back again does not lose an earlier
+    /// upload (see `server::choose_roster_source`).
+    pub schedule_csv_path: String,
+    pub roster_csv_path: String,
     /// The scheme, host and port the viewer's own browser used to reach this page (from the
     /// request's `Host` header) -- used to build the vMix addresses so they are always exactly
     /// what worked to load the page itself, rather than a guessed interface address on a
@@ -297,6 +307,33 @@ pub fn render_page(data: &PageData) -> String {
 
     let scan_html = data.scan.as_ref().map(render_scan).unwrap_or_default();
 
+    let is_portal = matches!(data.roster_source, crate::config::RosterSource::Portal);
+    let portal_selected = if is_portal { " selected" } else { "" };
+    let local_selected = if is_portal { "" } else { " selected" };
+    // Disabled, not merely hidden, while `UWH Portal` is the active mode: greyed-out controls
+    // tell the operator at a glance that the two files play no part right now, without a second
+    // click to find out. Reflects the mode already saved, not whatever the `<select>` is showing
+    // mid-edit -- this page carries no script beyond the live update (see the module doc's
+    // "forms are forms" section), so there is no way to react to an unsaved change in the
+    // `<select>` before the operator presses Save.
+    let local_files_disabled = if is_portal { " disabled" } else { "" };
+    let schedule_uploaded = if data.schedule_csv_path.is_empty() {
+        "No schedule file uploaded yet."
+    } else {
+        "A schedule file has been uploaded."
+    };
+    let roster_uploaded = if data.roster_csv_path.is_empty() {
+        "No roster file uploaded yet."
+    } else {
+        "A roster file has been uploaded."
+    };
+    let roster_hint = escape_html(
+        "For an event with no Portal access. Two files: a schedule CSV (columns gameNumber, \
+         blackTeam, whiteTeam) and a roster CSV (columns team, capNumber, rosterName) covering \
+         every team in the event. Choosing a file uploads a copy of it to the bridge -- editing \
+         the original afterwards has no effect until it is uploaded again.",
+    );
+
     let base = data.base_url.as_deref().unwrap_or(
         "(open this page in the browser you'll copy addresses from, to see the exact address)",
     );
@@ -356,6 +393,25 @@ pub fn render_page(data: &PageData) -> String {
 <span class="help" tabindex="0" aria-label="{scan_hint}" data-tip="{scan_hint}">?</span>
 </form>
 {scan_html}
+<h2>Team and player names <span class="help" tabindex="0" aria-label="{roster_hint}"
+ data-tip="{roster_hint}">?</span></h2>
+<form class="chooser" method="post" action="/roster-source" enctype="multipart/form-data">
+<label for="roster-source">Mode:</label>
+<select id="roster-source" name="source">
+<option value="portal"{portal_selected}>UWH Portal</option>
+<option value="local"{local_selected}>Local</option>
+</select>
+<br>
+<label for="schedule-csv-file">Schedule CSV:</label>
+<input id="schedule-csv-file" name="schedule_csv" type="file" accept=".csv"{local_files_disabled}>
+<span class="hint">{schedule_uploaded}</span>
+<br>
+<label for="roster-csv-file">Roster CSV:</label>
+<input id="roster-csv-file" name="roster_csv" type="file" accept=".csv"{local_files_disabled}>
+<span class="hint">{roster_uploaded}</span>
+<br>
+<button type="submit">Save</button>
+</form>
 <h2>Addresses for vMix</h2>
 <ul>
 {vmix_addresses}</ul>
@@ -382,6 +438,12 @@ pub fn render_page(data: &PageData) -> String {
         scan_html = scan_html,
         scan_hint = scan_hint,
         settings_hint = settings_hint,
+        roster_hint = roster_hint,
+        portal_selected = portal_selected,
+        local_selected = local_selected,
+        local_files_disabled = local_files_disabled,
+        schedule_uploaded = schedule_uploaded,
+        roster_uploaded = roster_uploaded,
         vmix_addresses = vmix_addresses,
         live_script = LIVE_SCRIPT,
     )
@@ -617,6 +679,9 @@ mod tests {
             black_team: String::new(),
             black_score: String::new(),
             refbox_address: RefboxAddress::new("127.0.0.1", 8000),
+            roster_source: crate::config::RosterSource::Portal,
+            schedule_csv_path: String::new(),
+            roster_csv_path: String::new(),
             base_url: Some("http://192.168.1.5:8099".to_string()),
             settings_file: "/home/operator/.config/overlay-bridge/default-config.toml".to_string(),
             scan_network: "192.168.1.5".to_string(),
@@ -905,10 +970,17 @@ mod tests {
             .match_indices("data-tip=\"")
             .map(|(i, _)| &html[i..])
             .collect();
+        // Three now, not the original two: the local-roster section added 2026-09-09 needs its
+        // own explanation, on the same "(?) tooltip, not a standalone paragraph" terms as the
+        // other two -- a deliberate addition, not a regression of this test's original intent.
         assert_eq!(
             tooltips.len(),
-            2,
-            "exactly two tooltips: one by Search, one by Refbox connection"
+            3,
+            "exactly three tooltips: Refbox connection, Search, and Team and player names"
+        );
+        assert!(
+            html.contains("Two files: a schedule CSV"),
+            "the local-roster guidance must be reachable too"
         );
         assert!(
             html.contains("--refbox-host"),
@@ -968,6 +1040,81 @@ mod tests {
                 "{absent} should no longer appear on the page"
             );
         }
+    }
+
+    #[test]
+    fn portal_mode_greys_out_the_two_file_pickers() {
+        // The toggle is generic -- "UWH Portal" or "Local" -- and while Portal is the active mode
+        // the two file inputs are disabled rather than merely hinted at: an operator should not be
+        // able to click into a field that does nothing right now (2026-09-09 redesign).
+        let html = render_page(&base_data());
+        assert!(
+            html.contains("UWH Portal</option>"),
+            "the option text should be plain, not \"UWH Portal (default)\" or similar"
+        );
+        assert!(
+            !html.contains("Local CSV files"),
+            "the toggle must read as generic Local/UWH Portal wording, got:\n{html}"
+        );
+        assert!(
+            html.contains("name=\"schedule_csv\" type=\"file\" accept=\".csv\" disabled"),
+            "the schedule file picker must be disabled in Portal mode, got:\n{html}"
+        );
+        assert!(
+            html.contains("name=\"roster_csv\" type=\"file\" accept=\".csv\" disabled"),
+            "the roster file picker must be disabled in Portal mode, got:\n{html}"
+        );
+    }
+
+    #[test]
+    fn local_mode_leaves_the_two_file_pickers_clickable() {
+        let data = PageData {
+            roster_source: crate::config::RosterSource::Local,
+            ..base_data()
+        };
+        let html = render_page(&data);
+        assert!(
+            !html.contains("name=\"schedule_csv\" type=\"file\" accept=\".csv\" disabled"),
+            "the schedule file picker must not be disabled in Local mode, got:\n{html}"
+        );
+        assert!(
+            !html.contains("name=\"roster_csv\" type=\"file\" accept=\".csv\" disabled"),
+            "the roster file picker must not be disabled in Local mode, got:\n{html}"
+        );
+    }
+
+    #[test]
+    fn the_roster_source_form_uploads_files_rather_than_taking_typed_paths() {
+        // A browser file input never hands a page the real filesystem path of what it picked --
+        // only the file's contents -- so the form has to be multipart, and the two CSV fields
+        // must be real file inputs, not text fields for a path (2026-09-09 redesign).
+        let html = render_page(&base_data());
+        assert!(
+            html.contains("<form class=\"chooser\" method=\"post\" action=\"/roster-source\" \
+                            enctype=\"multipart/form-data\">"),
+            "the roster-source form must submit as multipart, got:\n{html}"
+        );
+        assert!(
+            !html.contains("placeholder=\"C:\\path\\to"),
+            "no field should still invite a typed/pasted path, got:\n{html}"
+        );
+    }
+
+    #[test]
+    fn whether_a_file_has_ever_been_uploaded_is_shown_per_file() {
+        let html = render_page(&base_data());
+        assert!(html.contains("No schedule file uploaded yet."));
+        assert!(html.contains("No roster file uploaded yet."));
+
+        let data = PageData {
+            roster_source: crate::config::RosterSource::Local,
+            schedule_csv_path: "C:\\appdata\\overlay-bridge\\csv-files\\schedule.csv".to_string(),
+            roster_csv_path: "C:\\appdata\\overlay-bridge\\csv-files\\roster.csv".to_string(),
+            ..base_data()
+        };
+        let html = render_page(&data);
+        assert!(html.contains("A schedule file has been uploaded."));
+        assert!(html.contains("A roster file has been uploaded."));
     }
 
     /// Review floor item (Important 3, reduced to its minimum): the page must not be a dead end

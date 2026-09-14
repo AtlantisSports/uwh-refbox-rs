@@ -1226,11 +1226,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let style = match Select::new(
                     "Sheet style:",
-                    vec!["Detailed", "Simple", "Col_3x3", "CMAS Official"],
+                    vec![
+                        "Detailed",
+                        "Simple",
+                        "Simple (Team Refs)",
+                        "Col_3x3",
+                        "CMAS Official",
+                    ],
                 )
                 .prompt()
                 {
                     Ok("Simple") => SheetStyle::Simple,
+                    Ok("Simple (Team Refs)") => SheetStyle::SimpleTeamRefs,
                     Ok("Col_3x3") => SheetStyle::Col3x3,
                     Ok("CMAS Official") => SheetStyle::CmasOfficial,
                     Ok(_) => SheetStyle::Detailed,

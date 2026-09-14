@@ -1255,15 +1255,29 @@ fn render_html_simple(
       .signature { margin-top:36px; font-size:14px; text-align:center; font-weight:bold; }
     "#;
 
+    // A single-period game has no halves for a timeout to belong to, so its Time
+    // Outs block is drawn merged - the same shape as a rule that counts timeouts
+    // per game rather than per half.
+    let to_per_half = tr.team_timeouts_counted_per_half && !tr.single_period;
+
     // Generate timeout cells and headers based on timing rules
     let (to_half_headers, to_white_cells, to_black_cells) = if tr.team_timeout_count == 0 {
-        // No timeouts allowed - show X in all cells, with half headers
-        (
-            "<th class='to-white-half' colspan='2'>1st Half</th><th class='to-white-half'>2nd Half</th><th class='to-black-half' colspan='2'>1st Half</th><th class='to-black-half'>2nd Half</th>".to_string(),
-            "<td class='speckled-white' colspan='2'></td><td class='speckled-white'></td>".to_string(),
-            "<td class='speckled-black' colspan='2'></td><td class='speckled-black'></td>".to_string(),
-        )
-    } else if tr.team_timeout_count >= 1 && !tr.team_timeouts_counted_per_half {
+        if tr.single_period {
+            // No timeouts and no halves - one speckled box per team.
+            (
+                String::new(),
+                "<td class='speckled-white' colspan='3'></td>".to_string(),
+                "<td class='speckled-black' colspan='3'></td>".to_string(),
+            )
+        } else {
+            // No timeouts allowed - show X in all cells, with half headers
+            (
+                "<th class='to-white-half' colspan='2'>1st Half</th><th class='to-white-half'>2nd Half</th><th class='to-black-half' colspan='2'>1st Half</th><th class='to-black-half'>2nd Half</th>".to_string(),
+                "<td class='speckled-white' colspan='2'></td><td class='speckled-white'></td>".to_string(),
+                "<td class='speckled-black' colspan='2'></td><td class='speckled-black'></td>".to_string(),
+            )
+        }
+    } else if tr.team_timeout_count >= 1 && !to_per_half {
         // Timeouts per game (not per half) - merge into single cell spanning all 3 columns
         (
             String::new(), // No half headers when merged
@@ -1290,6 +1304,32 @@ fn render_html_simple(
         String::new()
     } else {
         format!("<tr>{}</tr>", to_half_headers)
+    };
+
+    // A single-period game has one scoring column per team rather than two
+    // halves, so the header and the box below it span the team's full width.
+    let score_rows = if tr.single_period {
+        "<tr>\
+           <th class='white-half' colspan='3'>Game</th>\
+           <th class='black-half' colspan='3'>Game</th>\
+         </tr>\
+         <tr>\
+           <td class='score-white' colspan='3'></td>\
+           <td class='score-black' colspan='3'></td>\
+         </tr>"
+    } else {
+        "<tr>\
+           <th class='white-half' colspan='2'>1st Half</th>\
+           <th class='white-half'>2nd Half</th>\
+           <th class='black-half' colspan='2'>1st Half</th>\
+           <th class='black-half'>2nd Half</th>\
+         </tr>\
+         <tr>\
+           <td class='score-white' colspan='2'></td>\
+           <td class='score-white'></td>\
+           <td class='score-black' colspan='2'></td>\
+           <td class='score-black'></td>\
+         </tr>"
     };
 
     let html = format!(
@@ -1337,20 +1377,8 @@ fn render_html_simple(
       <th class='white-header' colspan='3'>White Team: {white_team}</th>
       <th class='black-header' colspan='3'>Black Team: {black_team}</th>
     </tr>
-    <!-- Half Headers -->
-    <tr>
-      <th class='white-half' colspan='2'>1st Half</th>
-      <th class='white-half'>2nd Half</th>
-      <th class='black-half' colspan='2'>1st Half</th>
-      <th class='black-half'>2nd Half</th>
-    </tr>
-    <!-- Scoring Cells -->
-    <tr>
-      <td class='score-white' colspan='2'></td>
-      <td class='score-white'></td>
-      <td class='score-black' colspan='2'></td>
-      <td class='score-black'></td>
-    </tr>
+    <!-- Half Headers and Scoring Cells (merged into one column for a single-period game) -->
+    {score_rows}
     <!-- Time Outs Header -->
     <tr>
       <th class='section-header' colspan='6'>Time Outs</th>
@@ -1413,6 +1441,7 @@ fn render_html_simple(
         timer = html_escape(&timer_scorer),
         white_team = html_escape(&white_label),
         black_team = html_escape(&black_label),
+        score_rows = score_rows,
         to_half_headers_row = to_half_headers_row,
         to_white_cells = to_white_cells,
         to_black_cells = to_black_cells,
@@ -1507,7 +1536,9 @@ fn render_html_simple_team_refs(
     );
 
     // Timeout headers and cells (same logic as render_html_simple)
-    let to_per_half = tr.team_timeouts_counted_per_half;
+    // A single-period game has no halves for a timeout to belong to, so its Time
+    // Outs block is drawn merged, as it is for a rule counting them per game.
+    let to_per_half = tr.team_timeouts_counted_per_half && !tr.single_period;
     let to_count = tr.team_timeout_count as usize;
     let (to_half_headers_row, to_white_cells, to_black_cells) = if to_per_half {
         let hdr = "<tr><th class='to-white-half' colspan='2'>1st Half</th><th class='to-white-half' colspan='2'>2nd Half</th><th class='to-black-half' colspan='2'>1st Half</th><th class='to-black-half' colspan='2'>2nd Half</th></tr>".to_string();
@@ -1540,6 +1571,41 @@ fn render_html_simple_team_refs(
             ));
         }
         (hdr, w, b)
+    };
+
+    // A single-period game has one scoring column per team rather than two
+    // halves. Merging the two narrow half columns gives a Game column the same
+    // width as the OT / SD column beside it, which is left untouched.
+    let score_rows = if tr.single_period {
+        "<tr>\
+           <th class='white-half' colspan='2'>Game</th>\
+           <th class='white-half'>OT / SD</th>\
+           <th class='black-half' colspan='2'>Game</th>\
+           <th class='black-half'>OT / SD</th>\
+         </tr>\
+         <tr>\
+           <td class='score-white' colspan='2'></td>\
+           <td class='score-white'></td>\
+           <td class='score-black' colspan='2'></td>\
+           <td class='score-black'></td>\
+         </tr>"
+    } else {
+        "<tr>\
+           <th class='white-half'>1st Half</th>\
+           <th class='white-half'>2nd Half</th>\
+           <th class='white-half'>OT / SD</th>\
+           <th class='black-half'>1st Half</th>\
+           <th class='black-half'>2nd Half</th>\
+           <th class='black-half'>OT / SD</th>\
+         </tr>\
+         <tr>\
+           <td class='score-white'></td>\
+           <td class='score-white'></td>\
+           <td class='score-white'></td>\
+           <td class='score-black'></td>\
+           <td class='score-black'></td>\
+           <td class='score-black'></td>\
+         </tr>"
     };
 
     let css = r#"
@@ -1642,24 +1708,8 @@ fn render_html_simple_team_refs(
       <th class='white-team' colspan='3'>{white_team}</th>
       <th class='black-team' colspan='3'>{black_team}</th>
     </tr>
-    <!-- Half headers row -->
-    <tr>
-      <th class='white-half'>1st Half</th>
-      <th class='white-half'>2nd Half</th>
-      <th class='white-half'>OT / SD</th>
-      <th class='black-half'>1st Half</th>
-      <th class='black-half'>2nd Half</th>
-      <th class='black-half'>OT / SD</th>
-    </tr>
-    <!-- Scoring row -->
-    <tr>
-      <td class='score-white'></td>
-      <td class='score-white'></td>
-      <td class='score-white'></td>
-      <td class='score-black'></td>
-      <td class='score-black'></td>
-      <td class='score-black'></td>
-    </tr>
+    <!-- Half headers and scoring row (halves merged for a single-period game) -->
+    {score_rows}
     <!-- Time Outs section header -->
     <tr>
       <th class='section-header' colspan='6'>Time Outs</th>
@@ -1717,6 +1767,7 @@ fn render_html_simple_team_refs(
         category = html_escape(cat),
         ref_team = html_escape(&ref_team),
         ts_keeper_team = html_escape(&ts_keeper_team),
+        score_rows = score_rows,
         white_team = html_escape(&white_label),
         black_team = html_escape(&black_label),
         to_half_headers_row = to_half_headers_row,
@@ -2407,23 +2458,42 @@ fn score_section_with_rules(tr: &uwh_common::uwhportal::schedule::TimingRule) ->
         ("<td></td>".to_string(), "<td></td>".to_string())
     };
 
+    // A single-period game is one period, so the sheet gets ONE row for it
+    // rather than two halves. The overtime and gold-goal rows below are
+    // governed separately by their own flags and are untouched by this.
+    let period_rows = if tr.single_period {
+        // One row means one timeout cell: the same cases as above, minus the
+        // `rowspan='2'`, which only makes sense when two rows are printed.
+        let to_single = if tr.team_timeout_count == 0 {
+            "<td class='speckled'></td>".to_string()
+        } else if tr.team_timeout_count == 1 {
+            "<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;of 1</td>".to_string()
+        } else {
+            "<td></td>".to_string()
+        };
+        format!(
+            "<tr class='sep-top'><td class='tl period'>GAME</td>{blank}<td></td><td></td>{to_single}</tr>"
+        )
+    } else {
+        format!(
+            "<tr class='sep-top'><td class='tl period'>1ST HALF</td>{blank}<td></td><td></td>{to_first}</tr>\
+             <tr><td class='tl period'>2ND HALF</td>{blank}<td></td><td></td>{to_second}</tr>"
+        )
+    };
+
     format!(
         "<table class='sheet score'>\
            <colgroup><col class='col-period'/><col class='col-score' span='14'/><col class='col-pgt'/><col class='col-sub'/><col class='col-timeouts'/></colgroup>\
            <tr class='cap-row'><th class='tl period' rowspan='2'>TIME<br>PERIOD</th><th colspan='14'>SCORE COUNT</th><th class='pgt' rowspan='2'>PENALTY<br>GOAL&nbsp;TALLY</th><th rowspan='2'>SUB-TOTAL</th><th rowspan='2'>TEAM TIMEOUTS</th></tr>\
            <tr class='score-numbers'>{}</tr>\
-           <tr class='sep-top'><td class='tl period'>1ST HALF</td>{}<td></td><td></td>{}</tr>\
-           <tr><td class='tl period'>2ND HALF</td>{}<td></td><td></td>{}</tr>\
+           {}\
            <tr class='sep-top'><td class='tl period'>OT 1ST HALF</td>{}<td{}></td><td{}></td><td class='speckled'></td></tr>\
            <tr><td class='tl period'>OT 2ND HALF</td>{}<td{}></td><td{}></td><td class='speckled'></td></tr>\
            <tr class='sep-top gold-goal'><td class='tl period'>GOLD GOAL</td>{}{}{}<td class='speckled'></td></tr>\
            <tr class='notes-final'><td class='tl period'>NOTES</td><td colspan='11'></td><td class='final-score' colspan='6'>FINAL SCORE</td></tr>\
          </table>",
         cols,
-        blank,
-        to_first,
-        blank,
-        to_second,
+        period_rows,
         ot_cells,
         ot_pgt_attr,
         ot_sub_attr,
@@ -2504,6 +2574,17 @@ pub fn generate_example_rule_sheets(
         (
             "all_allowed",
             make_rule("RR - All Allowed", 1, true, true, true),
+        ),
+        (
+            // A single-period game, so the sheet can be compared side by side
+            // with the two-half examples above.
+            "single_period",
+            {
+                let mut tr = make_rule("RR - Single Period", 1, true, true, true);
+                tr.single_period = true;
+                tr.half_time_duration = std::time::Duration::ZERO;
+                tr
+            },
         ),
     ];
 
@@ -2776,6 +2857,219 @@ mod tests {
             candidates.first().map(String::as_str),
             Some("chromium"),
             "empty override should be skipped, Linux names come first"
+        );
+    }
+
+    use super::{
+        DateRange, Event, EventId, Game, OfficialNames, ScheduledTeam, TimingRule,
+        render_html_simple, render_html_simple_team_refs, score_section_with_rules,
+    };
+    use std::time::Duration;
+    use time::{Duration as TimeDur, OffsetDateTime};
+
+    fn a_two_half_rule() -> TimingRule {
+        TimingRule {
+            name: "RR".to_string(),
+            team_timeout_count: 1,
+            team_timeouts_counted_per_half: false,
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            single_period: false,
+            last_2_min_stop_time: false,
+            half_play_duration: Duration::from_secs(720),
+            half_time_duration: Duration::from_secs(180),
+            team_timeout_duration: Duration::from_secs(60),
+            ot_half_play_duration: Duration::from_secs(300),
+            ot_half_time_duration: Duration::from_secs(60),
+            pre_overtime_break: Duration::from_secs(180),
+            pre_sudden_death_duration: Duration::from_secs(60),
+            minimum_break: Duration::from_secs(240),
+            game_block: Some(Duration::from_secs(1920)),
+        }
+    }
+
+    fn a_single_period_rule() -> TimingRule {
+        let mut rule = a_two_half_rule();
+        rule.single_period = true;
+        rule.half_time_duration = Duration::ZERO;
+        rule
+    }
+
+    #[test]
+    fn the_detailed_sheet_gives_a_single_period_game_one_row_labelled_game() {
+        // `>1ST HALF<` matches only the regulation row: the overtime rows read
+        // `>OT 1ST HALF<`, so they are not caught by these assertions.
+        let html = score_section_with_rules(&a_single_period_rule());
+        assert!(
+            html.contains(">GAME<"),
+            "single-period sheet should label its one period row GAME, got: {html}"
+        );
+        assert!(
+            !html.contains(">1ST HALF<"),
+            "single-period sheet should not print a 1ST HALF row, got: {html}"
+        );
+        assert!(
+            !html.contains(">2ND HALF<"),
+            "single-period sheet should not print a 2ND HALF row, got: {html}"
+        );
+    }
+
+    #[test]
+    fn the_detailed_sheet_still_gives_a_two_half_game_both_half_rows() {
+        let html = score_section_with_rules(&a_two_half_rule());
+        assert!(html.contains(">1ST HALF<"), "got: {html}");
+        assert!(html.contains(">2ND HALF<"), "got: {html}");
+        assert!(
+            !html.contains(">GAME<"),
+            "a two-half game must not get the single-period label, got: {html}"
+        );
+    }
+
+    fn an_event() -> Event {
+        let start = OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap();
+        Event {
+            id: EventId::from_partial("EXAMPLE"),
+            name: "Example Event".to_string(),
+            slug: "example-event".to_string(),
+            date_range: DateRange {
+                start,
+                end: start + TimeDur::hours(8),
+            },
+            teams: None,
+            schedule: None,
+            courts: None,
+        }
+    }
+
+    fn a_game(tr: &TimingRule) -> Game {
+        Game {
+            number: "1".to_string(),
+            dark: ScheduledTeam::new_pending_assignment_name("Example Black"),
+            light: ScheduledTeam::new_pending_assignment_name("Example White"),
+            start_time: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
+            court: "1".to_string(),
+            timing_rule: tr.name.clone(),
+            referee_assignments: None,
+            description: None,
+        }
+    }
+
+    fn simple_sheet(tr: &TimingRule) -> String {
+        render_html_simple(
+            &an_event(),
+            "1",
+            &a_game(tr),
+            None,
+            tr,
+            "",
+            "Example White",
+            "",
+            "Example Black",
+            &OfficialNames::default(),
+        )
+    }
+
+    #[test]
+    fn the_simple_sheet_merges_a_single_period_game_into_one_game_column() {
+        let html = simple_sheet(&a_single_period_rule());
+        assert!(
+            html.contains("<th class='white-half' colspan='3'>Game</th>"),
+            "white team should get one full-width Game column, got: {html}"
+        );
+        assert!(
+            html.contains("<th class='black-half' colspan='3'>Game</th>"),
+            "black team should get one full-width Game column, got: {html}"
+        );
+        assert!(
+            !html.contains("1st Half"),
+            "no part of a single-period sheet should mention a half, got: {html}"
+        );
+        assert!(!html.contains("2nd Half"), "got: {html}");
+    }
+
+    #[test]
+    fn the_simple_sheet_merges_time_outs_even_when_the_rule_counts_them_per_half() {
+        // Counting timeouts per half is meaningless when there is only one
+        // period, so being single-period wins over the per-half flag.
+        let mut rule = a_single_period_rule();
+        rule.team_timeouts_counted_per_half = true;
+        let html = simple_sheet(&rule);
+        assert!(
+            html.contains("<td class='white-box' colspan='3'>"),
+            "the Time Outs box should span the team's full width, got: {html}"
+        );
+        assert!(
+            !html.contains("1st Half"),
+            "the Time Outs block must not keep its half split, got: {html}"
+        );
+    }
+
+    #[test]
+    fn the_simple_sheet_still_splits_a_two_half_game_into_halves() {
+        let html = simple_sheet(&a_two_half_rule());
+        assert!(html.contains("1st Half"), "got: {html}");
+        assert!(html.contains("2nd Half"), "got: {html}");
+        assert!(
+            !html.contains(">Game</th>"),
+            "a two-half game must not get the merged label, got: {html}"
+        );
+    }
+
+    fn team_refs_sheet(tr: &TimingRule) -> String {
+        render_html_simple_team_refs(
+            &an_event(),
+            "1",
+            &a_game(tr),
+            None,
+            tr,
+            "",
+            "Example White",
+            "",
+            "Example Black",
+        )
+    }
+
+    #[test]
+    fn the_team_refs_sheet_merges_a_single_period_game_into_one_game_column() {
+        let html = team_refs_sheet(&a_single_period_rule());
+        assert!(
+            html.contains("<th class='white-half' colspan='2'>Game</th>"),
+            "white team's two half columns should merge into one Game column"
+        );
+        assert!(
+            html.contains("<th class='black-half' colspan='2'>Game</th>"),
+            "black team's two half columns should merge into one Game column"
+        );
+        assert!(
+            html.contains("OT / SD"),
+            "the OT / SD column must survive the merge"
+        );
+        assert!(
+            !html.contains("1st Half"),
+            "no part of a single-period sheet should mention a half"
+        );
+        assert!(!html.contains("2nd Half"), "still mentions a second half");
+    }
+
+    #[test]
+    fn the_team_refs_sheet_merges_time_outs_even_when_the_rule_counts_them_per_half() {
+        let mut rule = a_single_period_rule();
+        rule.team_timeouts_counted_per_half = true;
+        let html = team_refs_sheet(&rule);
+        assert!(
+            !html.contains("1st Half"),
+            "the Time Outs block must not keep its half split"
+        );
+    }
+
+    #[test]
+    fn the_team_refs_sheet_still_splits_a_two_half_game_into_halves() {
+        let html = team_refs_sheet(&a_two_half_rule());
+        assert!(html.contains("1st Half"), "got: {html}");
+        assert!(html.contains("2nd Half"), "got: {html}");
+        assert!(
+            !html.contains(">Game</th>"),
+            "a two-half game must not get the merged label"
         );
     }
 }

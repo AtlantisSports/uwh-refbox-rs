@@ -3,7 +3,7 @@ use crate::{
     config::{BeepTestPreset, GameSource},
     portal_manager::{ItemId, PortalEvent},
     sound_controller::{BuzzerSound, RemoteId},
-    tournament_manager::{SharedGame, penalty::PenaltyKind},
+    tournament_manager::{CatchUp, SharedGame, penalty::PenaltyKind},
 };
 use tokio::{sync::mpsc::Sender, time::Duration};
 use uwh_common::{
@@ -25,8 +25,10 @@ use uwh_common::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct TickUpdate {
     pub snapshot: GameSnapshot,
-    /// This is the tick on which a sleep catch-up re-placed the engine.
-    pub caught_up: bool,
+    /// Set when this is the tick on which a sleep catch-up re-placed the engine, and
+    /// says whether the catch-up changed game. The engine answers that, rather than the
+    /// app inferring it from its own previous snapshot — see `CatchUp`.
+    pub caught_up: Option<CatchUp>,
 }
 
 #[derive(Debug, Clone)]

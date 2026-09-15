@@ -60,6 +60,25 @@ pub(crate) enum TickKind {
     NewSnapshot,
 }
 
+/// What a sleep catch-up did, for the app that has to react to it.
+///
+/// The engine answers this rather than letting the app work it out by comparing the new
+/// snapshot with its own previous one. Those two questions look the same and are not:
+/// the app's previous snapshot can already have been advanced to the placed game by a
+/// synchronous update landing between the catch-up tick and the delivery of its queued
+/// message, and the comparison then reports "nothing changed" for a catch-up that moved
+/// two games.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CatchUp {
+    /// The engine was re-placed within the game it was already in. Only the period and
+    /// the clock moved, so nothing started and nothing ended.
+    SameGame,
+    /// The engine was re-placed onto a different game. It owes that game the same
+    /// next-game and roster refresh an ordinary kickoff gets — but NOT a result for the
+    /// game left behind, which nobody played.
+    NewGame,
+}
+
 /// Reported once per run when a contaminated lock is first recovered.
 static POISON_REPORTED: AtomicBool = AtomicBool::new(false);
 
@@ -157,11 +176,14 @@ pub struct TournamentManager {
     court_schedule: Vec<ScheduledGame>,
     /// Previous tick's pair of clock readings, for spotting a sleep. See `time_jump`.
     jump_detector: JumpDetector,
-    /// Set when a catch-up has just moved the engine. The app reads and clears it so it
-    /// can tell a catch-up apart from a game genuinely ending or starting — the period
-    /// transition alone looks identical, and reading it as a game ending would submit a
-    /// result for a game that was slept through.
-    catch_up_pending: bool,
+    /// Set when a catch-up has just moved the engine, and says whether it changed game.
+    /// The app reads and clears it so it can tell a catch-up apart from a game genuinely
+    /// ending or starting — the period transition alone looks identical, and reading it
+    /// as a game ending would submit a result for a game that was slept through.
+    ///
+    /// Whether the game changed is recorded HERE rather than left for the app to infer,
+    /// because only the engine knows it for certain. See [`CatchUp`].
+    catch_up_pending: Option<CatchUp>,
     /// Set when the app has established that the selected court has no game after the
     /// one in progress. Distinct from `next_game: None`, which only means "not known
     /// yet" — this one is a definite answer, and it stops the engine both from
@@ -210,7 +232,7 @@ impl TournamentManager {
             next_game: None,
             court_schedule: Vec::new(),
             jump_detector: JumpDetector::default(),
-            catch_up_pending: false,
+            catch_up_pending: None,
             no_next_game: false,
             schedule_linked: false,
             game_number_step: 1,
@@ -1496,6 +1518,17 @@ impl TournamentManager {
             time_remaining_at_start: time_remaining,
         };
 
+        // Set BEFORE the fallible call below, and not after it. Everything that moves
+        // the engine has already happened by this point, so a `?` that propagated past
+        // an unset marker would report the tick failed while leaving the move in place:
+        // the retry's snapshot then arrives unmarked, and the app reads the placement as
+        // an ordinary game end and publishes a result for a game nobody played.
+        self.catch_up_pending = Some(if same_game {
+            CatchUp::SameGame
+        } else {
+            CatchUp::NewGame
+        });
+
         if same_game {
             // Assigning the period directly skips the transition that normally does
             // this. A penalty that ran out during the time we slept through has to
@@ -1509,8 +1542,6 @@ impl TournamentManager {
             self.cull_penalties(now)?;
         }
 
-        self.catch_up_pending = true;
-
         if !was_running {
             self.send_clock_running(true);
         }
@@ -1518,10 +1549,10 @@ impl TournamentManager {
         Ok(())
     }
 
-    /// Whether a catch-up has moved the engine since the app last asked. Reading it
-    /// clears it.
-    pub fn take_catch_up_pending(&mut self) -> bool {
-        std::mem::take(&mut self.catch_up_pending)
+    /// What a catch-up did to the engine since the app last asked, if anything.
+    /// Reading it clears it.
+    pub fn take_catch_up_pending(&mut self) -> Option<CatchUp> {
+        self.catch_up_pending.take()
     }
 
     /// Compare the two clocks and, if the machine lost time, re-place the game at the
@@ -1583,7 +1614,7 @@ impl TournamentManager {
                 "{} Lost {lost:?} to a clock jump; no schedule loaded, taking it off the clock",
                 self.status_string(now)
             );
-            self.absorb_lost_time(lost);
+            self.absorb_lost_time(now, lost);
             return Ok(());
         }
 
@@ -1615,7 +1646,9 @@ impl TournamentManager {
                 // pre-sleep next game is still coming, or it starts it. This parks the
                 // break at 0:00 too.
                 self.set_no_next_game();
-                self.catch_up_pending = true;
+                // Same game: this arm deliberately leaves the game number alone, so
+                // there is no new game for the app to look rosters up for.
+                self.catch_up_pending = Some(CatchUp::SameGame);
             }
         }
 
@@ -1656,18 +1689,28 @@ impl TournamentManager {
             });
         }
 
-        self.catch_up_pending = true;
+        // Same game: a break countdown moves the period and the next-game info, never
+        // the game number, so the app has no new game to refresh for.
+        self.catch_up_pending = Some(CatchUp::SameGame);
     }
 
     /// Manual mode: no schedule to jump to, so just consume the lost time on whatever
     /// clock is running. Never starts a game.
-    fn absorb_lost_time(&mut self, lost: Duration) {
+    fn absorb_lost_time(&mut self, now: Instant, lost: Duration) {
         match self.clock_state {
-            ClockState::CountingDown {
-                start_time,
-                time_remaining_at_start,
-            } => {
-                let remaining = time_remaining_at_start.saturating_sub(lost);
+            ClockState::CountingDown { .. } => {
+                // Measured against what the clock reads NOW, not against the figure it
+                // was armed with. A countdown that has already run for longer than
+                // `time_remaining_at_start - lost` would otherwise be re-armed with a
+                // remainder smaller than its own elapsed time: the clock then reads
+                // negative, so `clock_time` returns `None` and every snapshot fails, and
+                // `update` sees the countdown as expired and auto-starts a game — the one
+                // thing this function exists to prevent.
+                let remaining = self
+                    .clock_state
+                    .clock_time(now)
+                    .unwrap_or_default()
+                    .saturating_sub(lost);
                 if remaining.is_zero() {
                     // Parked at zero rather than allowed to expire. Letting a
                     // between-games countdown run out would auto-start a game, and with
@@ -1677,8 +1720,11 @@ impl TournamentManager {
                     };
                     self.send_clock_running(false);
                 } else {
+                    // Re-anchored at `now`, because `remaining` is measured from this
+                    // instant. Keeping the original `start_time` would take the already
+                    // elapsed time off the clock a second time.
                     self.clock_state = ClockState::CountingDown {
-                        start_time,
+                        start_time: now,
                         time_remaining_at_start: remaining,
                     };
                 }
@@ -5288,6 +5334,60 @@ mod test {
         );
     }
 
+    #[test]
+    fn the_catch_up_marker_survives_a_failed_penalty_cull() {
+        // `place_at_schedule_position` moves the engine and THEN culls penalties, and
+        // the cull can fail. A failed tick is reported and retried, so if the marker
+        // were set after the cull the engine would already be re-placed with nothing to
+        // say so: the retry's snapshot arrives unmarked, its move reads as an ordinary
+        // game end, and a result is published for a game nobody played.
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let now = Instant::now();
+        tm.start_play_now(now).unwrap();
+
+        // A penalty whose recorded start time cannot be converted for the arithmetic.
+        // The value is unreachable in practice; what matters is that the cull returns
+        // an error, which is the only thing the marker has to survive.
+        tm.penalties[Color::Black].push(penalty::Penalty {
+            kind: penalty::PenaltyKind::OneMinute,
+            player_number: 4,
+            start_period: GamePeriod::FirstHalf,
+            start_time: Duration::MAX,
+            start_instant: now,
+            infraction: Infraction::Unknown,
+        });
+
+        let game = ScheduledGame {
+            number: tm.game_number().to_string(),
+            start_time: OffsetDateTime::UNIX_EPOCH,
+            config: GameConfig::default(),
+            timing: None,
+        };
+        let result = tm.place_at_schedule_position(
+            now,
+            &game,
+            GamePeriod::FirstHalf,
+            Duration::from_secs(300),
+        );
+
+        assert!(
+            result.is_err(),
+            "precondition: this placement's penalty cull must fail"
+        );
+        assert_eq!(
+            tm.current_period(),
+            GamePeriod::FirstHalf,
+            "precondition: the engine has already been moved by the time the cull runs"
+        );
+        assert_eq!(
+            tm.take_catch_up_pending(),
+            Some(CatchUp::SameGame),
+            "the engine moved, so the marker saying so must be set even though the \
+             call went on to fail"
+        );
+    }
+
     /// A running game with a one-game court schedule, primed so the next
     /// `observe_time_jump` is a comparison rather than a baseline.
     fn running_with_schedule(now: Instant, wall: OffsetDateTime) -> TournamentManager {
@@ -5607,12 +5707,57 @@ mod test {
     }
 
     #[test]
+    fn manual_mode_parks_at_zero_when_the_lost_time_outruns_the_clock() {
+        // The countdown has already been running a while when the machine sleeps.
+        // Taking the lost time off the figure the clock was ARMED with, instead of off
+        // what it reads now, leaves a remainder smaller than the time already elapsed:
+        // the clock goes negative, so it reads as no time at all and every snapshot
+        // after it fails, and the countdown looks expired — which in manual mode starts
+        // a game nothing asked for.
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(900));
+        tm.start_clock(now);
+        assert!(tm.court_schedule().is_empty(), "precondition: manual mode");
+        tm.observe_time_jump(now, wall).unwrap();
+
+        // Ten minutes into the countdown, so 5 minutes are left — and the machine loses
+        // 400 seconds, more than that. 900 - 400 = 500 is still positive, which is what
+        // made the old arithmetic take the wrong branch.
+        let woke = now + Duration::from_secs(600);
+        tm.observe_time_jump(woke, wall + time::Duration::seconds(1000))
+            .unwrap();
+
+        assert_eq!(
+            tm.game_clock_time(woke),
+            Some(Duration::ZERO),
+            "a countdown outrun by the lost time must park at 0:00, not run past it"
+        );
+
+        tm.update(woke).unwrap();
+        assert_eq!(
+            tm.current_period(),
+            GamePeriod::BetweenGames,
+            "manual mode must not start a game after absorbing the lost time"
+        );
+    }
+
+    #[test]
     fn no_jump_leaves_every_clock_alone() {
         initialize();
         let now = Instant::now();
         let wall = OffsetDateTime::now_utc();
+        // 299 seconds, not 5: the threshold is 5 minutes, and a 5-second case left it
+        // free to be set to anything from 10 seconds to 2 hours with the whole suite
+        // still green. Paired with `a_gap_just_over_the_threshold_is_acted_on` below.
         let cases: &[(time::Duration, &str)] = &[
-            (time::Duration::seconds(5), "a gap below the threshold"),
+            (
+                time::Duration::seconds(299),
+                "a gap one second below the threshold",
+            ),
             (time::Duration::hours(-3), "a backwards wall clock"),
         ];
         for (step, what) in cases {
@@ -5623,6 +5768,27 @@ mod test {
             assert_eq!(tm.game_clock_time(now), before, "{what}");
             assert_eq!(tm.current_period(), period_before, "{what}");
         }
+    }
+
+    #[test]
+    fn a_gap_just_over_the_threshold_is_acted_on() {
+        // The other half of the boundary. Without this, the threshold could be raised
+        // to any value at all — or the comparison loosened — and nothing would notice.
+        initialize();
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+        let mut tm = running_with_schedule(now, wall);
+        assert_eq!(tm.current_period(), GamePeriod::FirstHalf, "precondition");
+
+        tm.observe_time_jump(now, wall + time::Duration::seconds(301))
+            .unwrap();
+
+        assert_eq!(
+            tm.current_period(),
+            GamePeriod::BetweenGames,
+            "a gap one second OVER the threshold must reach the schedule: the court's \
+             only game is still an hour away, so the engine belongs in a countdown to it"
+        );
     }
 
     #[test]

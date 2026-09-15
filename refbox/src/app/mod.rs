@@ -1100,6 +1100,42 @@ fn recorded_result_matches_ended_game(
 /// requires `current_court` to be set *and* the selected game to be on it, so
 /// there is no court-less state with a game selection for a roster to resolve
 /// against. Keeping it permissive also means no existing caller changes behaviour.
+/// One court's games as the engine needs them, and the numbers of the games that could
+/// not be given a configuration.
+///
+/// A game whose timing rule cannot be resolved is left OUT rather than given a default:
+/// default period lengths would put the engine confidently at a position that does not
+/// exist, and a wrong running clock is worse than an uncorrected one.
+///
+/// Those games come back as one collection rather than being reported from in here, so
+/// the caller can say it once. See `refresh_court_schedule`, which is where the saying
+/// happens and why it matters.
+fn court_schedule_for(
+    schedule: Option<&Schedule>,
+    court: Option<&str>,
+) -> (Vec<ScheduledGame>, Vec<GameNumber>) {
+    let (Some(schedule), Some(court)) = (schedule, court) else {
+        return (Vec::new(), Vec::new());
+    };
+
+    let mut games = Vec::new();
+    let mut unresolved = Vec::new();
+
+    for game in schedule.games.values().filter(|game| game.court == court) {
+        match schedule.get_game_timing(&game.number) {
+            Some(timing) => games.push(ScheduledGame {
+                number: game.number.clone(),
+                start_time: game.start_time,
+                config: timing.clone().into(),
+                timing: Some(timing.clone()),
+            }),
+            None => unresolved.push(game.number.clone()),
+        }
+    }
+
+    (games, unresolved)
+}
+
 fn rosters_for_scheduled_game(
     schedule: Option<&Schedule>,
     team_rosters: &BTreeMap<TeamId, Vec<u8>>,
@@ -1250,19 +1286,26 @@ enum SnapshotTransition {
 /// that may have been generated some time ago and queued. Reading the flag here would
 /// let a stale snapshot consume a marker meant for a later one -- see
 /// `a_stale_snapshot_is_not_mistaken_for_a_catch_up`.
+///
+/// And when the marker IS present, `prev` is not consulted at all. The engine already
+/// knows whether the catch-up changed game; `prev` only records what the app last
+/// stored, which a synchronous `apply_snapshot` -- `RecvSchedule` is one -- can have
+/// advanced to the placed game while the marked tick was still queued. Diffing against
+/// it would read a catch-up that crossed two games as "nothing changed" and skip the
+/// kickoff refresh, leaving the previous game's cap numbers on the grid and parking the
+/// court at 0:00 when the placed game ends.
 fn snapshot_transition(
     prev: &GameSnapshot,
     next: &GameSnapshot,
-    caught_up: bool,
+    caught_up: Option<CatchUp>,
 ) -> SnapshotTransition {
-    if caught_up {
-        // A catch-up moves the period without a game having ended or begun in the
-        // ordinary sense. Reading its transition as a game ending would submit a
-        // result for a game that was slept through.
-        if next.game_number != prev.game_number {
-            return SnapshotTransition::CaughtUpToNewGame;
-        }
-        return SnapshotTransition::Nothing;
+    match caught_up {
+        Some(CatchUp::NewGame) => return SnapshotTransition::CaughtUpToNewGame,
+        // A catch-up within the same game moves the period without a game having ended
+        // or begun in the ordinary sense. Reading its transition as a game ending would
+        // submit a result for a game that was slept through.
+        Some(CatchUp::SameGame) => return SnapshotTransition::Nothing,
+        None => {}
     }
 
     if next.current_period != prev.current_period {
@@ -1282,11 +1325,15 @@ impl RefBoxApp {
     /// Such a snapshot is by definition current, so it can never be the stale half of
     /// a catch-up race -- and it is never the message the catch-up marker travels on.
     fn apply_snapshot(&mut self, new_snapshot: GameSnapshot) -> Task<Message> {
-        self.apply_tick(new_snapshot, false)
+        self.apply_tick(new_snapshot, None)
     }
 
     /// Apply a snapshot together with the marker that arrived with it.
-    fn apply_tick(&mut self, mut new_snapshot: GameSnapshot, caught_up: bool) -> Task<Message> {
+    fn apply_tick(
+        &mut self,
+        mut new_snapshot: GameSnapshot,
+        caught_up: Option<CatchUp>,
+    ) -> Task<Message> {
         let mut task = Task::none();
         match snapshot_transition(&self.snapshot, &new_snapshot, caught_up) {
             SnapshotTransition::CaughtUpToNewGame | SnapshotTransition::GameStarted => {
@@ -2286,35 +2333,26 @@ impl RefBoxApp {
     /// Called from every site that changes the schedule or the selected court —
     /// including the clears back to manual mode, or a catch-up would place against a
     /// schedule the operator has just disconnected from.
-    ///
-    /// A game whose timing rule cannot be resolved is left OUT rather than given a
-    /// default: default period lengths would put the engine confidently at a position
-    /// that does not exist, and a wrong running clock is worse than an uncorrected one.
     fn refresh_court_schedule(&self) {
-        let games: Vec<ScheduledGame> = match (&self.schedule, &self.current_court) {
-            (Some(schedule), Some(court)) => schedule
-                .games
-                .values()
-                .filter(|game| game.court == *court)
-                .filter_map(|game| match schedule.get_game_timing(&game.number) {
-                    Some(timing) => Some(ScheduledGame {
-                        number: game.number.clone(),
-                        start_time: game.start_time,
-                        config: timing.clone().into(),
-                        timing: Some(timing.clone()),
-                    }),
-                    None => {
-                        warn!(
-                            "Game {} on court {court} has no timing rule; leaving it out \
-                             of the catch-up schedule",
-                            game.number
-                        );
-                        None
-                    }
-                })
-                .collect(),
-            _ => Vec::new(),
-        };
+        let (games, unresolved) =
+            court_schedule_for(self.schedule.as_ref(), self.current_court.as_deref());
+
+        if !unresolved.is_empty() {
+            // ONE line per refresh, however many games are unresolvable. This runs on
+            // every schedule receipt — every REFRESH and every periodic portal health
+            // check — so a line per game meant a court with 40 of them wrote 40 lines
+            // every time, rolling the useful history out of a size-rotated log. Same
+            // reason the kickoff roster warning below sits at kickoff rather than in the
+            // lookup it is about.
+            warn!(
+                "{} game(s) on court {:?} have no timing rule and are left out of the \
+                 catch-up schedule: {}",
+                unresolved.len(),
+                self.current_court,
+                unresolved.join(", "),
+            );
+        }
+
         self.tm.lock().set_court_schedule(games);
     }
 
@@ -6448,7 +6486,7 @@ impl RefBoxApp {
                     self.app_state = AppState::ConfirmScores(self.snapshot.scores);
                     trace!("AppState changed to {:?}", self.app_state);
                 } else {
-                    if update.caught_up {
+                    if update.caught_up.is_some() {
                         // Should be unreachable: `observe_time_jump` refuses to act
                         // while a score-confirmation pause is up, and a placement always
                         // leaves time on the clock. Reported rather than dropped in
@@ -10503,6 +10541,139 @@ mod picker_roster_game_tests {
 }
 
 #[cfg(test)]
+mod court_schedule_for_tests {
+    use super::*;
+    use time::OffsetDateTime;
+    use uwh_common::uwhportal::schedule::{Game, ScheduledTeam, TimingRule};
+
+    fn game_on(number: &str, court: &str, rule: &str) -> Game {
+        Game {
+            number: number.to_string(),
+            dark: ScheduledTeam::new_team_id(TeamId::from_partial("dark")),
+            light: ScheduledTeam::new_team_id(TeamId::from_partial("light")),
+            start_time: OffsetDateTime::UNIX_EPOCH,
+            court: court.to_string(),
+            timing_rule: rule.to_string(),
+            referee_assignments: None,
+            description: None,
+        }
+    }
+
+    fn rule(name: &str) -> TimingRule {
+        TimingRule {
+            name: name.to_string(),
+            team_timeout_count: 1,
+            team_timeouts_counted_per_half: true,
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            single_period: false,
+            last_2_min_stop_time: false,
+            half_play_duration: Duration::from_secs(600),
+            half_time_duration: Duration::from_secs(180),
+            team_timeout_duration: Duration::from_secs(60),
+            ot_half_play_duration: Duration::from_secs(300),
+            ot_half_time_duration: Duration::from_secs(180),
+            pre_overtime_break: Duration::from_secs(180),
+            pre_sudden_death_duration: Duration::from_secs(60),
+            minimum_break: Duration::from_secs(240),
+            game_block: None,
+        }
+    }
+
+    fn schedule_of(games: Vec<Game>, timing_rules: Vec<TimingRule>) -> Schedule {
+        Schedule {
+            event_id: EventId::from_full("events/1889-B").unwrap(),
+            games: games.into_iter().map(|g| (g.number.clone(), g)).collect(),
+            non_game_entries: Vec::new(),
+            groups: Vec::new(),
+            timing_rules,
+            standings_order: None,
+            final_results_order: None,
+            referees_by_game_number: None,
+        }
+    }
+
+    /// The flooding case. Every one of these games used to write its own warning line,
+    /// on every schedule receipt -- every REFRESH and every periodic portal health
+    /// check. They now come back as one collection, so the caller reports them once.
+    #[test]
+    fn every_unresolvable_game_is_reported_together_not_one_by_one() {
+        let games: Vec<Game> = (1..=40)
+            .map(|n| game_on(&n.to_string(), "Court 1", "Missing"))
+            .collect();
+        let schedule = schedule_of(games, Vec::new());
+
+        let (for_engine, unresolved) = court_schedule_for(Some(&schedule), Some("Court 1"));
+
+        assert!(
+            for_engine.is_empty(),
+            "a game with no timing rule must not reach the engine: default period \
+             lengths would place it confidently at a position that does not exist"
+        );
+        assert_eq!(
+            unresolved.len(),
+            40,
+            "all 40 must come back in ONE collection for the caller to report in one \
+             line, not 40 reports from inside the loop"
+        );
+    }
+
+    /// A resolvable game reaches the engine with its own timing rule, and says nothing.
+    #[test]
+    fn a_resolvable_game_reaches_the_engine_silently() {
+        let schedule = schedule_of(vec![game_on("27", "Court 1", "RR")], vec![rule("RR")]);
+
+        let (for_engine, unresolved) = court_schedule_for(Some(&schedule), Some("Court 1"));
+
+        assert_eq!(for_engine.len(), 1);
+        assert_eq!(for_engine[0].number, "27");
+        assert_eq!(
+            for_engine[0].config.half_play_duration,
+            Duration::from_secs(600),
+            "the game must carry the configuration its own timing rule supplies"
+        );
+        assert!(
+            unresolved.is_empty(),
+            "nothing to report when every game resolved"
+        );
+    }
+
+    /// Another court's unresolvable games are not this court's problem, and must not be
+    /// reported as though they were.
+    #[test]
+    fn another_courts_games_are_neither_used_nor_reported() {
+        let schedule = schedule_of(
+            vec![
+                game_on("27", "Court 1", "RR"),
+                game_on("28", "Court 2", "Missing"),
+            ],
+            vec![rule("RR")],
+        );
+
+        let (for_engine, unresolved) = court_schedule_for(Some(&schedule), Some("Court 1"));
+
+        assert_eq!(for_engine.len(), 1);
+        assert!(unresolved.is_empty());
+    }
+
+    /// Manual mode: no schedule, or no court selected, means nothing to push and
+    /// nothing to say.
+    #[test]
+    fn no_schedule_or_no_court_gives_nothing_either_way() {
+        let schedule = schedule_of(vec![game_on("27", "Court 1", "Missing")], Vec::new());
+
+        assert_eq!(
+            court_schedule_for(None, Some("Court 1")),
+            (Vec::new(), Vec::new())
+        );
+        assert_eq!(
+            court_schedule_for(Some(&schedule), None),
+            (Vec::new(), Vec::new())
+        );
+    }
+}
+
+#[cfg(test)]
 mod rosters_for_scheduled_game_tests {
     use super::*;
     use time::OffsetDateTime;
@@ -10624,6 +10795,7 @@ mod rosters_for_scheduled_game_tests {
 #[cfg(test)]
 mod snapshot_transition_tests {
     use super::*;
+    use time::OffsetDateTime;
 
     /// A snapshot generated BEFORE a catch-up must not be read as the catch-up.
     /// The updater channel buffers 100 messages, so a pre-jump snapshot can still
@@ -10647,7 +10819,7 @@ mod snapshot_transition_tests {
         };
 
         assert_eq!(
-            snapshot_transition(&before, &stale, false),
+            snapshot_transition(&before, &stale, None),
             SnapshotTransition::Nothing
         );
 
@@ -10659,8 +10831,39 @@ mod snapshot_transition_tests {
         };
 
         assert_eq!(
-            snapshot_transition(&before, &caught_up, true),
+            snapshot_transition(&before, &caught_up, Some(CatchUp::NewGame)),
             SnapshotTransition::CaughtUpToNewGame
+        );
+    }
+
+    /// The other side of the same race, and the hole the first version of this fix left
+    /// open. Between the catch-up tick and the delivery of its queued message, a
+    /// synchronous update -- a schedule arriving is one -- can store a snapshot that has
+    /// ALREADY advanced to the placed game. The marked message then arrives with a
+    /// `prev` that names the same game as `next`, and anything deciding by comparison
+    /// concludes nothing happened: no kickoff refresh, so the grid keeps the previous
+    /// game's cap numbers and the court parks at 0:00 when the placed game ends.
+    ///
+    /// The engine's own answer cannot be stolen this way, because it describes what the
+    /// catch-up did rather than what two snapshots look like.
+    #[test]
+    fn a_catch_up_is_still_one_when_the_app_already_advanced() {
+        let already_advanced = GameSnapshot {
+            game_number: "5".to_string(),
+            current_period: GamePeriod::SecondHalf,
+            ..Default::default()
+        };
+        let marked = GameSnapshot {
+            game_number: "5".to_string(),
+            current_period: GamePeriod::SecondHalf,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            snapshot_transition(&already_advanced, &marked, Some(CatchUp::NewGame)),
+            SnapshotTransition::CaughtUpToNewGame,
+            "the engine said the catch-up changed game; the app's own previous \
+             snapshot has no vote"
         );
     }
 
@@ -10680,14 +10883,21 @@ mod snapshot_transition_tests {
             ..Default::default()
         };
 
+        // Which variant the engine sends decides what the app owes the new state, but
+        // neither of them may be read as a game having ended.
         assert_eq!(
-            snapshot_transition(&before, &into_break, true),
+            snapshot_transition(&before, &into_break, Some(CatchUp::SameGame)),
+            SnapshotTransition::Nothing,
+            "the break path leaves the game number alone, so nothing started either"
+        );
+        assert_eq!(
+            snapshot_transition(&before, &into_break, Some(CatchUp::NewGame)),
             SnapshotTransition::CaughtUpToNewGame
         );
-        // The same pair WITHOUT the marker is an ordinary game end -- which is
-        // exactly the wrong answer, and exactly what a stolen marker produces.
+        // The same pair with NO marker is an ordinary game end -- which is exactly the
+        // wrong answer, and exactly what a stolen marker produces.
         assert_eq!(
-            snapshot_transition(&before, &into_break, false),
+            snapshot_transition(&before, &into_break, None),
             SnapshotTransition::GameEnded
         );
     }
@@ -10706,16 +10916,87 @@ mod snapshot_transition_tests {
         };
 
         assert_eq!(
-            snapshot_transition(&between, &playing, false),
+            snapshot_transition(&between, &playing, None),
             SnapshotTransition::GameStarted
         );
         assert_eq!(
-            snapshot_transition(&playing, &between, false),
+            snapshot_transition(&playing, &between, None),
             SnapshotTransition::GameEnded
         );
         assert_eq!(
-            snapshot_transition(&playing, &playing, false),
+            snapshot_transition(&playing, &playing, None),
             SnapshotTransition::Nothing
+        );
+    }
+
+    /// The whole seam in one tick, which nothing else exercises end to end:
+    /// `observe_time_jump` re-places the engine, `updater_tick` builds the snapshot that
+    /// describes the new position, `take_catch_up_pending` is read under the SAME lock,
+    /// and the pair is handed to `snapshot_transition` exactly as the clock updater
+    /// hands it over.
+    ///
+    /// Each half of this is tested on its own, and both halves stay green if the marker
+    /// is consumed in the wrong place -- taken before the tick, taken outside the guard,
+    /// or dropped by the tick that generated it. What comes back then is an unmarked
+    /// snapshot whose move to BetweenGames reads as a game ending, and a result is
+    /// published for a game the machine slept through: the precise defect this branch
+    /// exists to fix.
+    #[test]
+    fn the_catch_up_marker_arrives_with_its_own_tick() {
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let now = Instant::now();
+        let wall = OffsetDateTime::now_utc();
+
+        let game = |number: &str, mins: i64| ScheduledGame {
+            number: number.into(),
+            start_time: wall + time::Duration::minutes(mins),
+            config: GameConfig::default(),
+            timing: None,
+        };
+        tm.set_court_schedule(vec![game("1", 0), game("7", 60)]);
+        tm.set_next_game(NextGameInfo {
+            number: "1".into(),
+            timing: None,
+            start_time: Some(wall),
+        });
+        tm.start_play_now(now).unwrap();
+        tm.start_clock(now);
+        // Prime the detector, then take the snapshot the app would be holding.
+        tm.observe_time_jump(now, wall).unwrap();
+        let (_, before) = tm.updater_tick(now).unwrap();
+        assert_eq!(before.game_number, "1", "precondition: game 1 is running");
+        assert_eq!(
+            tm.take_catch_up_pending(),
+            None,
+            "precondition: an ordinary tick carries no marker"
+        );
+
+        // Sleep through the rest of game 1 and into game 7. This is verbatim what the
+        // clock updater does inside its one lock guard.
+        tm.observe_time_jump(now, wall + time::Duration::minutes(65))
+            .unwrap();
+        let (_, snapshot) = tm.updater_tick(now).unwrap();
+        let caught_up = tm.take_catch_up_pending();
+
+        assert_eq!(
+            snapshot.game_number, "7",
+            "the tick's own snapshot must describe the game the catch-up landed in"
+        );
+        assert_eq!(
+            caught_up,
+            Some(CatchUp::NewGame),
+            "the marker must still be there for the tick that produced this snapshot"
+        );
+        assert_eq!(
+            snapshot_transition(&before, &snapshot, caught_up),
+            SnapshotTransition::CaughtUpToNewGame,
+            "the pair the updater sends must ask the app for a kickoff refresh, not a \
+             result submission"
+        );
+        assert_eq!(
+            tm.take_catch_up_pending(),
+            None,
+            "reading the marker must clear it, so the next tick is not marked too"
         );
     }
 }

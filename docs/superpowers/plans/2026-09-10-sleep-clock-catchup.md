@@ -31,7 +31,10 @@ POST, the replayed-game repost loop, the stale restore note — are **not** fixe
 - **No `unwrap()`/`expect()` in production code** without a comment explaining why it cannot panic.
 - **Clippy `-D warnings`** clean on all targets.
 - **No new UI.** The correction goes to the log and nowhere else.
-- **Threshold: 10 seconds**, in one named constant `TIME_JUMP_THRESHOLD`.
+- **Threshold: 5 minutes**, in one named constant `TIME_JUMP_THRESHOLD`. Raised from 10
+  seconds by Eric's ruling during implementation — at 10 seconds a routine clock nudge
+  abandoned a live game at a late-running tournament. See the design document's Detection
+  section for the full reasoning and the accepted residual.
 - **Never wind backwards.** A backwards wall-clock step is logged and ignored.
 
 ---

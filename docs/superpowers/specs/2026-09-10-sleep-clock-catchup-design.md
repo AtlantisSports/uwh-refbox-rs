@@ -161,8 +161,15 @@ time off the running clock and stops there; it never starts a game on its own.
 Each tick, note both clocks and compare movement since the previous tick. Tick-to-tick rather
 than against a fixed anchor, so ordinary clock adjustments do not accumulate into a false alarm.
 
-- **Threshold:** 10 seconds as the starting value, so routine time-server corrections are
-  ignored. Tunable during implementation; the value belongs in one named constant.
+- **Threshold: 5 minutes.** Raised from the 10 seconds this document originally proposed —
+  Eric's ruling during implementation, 2026-09-10. Ten seconds was not merely conservative, it
+  was unsafe: a tournament running late has its schedule *ahead* of the live game, so a routine
+  few-second time-server nudge was read as a sleep and moved the game forward to the scheduled
+  position, abandoning a game in progress. Eric chose to remove the trigger rather than
+  compensate for the effect, which keeps this document's plain "go to the true schedule
+  position" intact. The value lives in one named constant, `TIME_JUMP_THRESHOLD`.
+  **Residual, accepted:** a sleep longer than five minutes, while running more than about one
+  game-slot late, will still move to the schedule position and abandon the live game.
 - **Never wind backwards.** A wall clock that jumps back is logged and otherwise ignored.
 - A large forward step from a corrected system clock is treated the same as a sleep. This is
   deliberate: in both cases the true time has moved and the schedule position should follow.
@@ -231,7 +238,9 @@ at a tournament.
 - It lands near transitions that already carry known bugs (phantom-game POST, replayed game
   re-posting, stale restore note). A new jump path could interact with these.
 - The threshold is a judgement call. Too low and a busy machine or a clock correction re-places
-  the schedule spuriously; too high and a short sleep goes uncorrected.
+  the schedule spuriously; too high and a short sleep goes uncorrected. **This risk was
+  realised**: the 10 seconds originally proposed above did exactly the first of those, and the
+  figure is now 5 minutes. See the Detection section.
 
 ---
 

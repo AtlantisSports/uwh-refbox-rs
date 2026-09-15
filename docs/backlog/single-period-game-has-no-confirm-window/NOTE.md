@@ -22,9 +22,11 @@ still works.
 ## Severity: this is a wart, not a data fault
 
 An entry made on that still-open keypad **is discarded, not recorded against the finished game.**
-By the time the whistle has gone, `end_game` has already copied the game's penalties and fouls into
-`current_game_stats` and frozen `last_game_info` (`refbox/src/tournament_manager/mod.rs:1412-1435`),
-and the portal upload is built from that frozen copy. A foul added afterwards goes only into
+By the time the whistle has gone, `end_game` has already copied the game's penalties, and every
+fully-attributed foul, into `current_game_stats` and frozen `last_game_info`
+(`refbox/src/tournament_manager/mod.rs:1412-1435`), and the portal upload is built from that frozen
+copy. (Only fouls with both a team and a player number are copied; team and both-teams fouls are
+held back for an unrelated reason — see `docs/backlog/portal-accept-team-and-equal-fouls`.) A foul added afterwards goes only into
 `self.fouls`, stamped `BetweenGames`, where `reset()` (`mod.rs:520-528`) clears it — at the
 mid-break changeover, or, when the finished game is the last on the court and no changeover is ever
 armed (`mod.rs:1455-1483`), not until the next `start_game`. Either way it never joins the finished

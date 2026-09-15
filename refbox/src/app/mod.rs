@@ -1228,31 +1228,78 @@ fn link_note_game(tm: &TournamentManager) -> LinkNoteGame {
     }
 }
 
+/// What a new snapshot means for the app, given how the engine reached it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SnapshotTransition {
+    /// A sleep catch-up re-placed the engine onto a different game. The app owes it
+    /// the same next-game and roster refresh an ordinary kickoff gets -- but NOT a
+    /// result submission, because nobody played the game that was left behind.
+    CaughtUpToNewGame,
+    /// A game ended in the ordinary way; its result is owed to the portal.
+    GameEnded,
+    /// A game began in the ordinary way.
+    GameStarted,
+    Nothing,
+}
+
+/// Decide what a snapshot means, from the snapshot pair and the marker that arrived
+/// WITH the new one.
+///
+/// `caught_up` is deliberately a parameter rather than something read off the engine.
+/// The engine flag describes the engine *now*; this function is asked about a snapshot
+/// that may have been generated some time ago and queued. Reading the flag here would
+/// let a stale snapshot consume a marker meant for a later one -- see
+/// `a_stale_snapshot_is_not_mistaken_for_a_catch_up`.
+fn snapshot_transition(
+    prev: &GameSnapshot,
+    next: &GameSnapshot,
+    caught_up: bool,
+) -> SnapshotTransition {
+    if caught_up {
+        // A catch-up moves the period without a game having ended or begun in the
+        // ordinary sense. Reading its transition as a game ending would submit a
+        // result for a game that was slept through.
+        if next.game_number != prev.game_number {
+            return SnapshotTransition::CaughtUpToNewGame;
+        }
+        return SnapshotTransition::Nothing;
+    }
+
+    if next.current_period != prev.current_period {
+        if next.current_period == GamePeriod::BetweenGames {
+            return SnapshotTransition::GameEnded;
+        }
+        if prev.current_period == GamePeriod::BetweenGames {
+            return SnapshotTransition::GameStarted;
+        }
+    }
+
+    SnapshotTransition::Nothing
+}
+
 impl RefBoxApp {
-    fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) -> Task<Message> {
+    /// Apply a snapshot the app generated itself, synchronously, from the live engine.
+    /// Such a snapshot is by definition current, so it can never be the stale half of
+    /// a catch-up race -- and it is never the message the catch-up marker travels on.
+    fn apply_snapshot(&mut self, new_snapshot: GameSnapshot) -> Task<Message> {
+        self.apply_tick(new_snapshot, false)
+    }
+
+    /// Apply a snapshot together with the marker that arrived with it.
+    fn apply_tick(&mut self, mut new_snapshot: GameSnapshot, caught_up: bool) -> Task<Message> {
         let mut task = Task::none();
-        // Read and clear in its own scope: `handle_game_start` below takes the same
-        // lock, and holding this guard across the call would deadlock.
-        let caught_up = { self.tm.lock().take_catch_up_pending() };
-        if caught_up {
-            // A catch-up after a sleep moves the period without a game having ended or
-            // begun in the ordinary sense. Reading its transition as a game ending
-            // would submit a result for a game that was slept through — the one thing
-            // the catch-up design forbids. So handle it explicitly rather than letting
-            // the period comparison below infer the wrong thing.
-            if new_snapshot.game_number != self.snapshot.game_number {
+        match snapshot_transition(&self.snapshot, &new_snapshot, caught_up) {
+            SnapshotTransition::CaughtUpToNewGame | SnapshotTransition::GameStarted => {
                 // A different game is running now, so the next-game info and the
                 // rosters both need the same refresh an ordinary kickoff gives them.
                 // Without this the court parks at 0:00 when the placed game ends, and
                 // the player grid keeps the previous game's cap numbers.
                 task = self.handle_game_start(&new_snapshot.game_number);
             }
-        } else if new_snapshot.current_period != self.snapshot.current_period {
-            if new_snapshot.current_period == GamePeriod::BetweenGames {
+            SnapshotTransition::GameEnded => {
                 task = self.handle_game_end(&new_snapshot.game_number);
-            } else if self.snapshot.current_period == GamePeriod::BetweenGames {
-                task = self.handle_game_start(&new_snapshot.game_number);
             }
+            SnapshotTransition::Nothing => {}
         }
 
         new_snapshot.event_id = self.current_event_id.clone();
@@ -4020,7 +4067,7 @@ impl RefBoxApp {
         }
 
         match message {
-            Message::NewSnapshot(snapshot) => self.apply_snapshot(snapshot),
+            Message::NewSnapshot(update) => self.apply_tick(update.snapshot, update.caught_up),
             Message::EditTime => {
                 let now = Instant::now();
                 let mut tm = self.tm.lock();
@@ -6394,13 +6441,24 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
-            Message::ConfirmScores(snapshot) => {
+            Message::ConfirmScores(update) => {
                 let mut task = Task::none();
                 if self.config.confirm_score {
-                    task = self.apply_snapshot(snapshot);
+                    task = self.apply_tick(update.snapshot, update.caught_up);
                     self.app_state = AppState::ConfirmScores(self.snapshot.scores);
                     trace!("AppState changed to {:?}", self.app_state);
                 } else {
+                    if update.caught_up {
+                        // Should be unreachable: `observe_time_jump` refuses to act
+                        // while a score-confirmation pause is up, and a placement always
+                        // leaves time on the clock. Reported rather than dropped in
+                        // silence, because this arm never reaches `apply_tick`, so a
+                        // catch-up arriving here would otherwise leave no trace at all.
+                        warn!(
+                            "A sleep catch-up arrived on the same tick as a game end; \
+                             the next-game refresh it should have triggered was skipped"
+                        );
+                    }
                     let mut tm = self.tm.lock();
                     let now = Instant::now();
                     if let Err(e) = tm.end_confirm_pause(now) {
@@ -6446,10 +6504,10 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
-            Message::AutoConfirmScores(snapshot) => {
+            Message::AutoConfirmScores(update) => {
                 info!("Autoconfirming");
 
-                let task = self.apply_snapshot(snapshot);
+                let task = self.apply_tick(update.snapshot, update.caught_up);
 
                 self.app_state = AppState::MainPage;
 
@@ -9994,15 +10052,19 @@ fn time_updater() -> impl Stream<Item = Message> {
                 // exactly like any other bad tick rather than taking the app down.
                 tm_.observe_time_jump(now, time::OffsetDateTime::now_utc())?;
                 let (kind, snapshot) = tm_.updater_tick(now)?;
+                // Taken inside the SAME guard that generated the snapshot, so the
+                // marker and the state it describes can never be separated. Read
+                // anywhere else, a queued snapshot could consume it first.
+                let caught_up = tm_.take_catch_up_pending();
                 let next = next_updater_wake(clock_running, tm_.next_update_time(now), now);
-                Ok::<_, TournamentManagerError>((kind, snapshot, next))
+                Ok::<_, TournamentManagerError>((kind, snapshot, caught_up, next))
             }));
 
             // One failure path, not two. A returned error and a caught panic differ only
             // in how the reason reads; every decision after that — how long to wait,
             // whether to report, what to count — is identical, and keeping two copies of
             // it meant a fix applied to one arm and not the other.
-            let (kind, snapshot, next) = match tick {
+            let (kind, snapshot, caught_up, next) = match tick {
                 Ok(Ok(values)) => values,
                 failed => {
                     let reason = match failed {
@@ -10050,7 +10112,14 @@ fn time_updater() -> impl Stream<Item = Message> {
                 TickKind::NewSnapshot => Message::NewSnapshot,
             };
 
-            if msg_tx.send(msg_type(snapshot)).await.is_err() {
+            if msg_tx
+                .send(msg_type(TickUpdate {
+                    snapshot,
+                    caught_up,
+                }))
+                .await
+                .is_err()
+            {
                 debug!("App is no longer listening; clock updater stopping");
                 break;
             }
@@ -10549,5 +10618,104 @@ mod rosters_for_scheduled_game_tests {
         );
         assert!(out[Color::Black].is_empty());
         assert!(out[Color::White].is_empty());
+    }
+}
+
+#[cfg(test)]
+mod snapshot_transition_tests {
+    use super::*;
+
+    /// A snapshot generated BEFORE a catch-up must not be read as the catch-up.
+    /// The updater channel buffers 100 messages, so a pre-jump snapshot can still
+    /// be queued when the engine re-places itself; if that snapshot carried the
+    /// marker, the real post-jump snapshot would arrive unmarked and its move to
+    /// BetweenGames would be read as a game ending -- publishing a result for a
+    /// game that was slept through.
+    #[test]
+    fn a_stale_snapshot_is_not_mistaken_for_a_catch_up() {
+        let before = GameSnapshot {
+            game_number: "2".to_string(),
+            current_period: GamePeriod::SecondHalf,
+            ..Default::default()
+        };
+
+        // Same game, one second later, and NOT marked -- an ordinary tick that was
+        // sitting in the queue when the catch-up happened.
+        let stale = GameSnapshot {
+            secs_in_period: before.secs_in_period.saturating_sub(1),
+            ..before.clone()
+        };
+
+        assert_eq!(
+            snapshot_transition(&before, &stale, false),
+            SnapshotTransition::Nothing
+        );
+
+        // The genuine catch-up snapshot: a different game, and marked.
+        let caught_up = GameSnapshot {
+            game_number: "5".to_string(),
+            current_period: GamePeriod::BetweenGames,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            snapshot_transition(&before, &caught_up, true),
+            SnapshotTransition::CaughtUpToNewGame
+        );
+    }
+
+    /// The marker is what stops a catch-up into a break being read as a game end.
+    /// Without it this pair publishes a result for a game nobody played.
+    #[test]
+    fn a_catch_up_into_a_break_does_not_end_a_game() {
+        let before = GameSnapshot {
+            game_number: "2".to_string(),
+            current_period: GamePeriod::SecondHalf,
+            ..Default::default()
+        };
+
+        let into_break = GameSnapshot {
+            game_number: "5".to_string(),
+            current_period: GamePeriod::BetweenGames,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            snapshot_transition(&before, &into_break, true),
+            SnapshotTransition::CaughtUpToNewGame
+        );
+        // The same pair WITHOUT the marker is an ordinary game end -- which is
+        // exactly the wrong answer, and exactly what a stolen marker produces.
+        assert_eq!(
+            snapshot_transition(&before, &into_break, false),
+            SnapshotTransition::GameEnded
+        );
+    }
+
+    /// An ordinary kickoff and an ordinary game end are unchanged by the marker's
+    /// existence.
+    #[test]
+    fn ordinary_transitions_are_unaffected() {
+        let between = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            ..Default::default()
+        };
+        let playing = GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            snapshot_transition(&between, &playing, false),
+            SnapshotTransition::GameStarted
+        );
+        assert_eq!(
+            snapshot_transition(&playing, &between, false),
+            SnapshotTransition::GameEnded
+        );
+        assert_eq!(
+            snapshot_transition(&playing, &playing, false),
+            SnapshotTransition::Nothing
+        );
     }
 }

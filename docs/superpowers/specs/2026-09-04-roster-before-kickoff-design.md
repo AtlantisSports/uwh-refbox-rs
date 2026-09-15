@@ -3,15 +3,15 @@
 **Status:** Approved 2026-09-04; **shipped** — the roster fix is on master (PR #3153, merged
 2026-09-05). Branch `fix/refbox/roster-before-kickoff`, based on `origin/master` at `486c5692`.
 The post-game closure that was split out of this spec was **ruled closed on 2026-09-04**, with one
-gap recorded there rather than fixed; see *Deferred* below.
+narrower wart recorded there rather than fixed; see *Deferred* below.
 
 **Crate scope:** `refbox` only. `uwh-common` is read but not modified.
 
 **Scope changed during execution.** This spec originally also closed the fouls/warnings entry
 surfaces during the post-game window. A code review found six real defects in that half, so it was
-split out on 2026-09-04 — and then **ruled closed the same day**: the app already enforces the rule
-for ordinary two-period games, so the parked work is not wanted. One gap is recorded rather than
-fixed — a single-period game has no confirmation window at all. See *Deferred* below. The branch ref that held it, `wip/refbox/post-game-entry-closure`, is gone, but
+split out on 2026-09-04 — and then **ruled closed the same day**: the app already enforces the rule,
+so the parked work is not wanted. One narrower wart is recorded rather than fixed — on a single
+single-period path the operator is not moved off their page at the whistle. See *Deferred* below. The branch ref that held it, `wip/refbox/post-game-entry-closure`, is gone, but
 its commits survive (`e2173939`, `a13c2355`). **What ships here is the roster fix alone.**
 
 ---
@@ -131,7 +131,7 @@ No extra code is needed for the requirement — it falls out of the rule.
 - **`post_game_duration` stays at 120 seconds.** Shortening it was considered and dropped on
   2026-09-04: the same value decides how long the final score stays on the LED scoreboard and the
   stream overlay, and halving that is a poolside decision, not a side effect of this fix.
-- **Everything under *Deferred*, below** — since ruled closed, apart from the single-period gap recorded there.
+- **Everything under *Deferred*, below** — since ruled closed, apart from the single-period wart recorded there.
 - **The startup-restore and mid-game halves of `rosters-not-refetched-on-refresh`.**
 
 ## Known consequence, accepted
@@ -176,7 +176,7 @@ not reachable in a walkthrough without a multi-court event and a finished last g
 
 ---
 
-## Deferred: closing the post-game window — **RESOLVED; parked branch closed, one gap recorded**
+## Deferred: closing the post-game window — **RESOLVED; parked branch closed, one wart recorded**
 
 **Ruled by Eric, 2026-09-04, after this work was built and split out:**
 
@@ -211,22 +211,33 @@ These routes differ in how the window opens and closes, not in what is reachable
 one of them lands on the confirm page or on `MainPage`, and none exposes foul, warning or penalty
 entry. That is the claim the ruling needs, and it does not rest on the list above being exhaustive.
 
-**One exception, and it is not covered by the ruling's "already enforced".** A **single-period**
-game never opens the window at all. `check_time_remaining` (`tournament_manager/mod.rs:1586-1599`)
-only reports a game as endable in `SecondHalf` or `OvertimeSecondHalf`, so `could_end_game` is false
-throughout a single-period game's `FirstHalf`. At time-up `end_first_half`
-(`tournament_manager/mod.rs:1895-1899`) calls `end_game` directly when the score is decided, or when
-neither overtime nor sudden death is allowed — no `pause_for_confirm`, no `Message::ConfirmScores`,
-no confirm page. The tick is an ordinary `NewSnapshot`, and `apply_snapshot` never touches
-`app_state`, so **a keypad or overview page open at the final whistle stays open and fully live.**
-This is reachable in practice: the portal's `single_period` flag sets `config.single_half`
-(`uwh-common/src/uwhportal/schedule.rs:334`).
+**One narrower exception, about the page rather than the record.** A **single-period** game that is
+decided at time-up — or level with neither overtime nor sudden death allowed — ends without any
+confirmation window. `check_time_remaining` (`tournament_manager/mod.rs:1587-1600`) reports a game
+endable only in `SecondHalf` or `OvertimeSecondHalf`, so that branch of `could_end_game` is false
+through a single-period game's `FirstHalf`; `end_first_half` (`mod.rs:1895-1899`) then calls
+`end_game` directly. No `pause_for_confirm`, no `Message::ConfirmScores`, no confirm page. (A
+single-period game that is *level* with overtime or sudden death allowed does go on to
+`OvertimeSecondHalf` or `SuddenDeath`, and from there it confirms normally.)
 
-So the ruling is enforced for ordinary two-period games, and **is not enforced for single-period
-games** — where an entry made straight after the final whistle is exactly the thing the ruling says
-must not happen. That is a gap in the app, not a gap in the ruling, and it is **not** what the
-abandoned branch addressed (that gated the break, after the confirmation). It is recorded here
-rather than fixed, and is the one part of this section that is still open.
+Every ordinary ending reassigns `app_state` — to `ConfirmScores` (`app/mod.rs:6342`) or, with
+CONFIRM SCORE off or on the automatic confirmation, to `MainPage` (`:6354`, `:6395`). **In this
+single-period path nothing reassigns it at all**, because the tick is an ordinary `NewSnapshot` and
+`apply_snapshot` never touches `app_state`. A keypad or overview page open at the whistle therefore
+stays open and live.
+
+**This does not break the ruling, and it is important to be exact about why.** `end_game` has
+already copied the penalties and fouls into `current_game_stats` and frozen `last_game_info`
+(`tournament_manager/mod.rs:1412-1435`), and the portal upload reads that frozen copy. Anything
+entered afterwards goes into `self.fouls` stamped `BetweenGames` and is then cleared by `reset()`.
+So nothing of the finished game is *recorded* after the game is done — the entry is **discarded**,
+which is the same behaviour ruled on above and expressly not a defect to fix.
+
+What is left is a consistency wart, not a data fault: on this one path the operator is not moved off
+their page, and an entry they make there vanishes with no signal. Recorded, not fixed; see
+`docs/backlog/single-period-game-has-no-confirm-window/`. Note also that no current portal event is
+single-period — the field's own doc comment says so (`uwh-common/src/uwhportal/schedule.rs:257-258`)
+— so today this is reached through the local parameter editor rather than a portal schedule.
 
 The confirmation happens while the period is still the one just finished: `pause_for_confirm`
 (`tournament_manager/mod.rs:2424`) is reachable from `SecondHalf`, `OvertimeSecondHalf` and

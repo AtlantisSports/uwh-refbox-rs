@@ -2,9 +2,10 @@
 //!
 //! Pure arithmetic over data already in memory: no I/O, no clock, nothing to mock.
 //!
-//! Regulation periods only — first half, half time, second half. Overtime and
-//! sudden-death lengths depend on the score, and a game nobody played has no score,
-//! so a game the catch-up skips or lands inside is measured as regulation.
+//! Regulation periods only — first half, half time and second half, or the one period
+//! of a single-period game. Overtime and sudden-death lengths depend on the score, and
+//! a game nobody played has no score, so a game the catch-up skips or lands inside is
+//! measured as regulation.
 
 use std::time::Duration;
 use time::OffsetDateTime;
@@ -60,10 +61,10 @@ pub(crate) enum Placement {
 /// score, and [`place`] works from the schedule, which knows nothing about scores.
 /// Sudden death has no length at all: it counts up until somebody scores.
 ///
-/// Lives here, beside [`regulation_length`], so that anyone extending the model has
-/// both halves of the decision in front of them. A caller that acts on a placement
-/// for a period this returns `false` for is asserting a position the arithmetic
-/// cannot actually compute.
+/// Lives here, beside [`period_at`], so that anyone extending the model has both
+/// halves of the decision in front of them. A caller that acts on a placement for a
+/// period this returns `false` for is asserting a position the arithmetic cannot
+/// actually compute.
 pub(crate) fn models_period(period: GamePeriod) -> bool {
     match period {
         GamePeriod::BetweenGames
@@ -79,18 +80,20 @@ pub(crate) fn models_period(period: GamePeriod) -> bool {
     }
 }
 
-/// Length of a regulation game: both halves plus half time.
-pub(crate) fn regulation_length(config: &GameConfig) -> Duration {
-    // `duration` returns `None` only for `BetweenGames` and `SuddenDeath`, so each of
-    // these three always yields a value and the defaults are never reached.
-    GamePeriod::FirstHalf.duration(config).unwrap_or_default()
-        + GamePeriod::HalfTime.duration(config).unwrap_or_default()
-        + GamePeriod::SecondHalf.duration(config).unwrap_or_default()
-}
-
 /// Which period of `config` a moment `into` a game falls in, and how much of it is left.
 fn period_at(config: &GameConfig, into: Duration) -> (GamePeriod, Duration) {
     let first = GamePeriod::FirstHalf.duration(config).unwrap_or_default();
+
+    if config.single_half {
+        // A single-period game — a playoff or a final — has no half time and no second
+        // half, and `GamePeriod::duration` does not know that: it answers for HalfTime
+        // and SecondHalf whatever the config holds in those fields. Handing back a
+        // period this game does not have would park the engine in a phantom half time,
+        // and its expiry would advance to a phantom second half whose end posts a
+        // result for a final that finished minutes ago.
+        return (GamePeriod::FirstHalf, first.saturating_sub(into));
+    }
+
     let half = GamePeriod::HalfTime.duration(config).unwrap_or_default();
     let second = GamePeriod::SecondHalf.duration(config).unwrap_or_default();
 
@@ -127,7 +130,10 @@ pub(crate) fn place(games: &[ScheduledGame], target: OffsetDateTime) -> Placemen
     }
 
     for (index, game) in games.iter().enumerate() {
-        let end = game.start_time + regulation_length(&game.config);
+        // `regulation_play` rather than summing the three period lengths here: it is
+        // the one place that knows a single-period game is one period long, and a second
+        // implementation of it measured such a game as more than twice its real length.
+        let end = game.start_time + game.config.regulation_play();
 
         if target < end {
             let (period, time_remaining) =
@@ -191,9 +197,122 @@ mod test {
         Duration::from_secs(n)
     }
 
+    /// A single-period playoff or final: one period, no half time, no second half.
+    /// `half_time_duration` still carries a real number, which is exactly the trap —
+    /// anything that sums the three period lengths measures this 10-minute game as 23
+    /// minutes long.
+    fn single_period_cfg() -> GameConfig {
+        GameConfig {
+            single_half: true,
+            ..cfg()
+        }
+    }
+
+    fn single_period_games() -> Vec<ScheduledGame> {
+        vec![
+            ScheduledGame {
+                number: "F1".into(),
+                start_time: t(0),
+                config: single_period_cfg(),
+                timing: None,
+            },
+            ScheduledGame {
+                number: "F2".into(),
+                start_time: t(1800),
+                config: single_period_cfg(),
+                timing: None,
+            },
+        ]
+    }
+
+    /// The whole point of C1: a single-period game is 600s long, not 1380s. Measured
+    /// as 1380s, a wake 700s after kickoff lands inside a final that finished nearly
+    /// two minutes ago — and the real next game is never counted down to.
     #[test]
-    fn regulation_length_is_both_halves_plus_half_time() {
-        assert_eq!(regulation_length(&cfg()), secs(1380));
+    fn a_single_period_game_ends_after_its_one_period() {
+        use Placement::*;
+
+        let cases: &[(i64, Placement, &str)] = &[
+            (
+                100,
+                InGame {
+                    index: 0,
+                    period: GamePeriod::FirstHalf,
+                    time_remaining: secs(500),
+                },
+                "inside the one period",
+            ),
+            (
+                599,
+                InGame {
+                    index: 0,
+                    period: GamePeriod::FirstHalf,
+                    time_remaining: secs(1),
+                },
+                "the last second of the one period",
+            ),
+            (
+                600,
+                InBreak {
+                    next_index: 1,
+                    until_start: secs(1200),
+                },
+                "one second past the end is the break, not a phantom half time",
+            ),
+            (
+                700,
+                InBreak {
+                    next_index: 1,
+                    until_start: secs(1100),
+                },
+                "well past the end is still the break",
+            ),
+            (
+                2399,
+                InGame {
+                    index: 1,
+                    period: GamePeriod::FirstHalf,
+                    time_remaining: secs(1),
+                },
+                "the final second of the second single-period game",
+            ),
+            (
+                2400,
+                PastLastGame,
+                "past the last single-period game, not still inside it",
+            ),
+        ];
+
+        for (offset, expected, what) in cases {
+            assert_eq!(
+                place(&single_period_games(), t(*offset)),
+                *expected,
+                "{what}"
+            );
+        }
+    }
+
+    /// C2, asserted directly rather than through `place`: even asked about a moment
+    /// the fixed `place` can no longer produce, `period_at` must never name a period a
+    /// single-period game does not have. Forced into HalfTime the engine plays a
+    /// phantom half time, then a phantom second half, and `end_second_half` posts that
+    /// result to the portal.
+    #[test]
+    fn a_single_period_game_has_only_a_first_half() {
+        for into in [0u64, 100, 599, 600, 700, 5000] {
+            let (period, _) = period_at(&single_period_cfg(), secs(into));
+            assert_eq!(
+                period,
+                GamePeriod::FirstHalf,
+                "{into}s into a single-period game must still be the first half"
+            );
+        }
+
+        assert_eq!(
+            period_at(&single_period_cfg(), secs(100)),
+            (GamePeriod::FirstHalf, secs(500)),
+            "the whole regulation length belongs to the one period"
+        );
     }
 
     #[test]
@@ -272,8 +391,8 @@ mod test {
 
     #[test]
     fn the_model_covers_exactly_the_periods_place_can_compute() {
-        // If someone adds a period to `regulation_length`, this is the other half of
-        // the change. Overtime and sudden death depend on the score, which the
+        // If someone adds a period to `period_at`, this is the other half of the
+        // change. Overtime and sudden death depend on the score, which the
         // schedule does not know.
         for period in [
             GamePeriod::BetweenGames,

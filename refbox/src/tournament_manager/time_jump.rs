@@ -117,7 +117,7 @@ mod test {
             Case {
                 name: "a gap one second below the threshold",
                 mono_delta: Duration::ZERO,
-                wall_delta: time::Duration::seconds(9),
+                wall_delta: time::Duration::seconds(299),
             },
             Case {
                 name: "a one-hour backwards step",
@@ -139,6 +139,43 @@ mod test {
             let result = detector.observe(mono0 + case.mono_delta, wall(0) + case.wall_delta);
             assert_eq!(result, None, "case: {}", case.name);
         }
+    }
+
+    /// The load-bearing constant, pinned from both sides. Before this the only gap
+    /// tested against it was 9 seconds, so the threshold could have been set to
+    /// anything between 10 seconds and 2 hours — or the comparison loosened — with the
+    /// whole suite still green.
+    #[test]
+    fn the_threshold_is_five_minutes_and_the_boundary_holds() {
+        assert_eq!(
+            TIME_JUMP_THRESHOLD,
+            Duration::from_secs(300),
+            "five minutes is the human's explicit ruling; changing it is a decision, \
+             not a tuning tweak"
+        );
+
+        // A gap is measured as wall movement the monotonic clock did not match, so
+        // holding the monotonic clock still makes the wall step the gap exactly.
+        let gap_is_reported = |secs: i64| {
+            let mut detector = JumpDetector::default();
+            let mono = Instant::now();
+            assert_eq!(detector.observe(mono, wall(0)), None);
+            detector.observe(mono, wall(secs)).is_some()
+        };
+
+        assert!(
+            !gap_is_reported(299),
+            "one second below the threshold must NOT reach the schedule"
+        );
+        assert!(
+            gap_is_reported(300),
+            "exactly at the threshold must be reported: the comparison is >=, and \
+             flipping it to > would silently move the boundary by a second"
+        );
+        assert!(
+            gap_is_reported(301),
+            "one second above the threshold must be reported"
+        );
     }
 
     #[test]

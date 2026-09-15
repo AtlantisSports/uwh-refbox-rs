@@ -15,9 +15,23 @@ use uwh_common::{
     },
 };
 
+/// A snapshot from the clock updater, together with the marker describing how the
+/// engine reached it.
+///
+/// The marker travels WITH the snapshot rather than being read back off the engine.
+/// The updater channel buffers up to 100 messages, so a snapshot generated before a
+/// sleep catch-up can still be waiting when the catch-up happens; an engine flag read
+/// at that moment describes a state that snapshot knows nothing about.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TickUpdate {
+    pub snapshot: GameSnapshot,
+    /// This is the tick on which a sleep catch-up re-placed the engine.
+    pub caught_up: bool,
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
-    NewSnapshot(GameSnapshot),
+    NewSnapshot(TickUpdate),
     EditTime,
     ChangeTime {
         increase: bool,
@@ -191,11 +205,11 @@ pub enum Message {
     PenaltyShot(bool),
     EndTimeout,
     CancelTimeout,
-    ConfirmScores(GameSnapshot),
+    ConfirmScores(TickUpdate),
     ScoreConfirmation {
         correct: bool,
     },
-    AutoConfirmScores(GameSnapshot),
+    AutoConfirmScores(TickUpdate),
     RecvEventList(Vec<Event>),
     /// The teams entered in an event. Carries the site generation it was
     /// fetched under so a reply from a site the refbox has left cannot be

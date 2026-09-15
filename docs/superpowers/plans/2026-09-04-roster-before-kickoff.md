@@ -8,9 +8,10 @@ including before the first kickoff of a session.
 **Branch:** `fix/refbox/roster-before-kickoff`, based on `origin/master` at `486c5692`.
 **Worktree:** `/home/estraily/projects/uwh-refbox-rs/.worktrees/fix-refbox-roster-before-kickoff`
 
-**Status: executed 2026-09-04.** All tasks complete; the branch is unpushed and awaiting the
-human's walkthrough. This file now serves as the execution record — what was planned, what
-actually happened, and why they differ.
+**Status: executed 2026-09-04; MERGED 2026-09-05 as PR #3153.** All tasks complete, and the
+walkthrough was walked and passed, including the originally reported bug in the state it was
+reported in. This file now serves as the execution record — what was planned, what actually
+happened, and why they differ.
 
 ## Global constraints (as applied)
 
@@ -53,10 +54,11 @@ lookup would happily resolve.
 Extracted the body of `rosters_for_game` into a free, testable
 `rosters_for_scheduled_game(schedule, team_rosters, current_court, game_num)` that refuses a game
 whose court does not match. `current_court: None` is not treated as a mismatch, so no existing
-caller changes behaviour. Four tests in `rosters_for_scheduled_game_tests`.
+caller changes behaviour. Covered by `rosters_for_scheduled_game_tests` (five tests by the end of
+the branch; four when this line was first written).
 
 **Proved load-bearing:** replacing the court check with `if true` fails exactly
-`a_game_on_another_court_supplies_nothing` and no other test; restoring gives 4/4.
+`a_game_on_another_court_supplies_nothing` and no other test; restoring gives a full pass.
 
 ## Task 3 — Validation and the walkthrough ✅
 
@@ -71,11 +73,19 @@ caller changes behaviour. Four tests in `rosters_for_scheduled_game_tests`.
 ## Task 4 — Post-game entry closure ➡️ **split out**
 
 Originally tasks 2 and 3 of this plan; approved as design, implemented, then removed from this
-branch on 2026-09-04 after review found six defects, three needing decisions rather than fixes.
+branch on 2026-09-04 after review found six defects.
 
-Preserved on **`wip/refbox/post-game-entry-closure`** (`e2173939`, `a13c2355`). The design, the
-trap it already avoids, and all six findings are written up under *Deferred* in the spec. Do not
-resume it without reading that section.
+**Then ruled closed the same day — this work is not wanted.** Eric ruled that once a game ends only
+the confirm score happens, and the app already enforces that; the split-out branch turned out to be
+*inverted*, gating the opening stretch of the break — after the confirmation — where entry should
+stay available because it belongs to the game about to start. **Do not resume it.** The reasoning,
+all six findings and one narrower wart that was recorded rather than fixed are written up under
+*Deferred* in the spec; read that before acting on anything in this section.
+
+The branch ref `wip/refbox/post-game-entry-closure` no longer exists here or on the remote. Its two
+commits (`e2173939`, `a13c2355`) survive but are unreachable from every ref, so they have a
+`git gc --prune` shelf life: `git branch wip/refbox/post-game-entry-closure a13c2355` restores it
+exactly, for as long as they last.
 
 ---
 
@@ -103,8 +113,10 @@ The stricter form surfaced two failures, both confirmed outside this diff and bo
 - `clippy::field_reassign_with_default` — a test in `app/mod.rs`, untouched by this branch,
   referencing `force_keypad_numbers`, so it arrived with PR #3135.
 
-**Worth raising separately:** `CLAUDE.md` and `.claude/rules/rust.md` both state that CI enforces
-`cargo clippy --workspace --all-targets --all-features -- -D warnings`. It does not. Two clippy
+**Worth raising separately:** `.claude/rules/rust.md` states that CI enforces
+`cargo clippy --workspace --all-targets --all-features -- -D warnings`. It does not. (`CLAUDE.md`
+says only "`-D warnings` — zero warnings, all platforms", which is accurate; an earlier draft of
+this note named it too.) Two clippy
 failures currently sit on `master` that no gate will surface. Documenting a check that does not
 exist is its own defect and belongs on its own branch.
 
@@ -118,6 +130,9 @@ post-game closure together, on the recommendation that they were one rule and eq
 recommendation was wrong: review showed the closure needed three decisions from the human. The
 branch was rewound to the roster work and the closure preserved on its own branch. Nothing had
 been pushed.
+
+The three decisions were then made the same day, and the answer retired the work rather than
+completing it — see Task 4 above and *Deferred* in the spec.
 
 ## What a reviewer should check that the tests cannot
 

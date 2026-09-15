@@ -25,7 +25,10 @@ An entry made on that still-open keypad **is discarded, not recorded against the
 By the time the whistle has gone, `end_game` has already copied the game's penalties and fouls into
 `current_game_stats` and frozen `last_game_info` (`refbox/src/tournament_manager/mod.rs:1412-1435`),
 and the portal upload is built from that frozen copy. A foul added afterwards goes only into
-`self.fouls`, stamped `BetweenGames`, and `reset()` (`mod.rs:520-528`) clears it at the changeover.
+`self.fouls`, stamped `BetweenGames`, where `reset()` (`mod.rs:520-528`) clears it — at the
+mid-break changeover, or, when the finished game is the last on the court and no changeover is ever
+armed (`mod.rs:1455-1483`), not until the next `start_game`. Either way it never joins the finished
+game's record.
 
 So this does **not** breach Eric's 2026-09-04 ruling that none of a finished game's fouls or
 warnings may be recorded afterwards — nothing is recorded. It is the same discarding Eric already
@@ -53,8 +56,9 @@ confirms normally from there.
 an older Portal read as two halves, "which is correct: no current event is a single-period game."
 
 The conversion at `schedule.rs:334` does set `config.single_half` from `single_period`, so a portal
-event *could* produce one in future. Today the live route is the local parameter editor
-(`refbox/src/app/mod.rs:5583-5599`).
+event *could* produce one in future. Today the live route is the local parameter editor — the
+operator toggles it at `refbox/src/app/mod.rs:5919-5921` and it is committed to the settings at
+`:5642-5647`.
 
 This matters for sizing: it is not currently hitting tournaments through the portal.
 

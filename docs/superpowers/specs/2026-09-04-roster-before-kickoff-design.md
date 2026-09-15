@@ -19,8 +19,10 @@ its commits survive (`e2173939`, `a13c2355`). **What ships here is the roster fi
 ## The problem
 
 The player picker (the grid of cap numbers on ADD FOUL / ADD WARNING / ADD PENALTY) is only ever
-given a roster at kickoff. `game_rosters` is written in exactly one place — `handle_game_start`
-— and nothing rewrites it when a game ends.
+given a roster at kickoff. `handle_game_start` (`app/mod.rs:2225`) is the only place that ever
+*fills* `game_rosters`; every other write clears it back to the pad (at construction, on a site
+switch, and when portal selections are cleared to manual). **Nothing rewrites it when a game
+ends.**
 
 Two symptoms follow from that one fault:
 
@@ -56,6 +58,10 @@ the thing that is wrong.
 | During play | The running game | That game's, frozen at kickoff |
 | During a break | The upcoming game | The upcoming game's teams |
 
+"Lands on" here is the **rule** Eric set, not a claim about what the engine stores. An entry made
+before the mid-break changeover is discarded by `reset()` rather than attributed to either game —
+settled, and expressly not a defect to fix; see *Deferred*.
+
 ---
 
 ## Design
@@ -88,28 +94,36 @@ has ended".
 
 ### 2. Never offer a roster from another court
 
-Game numbers are unique across an event, not per court. When no next game is scheduled — the last
-game on a court, or before any game has been selected — the engine synthesises `next_game_number`
-by incrementing. That invented number can name a real game being played elsewhere, and the roster
-lookup previously had no court check, so the picker would have offered two teams who are not in
-the pool with nothing on screen to say so.
+Game numbers are unique across an event, not per court. When this design was written, the engine
+synthesised `next_game_number` by incrementing whenever no next game was scheduled — the last game
+on a court, or before any game had been selected. That invented number could name a real game being
+played elsewhere, and the roster lookup had no court check, so the picker would have offered two
+teams who are not in the pool with nothing on screen to say so.
 
-The lookup now refuses a game that is not this court's, which guards every caller rather than only
-the new one.
+**That has since been fixed at the source.** `TournamentManager::next_game_number`
+(`tournament_manager/mod.rs:352-360`) now returns a blank whenever `no_next_game || schedule_linked`
+— "Guessing here would name another court's game" — so on the portal path no invented number is
+produced at all.
+
+The court check in the lookup still earns its place: it refuses a game that is not this court's,
+guarding every caller rather than only the new one, and it still covers a game moved to another
+court after it was selected.
 
 A `current_court` of `None` is not treated as a mismatch. **Ruled by Eric, 2026-09-04:** a game
 cannot be selected before a court is, so no court-less state has a game selection for a roster to
 resolve against. The code agrees — `EditableSettings::uwhportal_incomplete`
-(`view_builders/configuration.rs:85-99`) requires `current_court` to be set *and* the selected
-game to be on it before a portal setup can be applied. An earlier draft justified the same choice
+(`view_builders/configuration.rs:88-103`) requires `current_court` to be set (the `is_none()` guard
+at `:92-96`) *and* the selected game to be on it (the court comparison at `:100`) before a portal
+setup can be applied. An earlier draft justified the same choice
 as "a state that has never been exercised", which was an assertion rather than a check; this is
 the checkable reason.
 
-**This makes one reader honest; it does not stop the number being invented.** `RecvSchedule` still
-adopts the synthesised number as the engine's next game, and the Game Info page still names that
-game and its teams with no court check — so the wrong game is already visible elsewhere. An
-earlier draft of this section claimed there was "nothing on screen to say anything was wrong";
-that was wrong. Fixing it at the source is separate work.
+**Superseded: the source fix has since landed.** This paragraph used to say that `RecvSchedule`
+still adopted the synthesised number and that the Game Info page named the wrong game with no court
+check, with fixing it at the source left as separate work. That work is done — the engine reports a
+blank rather than a guess while schedule-linked, so no invented number reaches those readers. (An
+earlier draft had also claimed there was "nothing on screen to say anything was wrong"; that was
+already wrong when written.)
 
 Found by code review on 2026-09-04, not by design. Before this change the affected states offered
 nothing; without the check, this work would have turned "nothing" into "confidently wrong".
@@ -136,10 +150,18 @@ No extra code is needed for the requirement — it falls out of the rule.
 
 ## Known consequence, accepted
 
-**The grid changes at the whistle.** With a keypad page open when a game ends, the panel switches
-from the finished game's roster to the upcoming game's. An entry in progress at that moment is
-discarded by the engine either way — see *Deferred* — so freezing the grid would only make a
-doomed entry look tidier. It is recorded with the deferred work rather than papered over here.
+**The grid changes when the game ends.** The panel switches from the finished game's roster to the
+upcoming game's. An entry in progress at that moment is discarded by the engine either way — see
+*Deferred* — so freezing the grid would only make a doomed entry look tidier. It is recorded with
+the deferred work rather than papered over here.
+
+To be exact about *when*, because in the ordinary case it is not the whistle: the swap follows the
+period becoming `BetweenGames`, and on the ordinary two-period path that happens inside
+`end_confirm_pause` — at the confirmation, by which time the operator has been moved off any keypad
+page anyway. It is not the only place the period is set: `end_game`
+(`tournament_manager/mod.rs:1403`) sets it directly, and so does `reset_game` (`:502`) behind END
+GAME AND APPLY. On those paths the swap is at the whistle, and the single-period ending described
+under *Deferred* is the one where a keypad really can still be open.
 
 ## Files changed
 
@@ -171,8 +193,11 @@ Setup: portal event `events/1889-B` on `api.dev.uwhportal.com`, court 1, game 27
 6. **Mid-game REFRESH:** does not change the numbers on offer.
 7. **Portal off:** every picker shows the pad, exactly as today.
 
-Criterion 2 in `rosters_for_scheduled_game_tests` covers the other-court case by unit test; it is
-not reachable in a walkthrough without a multi-court event and a finished last game.
+The other-court case is covered by unit test — `a_game_on_another_court_supplies_nothing` in
+`rosters_for_scheduled_game_tests` (`app/mod.rs`) — rather than by a walkthrough step; it is not
+reachable in a walkthrough without a multi-court event and a finished last game. (That module holds
+five named tests and no numbered criteria; an earlier draft cited a "criterion 2" that does not
+exist there.)
 
 ---
 
@@ -207,9 +232,16 @@ the confirmation, no screen the operator can reach commits a foul, warning or pe
   ends the pause and raises `AutoConfirmScores` (`app/mod.rs:6390`), which drops to `MainPage` with
   no operator action at all.
 
-These routes differ in how the window opens and closes, not in what is reachable inside it — every
-one of them lands on the confirm page or on `MainPage`, and none exposes foul, warning or penalty
-entry. That is the claim the ruling needs, and it does not rest on the list above being exhaustive.
+These routes differ in how the window opens and closes, not in what the operator can reach *while
+it is open*: the confirm page and the score editor are the only screens inside it, and neither
+reaches fouls, warnings or penalties. That is the claim the ruling needs, and it does not rest on
+the list above being exhaustive.
+
+**Be careful about what landing on `MainPage` means.** It does not mean entry is closed — it means
+the window is already over and the break has begun, and `main_view` does offer ADD WARNING during
+`BetweenGames` (finding 1 below). That is not a breach of the ruling but the other half of it: an
+entry made in a break belongs to the game about to start, so it is *meant* to be available. The
+ruling closes the whistle-to-confirmation window, not the break.
 
 **One narrower exception, about the page rather than the record.** A **single-period** game that is
 decided at time-up — or level with neither overtime nor sudden death allowed — ends without any
@@ -241,16 +273,20 @@ single-period — the field's own doc comment says so (`uwh-common/src/uwhportal
 
 The confirmation happens while the period is still the one just finished: `pause_for_confirm`
 (`tournament_manager/mod.rs:2424`) is reachable from `SecondHalf`, `OvertimeSecondHalf` and
-`SuddenDeath`, and marks every other period `unreachable!()`. (The game-ending-timeout route goes
-through `end_game_ending_timeout`, `tournament_manager/mod.rs:2242`, which arms the pause directly
-and checks no period.)
+`SuddenDeath`, and marks every other period `unreachable!()`. (The game-ending-timeout route goes through `end_game_ending_timeout`,
+`tournament_manager/mod.rs:2242`. It arms the pause without that match, but is bound by the same
+three periods anyway: it takes its duration from `confirm_pause_duration`, whose own `unreachable!`
+at `:2418-2419` covers everything else — as its doc comment at `:2239-2241` states.)
 
 `end_confirm_pause` (`tournament_manager/mod.rs:2483`) is what moves the period on, and **where it
 moves to depends on the score.** Decided — or level with neither overtime nor sudden death allowed,
 as in an ordinary round-robin where draws stand — it goes to `BetweenGames`, and the operator's
 "game over" and the engine's start-of-break are the same moment. Level with one of them allowed, it
 goes to `PreOvertime` or `PreSuddenDeath` instead, so the confirm page can also appear *mid-game*,
-before extra time, where it is not a game ending at all.
+before extra time, where it is not a game ending at all. A pause armed in `SuddenDeath` and
+confirmed with the scores still level leaves the period at `SuddenDeath` — reachable by answering
+*no* and editing the score back level — and any other period falls through to a `warn!` that simply
+clears the pause state.
 
 ### Why the built work was wrong, not merely incomplete
 
@@ -315,9 +351,10 @@ classification above in mind:
    finished game's entries stay readable.
    **Settled by the ruling above; a property of the abandoned gate only.**
 6. **The walkthrough could not have caught (1).** Any resumed walkthrough must assert ADD WARNING
-   explicitly, and the predicate's test should cover `HalfTime`, `PreOvertime`,
-   `OvertimeHalfTime` and `PreSuddenDeath` — the break periods where `main_view` offers warning
-   entry.
+   explicitly, and the predicate's test should cover `BetweenGames`, `HalfTime`, `PreOvertime`,
+   `OvertimeHalfTime` and `PreSuddenDeath` — all five periods where `main_view` offers warning entry
+   (`view_builders/main_view.rs:127-131`). An earlier draft listed only four, omitting
+   `BetweenGames`, which is the one the predicate is actually about.
 
 ### The deeper question behind all of them
 

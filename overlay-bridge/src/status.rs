@@ -288,10 +288,11 @@ pub fn render_page(data: &PageData) -> String {
     let settings_hint = escape_html(&format!(
         "The refbox address and the bridge's own port can also be set with a command-line flag \
          (--refbox-host, --refbox-port, --port) and are remembered automatically for next time. \
-         A wrong port is fixed here, not in a file: type the address with the port on it, like \
-         192.168.1.50:{}, and it is saved with the address. Only the bridge's own port needs the \
-         settings file ({}). A refbox serves its game feed on port {} unless it was started with \
-         the refbox's own --json-port flag.",
+         A wrong port is fixed here when the refbox is running: type the address with the port \
+         on it, like 192.168.1.50:{}, and it is saved once the bridge reaches it. If nothing \
+         answers there, nothing is saved — edit refbox_port in the settings file ({}) instead, \
+         which also holds the bridge's own port. A refbox serves its game feed on port {} unless \
+         it was started with the refbox's own --json-port flag.",
         crate::config::DEFAULT_REFBOX_PORT,
         data.settings_file,
         crate::config::DEFAULT_REFBOX_PORT
@@ -384,7 +385,7 @@ pub fn render_page(data: &PageData) -> String {
 </table>
 {notice_html}<form class="chooser" method="post" action="/refbox">
 <label for="address">Use a different refbox:</label>
-<input id="address" name="address" size="22" placeholder="192.168.1.50" autocomplete="off">
+<input id="address" name="address" size="22" placeholder="192.168.1.50:{default_refbox_port}" autocomplete="off">
 <button type="submit">Use this refbox</button>
 </form>
 <form class="chooser" method="post" action="/scan">
@@ -437,6 +438,7 @@ pub fn render_page(data: &PageData) -> String {
         black = field("v-black"),
         refbox_address = escape_html(&data.refbox_address.to_string()),
         refbox_port = data.refbox_address.port,
+        default_refbox_port = crate::config::DEFAULT_REFBOX_PORT,
         scan_network = escape_html(&data.scan_network),
         notice_html = notice_html,
         scan_html = scan_html,
@@ -1145,10 +1147,27 @@ mod tests {
         // matter, not a testable one, and claiming otherwise here would be a comment that reads
         // like a guarantee and is not one. What this does catch is the port going missing or
         // disagreeing with what the bridge will actually dial.
+        //
+        // The example address now appears TWICE -- once in the box the operator looks at, once in
+        // the hint behind the `?` -- so each is asserted where it lives. A bare
+        // `contains("192.168.1.50:19540")` would survive the deletion of either one, which is the
+        // very defect the paragraph above warns about.
         let port = crate::config::DEFAULT_REFBOX_PORT;
         assert!(
-            html.contains(&format!("192.168.1.50:{port}")),
+            html.contains(&format!("placeholder=\"192.168.1.50:{port}\"")),
+            "the address box must show an example WITH the port on it, or an operator who copies \
+             its shape keeps whatever wrong port is already saved, in:\n{html}"
+        );
+        assert!(
+            html.contains(&format!(
+                "like 192.168.1.50:{port}, and it is saved once the bridge reaches it"
+            )),
             "the hint must show the address form that fixes a wrong port, in:\n{html}"
+        );
+        assert!(
+            html.contains("edit refbox_port in the settings file"),
+            "the hint must keep the route that still works when nothing answers -- the page \
+             cannot save an address it could not reach, in:\n{html}"
         );
         assert!(
             html.contains(&format!("serves its game feed on port {port}")),

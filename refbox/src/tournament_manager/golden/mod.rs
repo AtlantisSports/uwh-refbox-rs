@@ -250,8 +250,13 @@ fn apply_action(tm: &mut TournamentManager, action: Action, now: Instant) {
         Action::ScoreSuddenDeath(color) => {
             // Mirrors app/mod.rs Message::AddNewScore / Message::AddScoreComplete, SD branch:
             // tm.add_deciding_goal(color, 0, now). The goal is recorded immediately — so the
-            // panel and the overlay show it, as they do for any other goal — behind the
-            // score-confirmation window, which then ends the game by either route.
+            // SCORE reaches the panel and the overlay at once, as it does for any other goal —
+            // behind the score-confirmation window, which then ends the game by either route.
+            //
+            // The scorer's cap number is the exception, and deliberately not claimed here:
+            // `pause_for_confirm` freezes the clock at 10 ms, so `generate_snapshot`'s staleness
+            // test drops `recent_goal` for any deciding goal more than RECENT_GOAL_TIME (15 s)
+            // into sudden death. Recorded in the design doc's known-limitations list.
             tm.add_deciding_goal(color, 0, now).unwrap();
         }
         Action::ConfirmGameEnd => {
@@ -657,9 +662,19 @@ mod tests {
     /// during a stoppage (tournament organiser, 2026-08-28). The goal must still be recorded in
     /// full — that half is the fix.
     ///
-    /// Without this test the asymmetry with the running-clock case reads as an oversight, and the
-    /// obvious "fix" — having `pause_for_confirm` force the updater awake — would pass every other
-    /// test in the suite.
+    /// **What this test does and does not prove.** It proves the first half: the goal is recorded
+    /// in full with the clock stopped, and nothing ends the game at the moment of scoring. It does
+    /// NOT prove the second half on its own — this driver only ticks the engine while the
+    /// start/stop latch is true (see `run`), and this scenario never starts the clock, so no tick
+    /// runs and the `BetweenGames` assertion below would hold whatever the engine did in a tick.
+    /// That is a property of the harness, not evidence about the engine.
+    ///
+    /// The ruling itself is guarded in two places that CAN fail:
+    /// `app::updater_wake_tests::stopped_clock_has_no_scheduled_wake` (the updater schedules no
+    /// wake while the latch is false, which is where the ruling actually lives), and
+    /// `test_deciding_goal_with_clock_stopped_is_recorded_and_waits` (ticking the engine past a
+    /// ripe window leaves the game in sudden death). Keep this trace as the readable statement of
+    /// the rule; do not treat it as the test of it.
     #[test]
     fn stopped_clock_confirm_window_waits_for_the_operator() {
         let scenario = scenarios::all()

@@ -2,15 +2,16 @@
 
 **Status:** Approved 2026-09-04; **shipped** — the roster fix is on master (PR #3153, merged
 2026-09-05). Branch `fix/refbox/roster-before-kickoff`, based on `origin/master` at `486c5692`.
-The post-game closure that was split out of this spec was **ruled closed on 2026-09-04**; see
-*Deferred* below.
+The post-game closure that was split out of this spec was **ruled closed on 2026-09-04**, with one
+gap recorded there rather than fixed; see *Deferred* below.
 
 **Crate scope:** `refbox` only. `uwh-common` is read but not modified.
 
 **Scope changed during execution.** This spec originally also closed the fouls/warnings entry
 surfaces during the post-game window. A code review found six real defects in that half, so it was
-split out on 2026-09-04 — and then **ruled closed the same day, with no work needed**; see
-*Deferred* below. The branch ref that held it, `wip/refbox/post-game-entry-closure`, is gone, but
+split out on 2026-09-04 — and then **ruled closed the same day**: the app already enforces the rule
+for ordinary two-period games, so the parked work is not wanted. One gap is recorded rather than
+fixed — a single-period game has no confirmation window at all. See *Deferred* below. The branch ref that held it, `wip/refbox/post-game-entry-closure`, is gone, but
 its commits survive (`e2173939`, `a13c2355`). **What ships here is the roster fix alone.**
 
 ---
@@ -130,7 +131,7 @@ No extra code is needed for the requirement — it falls out of the rule.
 - **`post_game_duration` stays at 120 seconds.** Shortening it was considered and dropped on
   2026-09-04: the same value decides how long the final score stays on the LED scoreboard and the
   stream overlay, and halving that is a poolside decision, not a side effect of this fix.
-- **Everything under *Deferred*, below** — which has since been ruled closed, with nothing outstanding.
+- **Everything under *Deferred*, below** — since ruled closed, apart from the single-period gap recorded there.
 - **The startup-restore and mid-game halves of `rosters-not-refetched-on-refresh`.**
 
 ## Known consequence, accepted
@@ -175,7 +176,7 @@ not reachable in a walkthrough without a multi-court event and a finished last g
 
 ---
 
-## Deferred: closing the post-game window — **RESOLVED, no work needed**
+## Deferred: closing the post-game window — **RESOLVED; parked branch closed, one gap recorded**
 
 **Ruled by Eric, 2026-09-04, after this work was built and split out:**
 
@@ -210,6 +211,23 @@ These routes differ in how the window opens and closes, not in what is reachable
 one of them lands on the confirm page or on `MainPage`, and none exposes foul, warning or penalty
 entry. That is the claim the ruling needs, and it does not rest on the list above being exhaustive.
 
+**One exception, and it is not covered by the ruling's "already enforced".** A **single-period**
+game never opens the window at all. `check_time_remaining` (`tournament_manager/mod.rs:1586-1599`)
+only reports a game as endable in `SecondHalf` or `OvertimeSecondHalf`, so `could_end_game` is false
+throughout a single-period game's `FirstHalf`. At time-up `end_first_half`
+(`tournament_manager/mod.rs:1895-1899`) calls `end_game` directly when the score is decided, or when
+neither overtime nor sudden death is allowed — no `pause_for_confirm`, no `Message::ConfirmScores`,
+no confirm page. The tick is an ordinary `NewSnapshot`, and `apply_snapshot` never touches
+`app_state`, so **a keypad or overview page open at the final whistle stays open and fully live.**
+This is reachable in practice: the portal's `single_period` flag sets `config.single_half`
+(`uwh-common/src/uwhportal/schedule.rs:334`).
+
+So the ruling is enforced for ordinary two-period games, and **is not enforced for single-period
+games** — where an entry made straight after the final whistle is exactly the thing the ruling says
+must not happen. That is a gap in the app, not a gap in the ruling, and it is **not** what the
+abandoned branch addressed (that gated the break, after the confirmation). It is recorded here
+rather than fixed, and is the one part of this section that is still open.
+
 The confirmation happens while the period is still the one just finished: `pause_for_confirm`
 (`tournament_manager/mod.rs:2424`) is reachable from `SecondHalf`, `OvertimeSecondHalf` and
 `SuddenDeath`, and marks every other period `unreachable!()`. (The game-ending-timeout route goes
@@ -226,15 +244,18 @@ before extra time, where it is not a game ending at all.
 ### Why the built work was wrong, not merely incomplete
 
 The branch gated `BetweenGames && is_old_game` — the opening stretch **of the break**, *after* the
-confirmation, running up to `post_game_duration` (120 seconds by default, but configurable and
-set per event from the portal schedule) and covering the break entirely when the break is no longer
-than that (see finding 3). Under the ruling above that is precisely the window where entry
+confirmation, running up to `post_game_duration` (120 seconds by default, and settable in the local
+config file — the portal does **not** send it; `TimingRule` has no such field and the conversion
+takes it from `Default::default()`) and covering the break entirely when the break is no longer than
+that (see finding 3). Under the ruling above that is precisely the window where entry
 should stay available, because an entry there belongs to the game about to start. So the branch
 closed a window that should be open, while the window it was meant to close was already shut by the
 app. **It is inverted, not unfinished. Do not resume it.** The branch *ref* is gone from this repo
 and the remote, but its two commits survive — `e2173939` and `a13c2355`, recorded in the companion
 plan — so if it were ever wanted, `git branch wip/refbox/post-game-entry-closure a13c2355` restores
-it exactly rather than rebuilding it from this description.
+it exactly rather than rebuilding it from this description. Both commits are unreachable from every
+ref, so that recipe has a `git gc --prune` shelf life; anyone who wants the code kept should make
+the branch now.
 
 Its six review findings are kept below, but they are not all about the same thing. Findings 1, 2
 and 6 describe master and are worth reading before any similar change. Findings 4 and 5 describe
@@ -260,11 +281,13 @@ classification above in mind:
    breaks with an unconditional `on_press`. Gating three buttons and missing the one the operator
    reaches for first is the enumeration failure this project has been bitten by before. The
    class-correct fix is to guard where entries are *committed*, not button by button.
-2. **Pages already open stay live across a period change.** `apply_snapshot` changes the period but
-   never `app_state`. This does **not** apply at the whistle, where the handlers force the page to
-   the confirm screen or `MainPage` — it applies at the mid-break changeover, where an overview or
-   keypad page keeps every control working and still commits an entry `reset()` discards. Same
-   conclusion as 1: guard the commit seam.
+2. **Pages already open stay live.** Nothing in the snapshot path ever changes `app_state`, so a
+   page only moves when a message handler moves it. At the whistle of an ordinary two-period game
+   the handlers do move it, to the confirm screen or `MainPage`. They do not at the mid-break
+   changeover — which is `reset()` firing inside `update()`, not a period change, since the period
+   is `BetweenGames` either side of it — so an overview or keypad page keeps every control working
+   there and still commits an entry `reset()` discards. Nor do they in a single-period game, per the
+   exception noted above. Same conclusion as 1: guard the commit seam.
 3. **A short break swallows the whole window.** `reset_game_time` is
    `break_length.saturating_sub(post_game_duration)`. With a break at or under 120 seconds that is
    zero, the changeover fires only at kickoff, and entry is closed for the *entire* break —

@@ -290,10 +290,10 @@ pub fn render_page(data: &PageData) -> String {
          (--refbox-host, --refbox-port, --port) and are remembered automatically for next time. \
          A wrong port is fixed here when the refbox is running: type the address with the port \
          on it, like 192.168.1.50:{}, and it is saved once the bridge reaches it. If nothing \
-         answers there, nothing is saved — edit refbox_port in the settings file ({}) instead, \
-         which also holds the bridge's own port. A refbox serves its game feed on port {} unless \
-         it was started with the refbox's own --json-port flag, or is an older version that used \
-         8000.",
+         answers there, nothing is saved — instead edit refbox_port in the settings file ({}), \
+         which also holds the bridge's own port, and restart the bridge. A refbox serves its \
+         game feed on port {} unless it was started with the refbox's own --json-port flag, or \
+         is an older version that used 8000.",
         crate::config::DEFAULT_REFBOX_PORT,
         data.settings_file,
         crate::config::DEFAULT_REFBOX_PORT
@@ -618,10 +618,14 @@ h2 { font-size: 1.05rem; margin-bottom: 0.25rem; }
   border: 1px solid CanvasText; background: Canvas; color: CanvasText;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
   visibility: hidden;
-  /* Purely visual. The bubble covers the address box while it is open, and it belongs to the
-     marker -- so a click landing on it keeps the marker focused and the bubble up. Without this
-     the box cannot be clicked at all while the tooltip shows: measured with `elementFromPoint`,
-     which returned the marker over both the box and its button. */
+  /* The bubble covers the address box while it is open, and it belongs to the marker -- so a
+     click landing on it keeps the marker focused and the bubble up. Without this the box cannot
+     be clicked at all while the tooltip shows: measured with `elementFromPoint`, which named the
+     marker over both the box and its button.
+     A trade rather than a free win, and worth stating plainly: the bubble stops receiving the
+     pointer too, so it can no longer be kept open by moving onto it -- a hover has to stay on the
+     marker. Clicking the marker still pins it open, and `aria-label` carries the same words for a
+     screen reader, so nothing here is reachable only by hovering the bubble. */
   pointer-events: none;
 }
 .help:hover::after, .help:focus::after { opacity: 1; visibility: visible; }

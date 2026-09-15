@@ -590,6 +590,18 @@ h2, form.chooser { position: relative; }
    z-index only orders it within the block it belongs to. Lifting the block itself is what puts
    the bubble over everything below it. */
 h2:hover, h2:focus-within, form.chooser:hover, form.chooser:focus-within { z-index: 5; }
+/* ...but that lifts a block whenever the pointer is anywhere over it, which is a looser thing than
+   "its own marker is in use". Once a tooltip grew tall enough to cover the form beneath it, the
+   pointer was over both blocks at once, both lifted to 5, and an equal z-index is settled by
+   document order -- so the form painted over the very bubble it was meant to sit under. Caught in a
+   walkthrough, not by any test: nothing about a readable tooltip is visible to one. (Mind the
+   wording here: this stylesheet is inlined into the page, so its comments are served to the
+   browser and are matched by tests that assert on what the page does not say.)
+   The block whose marker is actually showing a tooltip therefore outranks a neighbour that merely
+   has the pointer over it. Added as a second rule rather than folded into the first so that a
+   browser without `:has()` still gets the behaviour above rather than none at all. */
+h2:has(.help:hover), h2:has(.help:focus),
+form.chooser:has(.help:hover), form.chooser:has(.help:focus) { z-index: 6; }
 .help::after {
   content: attr(data-tip);
   position: absolute; left: 0; top: 100%; z-index: 10;

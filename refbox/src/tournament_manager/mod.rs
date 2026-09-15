@@ -10352,24 +10352,26 @@ mod test {
         assert!(tm.in_score_confirm_pause());
         assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
 
-        // The "waits" half, and the part that can fail. Time passes well beyond the 10 s window
-        // and the engine is ticked exactly as the app's clock updater ticks it. The window is ripe
-        // — `pause_has_ended` is true — but nothing resolves it, because resolving is
-        // `end_confirm_pause`'s job and only the updater calls it, which schedules no wake while
-        // the clock-running latch is false (`app::updater_wake_tests::
-        // stopped_clock_has_no_scheduled_wake`). Give `update` the power to end a ripe window and
-        // this test fails, which is the point: that is the "fix" the organiser's ruling forbids.
+        // The "waits" half. Time passes well beyond the 10 s window, so it is ripe, and `update`
+        // — the plain engine tick — leaves it alone.
+        //
+        // Be precise about what that does and does not prove: `update` cannot resolve a confirm
+        // pause in ANY clock state, because its `end_confirm_pause` call sits behind
+        // `else if let ClockState::CountingUp { .. }` while `pause_for_confirm` always parks the
+        // clock at `Stopped { 10 ms }`. So this says nothing on its own about stoppages.
+        // `test_stopped_clock_ruling_rests_on_the_updater_never_waking` below pins where the
+        // ruling is actually enforced.
         let past_window = now + Duration::from_secs(30);
         assert!(tm.pause_has_ended(past_window));
         tm.update(past_window).unwrap();
         assert_eq!(
             tm.current_period,
             GamePeriod::SuddenDeath,
-            "the engine ended the game by itself during a deliberate stoppage"
+            "a plain engine tick resolved the confirm window"
         );
         assert!(
             tm.in_score_confirm_pause(),
-            "the window resolved itself while the clock was stopped"
+            "a plain engine tick resolved the confirm window"
         );
         assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
 
@@ -10377,6 +10379,57 @@ mod test {
         tm.end_confirm_pause(past_window).unwrap();
         assert_eq!(tm.current_period, GamePeriod::BetweenGames);
         assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+    }
+
+    /// Where the stopped-clock ruling is ACTUALLY enforced — and it is not in the engine.
+    ///
+    /// The organiser ruled that a deliberate clock stoppage must not be overridden by the app
+    /// ending the game (2026-08-28). It is tempting to read that as an engine rule. It is not: the
+    /// engine's real tick seam, `updater_tick`, resolves any ripe confirm window with no reference
+    /// to clock state at all, as this test shows by calling it. The ruling holds only because the
+    /// app never *calls* it during a stoppage — `next_updater_wake` returns `None` while the
+    /// clock-running latch is false, locked by
+    /// `app::updater_wake_tests::stopped_clock_has_no_scheduled_wake`.
+    ///
+    /// This is written as a characterisation test on purpose. If someone later makes the engine
+    /// itself refuse during a stoppage — a reasonable thing to want — this test fails, and that
+    /// failure is the prompt to move the ruling's documentation with it rather than leaving two
+    /// half-guards. It also states plainly, for the next reader, that anything else which wakes
+    /// the updater while a window is ripe will end the game mid-stoppage.
+    #[test]
+    fn test_stopped_clock_ruling_rests_on_the_updater_never_waking() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: true,
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        let now = start + Duration::from_secs(1);
+
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(30));
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, start);
+        assert!(!tm.clock_is_running());
+
+        tm.add_deciding_goal(Color::Black, 7, now).unwrap();
+        assert!(tm.in_score_confirm_pause());
+
+        // The clock is STOPPED and the window is ripe. The engine does not care.
+        let past_window = now + Duration::from_secs(30);
+        assert!(tm.pause_has_ended(past_window));
+        tm.updater_tick(past_window).unwrap();
+
+        assert_eq!(
+            tm.current_period,
+            GamePeriod::BetweenGames,
+            "updater_tick grew a clock-state condition — the engine now guards the stoppage \
+             itself, so the ruling's enforcement point has moved and the comments that say it \
+             lives in next_updater_wake must be updated"
+        );
+        assert!(!tm.in_score_confirm_pause());
     }
 
     /// Committing the goal at scoring time made the operation non-idempotent, where the old
@@ -10462,6 +10515,48 @@ mod test {
 
         tm.end_confirm_pause(now + Duration::from_secs(11)).unwrap();
         assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+    }
+
+    /// Acceptance criterion 4, and the one arm of `end_confirm_pause` whose meaning this branch
+    /// inverted. `SuddenDeath` -> `SuddenDeath` used to be the BUG's resting state: every
+    /// unattended window landed there, because the engine still held a tie. Now it is reached only
+    /// deliberately — the operator taps INCORRECT, puts the score back to the tie, and play
+    /// continues. Nothing tested that arm before or after, in either role.
+    ///
+    /// What matters is WHERE play resumes. The window parks the clock at 10 ms, and only
+    /// `time_into_sd` carries the real sudden-death reading across it; lose that and a restored
+    /// tie silently restarts sudden death from zero, handing both teams back the time they had
+    /// already played. Found by code review, 2026-09-15.
+    #[test]
+    fn test_restoring_a_tie_resumes_sudden_death_where_it_left_off() {
+        initialize();
+        let (mut tm, _start, now) = sd_tied_at_30s();
+
+        // The deciding goal is scored 31 s into sudden death, opening the window.
+        tm.add_deciding_goal(Color::Black, 7, now).unwrap();
+        assert!(tm.in_score_confirm_pause());
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+
+        // The operator taps INCORRECT, restores the tie, and confirms 4 s later.
+        let corrected = now + Duration::from_secs(4);
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, corrected);
+        tm.end_confirm_pause(corrected).unwrap();
+
+        // Play continues in sudden death — the game is NOT over.
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        assert!(!tm.in_score_confirm_pause());
+        assert!(
+            tm.clock_is_running(),
+            "play did not resume after the tie was restored"
+        );
+
+        // And it resumes where sudden death had got to, not from zero.
+        assert_eq!(
+            tm.game_clock_time(corrected).unwrap(),
+            Duration::from_secs(31),
+            "sudden death restarted its clock instead of resuming at the reading it had when \
+             the goal was scored"
+        );
     }
 
     // R2 (ruling 6.10 / edit 7.4): scoring or editing a deciding sudden-death goal while the

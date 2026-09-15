@@ -664,3 +664,27 @@ CI: `items after a test module` at `refbox/src/app/view_builders/keypad_pages/pl
 and `field assignment outside of initializer` at `refbox/src/app/mod.rs:6531`. `just lint` is
 `cargo clippy --all -- -D warnings` plus a `--no-default-features` pass, which is what CI runs,
 and it still catches the dead-code error above — so nothing is lost by using it.
+
+**4. Rebased onto current `master` on 2026-09-15, and the re-run review found a regression the
+branch had introduced.** The branch had gone stale by 283 commits. The rebase replayed with no
+conflicts and the resulting diff was byte-identical, and the bug remains present on master —
+`764cf604` ("survive a confirm pause the updater already ended") touches the same area but only
+stops a crash, it does not commit the goal.
+
+Per `pr-review.md` a rebase stales the review, so it was re-run against the new base. It found that
+committing the goal at scoring time had made `add_deciding_goal` non-idempotent: a duplicate
+delivery of `Message::AddNewScore` scored twice. Verified by running it (3-1, two goals, the second
+stamped 0.01 s). Fixed by guarding both new operations on engine state, plus a tied-score guard on
+`set_deciding_scores`. The review also showed the stopped-clock golden assertion could not fail;
+the rule is now guarded by two checks that can. All three new checks were observed failing with
+their guard removed. Recorded in the spec's 2026-09-15 amendment.
+
+Findings answered rather than actioned: the claim that waiting the window out shortens the next
+break is **wrong** — `sudden_death.trace` (confirm after 2 s, break 18 s) and
+`sudden_death_score_auto_confirm.trace` (window expires after 10 s, break 10 s) both reach the next
+game 20 s after the goal, so the absolute start time is identical. The `saturating_add` → `+= 1`
+change and the lost-INCORRECT-edit case were already accepted decisions recorded above. The new
+`generate_snapshot(..).unwrap()` is the same pre-existing pattern as the non-sudden-death line two
+lines below it and is not made worse here. The suggestion to make `set_scores` a plain setter and
+let the updater own the end-of-game decision is a real design improvement but a workspace-wide
+engine change, out of scope for this branch — proposed as a follow-up.

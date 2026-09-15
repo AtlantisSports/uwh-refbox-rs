@@ -222,6 +222,42 @@ Observable by the operator, in a config with sudden death enabled and a short `m
   per this workspace's rules. Claude launches the app and hands over numbered steps.
 - `superpowers:requesting-code-review` once at the end, per `.claude/rules/plan-execution.md`.
 
+## Amendment, 2026-09-15 — the window is armed once, and only when it decides something
+
+Found by the code review re-run after the rebase onto current `master`, and confirmed by running
+it. Committing the goal at scoring time cost the operation its **idempotence**, which the old
+hold-it-in-the-UI code had for free: a second delivery used to recompute the same score from the
+engine and redraw the same screen, because the engine score had not moved.
+
+`Message::AddNewScore`'s sudden-death branch has no `app_state` guard — unlike the keypad and
+score-edit routes, which destructure `app_state` and so reject a repeat — so a touchscreen bounce
+delivering it twice before the view rebuilds reached the engine twice. Measured: **3-1 with two
+goals recorded, the second stamped 0.01 s into sudden death**, because re-arming the window
+recomputes `clock_at_pause` from the frozen 10 ms clock. Only reachable with
+`collect_scorer_cap_num` off, since that setting routes the tap to the keypad instead.
+
+Both operations now guard on the engine state rather than on the call site, per *guard the class,
+not the case*:
+
+- `add_deciding_goal` ignores a repeat while a window is already open. Sudden death ends on the
+  first goal, so there is no second deciding goal — a repeat is a duplicate delivery, not a goal.
+- `set_deciding_scores` arms a window only when the score actually decides the game. A **tie**
+  decides nothing, and arming for it froze the sudden-death clock at 10 ms behind a window whose
+  expiry changed nothing. The score is still applied — refusing it would silently discard the
+  operator's edit.
+
+Locked by `test_repeat_deciding_goal_does_not_score_twice` and
+`test_tied_deciding_score_does_not_open_a_window`, both observed failing with their guard removed.
+
+The same review found that `stopped_clock_confirm_window_waits_for_the_operator` **could not fail**
+on the rule it names: the golden driver only ticks while the start/stop latch is true, and that
+scenario never starts the clock, so the `BetweenGames` assertion held whatever the engine did.
+The trace is kept as the readable statement of the rule, its doc comment now says what it does and
+does not prove, and the rule is guarded by two checks that can fail —
+`app::updater_wake_tests::stopped_clock_has_no_scheduled_wake` and a new tick-past-a-ripe-window
+assertion in `test_deciding_goal_with_clock_stopped_is_recorded_and_waits`, observed failing when
+`update` was given the power to end a ripe window.
+
 ## Known limitations, accepted
 
 - **INCORRECT after a mis-tapped goal leaves the goal in the goal list**, so the list will not add
@@ -243,6 +279,13 @@ Observable by the operator, in a config with sudden death enabled and a short `m
   sudden death raises the flag; a later one does not. Not a regression — `recent_goal` was never set
   for a deciding goal before — but a partial miss on "treat it exactly like any other goal", and two
   otherwise identical goals will look different on the stream. Found by code review.
+- **With the clock stopped, the on-screen confirmation countdown freezes and never expires.** The
+  ruling above says the window must wait for the operator, and the countdown is drawn from the
+  snapshot — but no snapshots are produced while the clock-running latch is false, so the number
+  simply sits there. The operator sees a countdown that does not move and, unlike every other
+  window they have seen, will not resolve itself. Correct per the ruling, but it looks like the app
+  has hung. A visible "waiting for you" state is a usability follow-up, out of scope here. Found by
+  code review, 2026-09-15.
 - **Killing the app during the window loses the goal.** There is no live-game persistence anywhere
   in the refbox; this does not make it worse.
 - **The window is still far too short at its floor** (half a microsecond) for an operator to

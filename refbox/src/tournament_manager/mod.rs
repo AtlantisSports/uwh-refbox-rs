@@ -299,6 +299,15 @@ impl TournamentManager {
     /// `pause_for_confirm` does not change `current_period`, so the goal is still recorded
     /// against `SuddenDeath`.
     ///
+    /// **A second call while the window is already open is ignored.** Sudden death ends on the
+    /// first goal, so there is no such thing as a second deciding goal; a repeat call is a
+    /// duplicate delivery of the first (a touchscreen bounce reaching
+    /// `Message::AddNewScore` twice before the view rebuilds), not a new goal. Without this
+    /// guard the repeat scored again AND re-armed the window, which recomputes `clock_at_pause`
+    /// from the frozen 10 ms clock — so the game ended on an inflated score with a phantom goal
+    /// stamped 0.01 s into sudden death. Holding the score where it is matches what the app did
+    /// before the score was committed at scoring time.
+    ///
     /// # Errors
     /// Only from `pause_for_confirm`, which cannot fail in sudden death: it accepts a stopped
     /// clock and clears any active timeout. The `?` is a backstop, not an expected path.
@@ -314,6 +323,14 @@ impl TournamentManager {
             GamePeriod::SuddenDeath,
             "add_deciding_goal is only for the goal that ends sudden death"
         );
+        if self.in_score_confirm_pause() {
+            warn!(
+                "{} Ignoring a repeat deciding goal for {color}: the score-confirmation window \
+                 is already open, so sudden death has already been decided",
+                self.status_string(now)
+            );
+            return Ok(());
+        }
         let clock_time = self.game_clock_time(now);
         self.pause_for_confirm(now)?;
         self.add_score_at(color, player_num, clock_time, now);
@@ -324,6 +341,13 @@ impl TournamentManager {
     ///
     /// Same load-bearing order as [`Self::add_deciding_goal`], for the same reason. No goal is
     /// recorded: an edit is the operator stating a score, not scoring one.
+    ///
+    /// **The window is armed only when the score actually decides the game, and only when one is
+    /// not already open.** A tie decides nothing, and arming a window for it would freeze the
+    /// sudden-death clock at 10 ms behind a window whose expiry then changes nothing — the game
+    /// would sit stopped with the clock wrong. The score is still applied in that case; refusing
+    /// it would silently discard the operator's edit. The guard lives here rather than at the one
+    /// call site that currently checks, so a future caller cannot reintroduce the trap.
     ///
     /// # Errors
     /// As [`Self::add_deciding_goal`].
@@ -340,6 +364,22 @@ impl TournamentManager {
             GamePeriod::SuddenDeath,
             "set_deciding_scores is only for a score that ends sudden death"
         );
+        if !scores.are_not_equal() {
+            warn!(
+                "{} Deciding score {scores} is tied, so it decides nothing: applying it without \
+                 opening a score-confirmation window",
+                self.status_string(now)
+            );
+            self.set_scores(scores, now);
+            return Ok(());
+        }
+        if self.in_score_confirm_pause() {
+            // The window is already open and already ends the game; re-arming it would reset its
+            // countdown and recompute `clock_at_pause` from the frozen clock. Applying the score
+            // is still right — this is the operator restating the final score.
+            self.set_scores(scores, now);
+            return Ok(());
+        }
         self.pause_for_confirm(now)?;
         self.set_scores(scores, now);
         Ok(())
@@ -10312,10 +10352,94 @@ mod test {
         assert!(tm.in_score_confirm_pause());
         assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
 
+        // The "waits" half, and the part that can fail. Time passes well beyond the 10 s window
+        // and the engine is ticked exactly as the app's clock updater ticks it. The window is ripe
+        // — `pause_has_ended` is true — but nothing resolves it, because resolving is
+        // `end_confirm_pause`'s job and only the updater calls it, which schedules no wake while
+        // the clock-running latch is false (`app::updater_wake_tests::
+        // stopped_clock_has_no_scheduled_wake`). Give `update` the power to end a ripe window and
+        // this test fails, which is the point: that is the "fix" the organiser's ruling forbids.
+        let past_window = now + Duration::from_secs(30);
+        assert!(tm.pause_has_ended(past_window));
+        tm.update(past_window).unwrap();
+        assert_eq!(
+            tm.current_period,
+            GamePeriod::SuddenDeath,
+            "the engine ended the game by itself during a deliberate stoppage"
+        );
+        assert!(
+            tm.in_score_confirm_pause(),
+            "the window resolved itself while the clock was stopped"
+        );
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+
         // The operator's confirm still ends it whenever they get to it.
+        tm.end_confirm_pause(past_window).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+    }
+
+    /// Committing the goal at scoring time made the operation non-idempotent, where the old
+    /// hold-it-in-the-UI code was safe to run twice. `Message::AddNewScore`'s sudden-death branch
+    /// has no `app_state` guard (unlike the keypad and score-edit routes, which destructure it),
+    /// so a touchscreen bounce delivering it twice before the view rebuilds reached the engine
+    /// twice. Found by code review, 2026-09-15.
+    #[test]
+    fn test_repeat_deciding_goal_does_not_score_twice() {
+        initialize();
+        let (mut tm, _start, now) = sd_tied_at_30s();
+
+        tm.add_deciding_goal(Color::Black, 7, now).unwrap();
+        tm.add_deciding_goal(Color::Black, 7, now).unwrap();
+
+        assert_eq!(
+            tm.get_scores(),
+            BlackWhiteBundle { black: 2, white: 1 },
+            "a repeat delivery scored a second goal"
+        );
+        let goals = tm.current_game_stats.goals();
+        assert_eq!(goals.len(), 1, "a repeat delivery recorded a phantom goal");
+        assert!(
+            (goals[0].3 - 31.0).abs() < 0.001,
+            "expected the real sudden-death reading of 31 s, got {} — re-arming the window \
+             recomputes it from the frozen 10 ms clock",
+            goals[0].3
+        );
+        assert!(tm.in_score_confirm_pause());
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+
+        // The window still ends the game once, on the real score.
         tm.end_confirm_pause(now + Duration::from_secs(11)).unwrap();
         assert_eq!(tm.current_period, GamePeriod::BetweenGames);
         assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+    }
+
+    /// `set_deciding_scores` is named for a score that ends sudden death, but nothing stopped a
+    /// TIED score going through it. That armed a window which decides nothing, while freezing the
+    /// sudden-death clock at 10 ms — the game would sit stopped with a wrong clock. Guarded on the
+    /// operation rather than the call site. Found by code review, 2026-09-15.
+    #[test]
+    fn test_tied_deciding_score_does_not_open_a_window() {
+        initialize();
+        let (mut tm, _start, now) = sd_tied_at_30s();
+
+        tm.set_deciding_scores(BlackWhiteBundle { black: 2, white: 2 }, now)
+            .unwrap();
+
+        assert_eq!(
+            tm.get_scores(),
+            BlackWhiteBundle { black: 2, white: 2 },
+            "the operator's edit must still be applied"
+        );
+        assert!(
+            !tm.in_score_confirm_pause(),
+            "a tie decides nothing, so no confirmation window should open"
+        );
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        assert!(
+            tm.clock_is_running(),
+            "the sudden-death clock must not be frozen behind a pointless window"
+        );
     }
 
     /// The score-edit route into the window has the same defect and the same fix. An edit is the

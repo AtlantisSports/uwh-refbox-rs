@@ -1,15 +1,17 @@
 # Player rosters before kickoff
 
-**Status:** Approved 2026-09-04. Branch `fix/refbox/roster-before-kickoff`, based on
-`origin/master` at `486c5692`.
+**Status:** Approved 2026-09-04; **shipped** — the roster fix is on master (PR #3153, merged
+2026-09-05). Branch `fix/refbox/roster-before-kickoff`, based on `origin/master` at `486c5692`.
+The post-game closure that was split out of this spec was **ruled closed on 2026-09-04**; see
+*Deferred* below.
 
 **Crate scope:** `refbox` only. `uwh-common` is read but not modified.
 
 **Scope changed during execution.** This spec originally also closed the fouls/warnings entry
 surfaces during the post-game window. A code review found six real defects in that half, so it was
 split out on 2026-09-04 — and then **ruled closed the same day, with no work needed**; see
-*Deferred* below. The branch that held it, `wip/refbox/post-game-entry-closure`, no longer exists
-locally or on the remote. **What ships here is the roster fix alone.**
+*Deferred* below. The branch ref that held it, `wip/refbox/post-game-entry-closure`, is gone, but
+its commits survive (`e2173939`, `a13c2355`). **What ships here is the roster fix alone.**
 
 ---
 
@@ -181,67 +183,88 @@ not reachable in a walkthrough without a multi-court event and a finished last g
 > over when the confirm final score lands. None of the prior game's fouls and warnings are to be
 > recorded after the game is done.
 
-**The app already enforces this.** From the final whistle until the score confirmation lands, a
-foul, warning or penalty cannot be recorded:
+**The app already enforces this.** Note this is the *whistle-to-confirmation* window, not the
+`BetweenGames && is_old_game` window that §"Deliberately not using `GameSnapshot::game_number()`"
+calls post-game; distinguishing the two is the whole point of this section. Between the whistle and
+the confirmation, no screen the operator can reach commits a foul, warning or penalty:
 
-- With **CONFIRM SCORE on** (the settings row is labelled exactly that), the window is spent on
-  `AppState::ConfirmScores`. Its only controls are the two options at
-  `view_builders/confirmation.rs:260-267` — `ScoreConfirmation { correct: true }` and
-  `{ correct: false }`; the rest of the page is the clock readout and, when the portal indicator is
-  red, an advisory. Answering *no* leads to `ScoreEdit { is_confirmation: true }`, the score
-  editor. Neither screen reaches fouls, warnings or penalties.
-- With it **off**, `Message::ConfirmScores` (`app/mod.rs:6338-6358`) calls `end_confirm_pause`
-  immediately and goes straight to `MainPage`, so *that* route through the window is effectively
-  zero-length. It is not the only route: a sudden-death winning goal (`app/mod.rs:4083` and
-  `:4142`), a sudden-death `AddScoreComplete` (`:4686`) and a game-ending penalty shot (`:6469`)
-  each set `AppState::ConfirmScores` **without consulting the setting**, so a close game still
-  shows the confirm page with CONFIRM SCORE off. That closes the window further, not less.
+- The ordinary route is `Message::ConfirmScores` (`app/mod.rs:6338-6358`). With **CONFIRM SCORE on**
+  — the settings row is labelled exactly that — it opens `AppState::ConfirmScores`, whose only
+  controls are the two options at `view_builders/confirmation.rs:260-267`,
+  `ScoreConfirmation { correct: true }` and `{ correct: false }`; the rest of the page is the clock
+  readout and, when the portal indicator is red, an advisory. Answering *no* leads to
+  `ScoreEdit { is_confirmation: true }`, the score editor. Neither screen reaches fouls, warnings or
+  penalties. With the setting **off** the same route calls `end_confirm_pause` at once and returns
+  to `MainPage`, so it passes through in an instant.
+- **The setting is not the only way in.** The sudden-death scoring paths (`app/mod.rs:4083`,
+  `:4142` — the score editor completing — and `:4686`, each gated on `GamePeriod::SuddenDeath`) and
+  a game-ending timeout (`:6469`, reached when `timeout_end_would_end_game` holds, which in
+  practice means a rugby penalty shot still counting down) set `AppState::ConfirmScores` **without
+  consulting the setting**. So a game decided in sudden death shows the confirm page even with
+  CONFIRM SCORE off.
+- **The window can also close by itself.** Once `confirm_pause_duration` has elapsed, `updater_tick`
+  ends the pause and raises `AutoConfirmScores` (`app/mod.rs:6390`), which drops to `MainPage` with
+  no operator action at all.
 
-Note the confirmation happens while the period is still the one just finished — `pause_for_confirm`
-(`tournament_manager/mod.rs:2456-2466`) is reachable from `SecondHalf`, `OvertimeSecondHalf` and
-`SuddenDeath`, and every other period is `unreachable!()`. `end_confirm_pause`
-(`tournament_manager/mod.rs:2483`) is what moves the period on. Where the score is decided it moves
-to `BetweenGames`, so the operator's "game over" and the engine's start-of-break are the same
-moment. **Where the score is level it does not:** a tied `SecondHalf` goes to `PreOvertime` or
-`PreSuddenDeath`, so the confirm page also appears mid-game, before overtime — there the
-confirmation is not a game ending at all.
+These routes differ in how the window opens and closes, not in what is reachable inside it — every
+one of them lands on the confirm page or on `MainPage`, and none exposes foul, warning or penalty
+entry. That is the claim the ruling needs, and it does not rest on the list above being exhaustive.
+
+The confirmation happens while the period is still the one just finished: `pause_for_confirm`
+(`tournament_manager/mod.rs:2424`) is reachable from `SecondHalf`, `OvertimeSecondHalf` and
+`SuddenDeath`, and marks every other period `unreachable!()`. (The game-ending-timeout route goes
+through `end_game_ending_timeout`, `tournament_manager/mod.rs:2242`, which arms the pause directly
+and checks no period.)
+
+`end_confirm_pause` (`tournament_manager/mod.rs:2483`) is what moves the period on, and **where it
+moves to depends on the score.** Decided — or level with neither overtime nor sudden death allowed,
+as in an ordinary round-robin where draws stand — it goes to `BetweenGames`, and the operator's
+"game over" and the engine's start-of-break are the same moment. Level with one of them allowed, it
+goes to `PreOvertime` or `PreSuddenDeath` instead, so the confirm page can also appear *mid-game*,
+before extra time, where it is not a game ending at all.
 
 ### Why the built work was wrong, not merely incomplete
 
 The branch gated `BetweenGames && is_old_game` — the opening stretch **of the break**, *after* the
-confirmation, running up to ~2 minutes and covering the break entirely when the break is 120
-seconds or shorter (see finding 3). Under the ruling above that is precisely the window where entry
+confirmation, running up to `post_game_duration` (120 seconds by default, but configurable and
+set per event from the portal schedule) and covering the break entirely when the break is no longer
+than that (see finding 3). Under the ruling above that is precisely the window where entry
 should stay available, because an entry there belongs to the game about to start. So the branch
 closed a window that should be open, while the window it was meant to close was already shut by the
-app. **It is inverted, not unfinished. Do not resume it** — and the branch itself is gone, so
-resuming would mean rebuilding it from this description.
+app. **It is inverted, not unfinished. Do not resume it.** The branch *ref* is gone from this repo
+and the remote, but its two commits survive — `e2173939` and `a13c2355`, recorded in the companion
+plan — so if it were ever wanted, `git branch wip/refbox/post-game-entry-closure a13c2355` restores
+it exactly rather than rebuilding it from this description.
 
-Its six review findings are kept below because three of them — 1, 2 and 6, plus finding 3's
-`reset_game_time` formula — describe the codebase itself and are worth reading before any similar
-change. Findings 3, 4 and 5 describe behaviour that only the abandoned gate produced; none of it
-exists on master.
+Its six review findings are kept below, but they are not all about the same thing. Findings 1, 2
+and 6 describe master and are worth reading before any similar change. Findings 4 and 5 describe
+behaviour that only the abandoned gate produced, so neither exists on master. Finding 3 is split:
+its `reset_game_time` formula is master's, while the closure it describes was the gate's.
 
 ### What was actually being chased, and why it was dropped
 
-Anything recorded in the opening stretch of a break — up to ~2 minutes, or the whole break when the
-break is 120 seconds or shorter — is discarded by the engine's `reset()`. Claude framed that as a
+Anything recorded in the opening stretch of a break — up to `post_game_duration`, or the whole
+break when the break is no longer than that — is discarded by the engine's `reset()`. Claude framed that as a
 bug — entries that "ought to count" being lost — and proposed making them
 survive. **Eric ruled that scenario impossible and unwanted:** nothing of the prior game is to be
 recorded once the game is done. The discarding is not a defect to fix.
 
 ### The six review findings, kept for their value about the codebase
 
-Three were framed as needing a decision; the ruling above removes that need, so they are recorded
-as observations only. Read them with the note above in mind — 3, 4 and 5 describe the abandoned
-gate's behaviour, not master's:
+Three were framed as needing a decision; the ruling above removes that need, so all six are
+recorded as observations only. **Where a finding prescribes a fix, read it as how such a change
+would have to be made if one were ever wanted — not as work outstanding.** Read them with the
+classification above in mind:
 
 1. **A fourth entry surface was missed.** `main_view.rs` shows an **ADD WARNING** button during
    breaks with an unconditional `on_press`. Gating three buttons and missing the one the operator
    reaches for first is the enumeration failure this project has been bitten by before. The
    class-correct fix is to guard where entries are *committed*, not button by button.
-2. **Pages already open stay live.** `apply_snapshot` changes the period but never `app_state`, so
-   an overview or keypad page open at the whistle keeps every control working and still commits a
-   discarded entry. Same conclusion as 1: guard the commit seam.
+2. **Pages already open stay live across a period change.** `apply_snapshot` changes the period but
+   never `app_state`. This does **not** apply at the whistle, where the handlers force the page to
+   the confirm screen or `MainPage` — it applies at the mid-break changeover, where an overview or
+   keypad page keeps every control working and still commits an entry `reset()` discards. Same
+   conclusion as 1: guard the commit seam.
 3. **A short break swallows the whole window.** `reset_game_time` is
    `break_length.saturating_sub(post_game_duration)`. With a break at or under 120 seconds that is
    zero, the changeover fires only at kickoff, and entry is closed for the *entire* break —
@@ -252,8 +275,8 @@ gate's behaviour, not master's:
    **Settled by the ruling above; a property of the abandoned gate only.**
 5. **Greying PENALTIES destroys the penalty display.** On the main screen that button *is* the
    readout — the list is printed on it, and both button styles render `Disabled` against
-   `window_background()` (`black_button` also greys the text via `disabled_color()`; `white_button`
-   sets no text colour of its own and switches to `HC_WHITE_DISABLED` in high-contrast mode). Both
+   `window_background()` with `disabled_color()` text (`white_button` inherits that text colour from
+   `gray_button`, and switches its background to `HC_WHITE_DISABLED` in high-contrast mode). Both
    teams' panels go grey-on-grey for two minutes, breaking this design's own principle that the
    finished game's entries stay readable.
    **Settled by the ruling above; a property of the abandoned gate only.**

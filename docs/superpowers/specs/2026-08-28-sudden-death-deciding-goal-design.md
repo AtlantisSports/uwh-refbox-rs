@@ -229,12 +229,22 @@ it. Committing the goal at scoring time cost the operation its **idempotence**, 
 hold-it-in-the-UI code had for free: a second delivery used to recompute the same score from the
 engine and redraw the same screen, because the engine score had not moved.
 
-`Message::AddNewScore`'s sudden-death branch has no `app_state` guard — unlike the keypad and
-score-edit routes, which destructure `app_state` and so reject a repeat — so a touchscreen bounce
+`Message::AddNewScore`'s sudden-death branch has no `app_state` guard, so a touchscreen bounce
 delivering it twice before the view rebuilds reached the engine twice. Measured: **3-1 with two
 goals recorded, the second stamped 0.01 s into sudden death**, because re-arming the window
 recomputes `clock_at_pause` from the frozen 10 ms clock. Only reachable with
 `collect_scorer_cap_num` off, since that setting routes the tap to the keypad instead.
+
+**Correction, found by the re-review of this amendment:** an earlier draft said the keypad and
+score-edit routes "destructure `app_state` and so reject a repeat". That is wrong. They destructure
+it and then `unreachable!()` on the else arm (`AddScoreComplete` app/mod.rs:4708,
+`ScoreEditComplete` :4157, `ScoreConfirmation` :6394) — a repeat there **panics** rather than being
+rejected. The repeat-message filter (app/mod.rs:3957) only drops a message equal to the immediately
+preceding one, and `last_message` is overwritten by every `NewSnapshot`, which the updater emits
+about once a second throughout the window — so two taps a second apart are both delivered. This is
+a **pre-existing** class, untouched and unaffected by this branch (a sudden-death goal reached
+`AppState::ConfirmScores` before the fix too), and out of scope here per `.claude/rules/scope.md`.
+Raised separately; do not let this paragraph's presence imply this branch fixed it.
 
 Both operations now guard on the engine state rather than on the call site, per *guard the class,
 not the case*:

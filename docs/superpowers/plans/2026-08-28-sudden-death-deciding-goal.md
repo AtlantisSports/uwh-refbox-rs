@@ -688,3 +688,33 @@ change and the lost-INCORRECT-edit case were already accepted decisions recorded
 lines below it and is not made worse here. The suggestion to make `set_scores` a plain setter and
 let the updater own the end-of-game decision is a real design improvement but a workspace-wide
 engine change, out of scope for this branch — proposed as a follow-up.
+
+**5. The re-review of the guard commit found two errors in deviation 4's own write-up, plus one
+real coverage gap.** Corrected in a test-and-docs-only follow-up (no production code):
+
+- Deviation 4 / the spec amendment claimed the keypad and score-edit routes "reject" a repeat
+  delivery. They do not: all three destructure `app_state` and then `unreachable!()`, so a repeat
+  **panics**. The repeat-message filter only drops a message equal to the immediately preceding
+  one, and `last_message` is overwritten by every `NewSnapshot` — emitted about once a second
+  through the window — so two taps a second apart are both delivered. **Pre-existing and not made
+  worse by this branch** (a sudden-death goal reached `AppState::ConfirmScores` before the fix
+  too), so out of scope per `.claude/rules/scope.md`; raised separately.
+- The new tick-past-a-ripe-window assertion could not fail for the reason it gave. `update`'s
+  `end_confirm_pause` call is gated on `ClockState::CountingUp` while `pause_for_confirm` always
+  parks the clock at `Stopped { 10 ms }`, so `update` cannot resolve a window in ANY clock state —
+  the assertion said nothing about stoppages. The earlier "observed it fail" probe had inserted the
+  resolve above that gate, which is why it looked sound. The comment now states what it does and
+  does not prove, and `test_stopped_clock_ruling_rests_on_the_updater_never_waking` pins the real
+  position: `updater_tick` ends a ripe window with no reference to clock state, so the ruling is
+  enforced **entirely** by `next_updater_wake` never waking the updater while the latch is false.
+  Anything else that wakes it mid-stoppage ends the game — raised separately.
+- `end_confirm_pause`'s `SuddenDeath` -> `SuddenDeath` arm had no test in either role, and this
+  branch inverted its meaning: it was the bug's resting state, and is now the deliberate
+  restore-a-tie path. `test_restoring_a_tie_resumes_sudden_death_where_it_left_off` covers it, and
+  was observed failing (10 ms vs 31 s) with `time_into_sd` regressed to the frozen clock.
+
+Findings left for separate branches, all pre-existing: the repeat-tap `unreachable!()` panic class;
+`updater_tick` resolving a ripe window regardless of clock state; CANCEL out of a keypad opened over
+the confirm page stranding an armed window; `update`'s dead `CountingUp` confirm branch (and its
+"socre" typo). Two judgement calls were declined for scope: having `set_deciding_scores` report
+whether it armed a window, and de-duplicating the two arms of `Message::AddNewScore`.

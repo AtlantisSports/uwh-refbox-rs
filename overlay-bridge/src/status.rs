@@ -378,7 +378,7 @@ pub fn render_page(data: &PageData) -> String {
 <tr><th>Black Team:</th><td id="v-black">{black}</td></tr>
 </table>
 </div>
-<h2>Refbox connection <span class="help" tabindex="0" aria-label="{settings_hint}"
+<h2 class="tipped">Refbox connection <span class="help" tabindex="0" aria-label="{settings_hint}"
  data-tip="{settings_hint}">?</span></h2>
 <table>
 <tr><th>Address</th><td>{refbox_address}</td></tr>
@@ -388,7 +388,7 @@ pub fn render_page(data: &PageData) -> String {
 <input id="address" name="address" size="22" placeholder="192.168.1.50:{default_refbox_port}" autocomplete="off">
 <button type="submit">Use this refbox</button>
 </form>
-<form class="chooser" method="post" action="/scan">
+<form class="chooser tipped" method="post" action="/scan">
 <label for="network">Or search for refboxes on:</label>
 <input id="network" name="network" size="16" value="{scan_network}" placeholder="192.168.1.5"
  autocomplete="off">
@@ -583,25 +583,31 @@ h2 { font-size: 1.05rem; margin-bottom: 0.25rem; }
    `max-width: 100%` means the tooltip can never start left of the text nor run past its right
    edge, whatever the window size. Anchoring to the marker instead is what lets a bubble beside a
    control near the edge bleed off the side of the window. */
-h2, form.chooser { position: relative; }
+.tipped { position: relative; }
+/* Only those two blocks are positioned at all, and that is deliberate. A positioned element paints
+   above an unpositioned one, so every OTHER block -- the address form, the vMix heading -- could
+   cover a bubble hanging over it simply by coming later in the document. Marking the blocks that
+   own a marker, rather than every heading and every form, takes the rest of the page out of the
+   contest. This half needs no `:has()`, so it holds in every browser. */
 /* Raising the *block* while the marker is hovered or focused, not just the bubble. Positioned
    elements with `z-index: auto` paint in document order, so a bubble hanging off the heading was
    painted under the table and forms that follow it however high its own `z-index` was -- the
    z-index only orders it within the block it belongs to. Lifting the block itself is what puts
    the bubble over everything below it. */
-h2:hover, h2:focus-within, form.chooser:hover, form.chooser:focus-within { z-index: 5; }
-/* ...but that lifts a block whenever the pointer is anywhere over it, which is a looser thing than
-   "its own marker is in use". Once a tooltip grew tall enough to cover the form beneath it, the
-   pointer was over both blocks at once, both lifted to 5, and an equal z-index is settled by
-   document order -- so the form painted over the very bubble it was meant to sit under. Caught in a
-   walkthrough, not by any test: nothing about a readable tooltip is visible to one. (Mind the
-   wording here: this stylesheet is inlined into the page, so its comments are served to the
-   browser and are matched by tests that assert on what the page does not say.)
-   The block whose marker is actually showing a tooltip therefore outranks a neighbour that merely
-   has the pointer over it. Added as a second rule rather than folded into the first so that a
-   browser without `:has()` still gets the behaviour above rather than none at all. */
-h2:has(.help:hover), h2:has(.help:focus),
-form.chooser:has(.help:hover), form.chooser:has(.help:focus) { z-index: 6; }
+.tipped:hover, .tipped:focus-within { z-index: 5; }
+/* ...but a block counts as hovered whenever the pointer is anywhere over it, which is looser than
+   "its own marker is in use", and with two tipped blocks that let both reach the same level at
+   once. An equal z-index is settled by document order, so the later block covered the bubble of
+   the earlier. Caught in a walkthrough, not by any test: nothing about a readable tooltip is
+   visible to one. These two rules say it precisely -- a block whose marker is merely focused
+   yields to one whose marker is under the pointer, which is the tooltip actually being read. Only
+   one marker can be hovered and one focused at a time, so no two blocks can tie.
+   Additions rather than replacements: where `:has()` is unsupported the rule above still applies,
+   and the positioning change alone already fixes the case that was reported.
+   (Mind the wording of comments here: this stylesheet is inlined into the page, so they are served
+   to the browser and are matched by tests asserting on what the page does not say.) */
+.tipped:has(.help:focus) { z-index: 6; }
+.tipped:has(.help:hover) { z-index: 7; }
 .help::after {
   content: attr(data-tip);
   position: absolute; left: 0; top: 100%; z-index: 10;
@@ -611,6 +617,11 @@ form.chooser:has(.help:hover), form.chooser:has(.help:focus) { z-index: 6; }
   border: 1px solid CanvasText; background: Canvas; color: CanvasText;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
   visibility: hidden;
+  /* Purely visual. The bubble covers the address box while it is open, and it belongs to the
+     marker -- so a click landing on it keeps the marker focused and the bubble up. Without this
+     the box cannot be clicked at all while the tooltip shows: measured with `elementFromPoint`,
+     which returned the marker over both the box and its button. */
+  pointer-events: none;
 }
 .help:hover::after, .help:focus::after { opacity: 1; visibility: visible; }
 .notice { padding: 0.5rem 0.75rem; border-radius: 0.25rem; max-width: 36rem; }
@@ -1223,7 +1234,7 @@ mod tests {
     #[test]
     fn the_page_offers_a_network_search_prefilled_with_the_suggested_network() {
         let html = render_page(&base_data());
-        assert!(html.contains("<form class=\"chooser\" method=\"post\" action=\"/scan\">"));
+        assert!(html.contains("<form class=\"chooser tipped\" method=\"post\" action=\"/scan\">"));
         assert!(
             html.contains("value=\"192.168.1.5\""),
             "the network field should be pre-filled with the suggestion, got:\n{html}"

@@ -83,9 +83,10 @@ under the operator's hand.
 
 **Deliberately not using `GameSnapshot::game_number()`.** That helper looks like the right answer
 and is not. It returns `next_game_number` only when `BetweenGames && !is_old_game`; the post-game
-window is the *other* half, `BetweenGames && is_old_game`. So for the first two minutes of every
-break the helper names the **finished** game, and using it would reintroduce the reported bug for
-exactly that window.
+window is the *other* half, `BetweenGames && is_old_game`. So for the opening stretch of every
+break — up to `post_game_duration`, and the **whole** break when the break is no longer than that
+(finding 3 under *Deferred*) — the helper names the **finished** game, and using it would
+reintroduce the reported bug for exactly that window.
 
 The two halves are easy to invert — an earlier draft of this spec and of the code comment both got
 the formula the wrong way round while stating the right conclusion. `is_old_game` is `!has_reset`,
@@ -101,9 +102,10 @@ played elsewhere, and the roster lookup had no court check, so the picker would 
 teams who are not in the pool with nothing on screen to say so.
 
 **That has since been fixed at the source.** `TournamentManager::next_game_number`
-(`tournament_manager/mod.rs:352-360`) now returns a blank whenever `no_next_game || schedule_linked`
-— "Guessing here would name another court's game" — so on the portal path no invented number is
-produced at all.
+(`tournament_manager/mod.rs:352-361`) still returns a real scheduled next game when it has one. What
+it no longer does is *guess*: when it has none, and `no_next_game || schedule_linked`, it returns a
+blank — "Guessing here would name another court's game" — instead of incrementing. So on the portal
+path no invented number is produced.
 
 The court check in the lookup still earns its place: it refuses a game that is not this court's,
 guarding every caller rather than only the new one, and it still covers a game moved to another
@@ -121,9 +123,9 @@ the checkable reason.
 **Superseded: the source fix has since landed.** This paragraph used to say that `RecvSchedule`
 still adopted the synthesised number and that the Game Info page named the wrong game with no court
 check, with fixing it at the source left as separate work. That work is done — the engine reports a
-blank rather than a guess while schedule-linked, so no invented number reaches those readers. (An
-earlier draft had also claimed there was "nothing on screen to say anything was wrong"; that was
-already wrong when written.)
+blank rather than guessing when it has no next game to report, so no invented number reaches those
+readers. (An earlier draft had also claimed there was "nothing on screen to say anything was
+wrong"; that was already wrong when written.)
 
 Found by code review on 2026-09-04, not by design. Before this change the affected states offered
 nothing; without the check, this work would have turned "nothing" into "confidently wrong".
@@ -158,10 +160,11 @@ the deferred work rather than papered over here.
 To be exact about *when*, because in the ordinary case it is not the whistle: the swap follows the
 period becoming `BetweenGames`, and on the ordinary two-period path that happens inside
 `end_confirm_pause` — at the confirmation, by which time the operator has been moved off any keypad
-page anyway. It is not the only place the period is set: `end_game`
-(`tournament_manager/mod.rs:1403`) sets it directly, and so does `reset_game` (`:502`) behind END
-GAME AND APPLY. On those paths the swap is at the whistle, and the single-period ending described
-under *Deferred* is the one where a keypad really can still be open.
+page anyway. It is not the only place the period is set. `end_game`
+(`tournament_manager/mod.rs:1403`) sets it directly — that is the single-period ending described
+under *Deferred*, and the one path where the swap really is at the whistle with a keypad still
+open. `reset_game` (`:502`) sets it too, but only behind END CURRENT GAME AND APPLY CHANGES in
+Settings, so there the swap happens when the operator applies, with no whistle involved.
 
 ## Files changed
 
@@ -259,8 +262,11 @@ single-period path nothing reassigns it at all**, because the tick is an ordinar
 stays open and live.
 
 **This does not break the ruling, and it is important to be exact about why.** `end_game` has
-already copied the penalties and fouls into `current_game_stats` and frozen `last_game_info`
-(`tournament_manager/mod.rs:1412-1435`), and the portal upload reads that frozen copy. Anything
+already copied the penalties, and every fully-attributed foul, into `current_game_stats` and frozen
+`last_game_info` (`tournament_manager/mod.rs:1412-1435`), and the portal upload reads that frozen
+copy. (Only fouls carrying both a team and a player number are copied — team fouls and
+both-teams-at-fault fouls are held back because the portal rejects them; that is a separate known
+issue, `docs/backlog/portal-accept-team-and-equal-fouls`.) Anything
 entered afterwards goes into `self.fouls` stamped `BetweenGames` and is then cleared by `reset()`.
 So nothing of the finished game is *recorded* after the game is done — the entry is **discarded**,
 which is the same behaviour ruled on above and expressly not a defect to fix.
@@ -352,9 +358,10 @@ classification above in mind:
    **Settled by the ruling above; a property of the abandoned gate only.**
 6. **The walkthrough could not have caught (1).** Any resumed walkthrough must assert ADD WARNING
    explicitly, and the predicate's test should cover `BetweenGames`, `HalfTime`, `PreOvertime`,
-   `OvertimeHalfTime` and `PreSuddenDeath` — all five periods where `main_view` offers warning entry
-   (`view_builders/main_view.rs:127-131`). An earlier draft listed only four, omitting
-   `BetweenGames`, which is the one the predicate is actually about.
+   `OvertimeHalfTime` and `PreSuddenDeath` — the five **break** periods where `main_view` offers
+   warning entry (`view_builders/main_view.rs:128-132`). It offers the same button during play too,
+   from a separate arm; the break arm is the one a post-game predicate would gate. An earlier draft
+   listed only four, omitting `BetweenGames`, which is the one the predicate is actually about.
 
 ### The deeper question behind all of them
 

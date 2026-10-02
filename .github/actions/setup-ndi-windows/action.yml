@@ -1,0 +1,73 @@
+# Installs the NDI® 6 SDK (and makes sure LLVM/Clang is available) on a Windows runner, so the
+# overlay can be built with its `ndi` feature. NDI® is a registered trademark of Vizrt NDI AB;
+# see https://ndi.video.
+#
+# Approach adapted from grafton-ndi's own CI action (Apache-2.0,
+# https://github.com/GrantSparks/grafton-ndi/tree/main/.github/actions/setup-ndi-windows):
+# download NDI's official installer, refuse it unless its SHA-256 is one we know, install it
+# silently into a temp folder, and point `NDI_SDK_DIR` at it. Only the build uses the SDK; none
+# of its files are shipped (the mini PC gets NDI's runtime from NDI Tools), as the NDI SDK
+# licence requires. Installing it means accepting the NDI SDK License Agreement:
+# https://downloads.ndi.tv/SDK/NDI_SDK/NDI%20SDK%20License%20Agreement.pdf
+name: 'Set up the NDI SDK on Windows'
+description: 'Install the NDI 6 SDK and LLVM so grafton-ndi can build'
+runs:
+  using: "composite"
+  steps:
+    - name: Known NDI SDK installers
+      id: ndi
+      shell: pwsh
+      run: |
+        # downloads.ndi.tv can replace the installer behind the same URL. These are the
+        # SHA-256 hashes we accept (newest first, from grafton-ndi's verified list). If NDI
+        # publishes a new installer, the build stops with the new hash in the log: check it
+        # and add it here.
+        $accepted = @(
+          '4D5DD36A1C7C7634F408BF459B068787CCE6F5310A3EFE832D76B1DDEB54E499',
+          '97E8993C6B94213A950E6ACBE9AA4D35831D137324D762F7C74851D3FEEF80D9'
+        )
+        "url=https://downloads.ndi.tv/SDK/NDI_SDK/NDI%206%20SDK.exe" >> $env:GITHUB_OUTPUT
+        "accepted=$($accepted -join ',')" >> $env:GITHUB_OUTPUT
+        "key=ndi-sdk-6-$($accepted[0].Substring(0, 12))" >> $env:GITHUB_OUTPUT
+
+    - name: Restore the NDI SDK from cache
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}\ndi-sdk
+        key: ${{ steps.ndi.outputs.key }}
+
+    - name: Download and install the NDI SDK
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        $dir = "${{ runner.temp }}\ndi-sdk"
+        $installer = "${{ runner.temp }}\ndi-sdk-installer.exe"
+        Invoke-WebRequest -Uri "${{ steps.ndi.outputs.url }}" -OutFile $installer
+
+        $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToUpperInvariant()
+        $accepted = '${{ steps.ndi.outputs.accepted }}' -split ','
+        if ($accepted -notcontains $actual) {
+          Write-Error "The NDI SDK installer's SHA-256 is $actual, which is not in the accepted list. Check it and add it to .github/actions/setup-ndi-windows/action.yml."
+          exit 1
+        }
+
+        $proc = Start-Process -FilePath $installer -PassThru -ArgumentList `
+          "/VERYSILENT", "/SP-", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOCANCEL", "/DIR=$dir"
+        if (!$proc.WaitForExit(300000)) { $proc | Stop-Process -Force }
+        Remove-Item $installer -ErrorAction SilentlyContinue
+        if (!(Test-Path "$dir\include\Processing.NDI.Lib.h")) {
+          Write-Error "The NDI SDK did not install correctly: header not found in $dir\include"
+          exit 1
+        }
+
+    - name: Make sure LLVM/Clang is installed
+      shell: pwsh
+      run: |
+        if (!(Test-Path "C:\Program Files\LLVM\bin\libclang.dll")) { choco install llvm -y --no-progress }
+
+    - name: Point the build at the SDK and LLVM
+      shell: pwsh
+      run: |
+        "NDI_SDK_DIR=${{ runner.temp }}\ndi-sdk" >> $env:GITHUB_ENV
+        "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV

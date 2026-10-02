@@ -27,6 +27,11 @@ separate assets — `overlay.zip`, `overlay-aarch64-linux` and its `.sha256`. Th
 *not* inside any of the refbox downloads. The overlay has no self-update, so a person copies the
 binary to the streaming machine by hand.
 
+It also attaches **`streaming-tools-windows.zip`**: the Windows programs for each court's streaming
+mini PC (`overlay.exe` with NDI® output, `overlay-bridge.exe`, `stream-manager.exe`), plus
+`streaming-setup.md` and a `README.txt`. It's built by `.github/workflows/streaming-tools.yml`, the
+same workflow that builds it for pull requests. See `docs/streaming-setup.md`.
+
 ## Version bump (do this first, on its own commit/PR)
 
 Bump **every** crate version in lockstep — and this **includes `wireless-remote`**, which is a
@@ -153,3 +158,17 @@ unzip -Z overlay.zip | grep -E 'Raspberry Pi/overlay$'
       whoever installs one runs `chmod +x`. Expected, not a defect. `overlay.zip` is the copy that
       arrives runnable.
 - [ ] **None** of the refbox downloads contain overlay files. The overlay is deliberately separate.
+
+### The streaming tools
+
+```bash
+unzip -Z streaming-tools-windows.zip
+```
+
+- [ ] It lists **`overlay.exe`, `overlay-bridge.exe`, `stream-manager.exe`, `streaming-setup.md`
+      and `README.txt`**, and nothing else.
+- [ ] `README.txt` contains the NDI® trademark notice and the https://ndi.video link (required by the
+      NDI SDK licence).
+- [ ] On a Windows PC with NDI Tools installed, `overlay.exe` starts and appears as an NDI source in
+      vMix.
+- [ ] **None** of the refbox downloads contain these files.

@@ -354,7 +354,11 @@ Tested at a practice session using **unlisted** videos and a small test event on
     (delete test videos).
   - Protected by a PIN, set on first use from the laptop itself. Companion uses
     `GET /api/court/<court>/<start|hold|release|hold-toggle|next|end>?pin=<PIN>`.
-  - Runs on a **separate laptop** on the venue network, not on a Replay Box.
+  - ~~Runs on a separate laptop~~ — superseded on 2026-10-02: **one Stream Manager per court,
+    on that court's mini PC** (with vMix, overlay and overlay-bridge), each handling only its own
+    court. If one mini PC fails, the other court keeps switching. The other court is viewed by
+    opening its control page (`http://<other mini PC>:8090`) in another tab. Setup steps:
+    `docs/streaming-setup.md`.
   - The Live tab is in **practice mode**: switching decisions are shown and logged, but nothing
     is sent to YouTube or vMix until the next step.
   - The terminal `watch` command was removed (replaced by the Live tab).

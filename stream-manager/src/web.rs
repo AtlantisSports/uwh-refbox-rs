@@ -5,6 +5,7 @@ use crate::{
     app::App,
     config::{Config, DEV_PORTAL_URL, LIVE_PORTAL_URL},
     google_auth,
+    portal::EventPlan,
     prepare::{self, Selection},
     switcher::Command,
 };
@@ -19,6 +20,7 @@ use log::{info, warn};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
+    cmp::Ordering,
     collections::{HashMap, hash_map::RandomState},
     hash::{BuildHasher, Hasher},
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
@@ -492,6 +494,32 @@ async fn prepare_run(
     Ok(Json(json!({ "started": true })))
 }
 
+/// The recorded videos in the same order as the playlists: by day and court, then in schedule
+/// order. Games no longer in the schedule come last, in number order.
+fn in_schedule_order<'a>(
+    plan: Option<&EventPlan>,
+    state: &'a prepare::EventState,
+) -> Vec<(&'a String, &'a prepare::VideoState)> {
+    let mut position: HashMap<&str, (usize, String, usize)> = HashMap::new();
+    let playlists = plan.map(|p| p.playlists()).unwrap_or_default();
+    for ((day, court), games) in &playlists {
+        for (i, game) in games.iter().enumerate() {
+            position.insert(game.number.as_str(), (*day, court.clone(), i));
+        }
+    }
+    let number = |game: &str| game.parse::<u64>().unwrap_or(u64::MAX);
+    let mut list: Vec<_> = state.videos.iter().collect();
+    list.sort_by(
+        |(a, _), (b, _)| match (position.get(a.as_str()), position.get(b.as_str())) {
+            (Some(x), Some(y)) => x.cmp(y),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => number(a).cmp(&number(b)).then_with(|| a.cmp(b)),
+        },
+    );
+    list
+}
+
 /// Videos recorded for this event (no YouTube call).
 async fn videos(
     State(app): State<AppState>,
@@ -502,9 +530,9 @@ async fn videos(
     let config = app.config();
     let state = prepare::load_state(&app.state_file(), &config.event_slug)
         .map_err(|e| bad(e.to_string()))?;
-    let list: Vec<Value> = state
-        .videos
-        .iter()
+    let plan = app.plan();
+    let list: Vec<Value> = in_schedule_order(plan.as_ref(), &state)
+        .into_iter()
         .map(|(game, v)| json!({ "game": game, "id": v.broadcast_id, "title": v.title, "stream": v.bound_stream, "in_playlist": v.in_playlist }))
         .collect();
     Ok(Json(
@@ -539,9 +567,9 @@ async fn videos_refresh(
         }
         app.record_youtube(None, yt.units_used);
     }
-    let list: Vec<Value> = state
-        .videos
-        .iter()
+    let plan = app.plan();
+    let list: Vec<Value> = in_schedule_order(plan.as_ref(), &state)
+        .into_iter()
         .map(|(game, v)| {
             let live = found.iter().find(|f| f[0] == v.broadcast_id);
             json!({

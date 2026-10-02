@@ -1,0 +1,22 @@
+[package]
+name = "stream-manager"
+version = "0.5.0"
+authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
+edition = "2024"
+rust-version = "1.85"
+description = "Splits a court's tournament stream into one YouTube live video per game"
+
+[dependencies]
+axum = "0.8"
+clap = { version = "4", features = ["derive"] }
+confy = "1.0"
+directories = "6.0.0"
+log = "0.4"
+log-panics = "2"
+log4rs = { version = "1", default-features = false, features = ["console_appender", "pattern_encoder"]}
+reqwest = { version = "0.12", features = ["gzip"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-human-readable"] }
+tokio = { version = "1.45", features = ["io-std", "io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+uwh-common = { version = "0.5", path = "../uwh-common" }

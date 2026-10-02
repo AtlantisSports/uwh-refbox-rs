@@ -6,6 +6,9 @@ YouTube video per game; see `docs/decisions/026-per-game-youtube-streams.md`.
 
 Written so that a person **or Claude running on the tournament PC** can follow it step by step.
 
+The overlay sends its picture to vMix over **NDI®**. NDI® is a registered trademark of Vizrt NDI AB.
+Learn more about NDI and get NDI Tools at https://ndi.video.
+
 ---
 
 ## Read this first (for Claude, and for anyone following this guide)
@@ -41,21 +44,43 @@ Written so that a person **or Claude running on the tournament PC** can follow i
   in another browser tab: `http://<other mini PC's IP>:8090`.
 - The refbox is a separate device at the court. The overlay-bridge and Stream Manager both connect to it.
 
-**Which code to build from (as of 2026-10-03):**
+**Where the programs come from:**
 
-| Program | Branch | Notes |
+| Program | Code | Ready-made download |
 |---|---|---|
-| overlay, overlay-bridge | `feat/overlay/ndi-bridge-feed` (PR #3383) | Has the NDI picture fix and offline team names. **PR #3383 still needs to be merged**; once it is, build from `master` instead. |
-| Stream Manager | `feat/workspace/stream-manager` | Once its PR is merged, build from `master`. |
+| overlay, overlay-bridge | `master` (the NDI picture fix and offline team names from PR #3383 are merged) | `streaming-tools-windows.zip` (A0) |
+| Stream Manager | `feat/workspace/stream-manager` until its PR is merged, then `master` | the same zip |
 
 ---
 
-## Part A — Build the programs (on a build computer)
+## Part A — Get the programs
 
-The build computer can be one of the mini PCs or any Windows PC. You only build once; then you
-copy three `.exe` files to each mini PC.
+There are two ways. **A0 (download) is the normal way.** A1–A4 (build from source) are the
+fallback, e.g. when you need a change that isn't in a download yet.
 
-### A1. Install the build tools (once per build computer)
+### A0. Download the ready-made programs (no build tools needed)
+
+GitHub builds all three Windows programs together as **`streaming-tools-windows.zip`**. It contains
+`overlay.exe` (with NDI and the bridge feed built in), `overlay-bridge.exe`, `stream-manager.exe`,
+this guide and a `README.txt`.
+
+- **From a release** (once a release includes it): GitHub → the repository → **Releases** → the
+  latest release → **`streaming-tools-windows.zip`**.
+- **From the latest build**, e.g. before the next release: GitHub → **Actions** → **Streaming
+  tools** → the newest run with a green tick, on `master` or on the branch you want → at the bottom
+  under **Artifacts**, **`streaming-tools-windows`**. You must be **logged in to GitHub**. These
+  downloads are kept for 90 days.
+  - ⛔ **STOP — ask a human** to log in to GitHub, if you are Claude.
+
+Unzip it, then go to **Part B**. Skip A1–A4.
+
+**Check:** the folder contains `overlay.exe`, `overlay-bridge.exe` and `stream-manager.exe`.
+
+### A1. Install the build tools (once per build computer, fallback only)
+
+The build computer can be one of the mini PCs or any Windows PC. You build once, then copy the
+three `.exe` files to each mini PC. Expect **1–2 hours and several GB of downloads** for the tools.
+Install them **before travelling**, not at the venue.
 
 1. **Git**: https://git-scm.com/download/win
    - **Check:** `git --version` prints a version.
@@ -66,7 +91,7 @@ copy three `.exe` files to each mini PC.
    - **Check:** `cargo --version` prints a version.
 4. **For the overlay only:**
    - the **NDI SDK** (https://ndi.video/for-developers/ndi-sdk/download/), default location
-     `C:\Program Files\NDI\NDI 6 SDK`
+     `C:\Program Files\NDI\NDI 6 SDK`. Installing it means accepting the NDI SDK licence.
    - **LLVM/Clang** (https://github.com/llvm/llvm-project/releases, Windows installer), with
      **"Add LLVM to the system PATH"** ticked
    - **Check:** `clang --version` prints a version. If it doesn't, run this in the same window
@@ -74,24 +99,23 @@ copy three `.exe` files to each mini PC.
 
 ⛔ **STOP — ask a human** before installing software, if you are Claude.
 
-### A2. Get the code (two folders)
+### A2. Get the code (one folder)
+
+All three programs are in the same repository. Until the Stream Manager PR is merged, use its
+branch (it already contains everything in `master`); afterwards, use `master`.
 
 ```powershell
 cd $HOME\Downloads
-git clone -b feat/overlay/ndi-bridge-feed https://github.com/AtlantisSports/uwh-refbox-rs.git uwh-overlay
-git clone -b feat/workspace/stream-manager https://github.com/AtlantisSports/uwh-refbox-rs.git uwh-stream-manager
+git clone -b feat/workspace/stream-manager https://github.com/AtlantisSports/uwh-refbox-rs.git uwh-streaming
 ```
 
-If the folders already exist, update them instead:
+If the folder already exists, update it instead:
 
 ```powershell
-cd $HOME\Downloads\uwh-overlay; git pull
-cd $HOME\Downloads\uwh-stream-manager; git pull
+cd $HOME\Downloads\uwh-streaming; git pull
 ```
 
-**Check:** `git -C $HOME\Downloads\uwh-overlay branch --show-current` prints
-`feat/overlay/ndi-bridge-feed`, and the same command for `uwh-stream-manager` prints
-`feat/workspace/stream-manager`.
+**Check:** `git -C $HOME\Downloads\uwh-streaming branch --show-current` prints the branch you chose.
 
 ### A3. Build
 
@@ -99,11 +123,9 @@ cd $HOME\Downloads\uwh-stream-manager; git pull
 folder first.
 
 ```powershell
-cd $HOME\Downloads\uwh-overlay
+cd $HOME\Downloads\uwh-streaming
 cargo build --release -p overlay --features ndi,bridge
 cargo build --release -p overlay-bridge
-
-cd $HOME\Downloads\uwh-stream-manager
 cargo build --release -p stream-manager
 ```
 
@@ -114,9 +136,9 @@ cargo build --release -p stream-manager
 **Check:** these three files exist and were just written (look at the time):
 
 ```
-uwh-overlay\target\release\overlay.exe
-uwh-overlay\target\release\overlay-bridge.exe
-uwh-stream-manager\target\release\stream-manager.exe
+uwh-streaming\target\release\overlay.exe
+uwh-streaming\target\release\overlay-bridge.exe
+uwh-streaming\target\release\stream-manager.exe
 ```
 
 ### A4. Collect the files
@@ -134,8 +156,9 @@ single file; the overlay's images and fonts are built into it.
    NVIDIA encoder with current drivers.
    - **Check:** in vMix, Help → About shows 29 or newer.
 2. **NDI Tools** (free, https://ndi.video/tools/). This installs the NDI runtime the overlay needs.
+   The programs from A0 don't include it.
 3. Create `C:\Streaming\` and copy `overlay.exe`, `overlay-bridge.exe` and `stream-manager.exe`
-   into it.
+   (from A0 or A4) into it.
 4. Make a desktop shortcut for each (right-click the `.exe` → Send to → Desktop).
 
 **Check:** the three shortcuts are on the desktop.

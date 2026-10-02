@@ -387,3 +387,15 @@ Tested at a practice session using **unlisted** videos and a small test event on
 - **Open item:** after a restart, Stream Manager doesn't yet know which video is live (§9 says
   it should ask YouTube). For now, restart only while the live game is being played, then
   press Start day again.
+- **Ready-made downloads (2026-10-03):** `.github/workflows/streaming-tools.yml` builds the three
+  Windows programs for the court mini PCs (overlay with `ndi,bridge`, overlay-bridge,
+  stream-manager) into `streaming-tools-windows.zip`.
+  - It runs on PRs and pushes that touch them, can be started by hand, and is called by
+    `release.yml` so every release carries the same zip.
+  - The NDI SDK is installed on the build machine from NDI's official installer, after checking
+    its SHA-256 (`.github/actions/setup-ndi-windows`, adapted from grafton-ndi's CI). None of the
+    SDK's files are shipped. The zip's README and the setup guide carry the NDI® trademark notice
+    and the https://ndi.video link, as the NDI SDK licence requires.
+  - Approved by the organizer, who is responsible for the project and has read and accepted the
+    NDI SDK License Agreement on its behalf (2026-10-03). The workflow installs the SDK on the
+    project's behalf.

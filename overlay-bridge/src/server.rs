@@ -525,8 +525,12 @@ fn page_data(state: &Arc<AppState>, headers: &HeaderMap) -> status::PageData {
         black_team: served("blackTeam"),
         black_score: served("blackScore"),
         roster_source: *read_lock(&state.roster_source),
-        schedule_csv_path: read_lock(&state.schedule_csv_path).clone().unwrap_or_default(),
-        roster_csv_path: read_lock(&state.roster_csv_path).clone().unwrap_or_default(),
+        schedule_csv_path: read_lock(&state.schedule_csv_path)
+            .clone()
+            .unwrap_or_default(),
+        roster_csv_path: read_lock(&state.roster_csv_path)
+            .clone()
+            .unwrap_or_default(),
         base_url,
         settings_file: config::settings_location(),
         scan_network: discovery::suggested_scan_network(&address),
@@ -1001,9 +1005,7 @@ fn try_load_local_roster(
     roster_path: Option<&str>,
 ) -> Result<LocalRoster, String> {
     let (Some(schedule_path), Some(roster_path)) = (schedule_path, roster_path) else {
-        return Err(
-            "the schedule and/or roster CSV path is not set".to_string()
-        );
+        return Err("the schedule and/or roster CSV path is not set".to_string());
     };
     LocalRoster::load(
         std::path::Path::new(schedule_path),
@@ -4052,7 +4054,8 @@ mod tests {
 
     /// One uploaded CSV field, the way a browser's file input submits it: a filename and bytes.
     fn csv_part(filename: &str, contents: &str) -> reqwest::multipart::Part {
-        reqwest::multipart::Part::bytes(contents.as_bytes().to_vec()).file_name(filename.to_string())
+        reqwest::multipart::Part::bytes(contents.as_bytes().to_vec())
+            .file_name(filename.to_string())
     }
 
     #[tokio::test]
@@ -4163,8 +4166,14 @@ mod tests {
 
         let form = reqwest::multipart::Form::new()
             .text("source", "local")
-            .part("schedule_csv", csv_part("schedule.csv", "gameNumber,blackTeam,whiteTeam\n"))
-            .part("roster_csv", csv_part("roster.csv", "team,capNumber,rosterName\n"));
+            .part(
+                "schedule_csv",
+                csv_part("schedule.csv", "gameNumber,blackTeam,whiteTeam\n"),
+            )
+            .part(
+                "roster_csv",
+                csv_part("roster.csv", "team,capNumber,rosterName\n"),
+            );
         let response = post_multipart_with_site(addr, "/roster-source", form, "cross-site").await;
 
         assert_eq!(
@@ -4192,11 +4201,17 @@ mod tests {
             .text("source", "local")
             .part(
                 "schedule_csv",
-                csv_part("schedule.csv", "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n"),
+                csv_part(
+                    "schedule.csv",
+                    "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n",
+                ),
             )
             .part(
                 "roster_csv",
-                csv_part("roster.csv", "team,capNumber,rosterName\nChengdu,2,Li Wei\n"),
+                csv_part(
+                    "roster.csv",
+                    "team,capNumber,rosterName\nChengdu,2,Li Wei\n",
+                ),
             );
         let response = post_multipart_with_site(addr, "/roster-source", form, "same-origin").await;
 
@@ -4259,11 +4274,17 @@ mod tests {
             .text("source", "local")
             .part(
                 "schedule_csv",
-                csv_part("schedule.csv", "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n"),
+                csv_part(
+                    "schedule.csv",
+                    "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n",
+                ),
             )
             .part(
                 "roster_csv",
-                csv_part("roster.csv", "team,capNumber,rosterName\nChengdu,2,Li Wei\n"),
+                csv_part(
+                    "roster.csv",
+                    "team,capNumber,rosterName\nChengdu,2,Li Wei\n",
+                ),
             );
         post_multipart_with_site(addr, "/roster-source", upload, "same-origin").await;
 

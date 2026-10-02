@@ -987,7 +987,7 @@ mod tests {
             "the flag names must survive the move into a tooltip"
         );
         assert!(
-            html.contains(&format!("{}", base_data().settings_file)),
+            html.contains(&base_data().settings_file.to_string()),
             "the settings file path must still be the operator's own, not a hard-coded one"
         );
     }
@@ -1090,8 +1090,10 @@ mod tests {
         // must be real file inputs, not text fields for a path (2026-09-09 redesign).
         let html = render_page(&base_data());
         assert!(
-            html.contains("<form class=\"chooser\" method=\"post\" action=\"/roster-source\" \
-                            enctype=\"multipart/form-data\">"),
+            html.contains(
+                "<form class=\"chooser\" method=\"post\" action=\"/roster-source\" \
+                            enctype=\"multipart/form-data\">"
+            ),
             "the roster-source form must submit as multipart, got:\n{html}"
         );
         assert!(

@@ -19,7 +19,7 @@ use std::{
     collections::{HashSet, VecDeque},
     path::PathBuf,
     sync::{Arc, Mutex, MutexGuard},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use time::{OffsetDateTime, macros::format_description};
 use tokio::{
@@ -60,7 +60,11 @@ struct CourtRuntime {
     config: CourtConfig,
     switcher: CourtSwitcher,
     refbox_connected: bool,
-    last_snapshot: Option<Instant>,
+    /// A game update has been read on the current connection. The refbox only sends while
+    /// something changes, so a quiet connection is still a good one.
+    refbox_has_data: bool,
+    /// Why the refbox's data couldn't be read, until a readable update arrives.
+    refbox_unreadable: Option<String>,
     log: VecDeque<String>,
     /// A switch is being carried out on YouTube/vMix right now.
     busy: bool,
@@ -131,7 +135,8 @@ impl CourtRuntime {
             config,
             switcher: CourtSwitcher::new(rules),
             refbox_connected: false,
-            last_snapshot: None,
+            refbox_has_data: false,
+            refbox_unreadable: None,
             log: VecDeque::new(),
             busy: false,
             error: None,
@@ -334,14 +339,24 @@ impl App {
         match event {
             RefboxEvent::Connected => {
                 court.refbox_connected = true;
+                court.refbox_has_data = false;
                 court.note("Refbox connected".into());
             }
             RefboxEvent::Disconnected => {
                 court.refbox_connected = false;
+                court.refbox_has_data = false;
                 court.note("Refbox connection lost — automatic switching paused".into());
             }
+            RefboxEvent::Unreadable(reason) => {
+                court.refbox_unreadable = Some(reason.clone());
+                court.note(format!(
+                    "✖ The refbox sends data Stream Manager can't read. Check the refbox port is \
+                     8000 (8001 is the LED panel's). Details: {reason}"
+                ));
+            }
             RefboxEvent::Snapshot(snapshot) => {
-                court.last_snapshot = Some(Instant::now());
+                court.refbox_has_data = true;
+                court.refbox_unreadable = None;
                 if let Some(action) = court.switcher.on_snapshot(&snapshot) {
                     dispatch(court, executors.get(i), plan.as_ref(), action, practice);
                 }
@@ -628,14 +643,19 @@ impl App {
                         secs_left,
                     } => ("break", Some(upcoming.clone()), Some(*secs_left)),
                 };
-                let stale = c.last_snapshot.is_none_or(|t| t.elapsed().as_secs() > 10);
+
                 CourtStatus {
                     name: c.config.name.clone(),
                     refbox_address: format!("{}:{}", c.config.refbox_ip, c.config.refbox_port),
-                    refbox: match (c.refbox_connected, stale) {
-                        (false, _) => "disconnected",
-                        (true, true) => "no data",
-                        (true, false) => "ok",
+                    refbox: match (
+                        c.refbox_connected,
+                        c.refbox_has_data,
+                        c.refbox_unreadable.is_some(),
+                    ) {
+                        (false, _, _) => "disconnected",
+                        (true, true, _) => "ok",
+                        (true, false, true) => "unreadable",
+                        (true, false, false) => "waiting",
                     },
                     day_running: s.day_running,
                     hold: s.hold,

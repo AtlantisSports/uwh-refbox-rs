@@ -2,17 +2,19 @@
 
 use log::{debug, info, warn};
 use std::{net::IpAddr, time::Duration};
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    net::TcpStream,
-    sync::mpsc::UnboundedSender,
-};
+use tokio::{io::AsyncReadExt, net::TcpStream, sync::mpsc::UnboundedSender};
 use uwh_common::game_snapshot::GameSnapshot;
+
+/// A line longer than this without a newline isn't a JSON snapshot (e.g. the LED-panel feed on
+/// the refbox's other port), so the buffer is dropped rather than allowed to grow.
+const MAX_LINE: usize = 64 * 1024;
 
 #[derive(Debug)]
 pub enum RefboxEvent {
     Connected,
     Snapshot(Box<GameSnapshot>),
+    /// Something arrived that isn't a game snapshot. Reported once per connection.
+    Unreadable(String),
     Disconnected,
 }
 
@@ -25,7 +27,7 @@ pub async fn follow_refbox(
     tx: UnboundedSender<(usize, RefboxEvent)>,
 ) {
     loop {
-        let stream = match TcpStream::connect((ip, port)).await {
+        let mut stream = match TcpStream::connect((ip, port)).await {
             Ok(stream) => stream,
             Err(e) => {
                 debug!("Refbox at {ip}:{port} not reachable ({e}), retrying");
@@ -42,26 +44,48 @@ pub async fn follow_refbox(
         }
 
         // The refbox sends one JSON snapshot per line.
-        let mut lines = BufReader::new(stream).lines();
+        let mut pending: Vec<u8> = Vec::new();
+        let mut chunk = [0u8; 8192];
+        let mut reported_unreadable = false;
+        let mut unreadable = |reason: String, tx: &UnboundedSender<(usize, RefboxEvent)>| {
+            if !reported_unreadable {
+                reported_unreadable = true;
+                warn!("Ignoring unreadable data from {ip}:{port}: {reason}");
+                let _ = tx.send((court_index, RefboxEvent::Unreadable(reason)));
+            }
+        };
         loop {
-            match lines.next_line().await {
-                Ok(Some(line)) => match serde_json::from_str::<GameSnapshot>(&line) {
+            let n = match stream.read(&mut chunk).await {
+                Ok(0) => {
+                    warn!("Refbox at {ip}:{port} closed the connection, reconnecting");
+                    break;
+                }
+                Ok(n) => n,
+                Err(e) => {
+                    warn!("Lost connection to refbox at {ip}:{port}: {e}, reconnecting");
+                    break;
+                }
+            };
+            pending.extend_from_slice(&chunk[..n]);
+            while let Some(end) = pending.iter().position(|b| *b == b'\n') {
+                let line: Vec<u8> = pending.drain(..=end).collect();
+                let line = line.trim_ascii();
+                if line.is_empty() {
+                    continue;
+                }
+                match serde_json::from_slice::<GameSnapshot>(line) {
                     Ok(snapshot) => {
                         let event = RefboxEvent::Snapshot(Box::new(snapshot));
                         if tx.send((court_index, event)).is_err() {
                             return;
                         }
                     }
-                    Err(e) => warn!("Ignoring unreadable snapshot from {ip}:{port}: {e}"),
-                },
-                Ok(None) => {
-                    warn!("Refbox at {ip}:{port} closed the connection, reconnecting");
-                    break;
+                    Err(e) => unreadable(e.to_string(), &tx),
                 }
-                Err(e) => {
-                    warn!("Lost connection to refbox at {ip}:{port}: {e}, reconnecting");
-                    break;
-                }
+            }
+            if pending.len() > MAX_LINE {
+                pending.clear();
+                unreadable("not line-based game data".to_string(), &tx);
             }
         }
         if tx.send((court_index, RefboxEvent::Disconnected)).is_err() {

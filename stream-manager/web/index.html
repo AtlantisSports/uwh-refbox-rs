@@ -412,8 +412,13 @@ function renderCourts() {
     const f = (k) => card.querySelector(`[data-f="${k}"]`);
     const b = (k) => card.querySelector(`[data-b="${k}"]`);
     f('hold').classList.toggle('hidden', !c.hold);
-    f('refdot').className = 'dot ' + (c.refbox === 'ok' ? 'ok' : c.refbox === 'no data' ? 'warn' : 'bad');
-    f('reftext').textContent = c.refbox === 'ok' ? 'Refbox connected' : c.refbox === 'no data' ? 'Refbox: no data' : 'Refbox not connected';
+    f('refdot').className = 'dot ' + (c.refbox === 'ok' ? 'ok' : c.refbox === 'waiting' ? 'warn' : 'bad');
+    f('reftext').textContent = {
+      ok: 'Refbox connected',
+      waiting: 'Refbox connected, waiting for its first update',
+      unreadable: "Refbox data can't be read: check the refbox port is 8000",
+      disconnected: 'Refbox not connected',
+    }[c.refbox] || c.refbox;
     f('reftext').title = c.refbox_address;
     f('vmixdot').className = 'dot ' + (c.vmix === 'ok' ? 'ok' : c.vmix === 'checking' ? 'warn' : 'bad');
     f('vmixtext').textContent = c.vmix === 'ok' ? 'vMix connected' : c.vmix === 'checking' ? 'vMix: checking' : 'vMix not reachable';

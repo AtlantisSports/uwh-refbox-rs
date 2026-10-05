@@ -314,6 +314,19 @@ fn scan_targets(subnet: Ipv4Addr) -> impl Iterator<Item = Ipv4Addr> {
     (1..=254u8).map(move |d| Ipv4Addr::new(a, b, c, d))
 }
 
+/// The addresses a scan of `subnet` probes. Every 127.x address is this computer itself, so a
+/// loopback "network" has exactly one place to look: 127.0.0.1. Probing all 254 would list the
+/// same local refbox up to 254 times on Windows, where a refbox listening on all interfaces
+/// answers on every loopback address (Linux and macOS only answer on 127.0.0.1, which is why this
+/// went unnoticed until a scan on a Windows streaming PC listed ~150 copies of one refbox).
+fn targets_for(subnet: Ipv4Addr) -> Vec<Ipv4Addr> {
+    if subnet.is_loopback() {
+        vec![Ipv4Addr::LOCALHOST]
+    } else {
+        scan_targets(subnet).collect()
+    }
+}
+
 /// Checks every address on `subnet`'s /24 for a refbox listening on `port`, and returns the ones
 /// that answered with a game, in address order.
 ///
@@ -322,7 +335,8 @@ fn scan_targets(subnet: Ipv4Addr) -> impl Iterator<Item = Ipv4Addr> {
 /// fails the scan, because on a real venue network the overwhelming majority of the 254 addresses
 /// are exactly that.
 pub async fn scan(subnet: Ipv4Addr, port: u16) -> Vec<Found> {
-    let targets: Vec<RefboxAddress> = scan_targets(subnet)
+    let targets: Vec<RefboxAddress> = targets_for(subnet)
+        .into_iter()
         .map(|ip| RefboxAddress::new(ip.to_string(), port))
         .collect();
 
@@ -865,11 +879,26 @@ mod tests {
 
     // ------------------------------------------------------------------------------------ scan
 
+    #[test]
+    fn a_loopback_scan_probes_this_computer_once_and_a_network_scan_every_host() {
+        // Any 127.x is "this computer"; probing 254 of them listed one Windows refbox ~150 times.
+        assert_eq!(
+            targets_for(Ipv4Addr::new(127, 0, 0, 1)),
+            vec![Ipv4Addr::LOCALHOST]
+        );
+        assert_eq!(
+            targets_for(Ipv4Addr::new(127, 0, 0, 42)),
+            vec![Ipv4Addr::LOCALHOST]
+        );
+        let lan = targets_for(Ipv4Addr::new(192, 168, 1, 7));
+        assert_eq!(lan.len(), 254);
+        assert_eq!(lan[0], Ipv4Addr::new(192, 168, 1, 1));
+    }
+
     #[tokio::test]
-    async fn a_full_subnet_scan_finds_a_real_refbox_and_finishes_in_a_few_seconds() {
-        // A real refbox on 127.0.0.1, and 253 loopback addresses with nothing on them. Finding
-        // the planted refbox is what proves the scan actually probed rather than returning an
-        // empty list quickly -- a scan that did nothing at all would also be fast.
+    async fn a_loopback_scan_finds_this_computers_refbox_exactly_once() {
+        // A real refbox on 127.0.0.1. Finding the planted refbox is what proves the scan actually
+        // probed rather than returning an empty list quickly.
         let (address, refbox) = fake_refbox(second_half_snapshot()).await;
 
         let started = Instant::now();

@@ -170,6 +170,10 @@ single file; the overlay's images and fonts are built into it.
 1. Double-click **overlay-bridge**. A console window opens and the **status page** opens in the
    browser at `http://127.0.0.1:8098`. (Port 8099 is taken by vMix, so the bridge uses 8098.)
 2. On the status page, set the **refbox** to this court's refbox (its IP address, port `8000`).
+   - Refbox on **this same PC**: use `127.0.0.1:8000`. Every 127.x address means "this PC".
+   - Refbox on **another device** (the usual setup at the pool): use that device's network address,
+     e.g. `192.168.1.20:8000`.
+   - Use the **same refbox address** in Stream Manager (B5).
 3. Choose where team names come from: **UWH Portal** (normal), or **Local** with the two CSV files
    (for venues without portal access).
 
@@ -351,6 +355,9 @@ use **Send links to portal again** later.
 | overlay-bridge window opens and closes at once / "could not start the bridge's HTTP server on 0.0.0.0:8099" | An old version uses port 8099, which vMix always occupies. Use the current download (port 8098). Or start it once from PowerShell with `.\overlay-bridge.exe --port 8098`; it remembers the port. |
 | Overlay shows no team names or scores | The overlay can't reach the bridge. Check `bridge_url` in `%APPDATA%\overlay\config\default-config.toml` matches the bridge's port (`http://127.0.0.1:8098`), and that the bridge's status page shows the refbox connected. Restart the overlay after changing the file. |
 | Prepare log: "⚠ Portal watch links not updated: …" | The message says why: wrong portal password (save it again in Settings), an account without admin rights, or the portal unreachable. Fix it, then press **Send links to portal again** on the Prepare tab. |
+| Stream Manager: "Refbox connected, waiting for its first update" (amber) | Connected, but the refbox hasn't sent a game update yet. It only sends while something changes, e.g. a running clock. Start a clock or the break countdown on the refbox. |
+| Stream Manager: "Refbox data can't be read: check the refbox port is 8000" (red) | Connected to the refbox's LED-panel port (8001) instead of its game-data port. In Settings → Courts set the refbox port to **8000**. |
+| Bridge's refbox scan lists the same refbox many times at 127.0.0.x | Older bridge versions did this on Windows (every 127.x is "this PC"). Pick `127.0.0.1:8000`; the current version lists it once. |
 | "vMix not reachable" | vMix isn't running, or Web Controller is off or not on port 8088 (B4). |
 | Google: "Access blocked … can only be used within its organization" (org_internal) | The Google app is set to Internal but the channel is a Brand Account. Set the app's Audience to **External**. |
 | YouTube sign-in stops working after about 7 days | The Google app is in **Testing** mode. Switch it to **In production**, or press Connect YouTube again. |

@@ -45,12 +45,19 @@ pub const APP_NAME: &str = "overlay-bridge";
 
 /// Built-in defaults, used only once neither an explicit CLI argument nor a stored setting
 /// supplies a value. Match the values `main.rs`'s CLI flags used before this task added
-/// persistence (`--refbox-host` `127.0.0.1`, `--refbox-port` `8000`, `--port` `8099`), so a
-/// first-ever run with no flags and no settings file behaves exactly as every run before this
-/// task did.
+/// persistence (`--refbox-host` `127.0.0.1`, `--refbox-port` `8000`), so a first-ever run with
+/// no flags and no settings file behaves the same as before.
+///
+/// The HTTP port is **8098**. It used to be 8099, but vMix's TCP API permanently listens on 8099
+/// (hard-coded, not configurable), so on a streaming PC running vMix the bridge couldn't start.
+/// 8088 is vMix's web controller and 8090 is stream-manager's control page, so neither of those.
 pub const DEFAULT_REFBOX_HOST: &str = "127.0.0.1";
 pub const DEFAULT_REFBOX_PORT: u16 = 8000;
-pub const DEFAULT_PORT: u16 = 8099;
+pub const DEFAULT_PORT: u16 = 8098;
+/// The old default HTTP port, which always collides with vMix (see [`DEFAULT_PORT`]). A *saved*
+/// 8099 is from a run before the change, not a deliberate choice, so it's moved to the new default.
+/// Typing `--port 8099` explicitly still works.
+const OLD_DEFAULT_PORT: u16 = 8099;
 
 /// Where team and player names come from: the Portal (the existing, default behaviour), or two
 /// local CSV files, for an event with no Portal access at all -- see `local_roster`'s module doc.
@@ -130,7 +137,7 @@ pub struct Overrides {
 /// with no optional fields makes that impossible: a setting can be wrong, but it can no longer be
 /// *absent*, and [`resolve_all`] is the single place any of them is decided.
 ///
-/// [`Default`] is the bridge's built-in configuration (`127.0.0.1:8000`, HTTP on 8099, nothing
+/// [`Default`] is the bridge's built-in configuration (`127.0.0.1:8000`, HTTP on 8098, nothing
 /// remembered anywhere) -- genuinely what a first-ever run with no
 /// flags and no settings file uses, which is also what makes it the honest starting point for a
 /// test that cares about only one field.
@@ -210,7 +217,11 @@ pub fn resolve_all(
                 defaults.refbox.port,
             ),
         ),
-        port: resolve(overrides.port, stored.port, defaults.port),
+        port: resolve(
+            overrides.port,
+            stored.port.filter(|port| *port != OLD_DEFAULT_PORT),
+            defaults.port,
+        ),
         settings_path,
         roster_source: resolve(
             overrides.roster_source,
@@ -393,6 +404,33 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_file(&self.0);
         }
+    }
+
+    #[test]
+    fn a_saved_8099_moves_to_the_new_default_but_a_typed_one_is_kept() {
+        // 8099 is vMix's hard-coded TCP API port, so a bridge that saved it (the old default)
+        // could never start next to vMix again. A deliberately typed `--port 8099` is respected.
+        let stored = Settings {
+            port: Some(8099),
+            ..Settings::default()
+        };
+        assert_eq!(
+            resolve_all(Overrides::default(), stored.clone(), None).port,
+            DEFAULT_PORT
+        );
+        assert_eq!(DEFAULT_PORT, 8098);
+
+        let typed = Overrides {
+            port: Some(8099),
+            ..Overrides::default()
+        };
+        assert_eq!(resolve_all(typed, stored, None).port, 8099);
+
+        let other = Settings {
+            port: Some(9000),
+            ..Settings::default()
+        };
+        assert_eq!(resolve_all(Overrides::default(), other, None).port, 9000);
     }
 
     #[test]

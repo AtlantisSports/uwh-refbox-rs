@@ -32,7 +32,7 @@ Learn more about NDI and get NDI Tools at https://ndi.video.
                                ▼
  ┌───────────────────── Court 1 mini PC ─────────────────────┐
  │ overlay-bridge ──► overlay ──NDI──► vMix ──► YouTube       │
- │   (status page :8099)                ▲                     │
+ │   (status page :8098)                ▲                     │
  │ Stream Manager ──(vMix control :8088)┘  ──► YouTube API    │
  │   (control page :8090)  also reads the refbox (port 8000)  │
  └────────────────────────────────────────────────────────────┘
@@ -168,7 +168,7 @@ single file; the overlay's images and fonts are built into it.
 ### B2. overlay-bridge
 
 1. Double-click **overlay-bridge**. A console window opens and the **status page** opens in the
-   browser at `http://127.0.0.1:8099`.
+   browser at `http://127.0.0.1:8098`. (Port 8099 is taken by vMix, so the bridge uses 8098.)
 2. On the status page, set the **refbox** to this court's refbox (its IP address, port `8000`).
 3. Choose where team names come from: **UWH Portal** (normal), or **Local** with the two CSV files
    (for venues without portal access).
@@ -191,7 +191,7 @@ files in `%APPDATA%\overlay-bridge\config\csv-files\`.
    - If the engine is already installed, there's nothing to see: it's found automatically.
    - Then close the overlay. This first start also created its settings file at
      `%APPDATA%\overlay\config\default-config.toml`.
-2. Open that file in Notepad and check `bridge_url = "http://127.0.0.1:8099"`. That's the default
+2. Open that file in Notepad and check `bridge_url = "http://127.0.0.1:8098"`. That's the default
    when the bridge runs on the same PC. Save if you changed anything.
 3. Start **overlay** again and leave it running. Its window shows a small preview; the real picture
    goes out over NDI.
@@ -339,6 +339,8 @@ stream key A or B, alternating.
 | YouTube: "bitrate … lower than recommended" / new graphics look blocky for a few seconds | Turn on **Strict CBR + NAL CBR**, use Preset **P5**, and check vMix's `bitrate=` shows about 12000. |
 | Red: "The refbox is on Game X, which isn't in …'s schedule" | The refbox isn't on this event or court. Select the right event and court on the refbox. |
 | Red: "Game X has no YouTube video yet" | Run **Prepare** for that day and court. |
+| overlay-bridge window opens and closes at once / "could not start the bridge's HTTP server on 0.0.0.0:8099" | An old version uses port 8099, which vMix always occupies. Use the current download (port 8098). Or start it once from PowerShell with `.\overlay-bridge.exe --port 8098`; it remembers the port. |
+| Overlay shows no team names or scores | The overlay can't reach the bridge. Check `bridge_url` in `%APPDATA%\overlay\config\default-config.toml` matches the bridge's port (`http://127.0.0.1:8098`), and that the bridge's status page shows the refbox connected. Restart the overlay after changing the file. |
 | "vMix not reachable" | vMix isn't running, or Web Controller is off or not on port 8088 (B4). |
 | Google: "Access blocked … can only be used within its organization" (org_internal) | The Google app is set to Internal but the channel is a Brand Account. Set the app's Audience to **External**. |
 | YouTube sign-in stops working after about 7 days | The Google app is in **Testing** mode. Switch it to **In production**, or press Connect YouTube again. |

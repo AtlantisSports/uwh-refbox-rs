@@ -399,3 +399,15 @@ Tested at a practice session using **unlisted** videos and a small test event on
   - Approved by the organizer, who is responsible for the project and has read and accepted the
     NDI SDK License Agreement on its behalf (2026-10-03). The workflow installs the SDK on the
     project's behalf.
+- **Portal watch links (2026-10-05):** at the organizer's request, Stream Manager fills each game's
+  `watchUrl` on the portal with its YouTube link: automatically after every Prepare, and cleared
+  again when test videos are deleted.
+  - It uses the portal's existing admin endpoint `POST /api/admin/update-games-watch-urls` (one
+    request for all games), so no portal change is needed. It needs a portal account with the
+    **admin** role.
+  - The editable alternative (`PUT …/schedule/games/{n}`, open to event organisers) was rejected:
+    it replaces a game's whole definition and could overwrite schedule data.
+  - Portal access tokens only last about 15 minutes, so the admin email and password are saved in
+    `Documents\stream-manager\portal-login.json`. The password is encrypted with Windows DPAPI for
+    the current user (PowerShell `ConvertFrom-SecureString`, fed through stdin rather than the
+    command line), and can only be entered from the PC itself.

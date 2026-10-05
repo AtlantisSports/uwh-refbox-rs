@@ -258,8 +258,15 @@ Also set:
    through "Google hasn't verified this app" (Advanced → Go to Stream-Manager) → Allow.
    - **Check:** the header shows the channel name with a green dot.
 6. Click **Check stream keys**. **Check:** both of this court's keys are found.
-7. **Live tab.** **Check:** "Refbox connected" and "vMix connected" are both green.
-8. **Windows Firewall:** if Windows asks, allow stream-manager on **Private** networks. That lets the
+7. ⛔ **STOP — a human must do this.** Under **Portal sign-in (for "watch" links)**, enter the email and
+   password of a portal account with **admin** rights → **Save and check**. Stream Manager checks them
+   with the portal and stores the password encrypted, so only this Windows user on this PC can read it.
+   From then on, every Prepare puts each game's YouTube link into the "watch" space of the portal
+   schedule, and deleting test videos clears them again.
+   - **Check:** "Signed in as … (admin)" in green. Without this, everything else still works, but the
+     portal gets no watch links.
+8. **Live tab.** **Check:** "Refbox connected" and "vMix connected" are both green.
+9. **Windows Firewall:** if Windows asks, allow stream-manager on **Private** networks. That lets the
    other mini PC and the Stream Deck reach the control page.
 
 Settings and secrets live in `Documents\stream-manager\`:
@@ -297,7 +304,9 @@ videos, the privacy and the cost (YouTube's daily allowance is 10,000 units) →
 YouTube**.
 
 **Check:** the "Videos for this event" list shows every game in schedule order, each linked to
-stream key A or B, alternating.
+stream key A or B, alternating. The Prepare log ends with "Portal: watch links set for N game(s)",
+and the portal's schedule page shows a watch link for each game. If the portal couldn't be reached,
+use **Send links to portal again** later.
 
 ### C2. Dry run (strongly recommended)
 
@@ -341,6 +350,7 @@ stream key A or B, alternating.
 | Red: "Game X has no YouTube video yet" | Run **Prepare** for that day and court. |
 | overlay-bridge window opens and closes at once / "could not start the bridge's HTTP server on 0.0.0.0:8099" | An old version uses port 8099, which vMix always occupies. Use the current download (port 8098). Or start it once from PowerShell with `.\overlay-bridge.exe --port 8098`; it remembers the port. |
 | Overlay shows no team names or scores | The overlay can't reach the bridge. Check `bridge_url` in `%APPDATA%\overlay\config\default-config.toml` matches the bridge's port (`http://127.0.0.1:8098`), and that the bridge's status page shows the refbox connected. Restart the overlay after changing the file. |
+| Prepare log: "⚠ Portal watch links not updated: …" | The message says why: wrong portal password (save it again in Settings), an account without admin rights, or the portal unreachable. Fix it, then press **Send links to portal again** on the Prepare tab. |
 | "vMix not reachable" | vMix isn't running, or Web Controller is off or not on port 8088 (B4). |
 | Google: "Access blocked … can only be used within its organization" (org_internal) | The Google app is set to Internal but the channel is a Brand Account. Set the app's Audience to **External**. |
 | YouTube sign-in stops working after about 7 days | The Google app is in **Testing** mode. Switch it to **In production**, or press Connect YouTube again. |

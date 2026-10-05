@@ -154,6 +154,7 @@
         <div class="row">
           <button class="small" onclick="loadVideos(true)">Check status on YouTube</button>
           <span class="muted">(uses about 1 unit)</span>
+          <button class="small" onclick="sendPortalLinks()">Send links to portal again</button>
         </div>
         <div id="videos"></div>
       </div>
@@ -224,6 +225,23 @@
           <button class="small primary" onclick="saveSettings()">Save settings</button>
           <span id="s-saved"></span>
         </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>Portal sign-in (for "watch" links)</h2>
+        <p class="muted">After every Prepare, Stream Manager puts each game's YouTube link into the "watch" space
+          of the portal's schedule. That needs a portal account with <b>admin</b> rights. The password is stored
+          encrypted, readable only by this Windows user on this PC.</p>
+        <div id="portal-state" class="big"></div>
+        <div class="row" id="portal-form">
+          <input id="portal-email" type="email" placeholder="Portal email" autocomplete="off">
+          <input id="portal-password" type="password" placeholder="Portal password" autocomplete="off">
+          <button class="small primary" onclick="savePortalLogin()">Save and check</button>
+        </div>
+        <div class="row">
+          <button class="small" id="portal-forget" onclick="forgetPortalLogin()">Forget sign-in</button>
+          <span id="portal-msg"></span>
+        </div>
+        <p class="muted" id="portal-local-note"></p>
       </div>
       <div class="card" style="margin-top:16px">
         <h2>PIN</h2>
@@ -337,6 +355,10 @@ function renderStatus() {
   renderCourts();
   renderJob();
   $('yt-sign-in').textContent = s.sign_in || '';
+  $('portal-state').innerHTML = s.portal_login
+    ? `<span class="ok-text">● Signed in as</span> ${esc(s.portal_login)} <span class="muted">(admin)</span>`
+    : `<span class="muted">● No portal sign-in saved: watch links won't be set</span>`;
+  $('portal-forget').classList.toggle('hidden', !s.portal_login);
   $('yt-state').innerHTML = s.youtube_connected
     ? `<span class="ok-text">● Connected</span> ${esc(s.youtube_channel || '')}`
     : `<span class="bad-text">● Not connected</span>`;
@@ -538,6 +560,8 @@ async function loadSettings() {
     const local = ['127.0.0.1', 'localhost'].includes(location.hostname);
     $('yt-connect').disabled = !local;
     $('yt-local-note').textContent = local ? '' : 'Connect YouTube from the laptop running Stream Manager.';
+    $('portal-form').classList.toggle('hidden', !local);
+    $('portal-local-note').textContent = local ? '' : 'Enter the portal sign-in on the PC running Stream Manager.';
     $('s-lan').innerHTML = lanUrl ? `Other devices on the network can open <code>${esc(lanUrl)}</code>` : '';
   } catch (_) {}
 }
@@ -618,6 +642,26 @@ async function checkYouTube() {
     const missing = r.courts.some(c => !c.ok) ? `<p class="muted">Stream keys on this channel: ${r.all_streams.map(esc).join(', ')}</p>` : '';
     $('yt-check').innerHTML = `<p>Channel: <b>${esc(r.channel)}</b></p><ul>${rows}</ul>${missing}`;
   } catch (e) { $('yt-check').innerHTML = `<div class="banner error">${esc(e.message)}</div>`; }
+}
+
+async function savePortalLogin() {
+  $('portal-msg').innerHTML = '<span class="muted">Checking with the portal…</span>';
+  try {
+    const r = await api('/api/portal-login', { method: 'POST',
+      body: { email: $('portal-email').value, password: $('portal-password').value } });
+    $('portal-password').value = '';
+    $('portal-msg').innerHTML = `<span class="ok-text">Saved ✓ (${esc(r.email)} has admin rights)</span>`;
+    poll();
+  } catch (e) { $('portal-msg').innerHTML = `<span class="bad-text">${esc(e.message)}</span>`; }
+}
+async function forgetPortalLogin() {
+  if (!confirm('Forget the portal sign-in? Watch links will no longer be set after Prepare.')) return;
+  try { await api('/api/portal-login/forget', { method: 'POST' }); $('portal-msg').textContent = ''; poll(); }
+  catch (e) { alert(e.message); }
+}
+async function sendPortalLinks() {
+  try { await api('/api/portal-links/send', { method: 'POST' }); poll(); }
+  catch (e) { alert(e.message); }
 }
 
 // ---------- Tools ----------

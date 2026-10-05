@@ -36,6 +36,8 @@ mod pages;
 use load_images::Texture;
 
 const APP_NAME: &str = "overlay";
+/// The overlay-bridge address used before the bridge's default port moved to 8098.
+const OLD_DEFAULT_BRIDGE_URL: &str = "http://127.0.0.1:8099";
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct AppConfig {
@@ -54,7 +56,7 @@ impl Default for AppConfig {
             refbox_ip: IpAddr::from_str("127.0.0.1").unwrap(),
             refbox_port: 8000,
             uwhportal_url: String::from("https://api.uwhportal.com"),
-            bridge_url: String::from("http://127.0.0.1:8099"),
+            bridge_url: String::from("http://127.0.0.1:8098"),
         }
     }
 }
@@ -244,7 +246,7 @@ struct Cli {
 async fn main() {
     init_logging();
 
-    let config: AppConfig = match confy::load(APP_NAME, None) {
+    let mut config: AppConfig = match confy::load(APP_NAME, None) {
         Ok(config) => config,
         Err(e) => {
             warn!("Failed to read config file, overwriting with default. Error: {e}");
@@ -253,6 +255,16 @@ async fn main() {
             config
         }
     };
+    // The bridge's default port moved from 8099 (vMix's hard-coded TCP API port, so the two
+    // collided on the streaming PC) to 8098. A settings file saved with the old local default is
+    // brought along; any other address is the operator's choice and is left alone.
+    if config.bridge_url.trim_end_matches('/') == OLD_DEFAULT_BRIDGE_URL {
+        config.bridge_url = AppConfig::default().bridge_url;
+        info!("Moved the overlay-bridge address to {}", config.bridge_url);
+        if let Err(e) = confy::store(APP_NAME, None, &config) {
+            warn!("Couldn't save the updated overlay-bridge address: {e}");
+        }
+    }
 
     let (tx, rx) = bounded::<StateUpdate>(3);
 

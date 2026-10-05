@@ -27,6 +27,8 @@ mod flag;
 mod load_images;
 #[cfg(feature = "ndi")]
 mod ndi_output;
+#[cfg(feature = "ndi")]
+mod ndi_runtime;
 mod network;
 use network::{BLACK_TEAM_NAME, WHITE_TEAM_NAME};
 mod pages;
@@ -295,14 +297,15 @@ async fn main() {
     let mut flag_renderer = flag::Renderer::new();
     macroquad::window::miniquad::window::show_mouse(false);
 
+    // NDI output starts as soon as NDI's engine is available. On a PC without it, the engine
+    // is downloaded and installed in the background first (see `ndi_runtime.rs`); the overlay
+    // runs normally meanwhile.
     #[cfg(feature = "ndi")]
-    let mut ndi_output = match ndi_output::NdiOutput::new("UWH Overlay") {
-        Ok(output) => Some(output),
-        Err(e) => {
-            warn!("Failed to start NDI output, continuing without it: {e}");
-            None
-        }
-    };
+    let ndi_engine = ndi_runtime::EngineWatch::start();
+    #[cfg(feature = "ndi")]
+    let mut ndi_output: Option<ndi_output::NdiOutput> = None;
+    #[cfg(feature = "ndi")]
+    let mut ndi_started = false;
 
     // Every page draws assuming a fixed 3840x1080 canvas (see `pages::mod`'s
     // `draw_texture_both!` family, which hardcodes a 1920 split). The *window* `window_conf()`
@@ -382,6 +385,24 @@ async fn main() {
         // `get_screen_data()` (the visible window), which may be smaller than that on this
         // machine (see `canvas`'s doc above).
         #[cfg(feature = "ndi")]
+        if !ndi_started {
+            if let Some(engine_dir) = ndi_engine.ready() {
+                ndi_started = true;
+                ndi_output = match ndi_runtime::with_engine_dir(engine_dir.as_deref(), || {
+                    ndi_output::NdiOutput::new("UWH Overlay")
+                }) {
+                    Ok(output) => {
+                        info!("NDI output started");
+                        Some(output)
+                    }
+                    Err(e) => {
+                        warn!("Failed to start NDI output, continuing without it: {e}");
+                        None
+                    }
+                };
+            }
+        }
+        #[cfg(feature = "ndi")]
         if let Some(ndi_output) = ndi_output.as_mut() {
             // Without this, `get_texture_data` below can read the canvas before this frame's
             // batched draw calls have actually been submitted to the GPU -- the same reason
@@ -407,6 +428,18 @@ async fn main() {
                 ..Default::default()
             },
         );
+        // Only on the local preview, never in the NDI picture: why NDI isn't running yet.
+        #[cfg(feature = "ndi")]
+        if ndi_output.is_none() {
+            let note = match ndi_engine.status() {
+                ndi_runtime::EngineStatus::Preparing(message) => format!("NDI: {message}"),
+                ndi_runtime::EngineStatus::Unavailable(message) => format!("NDI off: {message}"),
+                ndi_runtime::EngineStatus::Ready(_) => {
+                    "NDI off: couldn't start NDI output (see the log)".to_string()
+                }
+            };
+            draw_text(&note, 10., 30., 24., YELLOW);
+        }
 
         next_frame().await;
     }

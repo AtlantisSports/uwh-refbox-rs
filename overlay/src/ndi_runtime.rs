@@ -1,3 +1,4 @@
+#![cfg_attr(not(feature = "ndi"), allow(dead_code))]
 //! Makes sure NDI®'s runtime (the "engine", `Processing.NDI.Lib.x64.dll`) is available before NDI
 //! output starts, so a fresh streaming PC needs no manual NDI setup. NDI® is a registered
 //! trademark of Vizrt NDI AB (https://ndi.video).
@@ -105,6 +106,85 @@ pub fn with_engine_dir<T>(dir: Option<&Path>, start_ndi: impl FnOnce() -> T) -> 
     result
 }
 
+/// The organisation NDI's runtime installer is signed by (checked 2026-10-07 against
+/// https://ndi.link/NDIRedistV6: `CN=Vizrt AG, O=Vizrt AG, L=Zürich, C=CH`).
+pub const EXPECTED_SIGNER: &str = "Vizrt AG";
+/// The certificate authority that issued that certificate (DigiCert Trusted G4 Code Signing…).
+const EXPECTED_ISSUER_PREFIX: &str = "DigiCert ";
+/// The installer's own product name, so another program Vizrt signed isn't run instead.
+const EXPECTED_PRODUCT: &str = "NDI 6 Runtime";
+/// The real installer is about 10 MB.
+pub const MAX_INSTALLER_BYTES: u64 = 100 * 1024 * 1024;
+/// The only places the download may come from (NDI's link service and its download server).
+const ALLOWED_HOSTS: [&str; 2] = ["ndi.link", "downloads.ndi.tv"];
+
+/// What Windows reports about a downloaded installer: gathered by PowerShell as JSON (see
+/// `windows::installer_facts`).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct InstallerFacts {
+    /// `Get-AuthenticodeSignature`'s status, `Valid` when Windows trusts the signature.
+    pub status: String,
+    /// The signing certificate's common name.
+    pub signer_name: String,
+    /// The signing certificate's subject, one `KEY=value` part per entry.
+    pub signer_subject: Vec<String>,
+    /// The common name of the authority that issued the signing certificate.
+    pub issuer_name: String,
+    /// The file's ProductName.
+    pub product_name: String,
+}
+
+/// Accepts the file only if Windows trusts its signature, it is signed by Vizrt AG (both the
+/// common name and the organisation must match exactly) through DigiCert, and it calls itself
+/// NDI's runtime installer.
+pub fn installer_is_acceptable(facts: &InstallerFacts) -> Result<(), String> {
+    if facts.status != "Valid" {
+        return Err(format!("its signature status is \"{}\"", facts.status));
+    }
+    let organisation = format!("O={EXPECTED_SIGNER}");
+    if facts.signer_name != EXPECTED_SIGNER
+        || !facts
+            .signer_subject
+            .iter()
+            .any(|part| part.trim() == organisation)
+    {
+        return Err(format!(
+            "it is signed by \"{}\", not {EXPECTED_SIGNER}",
+            facts.signer_name
+        ));
+    }
+    if !facts.issuer_name.starts_with(EXPECTED_ISSUER_PREFIX) {
+        return Err(format!(
+            "its certificate was issued by \"{}\", not DigiCert",
+            facts.issuer_name
+        ));
+    }
+    if facts.product_name.trim() != EXPECTED_PRODUCT {
+        return Err(format!(
+            "it is \"{}\", not NDI's runtime installer",
+            facts.product_name.trim()
+        ));
+    }
+    Ok(())
+}
+
+/// Only HTTPS links to NDI's own sites are followed.
+pub fn redirect_allowed(url: &reqwest::Url) -> bool {
+    url.scheme() == "https"
+        && url
+            .host_str()
+            .is_some_and(|host| ALLOWED_HOSTS.contains(&host))
+}
+
+/// Adds `more` bytes to the `so_far` already downloaded, refusing anything past
+/// [`MAX_INSTALLER_BYTES`].
+pub fn within_size_limit(so_far: u64, more: u64) -> Result<u64, String> {
+    so_far
+        .checked_add(more)
+        .filter(|total| *total <= MAX_INSTALLER_BYTES)
+        .ok_or_else(|| "the download is far larger than NDI's installer".to_string())
+}
+
 #[cfg(not(windows))]
 fn prepare_engine(_progress: &dyn Fn(&str)) -> Result<Option<PathBuf>, String> {
     // Elsewhere the NDI library is found by the system's normal library search, as before.
@@ -119,8 +199,12 @@ fn prepare_engine(progress: &dyn Fn(&str)) -> Result<Option<PathBuf>, String> {
 #[cfg(windows)]
 mod windows {
     use std::{
+        fs::{File, OpenOptions},
+        io::Write,
+        os::windows::fs::OpenOptionsExt,
         path::{Path, PathBuf},
         process::Command,
+        time::Duration,
     };
 
     pub const ENGINE_DLL: &str = "Processing.NDI.Lib.x64.dll";
@@ -128,10 +212,14 @@ mod windows {
     const INSTALLER_URL: &str = "https://ndi.link/NDIRedistV6";
     const RUNTIME_ENV: &str = "NDI_RUNTIME_DIR_V6";
     const DEFAULT_RUNTIME_DIR: &str = r"C:\Program Files\NDI\NDI 6 Runtime\v6";
-    /// The organisation in the installer's code-signing certificate.
-    const EXPECTED_SIGNER: &str = "Vizrt";
-    const MANUAL_HELP: &str = "Install the NDI engine from https://ndi.link/NDIRedistV6 (or NDI Tools from \
-         https://ndi.video/tools/), then restart the overlay.";
+    const MANUAL_HELP: &str = "Click Install NDI to try again, or install the NDI engine from https://ndi.link/NDIRedistV6 (or NDI Tools from https://ndi.video/tools/) and restart the overlay.";
+    const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+    const READ_TIMEOUT: Duration = Duration::from_secs(30);
+    const TOTAL_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+    /// Windows `FILE_SHARE_READ`: others may read the file, nobody may write or delete it.
+    const FILE_SHARE_READ: u32 = 0x0000_0001;
+    /// The environment variable PowerShell reads the installer's path from.
+    const PATH_VARIABLE: &str = "UWH_NDI_INSTALLER";
 
     pub fn prepare_engine(progress: &dyn Fn(&str)) -> Result<PathBuf, String> {
         if let Some(dir) = find_engine() {
@@ -139,26 +227,7 @@ mod windows {
             return Ok(dir);
         }
 
-        progress("The NDI engine isn't installed. Downloading NDI's official installer…");
-        let installer = download_installer().map_err(|e| {
-            format!("Couldn't download the NDI engine installer: {e}. {MANUAL_HELP}")
-        })?;
-
-        progress("Checking the installer's digital signature…");
-        if let Err(e) = check_signature(&installer) {
-            let _ = std::fs::remove_file(&installer);
-            return Err(format!(
-                "The downloaded NDI installer was rejected: {e}. {MANUAL_HELP}"
-            ));
-        }
-
-        progress(
-            "Installing the NDI engine: allow the installer to make changes and accept NDI's \
-             licence…",
-        );
-        let ran = run_installer(&installer);
-        let _ = std::fs::remove_file(&installer);
-        ran.map_err(|e| format!("The NDI engine installer didn't run: {e}. {MANUAL_HELP}"))?;
+        install_engine(progress)?;
 
         find_engine().ok_or_else(|| {
             format!(
@@ -185,10 +254,28 @@ mod windows {
         .find(|dir| dir.join(ENGINE_DLL).is_file())
     }
 
+    /// `%SystemRoot%\System32\<rest>`, so a same-named program elsewhere on the PATH is never run.
+    fn system32(rest: &str) -> PathBuf {
+        let root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
+        PathBuf::from(root).join("System32").join(rest)
+    }
+
+    fn powershell() -> Command {
+        let mut command = Command::new(system32(r"WindowsPowerShell\v1.0\powershell.exe"));
+        command.args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+        ]);
+        command
+    }
+
     /// Reads a machine-wide environment variable as stored now (not as it was when this process
     /// started).
     fn system_environment_value(name: &str) -> Option<String> {
-        let output = Command::new("reg")
+        let output = Command::new(system32("reg.exe"))
             .args([
                 "query",
                 r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
@@ -212,64 +299,139 @@ mod windows {
         })
     }
 
-    fn download_installer() -> Result<PathBuf, String> {
+    /// Downloads, checks and runs NDI's runtime installer. Windows asks for permission; the person
+    /// accepts NDI's licence in the installer.
+    pub fn install_engine(progress: &dyn Fn(&str)) -> Result<(), String> {
+        progress("Downloading NDI's official installer…");
+        let (folder, installer) = download_installer().map_err(|e| {
+            format!("Couldn't download the NDI engine installer: {e}. {MANUAL_HELP}")
+        })?;
+        let result = check_and_run(&installer, progress);
+        let _ = std::fs::remove_dir_all(&folder);
+        result
+    }
+
+    fn check_and_run(installer: &Path, progress: &dyn Fn(&str)) -> Result<(), String> {
+        // Held until the installer has finished: while it is open, nobody can change or replace
+        // the file, so what is checked is exactly what runs.
+        let _locked = OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(installer)
+            .map_err(|e| format!("Couldn't open the downloaded installer: {e}. {MANUAL_HELP}"))?;
+        progress("Checking the installer's digital signature…");
+        let facts = installer_facts(installer)
+            .map_err(|e| format!("Couldn't check the NDI installer: {e}. {MANUAL_HELP}"))?;
+        super::installer_is_acceptable(&facts).map_err(|e| {
+            format!("The downloaded NDI installer was rejected: {e}. {MANUAL_HELP}")
+        })?;
+        progress(
+            "Installing the NDI engine: allow the installer to make changes and accept NDI's \
+             licence…",
+        );
+        run_installer(installer)
+            .map_err(|e| format!("The NDI engine installer didn't run: {e}. {MANUAL_HELP}"))
+    }
+
+    /// Into a new folder of its own under the temp folder (refusing one that already exists), so
+    /// two overlays can't collide and nothing can be planted there beforehand.
+    fn download_installer() -> Result<(PathBuf, PathBuf), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        let folder =
+            std::env::temp_dir().join(format!("uwh-overlay-ndi-{}-{nanos}", std::process::id()));
+        std::fs::create_dir(&folder).map_err(|e| e.to_string())?;
+        let installer = folder.join("NDI 6 Runtime.exe");
+        let written = fetch_into(&installer);
+        if let Err(e) = written {
+            let _ = std::fs::remove_dir_all(&folder);
+            return Err(e);
+        }
+        Ok((folder, installer))
+    }
+
+    fn fetch_into(installer: &Path) -> Result<(), String> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .map_err(|e| e.to_string())?;
-        let bytes = runtime.block_on(async {
-            let response = reqwest::get(INSTALLER_URL).await?.error_for_status()?;
-            response.bytes().await
-        });
-        let bytes = bytes.map_err(|e| e.to_string())?;
-        let path = std::env::temp_dir().join("NDI 6 Runtime installer.exe");
-        std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
-        Ok(path)
+        runtime.block_on(async {
+            let client = reqwest::Client::builder()
+                .connect_timeout(CONNECT_TIMEOUT)
+                .read_timeout(READ_TIMEOUT)
+                .timeout(TOTAL_TIMEOUT)
+                .https_only(true)
+                .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                    if attempt.previous().len() >= 5 {
+                        attempt.error("too many redirects")
+                    } else if super::redirect_allowed(attempt.url()) {
+                        attempt.follow()
+                    } else {
+                        let refused = format!("refused a redirect to {}", attempt.url());
+                        attempt.error(refused)
+                    }
+                }))
+                .build()
+                .map_err(|e| e.to_string())?;
+            let mut response = client
+                .get(INSTALLER_URL)
+                .send()
+                .await
+                .and_then(reqwest::Response::error_for_status)
+                .map_err(|e| e.to_string())?;
+            if let Some(length) = response.content_length() {
+                super::within_size_limit(0, length)?;
+            }
+            let mut file = File::create_new(installer).map_err(|e| e.to_string())?;
+            let mut so_far = 0;
+            while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+                so_far = super::within_size_limit(so_far, chunk.len() as u64)?;
+                file.write_all(&chunk).map_err(|e| e.to_string())?;
+            }
+            file.sync_all().map_err(|e| e.to_string())
+        })
     }
 
-    /// Single-quotes a path for PowerShell.
-    fn ps_quote(path: &Path) -> String {
-        format!("'{}'", path.display().to_string().replace('\'', "''"))
-    }
-
-    /// Asks Windows whether the file carries a valid code signature from Vizrt (NDI's owner).
-    fn check_signature(installer: &Path) -> Result<(), String> {
-        let script = format!(
-            "$s = Get-AuthenticodeSignature -LiteralPath {}; \
-             Write-Output ($s.Status.ToString() + '|' + $s.SignerCertificate.Subject)",
-            ps_quote(installer)
-        );
-        let output = Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+    /// Asks Windows about the file's signature and product name. The path reaches PowerShell only
+    /// through an environment variable, so no file name can change the script.
+    fn installer_facts(installer: &Path) -> Result<super::InstallerFacts, String> {
+        const SCRIPT: &str = r#"
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$path = $env:UWH_NDI_INSTALLER
+$s = Get-AuthenticodeSignature -LiteralPath $path
+$c = $s.SignerCertificate
+$facts = [ordered]@{
+  status = $s.Status.ToString()
+  signer_name = if ($c) { $c.GetNameInfo('SimpleName', $false) } else { '' }
+  signer_subject = if ($c) { @($c.SubjectName.Format($true) -split "`r?`n" | Where-Object { $_ }) } else { @() }
+  issuer_name = if ($c) { $c.GetNameInfo('SimpleName', $true) } else { '' }
+  product_name = [string](Get-Item -LiteralPath $path).VersionInfo.ProductName
+}
+ConvertTo-Json -InputObject $facts -Compress
+"#;
+        let output = powershell()
+            .arg(SCRIPT)
+            .env(PATH_VARIABLE, installer)
             .output()
             .map_err(|e| format!("couldn't run the signature check: {e}"))?;
-        let answer = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        signature_is_acceptable(&answer)
-    }
-
-    /// `answer` is `<status>|<certificate subject>`.
-    pub(super) fn signature_is_acceptable(answer: &str) -> Result<(), String> {
-        let (status, subject) = answer.split_once('|').unwrap_or((answer, ""));
-        if status != "Valid" {
-            return Err(format!("its signature status is \"{status}\""));
-        }
-        if !subject.contains(EXPECTED_SIGNER) {
-            return Err(format!(
-                "it is signed by \"{subject}\", not {EXPECTED_SIGNER}"
-            ));
-        }
-        Ok(())
+        serde_json::from_slice(&output.stdout).map_err(|e| {
+            format!(
+                "unexpected answer from the signature check ({e}): {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )
+        })
     }
 
     /// Starts the installer with administrator rights (Windows shows its permission prompt) and
     /// waits for it to finish.
     fn run_installer(installer: &Path) -> Result<(), String> {
-        let script = format!(
-            "Start-Process -FilePath {} -Verb RunAs -Wait",
-            ps_quote(installer)
-        );
-        let status = Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        const SCRIPT: &str = "Start-Process -FilePath $env:UWH_NDI_INSTALLER -Verb RunAs -Wait";
+        let status = powershell()
+            .arg(SCRIPT)
+            .env(PATH_VARIABLE, installer)
             .status()
             .map_err(|e| e.to_string())?;
         if status.success() {
@@ -280,12 +442,14 @@ mod windows {
     }
 }
 
-#[cfg(all(test, windows))]
+#[cfg(test)]
 mod tests {
-    use super::windows::{parse_reg_query, signature_is_acceptable};
+    use super::*;
 
+    #[cfg(windows)]
     #[test]
     fn reads_the_value_from_reg_query_output() {
+        use super::windows::parse_reg_query;
         let output = "\r\nHKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment\r\n    NDI_RUNTIME_DIR_V6    REG_SZ    C:\\Program Files\\NDI\\NDI 6 Runtime\\v6\r\n\r\n";
         assert_eq!(
             parse_reg_query(output, "NDI_RUNTIME_DIR_V6").as_deref(),
@@ -298,11 +462,80 @@ mod tests {
         );
     }
 
+    fn genuine() -> InstallerFacts {
+        InstallerFacts {
+            status: "Valid".into(),
+            signer_name: "Vizrt AG".into(),
+            signer_subject: vec![
+                "CN=Vizrt AG".into(),
+                "O=Vizrt AG".into(),
+                "L=Zürich".into(),
+                "C=CH".into(),
+            ],
+            issuer_name: "DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1".into(),
+            product_name: "NDI 6 Runtime".into(),
+        }
+    }
+
     #[test]
-    fn only_a_valid_vizrt_signature_is_accepted() {
-        assert!(signature_is_acceptable("Valid|CN=Vizrt AG, O=Vizrt AG, L=Zürich, C=CH").is_ok());
-        assert!(signature_is_acceptable("NotSigned|").is_err());
-        assert!(signature_is_acceptable("HashMismatch|CN=Vizrt AG, O=Vizrt AG").is_err());
-        assert!(signature_is_acceptable("Valid|CN=Someone Else").is_err());
+    fn only_ndis_runtime_installer_signed_by_vizrt_is_accepted() {
+        assert_eq!(installer_is_acceptable(&genuine()), Ok(()));
+
+        let not_valid = InstallerFacts {
+            status: "HashMismatch".into(),
+            ..genuine()
+        };
+        assert!(installer_is_acceptable(&not_valid).is_err());
+
+        // "Vizrt" somewhere in another company's name is not Vizrt.
+        let lookalike = InstallerFacts {
+            signer_name: "Vizrtx Ltd".into(),
+            signer_subject: vec!["CN=Vizrtx Ltd".into(), "O=Vizrtx Ltd".into()],
+            ..genuine()
+        };
+        assert!(installer_is_acceptable(&lookalike).is_err());
+
+        // The right common name but another organisation.
+        let wrong_org = InstallerFacts {
+            signer_subject: vec!["CN=Vizrt AG".into(), "O=Someone Else".into()],
+            ..genuine()
+        };
+        assert!(installer_is_acceptable(&wrong_org).is_err());
+
+        // Any other Vizrt program is not NDI's runtime installer.
+        let other_product = InstallerFacts {
+            product_name: "Vizrt Viz Engine".into(),
+            ..genuine()
+        };
+        assert!(installer_is_acceptable(&other_product).is_err());
+
+        // A certificate not issued by DigiCert.
+        let other_issuer = InstallerFacts {
+            issuer_name: "Some Test CA".into(),
+            ..genuine()
+        };
+        assert!(installer_is_acceptable(&other_issuer).is_err());
+    }
+
+    #[test]
+    fn the_download_only_follows_https_links_to_ndis_own_sites() {
+        let ok = |u: &str| redirect_allowed(&reqwest::Url::parse(u).unwrap());
+        assert!(ok("https://ndi.link/NDIRedistV6"));
+        assert!(ok(
+            "https://downloads.ndi.tv/SDK/NDI_SDK/NDI%206%20Runtime.exe"
+        ));
+        assert!(!ok(
+            "http://downloads.ndi.tv/SDK/NDI_SDK/NDI%206%20Runtime.exe"
+        ));
+        assert!(!ok("https://downloads.ndi.tv.example.com/x.exe"));
+        assert!(!ok("https://example.com/NDI%206%20Runtime.exe"));
+    }
+
+    #[test]
+    fn a_download_larger_than_the_limit_is_refused() {
+        assert_eq!(within_size_limit(0, 9_648_232), Ok(9_648_232));
+        assert!(within_size_limit(MAX_INSTALLER_BYTES - 1, 1).is_ok());
+        assert!(within_size_limit(MAX_INSTALLER_BYTES, 1).is_err());
+        assert!(within_size_limit(u64::MAX, 1).is_err());
     }
 }

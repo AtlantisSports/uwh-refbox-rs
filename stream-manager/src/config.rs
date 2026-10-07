@@ -164,11 +164,33 @@ impl Default for Config {
     }
 }
 
+/// The event's slug goes into a file name (`state-<slug>.json`), so only letters, digits and
+/// dashes are accepted, as in every portal event address.
+pub fn check_event_slug(slug: &str) -> Result<(), String> {
+    if slug.is_empty() {
+        return Err("Choose an event first (Settings tab)".into());
+    }
+    if !slug.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(format!(
+            "The event {slug:?} isn't a portal event name: it may only use letters, digits and \
+             dashes (e.g. au-2026-henks-kings-cup). Choose the event again in Settings."
+        ));
+    }
+    Ok(())
+}
+
 impl Config {
     /// `validate`, plus the checks that only apply to settings being saved: these never stop
     /// an existing settings file from loading.
     pub fn validate_for_save(&self) -> Result<(), String> {
         self.validate()?;
+        // The event may still be unset; once chosen, it must be usable in a file name.
+        if !self.event_slug.is_empty() {
+            check_event_slug(&self.event_slug)?;
+        }
+        if self.quota_daily_limit == 0 {
+            return Err("YouTube's daily allowance must be at least 1 unit".into());
+        }
         // Two courts sharing Companion variables would overwrite each other's buttons; this only
         // matters while the Companion address is set.
         if !self.companion_address.trim().is_empty() {
@@ -342,5 +364,36 @@ mod tests {
             court.stream_names(),
             ["Court 1 - A".to_string(), "Main B".to_string()]
         );
+    }
+
+    #[test]
+    fn an_event_that_isnt_a_plain_portal_name_is_refused_on_save() {
+        let mut c = Config::default();
+        // Not chosen yet: fine.
+        assert_eq!(c.validate_for_save(), Ok(()));
+        for good in ["au-2026-henks-kings-cup", "Event2"] {
+            c.event_slug = good.into();
+            assert_eq!(c.validate_for_save(), Ok(()), "{good}");
+        }
+        for bad in ["../evil", "a/b", "a\\b", "cup 2026", "cup.json", "café"] {
+            c.event_slug = bad.into();
+            let error = c.validate_for_save().unwrap_err();
+            assert!(
+                error.contains("letters, digits and dashes"),
+                "{bad}: {error}"
+            );
+        }
+        assert!(check_event_slug("").is_err());
+    }
+
+    #[test]
+    fn a_daily_allowance_of_zero_is_refused_on_save() {
+        let mut c = Config {
+            quota_daily_limit: 0,
+            ..Default::default()
+        };
+        assert!(c.validate_for_save().unwrap_err().contains("at least 1"));
+        c.quota_daily_limit = 1;
+        assert_eq!(c.validate_for_save(), Ok(()));
     }
 }

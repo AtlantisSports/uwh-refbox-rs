@@ -9,7 +9,7 @@ use crate::{
     portal::{self, EventPlan, PlannedGame},
     prepare::{self, EventState},
     quota,
-    youtube::YouTube,
+    youtube::{YouTube, YouTubeAccess},
 };
 use time::OffsetDateTime;
 
@@ -118,18 +118,21 @@ pub async fn begin(
 }
 
 /// Updates the checked games' videos where the portal has changed. Returns how many changed.
+/// The YouTube connection is taken one game at a time, so a switch can go ahead in between.
 async fn update(
     app: &App,
-    yt: &mut YouTube,
+    youtube: &mut YouTubeAccess<'_>,
     check: &Check,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<usize, BoxError> {
-    let state_file = app.state_file();
-    let mut state = prepare::load_state(&state_file, &check.config.event_slug)?;
+    let state_file = app.state_file()?;
     let mut updated = 0;
     for game in check.games.iter().filter_map(|g| check.plan.game(g)) {
+        let mut yt = youtube.youtube().await?;
+        // Read afresh: a switch may have changed the record while the connection was free.
+        let mut state = prepare::load_state(&state_file, &check.config.event_slug)?;
         let changed = prepare::sync_video(
-            yt,
+            &mut yt,
             &check.config,
             &check.plan,
             game,
@@ -155,7 +158,7 @@ fn finish(
 ) -> Result<SyncReport, BoxError> {
     let removed = match check.day {
         Some(day) => {
-            let state = prepare::load_state(&app.state_file(), &check.config.event_slug)?;
+            let state = prepare::load_state(&app.state_file()?, &check.config.event_slug)?;
             removed_games(&state, &check.plan, &court.name, day)
         }
         None => Vec::new(),
@@ -180,8 +183,7 @@ pub async fn sync_court(
     let updated = if check.games.is_empty() {
         0
     } else {
-        let mut yt = app.youtube().await?;
-        update(app, &mut yt, &check, log).await?
+        update(app, &mut YouTubeAccess::Shared(app), &check, log).await?
     };
     finish(app, court, &check, updated, log)
 }
@@ -207,7 +209,7 @@ pub async fn complete(
     check: &Check,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<SyncReport, BoxError> {
-    let updated = update(app, yt, check, log).await?;
+    let updated = update(app, &mut YouTubeAccess::Held(yt), check, log).await?;
     finish(app, court, check, updated, log)
 }
 

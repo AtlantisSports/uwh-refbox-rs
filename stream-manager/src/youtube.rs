@@ -5,15 +5,19 @@
 //! Costs follow Google's published quota table: list calls cost 1 unit, and creating,
 //! changing, binding or deleting costs 50 units.
 
-use crate::{BoxError, google_auth::GoogleAuth, quota};
+use crate::{BoxError, app::App, google_auth::GoogleAuth, quota};
 use log::warn;
 use reqwest::{
     Method,
     header::{CONTENT_LENGTH, CONTENT_TYPE},
 };
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::{
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+};
 use time::OffsetDateTime;
+use tokio::sync::MappedMutexGuard;
 
 const API: &str = "https://www.googleapis.com/youtube/v3";
 const LIST_COST: u32 = 1;
@@ -57,14 +61,59 @@ pub struct YouTube {
     ledger: Option<PathBuf>,
 }
 
+/// Hands out the YouTube connection for one step of a longer job (one game of Prepare or of a
+/// title check). Taking it per step instead of for the whole job lets a court's switch, which
+/// needs the same connection, go ahead between two steps.
+pub enum YouTubeAccess<'a> {
+    /// The caller already holds the connection (a switch, or the terminal) and keeps it.
+    Held(&'a mut YouTube),
+    /// Taken from the program afresh for each step.
+    Shared(&'a App),
+}
+
+/// The connection for one step; released when dropped.
+pub enum YouTubeStep<'a> {
+    Held(&'a mut YouTube),
+    Shared(MappedMutexGuard<'a, YouTube>),
+}
+
+impl YouTubeAccess<'_> {
+    pub async fn youtube(&mut self) -> Result<YouTubeStep<'_>, BoxError> {
+        match self {
+            YouTubeAccess::Held(yt) => Ok(YouTubeStep::Held(yt)),
+            YouTubeAccess::Shared(app) => Ok(YouTubeStep::Shared(app.youtube().await?)),
+        }
+    }
+}
+
+impl Deref for YouTubeStep<'_> {
+    type Target = YouTube;
+
+    fn deref(&self) -> &YouTube {
+        match self {
+            YouTubeStep::Held(yt) => yt,
+            YouTubeStep::Shared(guard) => guard,
+        }
+    }
+}
+
+impl DerefMut for YouTubeStep<'_> {
+    fn deref_mut(&mut self) -> &mut YouTube {
+        match self {
+            YouTubeStep::Held(yt) => yt,
+            YouTubeStep::Shared(guard) => guard,
+        }
+    }
+}
+
 impl YouTube {
-    pub fn new(auth: GoogleAuth, ledger: Option<PathBuf>) -> Self {
-        Self {
+    pub fn new(auth: GoogleAuth, ledger: Option<PathBuf>) -> Result<Self, BoxError> {
+        Ok(Self {
             auth,
-            http: reqwest::Client::new(),
+            http: crate::http_client()?,
             units_used: 0,
             ledger,
-        }
+        })
     }
 
     async fn call(

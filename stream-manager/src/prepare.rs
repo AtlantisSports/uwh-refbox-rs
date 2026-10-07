@@ -9,7 +9,7 @@ use crate::{
     BoxError,
     config::{Config, CourtConfig, StreamMode},
     portal::{EventPlan, PlannedGame, playlist_title, video_title},
-    youtube::{BroadcastSpec, Playlist, StreamInfo, YouTube},
+    youtube::{BroadcastSpec, Playlist, StreamInfo, YouTube, YouTubeAccess},
 };
 use log::info;
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,7 @@ use std::{
     fs,
     io::{self, BufRead, Write},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering as AtomicOrdering},
 };
 use time::{
     Duration, OffsetDateTime, format_description::well_known::Rfc3339, macros::format_description,
@@ -73,8 +74,11 @@ Next game: {link}
     }
 }
 
-pub fn state_path(config_dir: &Path, event_slug: &str) -> PathBuf {
-    config_dir.join(format!("state-{event_slug}.json"))
+/// The event's record file. Refused for a slug that isn't a plain portal event name, so it can
+/// never point outside `config_dir`.
+pub fn state_path(config_dir: &Path, event_slug: &str) -> Result<PathBuf, BoxError> {
+    crate::config::check_event_slug(event_slug)?;
+    Ok(config_dir.join(format!("state-{event_slug}.json")))
 }
 
 pub fn load_state(path: &Path, event_slug: &str) -> Result<EventState, BoxError> {
@@ -88,7 +92,31 @@ pub fn load_state(path: &Path, event_slug: &str) -> Result<EventState, BoxError>
 }
 
 pub fn save_state(path: &Path, state: &EventState) -> Result<(), BoxError> {
-    fs::write(path, serde_json::to_string_pretty(state)?)?;
+    write_atomically(path, &serde_json::to_string_pretty(state)?)
+}
+
+/// Writes `contents` to a new file next to `path`, then puts it in `path`'s place, so a crash
+/// or power cut mid-write leaves either the old file or the new one, never half of one.
+pub fn write_atomically(path: &Path, contents: &str) -> Result<(), BoxError> {
+    // Each write gets its own temporary file, so two writes at once can't mix.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let name = path
+        .file_name()
+        .ok_or_else(|| format!("{} isn't a file name", path.display()))?
+        .to_string_lossy();
+    let temp = path.with_file_name(format!(
+        ".{name}.{}-{}.tmp",
+        std::process::id(),
+        NEXT.fetch_add(1, AtomicOrdering::Relaxed)
+    ));
+    let written = fs::File::create(&temp).and_then(|mut file| {
+        file.write_all(contents.as_bytes())?;
+        file.sync_all()
+    });
+    if let Err(e) = written.and_then(|()| fs::rename(&temp, path)) {
+        let _ = fs::remove_file(&temp);
+        return Err(format!("Couldn't save {}: {e}", path.display()).into());
+    }
     Ok(())
 }
 
@@ -391,20 +419,25 @@ pub fn preview(
 }
 
 /// Creates/updates everything the selection needs, saving the record after every call.
-/// Progress lines go to `log`.
+/// Progress lines go to `log`. The YouTube connection is taken afresh for each playlist and each
+/// game, never for the whole run, so a court's switch (which needs the same connection) waits
+/// at most for one game's few calls even while Prepare runs during a day.
 pub async fn run(
     config: &Config,
     plan: &EventPlan,
-    youtube: &mut YouTube,
+    youtube: &mut YouTubeAccess<'_>,
     state_file: &Path,
     lookups: &Lookups,
     selection: &Selection,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<(), BoxError> {
-    let mut state = load_state(state_file, &config.event_slug)?;
     for target in select_targets(config, plan, selection)? {
         let title = &target.playlist_title;
         let pair = court_streams(target.court, &lookups.streams)?;
+        // Each step holds the YouTube connection and reads the record afresh: a switch may have
+        // changed it (e.g. a "Next game" link) while the connection was free.
+        let mut step = youtube.youtube().await?;
+        let mut state = load_state(state_file, &config.event_slug)?;
         let playlist_id = match state.playlists.get(title) {
             Some(id) => id.clone(),
             None => {
@@ -423,7 +456,7 @@ pub async fn run(
                             plan.event_name,
                             portal_event_page(config)
                         );
-                        let id = youtube
+                        let id = step
                             .create_playlist(title, &description, &config.privacy)
                             .await?;
                         log(format!("Created playlist \"{title}\""));
@@ -436,7 +469,12 @@ pub async fn run(
             }
         };
 
+        drop(step);
+
         for (i, game) in target.games.iter().enumerate() {
+            // Held for this game only; released before the next one.
+            let mut youtube = youtube.youtube().await?;
+            let mut state = load_state(state_file, &config.event_slug)?;
             let video = match state.videos.get(&game.number).cloned() {
                 None => {
                     let spec = broadcast_spec(config, plan, game);
@@ -459,7 +497,16 @@ pub async fn run(
                     v
                 }
                 Some(v) => {
-                    sync_video(youtube, config, plan, game, &mut state, state_file, log).await?;
+                    sync_video(
+                        &mut youtube,
+                        config,
+                        plan,
+                        game,
+                        &mut state,
+                        state_file,
+                        log,
+                    )
+                    .await?;
                     // `sync_video` changes the record but never removes it.
                     state.videos.get(&game.number).cloned().unwrap_or(v)
                 }
@@ -493,7 +540,10 @@ pub async fn run(
             }
         }
     }
-    log(format!("Done. Used {} units so far.", youtube.units_used));
+    log(format!(
+        "Done. Used {} units so far.",
+        youtube.youtube().await?.units_used
+    ));
     Ok(())
 }
 
@@ -535,7 +585,7 @@ pub async fn run_cli(
     run(
         config,
         plan,
-        youtube,
+        &mut YouTubeAccess::Held(youtube),
         state_file,
         &lookups,
         selection,
@@ -595,6 +645,48 @@ pub async fn cleanup_cli(
 mod tests {
     use super::*;
     use crate::portal::parse_event_plan;
+
+    #[test]
+    fn the_record_file_is_refused_for_an_event_that_isnt_a_plain_name() {
+        let dir = Path::new("config");
+        assert_eq!(
+            state_path(dir, "cup-2026").unwrap(),
+            dir.join("state-cup-2026.json")
+        );
+        for bad in ["", "../cup", "cup/../../x", "c:\\x"] {
+            assert!(state_path(dir, bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn saving_replaces_the_file_whole_and_leaves_no_temporary_files() {
+        let dir =
+            std::env::temp_dir().join(format!("stream-manager-atomic-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state-cup.json");
+        let mut state = EventState {
+            event_slug: "cup".into(),
+            ..Default::default()
+        };
+        save_state(&path, &state).unwrap();
+        state.playlists.insert("Day 1".into(), "p1".into());
+        save_state(&path, &state).unwrap();
+        let loaded = load_state(&path, "cup").unwrap();
+        assert_eq!(
+            loaded.playlists.get("Day 1").map(String::as_str),
+            Some("p1")
+        );
+        let files: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(files, ["state-cup.json"]);
+        // A failed write leaves the old file as it was and no temporary file behind.
+        assert!(write_atomically(&dir.join("missing").join("x.json"), "{}").is_err());
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     fn stream(title: &str) -> StreamInfo {
         StreamInfo {

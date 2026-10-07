@@ -249,8 +249,14 @@ Also set:
 2. Double-click **stream-manager**. A console window opens and the control page opens at
    `http://127.0.0.1:8090`.
 3. ⛔ **STOP — ask a human** to choose the **PIN**. Use the same PIN on both mini PCs.
+   - A sign-in lasts 24 hours. After that the page asks for the PIN again.
+   - A wrong PIN (on the page or in a Stream Deck link) is answered only after a wait: 1 s, then
+     2, 4, 8… up to 30 s for each wrong PIN in a row, from any device. The count resets after 15
+     minutes without a wrong PIN. The right PIN is never slowed down.
 4. **Settings tab:**
-   - **Portal:** Live portal (Dev portal only for tests). **Event:** pick it from the list.
+   - **Portal:** Live portal (Dev portal only for tests). **Event:** pick it from the list. An
+     event name may only use letters, digits and dashes (as in its portal address); anything
+     else is refused.
    - **Privacy:** Unlisted for tests. ⛔ Public only when a human says so.
    - **Courts:** **only this mini PC's court**. Remove any other. Court name exactly as the portal
      uses it (e.g. `1`), refbox IP and port `8000`, **vMix address `127.0.0.1:8088`**. Leave the
@@ -429,8 +435,11 @@ key A.
 | overlay-bridge window opens and closes at once / "could not start the bridge's HTTP server on 0.0.0.0:8099" | An old version uses port 8099, which vMix always occupies. Use the current download (port 8098). Or start it once from PowerShell with `.\overlay-bridge.exe --port 8098`; it remembers the port. |
 | Overlay shows no team names or scores | The overlay can't reach the bridge. Check `bridge_url` in `%APPDATA%\overlay\config\default-config.toml` matches the bridge's port (`http://127.0.0.1:8098`), and that the bridge's status page shows the refbox connected. Restart the overlay after changing the file. |
 | Stream Manager: "Refbox connected, waiting for its first update" (amber) | Connected, but the refbox hasn't sent a game update yet. It only sends while something changes, e.g. a running clock. Start a clock or the break countdown on the refbox. |
+| Stream Manager: "Refbox not responding: no countdown for 10 s, automatic switching paused" (red) | During the break the refbox sends its countdown every second, and nothing has come for 10 s (e.g. its Wi-Fi dropped). Automatic switching waits until it sends again. Check the refbox and its network. If a switch is due, press **Switch now**. |
 | Stream Manager: "Refbox data can't be read: check the refbox port is 8000" (red) | Connected to the refbox's LED-panel port (8001) instead of its game-data port. In Settings → Courts set the refbox port to **8000**. |
 | Bridge's refbox scan lists the same refbox many times at 127.0.0.x | Older bridge versions did this on Windows (every 127.x is "this PC"). Pick `127.0.0.1:8000`; the current version lists it once. |
+| Settings: "The event … may only use letters, digits and dashes" | The event name isn't a portal event name. Pick the event from the list again. |
+| Stream Deck buttons answer slowly, or the page is slow to say "Wrong PIN" | Wrong PINs wait longer each time (up to 30 s). Check the PIN in the Companion links matches Stream Manager's. The wait resets 15 minutes after the last wrong PIN. |
 | "vMix not reachable" | vMix isn't running, or Web Controller is off or not on port 8088 (B4). |
 | Google: "Access blocked … can only be used within its organization" (org_internal) | The Google app is set to Internal but the channel is a Brand Account. Set the app's Audience to **External**. |
 | YouTube sign-in stops working after about 7 days | The Google app is in **Testing** mode. Switch it to **In production**, or press Connect YouTube again. |

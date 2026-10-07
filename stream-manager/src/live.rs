@@ -384,9 +384,12 @@ pub async fn carry_out(
     action: &Action,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Outcome {
-    let state_file = app.state_file();
-    let state = match prepare::load_state(&state_file, &app.config().event_slug) {
-        Ok(s) => s,
+    let loaded = app.state_file().and_then(|file| {
+        let state = prepare::load_state(&file, &app.config().event_slug)?;
+        Ok((file, state))
+    });
+    let (state_file, state) = match loaded {
+        Ok(loaded) => loaded,
         Err(e) => {
             return Outcome::Failed {
                 actually_live: before(action),

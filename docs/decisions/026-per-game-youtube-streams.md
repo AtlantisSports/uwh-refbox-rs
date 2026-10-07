@@ -409,6 +409,8 @@ Tested at a practice session using **unlisted** videos and a small test event on
     (delete test videos).
   - Protected by a PIN, set on first use from the laptop itself. Companion uses
     `GET /api/court/<court>/<start|hold|release|hold-toggle|next|end>?pin=<PIN>`.
+    (Changed by Amendment 10: the page answers only the mini PC itself by default, and Companion
+    uses a button key, not the PIN.)
   - ~~Runs on a separate laptop~~ — superseded on 2026-10-02: **one Stream Manager per court,
     on that court's mini PC** (with vMix, overlay and overlay-bridge), each handling only its own
     court. If one mini PC fails, the other court keeps switching. The other court is viewed by
@@ -469,7 +471,8 @@ Made after a review of the PR against this ADR, and approved by Eric.
 7. **The Google app's publishing status is to be confirmed** (§8). The two earlier statements
    contradicted each other.
 8. **The overlay and overlay-bridge changes made during this work move to their own PR**, which
-   merges first: the NDI engine installed automatically, the bridge moved off vMix's port 8099
+   merges first: the NDI engine installed when the operator clicks **Install NDI** in the
+   overlay's window (never by itself), the bridge moved off vMix's port 8099
    to 8098, and a refbox on the same PC listed once in the bridge's scan. This PR then changes
    no overlay or overlay-bridge code, as the Decision section says.
 9. **Portal watch links move to follow-up PRs, signed in the way the refbox signs in.** No
@@ -488,3 +491,15 @@ Made after a review of the PR against this ADR, and approved by Eric.
      the meantime. Taking it out means this PR builds nothing that would later be thrown away:
      no stored admin login, and no password encryption through PowerShell (whose test failed on
      GitHub's Windows machines).
+10. **The control page answers only the mini PC it runs on, unless told otherwise; Stream Deck
+    links use a button key, not the PIN.** A review showed that anyone on the venue network could
+    find the 4-digit PIN in seconds by trying every PIN at once, because Companion's links carried
+    it.
+    - By default Stream Manager listens only on the mini PC itself. **Allow other devices** (a
+      setting that can only be changed on the mini PC, applied after a restart) lets listed
+      addresses in: a tablet, a laptop running Companion, or the other court's mini PC. Viewing
+      the other court's page therefore needs this mini PC's address added on that court.
+    - Companion's links carry a long random **button key**, shown and renewed only on the mini PC
+      itself.
+    - The PIN only signs in on the page. Sign-ins are checked one at a time, with a growing wait
+      after each wrong PIN.

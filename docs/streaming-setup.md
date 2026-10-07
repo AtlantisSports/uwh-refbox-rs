@@ -291,14 +291,24 @@ The actions are `start`, `hold-toggle`, `next` (Switch now) and `end`.
 **Live status on the buttons.** Stream Manager can also put each court's status on buttons:
 Hold on or off, the time until the rosters ("Rosters in 0:45", then "Rosters on screen"), the
 game live now ("Now: Game 14") and the next game ("Next: Game 15"). It sends a value to
-Companion only when it changes. A problem reaching Companion shows on the court's card on the
-Live tab and never affects switching.
+Companion only when it changes, and sends every value again once a minute in case Companion
+restarted. A problem reaching Companion shows on the court's card on the Live tab, naming the
+variables that couldn't be set (each problem once), and never affects switching. "Next" shows the game that goes
+live next whenever it is known: before Start day, the game Start day would put live; during
+play, the refbox's next game. It is blank only when there is no next game known (for example
+right after a switch during a break, until the new game kicks off).
 
 1. In Companion (version 5.0.7 is in use), open **Settings** and make sure the **HTTP API** is
    turned on (Companion answers "403" to Stream Manager while it is off).
 2. In Companion's **Variables** tab, create four **custom variables** per court. The names use
-   only lowercase letters, digits and `_`: the court name lowercased, with spaces and other
-   characters turned into `_`. For Court 1:
+   only lowercase letters, digits and `_`, built from the court's name in Stream Manager's
+   Settings like this: the name is lowercased; every run of characters other than `a`-`z` and
+   `0`-`9` (spaces, punctuation, accented letters) becomes one `_`, with none left at either
+   end; a leading word "Court" on its own is dropped ("Courtyard" keeps it); and what is left
+   follows `sm_court_`. So a court named `1` (as the portal names courts) gives
+   `sm_court_1_hold`, `Court 1` gives the same, `Main Pool` gives `sm_court_main_pool_hold`,
+   and a court named just `Court` gives `sm_court_hold`. While a Companion address is set, Settings
+   won't save two courts whose names give the same result. For the court named `1`:
    - `sm_court_1_hold` (shows `ON` or `OFF`)
    - `sm_court_1_rosters` (`Rosters in 0:45`, `Rosters on screen`, or empty)
    - `sm_court_1_now` (`Now: Game 14`, or empty)
@@ -309,7 +319,7 @@ Live tab and never affects switching.
    (the court card then says which one is missing).
 3. In Stream Manager's **Settings** tab, under **Stream Deck live status (Companion)**, enter
    Companion's address and port, e.g. `127.0.0.1:8000` when Companion runs on the same mini PC,
-   and save. Leave it empty to turn this off.
+   and save (`http://127.0.0.1:8000/` is accepted too). Leave it empty to turn this off.
 4. On a button, put the variable in the button text, e.g. `$(custom:sm_court_1_now)`. The Hold
    button can show `HOLD $(custom:sm_court_1_hold)`.
 

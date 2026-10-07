@@ -326,7 +326,7 @@ async fn save_settings(
         practice_mode: body.practice_mode,
         quota_daily_limit: body.quota_daily_limit,
         quota_share_percent: body.quota_share_percent,
-        companion_address: body.companion_address.trim().to_string(),
+        companion_address: crate::companion::normalise_address(&body.companion_address),
         courts: body.courts,
         ..current
     };

@@ -165,6 +165,30 @@ impl Default for Config {
 }
 
 impl Config {
+    /// `validate`, plus the checks that only apply to settings being saved: these never stop
+    /// an existing settings file from loading.
+    pub fn validate_for_save(&self) -> Result<(), String> {
+        self.validate()?;
+        // Two courts sharing Companion variables would overwrite each other's buttons; this only
+        // matters while the Companion address is set.
+        if !self.companion_address.trim().is_empty() {
+            for (i, court) in self.courts.iter().enumerate() {
+                let prefix = crate::companion::variable_prefix(&court.name);
+                if let Some(other) = self.courts[..i]
+                    .iter()
+                    .find(|c| crate::companion::variable_prefix(&c.name) == prefix)
+                {
+                    return Err(format!(
+                        "Courts \"{}\" and \"{}\" would share the same Stream Deck status names \
+                         ({prefix}_…); rename one",
+                        other.name, court.name
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Checks everything that doesn't need the network. The event may still be unset.
     pub fn validate(&self) -> Result<(), String> {
         if self.switch_lead_secs <= self.roster_start_secs {
@@ -250,6 +274,28 @@ mod tests {
             };
             assert_eq!(c.validate().is_ok(), ok, "{percent}%");
         }
+    }
+
+    #[test]
+    fn courts_sharing_stream_deck_names_are_rejected_on_save_only_with_companion_on() {
+        let mut c = Config::default();
+        let mut second = c.courts[0].clone();
+        second.name = "Court 1".into();
+        c.courts.push(second);
+        // A settings file like this still loads, and saves while Companion is off.
+        assert_eq!(c.validate(), Ok(()));
+        assert_eq!(c.validate_for_save(), Ok(()));
+
+        c.companion_address = "127.0.0.1:8000".into();
+        assert_eq!(c.validate(), Ok(()), "loading must never fail on this");
+        let error = c.validate_for_save().unwrap_err();
+        assert!(
+            error.contains("\"1\"") && error.contains("\"Court 1\""),
+            "{error}"
+        );
+        assert!(error.contains("sm_court_1"), "{error}");
+        c.courts[1].name = "2".into();
+        assert_eq!(c.validate_for_save(), Ok(()));
     }
 
     #[test]

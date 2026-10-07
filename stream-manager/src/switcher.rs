@@ -66,6 +66,9 @@ pub struct Status {
     pub secs_until_switch: Option<u32>,
     /// Seconds until the overlay starts showing rosters, during the break.
     pub secs_until_rosters: Option<u32>,
+    /// The game that goes live next: the one Start day would put live before the day starts,
+    /// or the one Switch now would during it. None while that isn't known.
+    pub next: Option<GameNumber>,
 }
 
 #[derive(Debug)]
@@ -110,7 +113,27 @@ impl CourtSwitcher {
             phase,
             secs_until_switch,
             secs_until_rosters,
+            next: self.next_target(),
         }
+    }
+
+    /// The game Start day (day not running) or Switch now (day running) would put live.
+    fn next_target(&self) -> Option<GameNumber> {
+        let snapshot = self.last.as_ref()?;
+        let phase = phase_of(snapshot);
+        let Some(live) = self.live.as_ref().filter(|_| self.day_running) else {
+            return match phase {
+                Phase::Playing(game) | Phase::Break { upcoming: game, .. } => Some(game),
+                Phase::Unknown => None,
+            };
+        };
+        let target = match phase {
+            Phase::Playing(game) | Phase::Break { upcoming: game, .. } if game != *live => game,
+            // The live video already shows the current/upcoming game, so move on to the one
+            // after it.
+            _ => snapshot.next_game_number.clone(),
+        };
+        (target != *live && !target.is_empty()).then_some(target)
     }
 
     /// Feed every snapshot the refbox sends. Returns an action when it's time to switch.
@@ -125,11 +148,7 @@ impl CourtSwitcher {
                 if self.day_running {
                     return None;
                 }
-                let target = match self.last.as_ref().map(phase_of)? {
-                    Phase::Playing(game) => game,
-                    Phase::Break { upcoming, .. } => upcoming,
-                    Phase::Unknown => return None,
-                };
+                let target = self.next_target()?;
                 self.day_running = true;
                 self.live = Some(target.clone());
                 Some(Action::GoLive(target))
@@ -148,19 +167,8 @@ impl CourtSwitcher {
                 self.evaluate()
             }
             Command::SwitchNow => {
-                let live = self.live.clone().filter(|_| self.day_running)?;
-                let snapshot = self.last.as_ref()?;
-                let target = match phase_of(snapshot) {
-                    Phase::Playing(game) | Phase::Break { upcoming: game, .. } if game != live => {
-                        game
-                    }
-                    // The live video already shows the current/upcoming game, so move on to
-                    // the one after it.
-                    _ => snapshot.next_game_number.clone(),
-                };
-                if target == live || target.is_empty() {
-                    return None;
-                }
+                self.live.as_ref().filter(|_| self.day_running)?;
+                let target = self.next_target()?;
                 // Switching by hand ends any hold.
                 self.hold = false;
                 self.switch_to(target)

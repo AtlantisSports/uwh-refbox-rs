@@ -89,7 +89,6 @@
     <span class="event" id="h-event"></span>
     <span class="spacer"></span>
     <span class="pill"><span class="dot" id="h-yt-dot"></span><span id="h-yt">YouTube</span></span>
-    <span class="pill" title="YouTube daily allowance used by this program since it started"><span id="h-units">0</span>&nbsp;units used</span>
     <button class="small" onclick="logout()">Lock</button>
   </header>
   <nav>
@@ -110,6 +109,9 @@
         Videos are <b id="real-privacy"></b>.
       </div>
       <div class="banner error hidden" id="schedule-error"></div>
+      <p class="muted" title="This program's share of YouTube's daily allowance. It resets at midnight US Pacific time.">
+        YouTube allowance left today: <b id="quota-left">0</b> of <span id="quota-share">0</span>
+        <b class="warn-text hidden" id="quota-low">Low: extras paused</b></p>
       <div class="grid" id="courts"></div>
       <details>
         <summary>Companion / Stream Deck links</summary>
@@ -198,6 +200,20 @@
         <label class="row" style="font-size:16px"><input type="checkbox" id="s-practice">
           Practice mode — show what would happen, but don't touch YouTube or vMix</label>
         <p class="muted">Turn this off to switch videos for real. It can only be changed while no court's day is running.</p>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>YouTube allowance</h2>
+        <div class="row">
+          <label class="field">Daily allowance (units)
+            <input id="s-quota-limit" type="number" min="1"></label>
+          <label class="field">This program's share (%)
+            <input id="s-quota-share" type="number" min="1" max="100"></label>
+        </div>
+        <p class="muted">Google gives the YouTube app 10,000 units a day, shared by every court's Stream Manager.
+          Raise the daily allowance here once Google grants more. Give each program a share: 100% with one court,
+          50% each with two. If one Stream Manager runs more than one court, its share covers all of them.
+          When the share left today won't cover the rest of the day's switches, the chat message and Next game
+          link are skipped; switching itself never stops. Saved with the button below.</p>
       </div>
       <div class="card" style="margin-top:16px">
         <h2>Courts</h2>
@@ -330,7 +346,9 @@ function renderStatus() {
   $('h-event').textContent = s.event_name || (s.event_slug ? s.event_slug : 'No event chosen');
   $('h-yt-dot').className = 'dot ' + (s.youtube_connected ? 'ok' : 'bad');
   $('h-yt').textContent = s.youtube_connected ? (s.youtube_channel || 'YouTube connected') : 'YouTube not connected';
-  $('h-units').textContent = s.youtube_units;
+  $('quota-left').textContent = s.quota_remaining.toLocaleString();
+  $('quota-share').textContent = s.quota_share.toLocaleString();
+  $('quota-low').classList.toggle('hidden', !s.extras_paused);
   $('practice-banner').classList.toggle('hidden', !s.practice_mode);
   $('real-banner').classList.toggle('hidden', s.practice_mode);
   $('real-privacy').textContent = s.privacy;
@@ -539,6 +557,8 @@ async function loadSettings() {
     $('s-lead').value = settings.switch_lead_secs;
     $('s-rstart').value = settings.roster_start_secs;
     $('s-rend').value = settings.roster_end_secs;
+    $('s-quota-limit').value = settings.quota_daily_limit;
+    $('s-quota-share').value = settings.quota_share_percent;
     renderCourtRows(settings.courts);
     privacyWarning();
     loadEvents();
@@ -608,6 +628,8 @@ async function saveSettings() {
     switch_lead_secs: Number($('s-lead').value), roster_start_secs: Number($('s-rstart').value),
     roster_end_secs: Number($('s-rend').value), courts: readCourtRows(),
     practice_mode: $('s-practice').checked,
+    quota_daily_limit: Number($('s-quota-limit').value),
+    quota_share_percent: Number($('s-quota-share').value),
   };
   if (settings.practice_mode && !body.practice_mode &&
       !confirm('Turn practice mode OFF? From now on, Start day / Switch now / End day and automatic switches will control YouTube and vMix for real.')) return;

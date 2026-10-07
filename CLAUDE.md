@@ -51,6 +51,7 @@ At the start of every session, before doing any work:
 | `schedule-processor` | CLI tool — processes tournament schedules before a tournament |
 | `overlay` | Stream broadcast display — shows live game state on video stream |
 | `overlay-bridge` | Serves live game data as web pages for third-party graphics tools (vMix) |
+| `stream-manager` | Per-game YouTube live videos driven by the refbox; runs on each court's streaming PC |
 | `matrix-drawing` | Drawing primitives for the LED panel display (no_std) |
 | `fonts` | Embedded font data for the LED panel |
 | `led-panel-sim` | LED panel simulator for testing without hardware |

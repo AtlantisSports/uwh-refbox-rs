@@ -306,9 +306,10 @@ async fn stream_id(yt: &mut YouTube, title: &str) -> Result<String, BoxError> {
 /// Starts vMix sending on stream key `index` and waits until YouTube receives it.
 ///
 /// With `may_be_leftover`, an "active" status the key already had before vMix started is not
-/// trusted (see [`stream_receiving`]). A switch sets it when Stream Manager stopped that key
-/// within the last minute, so "active" may be left over from that stop. Otherwise a key already
-/// receiving is really receiving (vMix already sending on it), and nothing is waited for.
+/// trusted (see [`stream_receiving`]). Start day and switches set it when Stream Manager stopped
+/// that key within the last minute, so "active" may be left over from that stop. Otherwise a
+/// key already receiving is really receiving (vMix already sending on it), and nothing is
+/// waited for.
 async fn start_stream(
     yt: &mut YouTube,
     court: &CourtConfig,
@@ -440,7 +441,7 @@ pub async fn carry_out(
         }
     };
     match action {
-        Action::GoLive(game) => start(&mut yt, court, plan, &state, game, log).await,
+        Action::GoLive(game) => start(&mut yt, app, court, plan, &state, game, log).await,
         Action::Switch { from, to } => {
             let ctx = SwitchContext {
                 app,
@@ -466,6 +467,7 @@ fn before(action: &Action) -> Option<GameNumber> {
 
 async fn start(
     yt: &mut YouTube,
+    app: &App,
     court: &CourtConfig,
     plan: Option<&EventPlan>,
     state: &prepare::EventState,
@@ -476,7 +478,10 @@ async fn start(
         one_key_ready(court, state, &todays_games(plan, court, game))?;
         let video = video_of(state, plan, game)?;
         let index = stream_index(court, game, &video)?;
-        start_stream(yt, court, index, false, log).await?;
+        // Start day soon after End day: the key may still show the "active" left over from
+        // End day's stop, as for a switch.
+        let may_be_leftover = app.stopped_recently(&court.name, vmix_destination(index));
+        start_stream(yt, court, index, may_be_leftover, log).await?;
         go_live(yt, game, &video, log).await?;
         log(format!(
             "Game {game} is LIVE: https://youtu.be/{}",

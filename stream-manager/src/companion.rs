@@ -18,6 +18,7 @@
 use crate::BoxError;
 use std::{
     collections::HashMap,
+    sync::OnceLock,
     time::{Duration, Instant},
 };
 
@@ -226,14 +227,23 @@ pub async fn send_court(
     Some(lines.join("; "))
 }
 
+/// The one HTTP client for every Companion call, built on first use (it keeps connections open).
+fn client() -> Result<&'static reqwest::Client, BoxError> {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    if let Some(client) = CLIENT.get() {
+        return Ok(client);
+    }
+    let client = reqwest::Client::builder().timeout(TIMEOUT).build()?;
+    Ok(CLIENT.get_or_init(|| client))
+}
+
 /// Sets Companion's custom variable `name` to `value`. `address` is Companion's address, e.g.
 /// "127.0.0.1:8000"; empty means the feature is off and callers don't call this. The error
 /// doesn't repeat the variable's name, so `send_court` can show one problem once for several
 /// variables, naming them.
 pub async fn set_variable(address: &str, name: &str, value: &str) -> Result<(), BoxError> {
     let address = normalise_address(address);
-    let client = reqwest::Client::builder().timeout(TIMEOUT).build()?;
-    let response = client
+    let response = client()?
         .post(format!("http://{address}/api/custom-variable/{name}/value"))
         .query(&[("value", value)])
         .send()

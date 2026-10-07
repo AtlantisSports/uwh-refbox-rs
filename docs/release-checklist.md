@@ -48,6 +48,7 @@ Crates to bump (own `version`, plus any internal path-dependency `version = "X.Y
 - `led-panel-sim`
 - `schedule-processor`
 - `refbox`
+- `stream-manager`
 - **`wireless-remote`** ← separate workspace; do not skip it
 
 > Check this list against reality before trusting it — it has drifted once already, when

@@ -12,8 +12,9 @@ use crate::{
 };
 use axum::{
     Json, Router,
-    extract::{ConnectInfo, Path, Query, State},
+    extract::{ConnectInfo, Path, Query, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
+    middleware::{self, Next},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
 };
@@ -103,10 +104,34 @@ async fn authorize(
     Err(fail(StatusCode::UNAUTHORIZED, "PIN required"))
 }
 
-pub async fn serve(app: Arc<App>, open_browser: bool) -> Result<(), crate::BoxError> {
-    let port = app.config().web_port;
-    let router = Router::new()
-        .route("/", get(|| async { Html(INDEX_HTML) }))
+/// Whether the browser says the request comes from another web page (another site, or another
+/// port on this one). Browsers send `Sec-Fetch-Site` with every request, including an `<img>` or
+/// a script's request on someone else's page; the control page's own requests say `same-origin`
+/// (or `none` when typed in), and Companion and curl don't send it at all.
+fn from_another_page(headers: &HeaderMap) -> bool {
+    headers
+        .get("sec-fetch-site")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|site| {
+            site.eq_ignore_ascii_case("cross-site") || site.eq_ignore_ascii_case("same-site")
+        })
+}
+
+/// Refuses every API request made from another web page, before any handler (including login
+/// and the no-PIN case on this laptop) sees it.
+async fn refuse_other_pages(request: Request, next: Next) -> Response {
+    if from_another_page(request.headers()) {
+        return fail(
+            StatusCode::FORBIDDEN,
+            "Requests from other web pages are refused",
+        )
+        .into_response();
+    }
+    next.run(request).await
+}
+
+fn router(app: Arc<App>) -> Router {
+    Router::new()
         .route("/api/session", get(session))
         .route("/api/login", post(login))
         .route("/api/logout", post(logout))
@@ -126,7 +151,15 @@ pub async fn serve(app: Arc<App>, open_browser: bool) -> Result<(), crate::BoxEr
         .route("/api/youtube/connect", post(youtube_connect))
         .route("/api/youtube/check", post(youtube_check))
         .route("/api/cleanup", post(cleanup))
-        .with_state(Arc::clone(&app));
+        // Only the API: the page itself may be opened from a link anywhere.
+        .route_layer(middleware::from_fn(refuse_other_pages))
+        .route("/", get(|| async { Html(INDEX_HTML) }))
+        .with_state(app)
+}
+
+pub async fn serve(app: Arc<App>, open_browser: bool) -> Result<(), crate::BoxError> {
+    let port = app.config().web_port;
+    let router = router(Arc::clone(&app));
 
     let listener = tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, port))
         .await
@@ -472,8 +505,15 @@ async fn prepare_preview(
         .await
         .map_err(|e| bad(e.to_string()))?;
     drop(yt);
-    let work = prepare::preview(&config, &plan, &state, &lookups, &selection)
-        .map_err(|e| bad(e.to_string()))?;
+    let work = prepare::preview(
+        &config,
+        &plan,
+        &state,
+        &lookups,
+        &selection,
+        &|court: &str| app.day_running(court),
+    )
+    .map_err(|e| bad(e.to_string()))?;
     Ok(Json(json!({ "work": work, "empty": work.is_empty() })))
 }
 
@@ -505,6 +545,7 @@ async fn prepare_run(
                 &state_file,
                 &lookups,
                 &selection,
+                &|court: &str| app.day_running(court),
                 &mut log,
             )
             .await
@@ -733,4 +774,73 @@ async fn cleanup(
         app.end_job(result.err().map(|e| e.to_string()));
     });
     Ok(Json(json!({ "started": true })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    #[test]
+    fn requests_from_other_web_pages_are_recognised() {
+        let with = |value: &str| {
+            let mut headers = HeaderMap::new();
+            headers.insert("sec-fetch-site", HeaderValue::from_str(value).unwrap());
+            from_another_page(&headers)
+        };
+        assert!(with("cross-site"));
+        assert!(with("same-site"));
+        assert!(!with("same-origin"));
+        assert!(!with("none"));
+        // Companion and curl send no such header.
+        assert!(!from_another_page(&HeaderMap::new()));
+    }
+
+    #[tokio::test]
+    async fn the_api_refuses_other_web_pages_even_on_this_laptop_without_a_pin() {
+        let dir = std::env::temp_dir().join(format!("stream-manager-web-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let app = App::new(dir.join("config.toml"), Config::default());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let service = router(app).into_make_service_with_connect_info::<SocketAddr>();
+        tokio::spawn(async move { axum::serve(listener, service).await });
+        let client = reqwest::Client::new();
+        let send = |path: &str, site: Option<&str>| {
+            let mut request = client
+                .post(format!("{base}{path}"))
+                .json(&json!({ "pin": "1234" }));
+            if let Some(site) = site {
+                request = request.header("sec-fetch-site", site);
+            }
+            request.send()
+        };
+
+        for site in ["cross-site", "same-site"] {
+            let response = send("/api/login", Some(site)).await.unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+            let body: Value = response.json().await.unwrap();
+            assert_eq!(body["error"], "Requests from other web pages are refused");
+            let response = send("/api/court/1/hold", Some(site)).await.unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        }
+        // The control page's own requests and Companion's (no header) still work: no PIN is set
+        // and this is the laptop itself.
+        let response = send("/api/court/1/hold", Some("same-origin"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = send("/api/court/1/release", None).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        // The page itself opens from anywhere.
+        let response = client
+            .get(format!("{base}/"))
+            .header("sec-fetch-site", "cross-site")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

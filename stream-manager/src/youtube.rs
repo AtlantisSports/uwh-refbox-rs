@@ -14,7 +14,7 @@ use reqwest::{
 use serde_json::{Value, json};
 use std::{
     ops::{Deref, DerefMut},
-    path::PathBuf,
+    sync::Arc,
 };
 use time::OffsetDateTime;
 use tokio::sync::MappedMutexGuard;
@@ -57,8 +57,8 @@ pub struct YouTube {
     http: reqwest::Client,
     /// Units used through this connection since it was opened.
     pub units_used: u32,
-    /// The allowance ledger file every call is added to (`None` counts nowhere else).
-    ledger: Option<PathBuf>,
+    /// The allowance ledger every call is added to (`None` counts nowhere else).
+    ledger: Option<Arc<quota::LedgerFile>>,
 }
 
 /// Hands out the YouTube connection for one step of a longer job (one game of Prepare or of a
@@ -107,7 +107,7 @@ impl DerefMut for YouTubeStep<'_> {
 }
 
 impl YouTube {
-    pub fn new(auth: GoogleAuth, ledger: Option<PathBuf>) -> Result<Self, BoxError> {
+    pub fn new(auth: GoogleAuth, ledger: Option<Arc<quota::LedgerFile>>) -> Result<Self, BoxError> {
         Ok(Self {
             auth,
             http: crate::http_client()?,
@@ -144,7 +144,7 @@ impl YouTube {
         // is counted too.
         self.units_used += cost;
         if let Some(ledger) = &self.ledger {
-            if let Err(e) = quota::record_to_file(ledger, cost, OffsetDateTime::now_utc()) {
+            if let Err(e) = ledger.record(cost, OffsetDateTime::now_utc()) {
                 warn!("Couldn't save the YouTube allowance count: {e}");
             }
         }

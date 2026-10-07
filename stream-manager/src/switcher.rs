@@ -168,6 +168,14 @@ impl CourtSwitcher {
         }
     }
 
+    /// After a restart, carries on with `live` as the live video, as if Start day had been
+    /// pressed. No action: the video is already live on YouTube.
+    pub fn resume(&mut self, live: GameNumber) {
+        self.day_running = true;
+        self.live = Some(live);
+        self.hold = false;
+    }
+
     /// A switch couldn't be carried out. `actually_live` is the game whose video is really live
     /// now. Automatic switching pauses (Hold) so it isn't retried every second; the operator
     /// retries with Switch now.
@@ -458,6 +466,36 @@ mod tests {
             s.on_command(Command::StartDay),
             Some(Action::GoLive("14".into()))
         );
+    }
+
+    #[test]
+    fn resume_carries_on_from_the_live_video_as_after_start_day() {
+        // Restarted during the break after Game 14, whose video is still live on YouTube.
+        let mut s = CourtSwitcher::new(RULES);
+        s.resume("14".into());
+        let status = s.status();
+        assert!(status.day_running);
+        assert_eq!((status.live.as_deref(), status.hold), (Some("14"), false));
+        assert_eq!(s.on_snapshot(&break_old("14", "15", 196)), None);
+        assert_eq!(
+            s.on_snapshot(&break_old("14", "15", 195)),
+            switch("14", "15")
+        );
+        assert_eq!(s.on_command(Command::StartDay), None, "already running");
+
+        // Hold and Switch now work as after Start day.
+        let mut s = CourtSwitcher::new(RULES);
+        s.resume("14".into());
+        s.on_command(Command::Hold);
+        assert_eq!(s.on_snapshot(&break_old("14", "15", 195)), None);
+        assert_eq!(s.on_command(Command::SwitchNow), switch("14", "15"));
+        assert!(!s.status().hold);
+
+        // A hold from before the restart doesn't carry over.
+        let mut s = started(playing("14", "15"));
+        s.on_command(Command::Hold);
+        s.resume("14".into());
+        assert!(!s.status().hold);
     }
 
     #[test]

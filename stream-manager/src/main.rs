@@ -14,6 +14,7 @@ mod live;
 mod portal;
 mod prepare;
 mod quota;
+mod recovery;
 mod refbox;
 mod switcher;
 mod vmix;
@@ -102,7 +103,11 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
         let app = app::App::new(config_path.to_path_buf(), config);
         app.start_refbox_connections();
         let plan_app = std::sync::Arc::clone(&app);
-        tokio::spawn(async move { plan_app.refresh_plan().await });
+        // Recovery needs the schedule, so it runs once the schedule has loaded.
+        tokio::spawn(async move {
+            plan_app.refresh_plan().await;
+            plan_app.recover_live_videos().await;
+        });
         return web::serve(app, open_browser).await;
     }
 

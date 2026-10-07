@@ -9,6 +9,7 @@ use crate::{
     portal::{self, EventPlan, video_title},
     prepare,
     quota::{self, Ledger},
+    recovery,
     refbox::{self, RefboxEvent},
     switcher::{Action, Command, CourtSwitcher, Phase, SwitchRules},
     vmix,
@@ -481,6 +482,55 @@ impl App {
         });
     }
 
+    // ----- Restart recovery -----
+
+    /// After a restart, or when the courts change, asks YouTube which of each court's videos
+    /// today is live and carries on from it (ADR 026 §9). Without a schedule, prepared videos or
+    /// a YouTube connection nothing changes, and the court waits for Start day.
+    pub async fn recover_live_videos(self: &Arc<Self>) {
+        let (generation, courts, plan, slug) = {
+            let inner = self.inner();
+            let courts: Vec<String> = inner.courts.iter().map(|c| c.config.name.clone()).collect();
+            (
+                inner.generation,
+                courts,
+                inner.plan.clone(),
+                inner.config.event_slug.clone(),
+            )
+        };
+        let Some(plan) = plan.filter(|_| !slug.is_empty()) else {
+            return;
+        };
+        let state = match prepare::load_state(&prepare::state_path(&self.config_dir, &slug), &slug)
+        {
+            Ok(state) => state,
+            Err(e) => {
+                warn!("Couldn't read the prepared videos to look for a live one: {e}");
+                return;
+            }
+        };
+        let now = OffsetDateTime::now_utc();
+        for (i, court) in courts.iter().enumerate() {
+            let videos = recovery::todays_videos(&plan, &state, court, now);
+            if videos.is_empty() {
+                continue;
+            }
+            // Not connected to YouTube: nothing to resume from.
+            let Ok(mut youtube) = self.youtube().await else {
+                return;
+            };
+            let found = recovery::find_live(&mut youtube, &videos).await;
+            drop(youtube);
+            match found {
+                Ok((Some(live), also_live)) => {
+                    self.with_court(generation, i, |c| resume_court(c, &live, &also_live));
+                }
+                Ok((None, _)) => {}
+                Err(e) => warn!("[Court {court}] Couldn't check which video is live: {e}"),
+            }
+        }
+    }
+
     // ----- Settings and schedule -----
 
     /// Saves new settings. Court changes are refused while a court's day is running.
@@ -540,7 +590,12 @@ impl App {
             self.start_refbox_connections();
         }
         let app = Arc::clone(self);
-        tokio::spawn(async move { app.refresh_plan().await });
+        tokio::spawn(async move {
+            app.refresh_plan().await;
+            if courts_changed {
+                app.recover_live_videos().await;
+            }
+        });
         Ok(())
     }
 
@@ -777,6 +832,20 @@ fn extras_allowed_with(inner: &Inner, court_name: &str, used: u32, now: OffsetDa
     )
 }
 
+/// Carries on from `live` after a restart, unless the court's day is already running.
+fn resume_court(court: &mut CourtRuntime, live: &str, also_live: &[String]) {
+    if court.switcher.status().day_running {
+        return;
+    }
+    court.switcher.resume(live.to_string());
+    court.note(format!("Resumed: Game {live} is live"));
+    for other in also_live {
+        court.note(format!(
+            "⚠ Game {other} is also still live on YouTube; end it from YouTube Studio"
+        ));
+    }
+}
+
 /// Logs a switching decision and, unless in practice mode, hands it to the court's worker.
 fn dispatch(
     court: &mut CourtRuntime,
@@ -808,6 +877,32 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         App::new(dir.join("config.toml"), Config::default())
+    }
+
+    #[test]
+    fn resume_court_carries_on_from_the_live_video_and_reports_others() {
+        let rules = rules_of(&Config::default());
+        let court_config = Config::default().courts.remove(0);
+        let mut court = CourtRuntime::new(court_config.clone(), rules);
+        resume_court(&mut court, "14", &["13".to_string()]);
+        let status = court.switcher.status();
+        assert!(status.day_running);
+        assert_eq!(status.live.as_deref(), Some("14"));
+        let log: Vec<&String> = court.log.iter().collect();
+        assert_eq!(log.len(), 2);
+        assert!(log[1].ends_with(" Resumed: Game 14 is live"), "{log:?}");
+        assert!(
+            log[0]
+                .ends_with(" ⚠ Game 13 is also still live on YouTube; end it from YouTube Studio"),
+            "{log:?}"
+        );
+
+        // The operator pressed Start day while recovery was asking YouTube: leave it alone.
+        let mut court = CourtRuntime::new(court_config, rules);
+        court.switcher.resume("7".into());
+        resume_court(&mut court, "14", &[]);
+        assert_eq!(court.switcher.status().live.as_deref(), Some("7"));
+        assert!(court.log.is_empty());
     }
 
     #[test]

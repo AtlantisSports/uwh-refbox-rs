@@ -11,7 +11,8 @@
 //! court on Hold. Problems after that are reported as warnings: B is live either way.
 //!
 //! In one-key mode vMix sends on stream key A all day: it starts at Start day and stops at End
-//! day. Each switch ends A's video first and then puts B's live on the running stream.
+//! day. Each switch ends the current video first, then puts the next one live on the running
+//! stream.
 
 use crate::{
     BoxError,
@@ -96,7 +97,9 @@ fn one_key_ready(
             .is_some_and(|bound| normalize(bound) != normalize(&key_a))
     });
     if on_other_key {
-        return Err("Re-run Prepare: some of today's videos use stream key B".to_string());
+        return Err(
+            "Re-run Prepare: some of today's videos use a stream key other than A".to_string(),
+        );
     }
     Ok(())
 }
@@ -115,6 +118,16 @@ fn todays_games<'a>(
         .filter(|g| g.court == court.name && g.day == day)
         .map(|g| g.number.as_str())
         .collect()
+}
+
+/// vMix destinations to stop at End day. With two keys, both, so nothing is left streaming
+/// even if one was started by hand. With one key, only destination 1: destination 2 is left
+/// alone, as a venue may use it for something else.
+fn destinations_to_stop(court: &CourtConfig) -> &'static [u8] {
+    match court.stream_mode {
+        StreamMode::TwoKeys => &[1, 2],
+        StreamMode::OneKey => &[1],
+    }
 }
 
 async fn stream_id(yt: &mut YouTube, title: &str) -> Result<String, BoxError> {
@@ -444,10 +457,7 @@ async fn end(
         },
         Err(e) => warnings.push(e),
     }
-    // Stop both of the court's destinations, so nothing is left streaming at the end of the
-    // day even if one was started by hand in vMix.
-    for index in 0..2 {
-        let destination = vmix_destination(index);
+    for &destination in destinations_to_stop(court) {
         match vmix::stop_destination(&court.vmix_address, destination).await {
             Ok(()) => log(format!("vMix: stopped destination {destination}")),
             Err(e) => warnings.push(format!("Couldn't stop vMix destination {destination}: {e}")),
@@ -501,13 +511,21 @@ mod tests {
         court.stream_mode = StreamMode::OneKey;
         assert_eq!(
             one_key_ready(&court, &mixed, &["1", "2"]),
-            Err("Re-run Prepare: some of today's videos use stream key B".to_string())
+            Err("Re-run Prepare: some of today's videos use a stream key other than A".to_string())
         );
         // Only the listed (today's) games are checked.
         assert_eq!(one_key_ready(&court, &mixed, &["1"]), Ok(()));
 
         let all_a = state(&[("1", Some("Court 1 - A")), ("2", Some("court 1 – a"))]);
         assert_eq!(one_key_ready(&court, &all_a, &["1", "2"]), Ok(()));
+    }
+
+    #[test]
+    fn one_key_end_stops_only_destination_1() {
+        let mut court = Config::default().courts.remove(0);
+        assert_eq!(destinations_to_stop(&court), [1, 2]);
+        court.stream_mode = StreamMode::OneKey;
+        assert_eq!(destinations_to_stop(&court), [1]);
     }
 
     #[test]

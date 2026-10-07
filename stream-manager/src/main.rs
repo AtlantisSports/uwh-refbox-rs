@@ -8,6 +8,7 @@ use log4rs::{
 use std::path::{Path, PathBuf};
 
 mod app;
+mod companion;
 mod config;
 mod google_auth;
 mod live;
@@ -112,6 +113,9 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
         // Every 10 minutes, keeps running courts' upcoming titles in step with the portal.
         let sync_app = std::sync::Arc::clone(&app);
         tokio::spawn(async move { sync_app.run_title_sync().await });
+        // Every second, keeps the Stream Deck's live status in Companion up to date.
+        let companion_app = std::sync::Arc::clone(&app);
+        tokio::spawn(async move { companion_app.run_companion_sync().await });
         return web::serve(app, open_browser).await;
     }
 

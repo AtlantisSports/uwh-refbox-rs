@@ -286,6 +286,8 @@ struct SettingsBody {
     practice_mode: bool,
     quota_daily_limit: u32,
     quota_share_percent: u8,
+    #[serde(default)]
+    companion_address: String,
     courts: Vec<crate::config::CourtConfig>,
 }
 
@@ -324,6 +326,7 @@ async fn save_settings(
         practice_mode: body.practice_mode,
         quota_daily_limit: body.quota_daily_limit,
         quota_share_percent: body.quota_share_percent,
+        companion_address: body.companion_address.trim().to_string(),
         courts: body.courts,
         ..current
     };

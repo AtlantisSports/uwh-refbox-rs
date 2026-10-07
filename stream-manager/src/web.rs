@@ -35,6 +35,8 @@ const SESSION_COOKIE: &str = "sm_session";
 
 const DEVICE_NOT_ALLOWED: &str = "This device isn't allowed. On the mini PC, add its address under \
      Settings → Allow other devices.";
+const HOST_NOT_ALLOWED: &str = "This web address isn't allowed. On the mini PC, open the control \
+     page at http://127.0.0.1; on an allowed device, use the mini PC's own address.";
 const TOO_MANY_SIGN_INS: &str = "Too many sign-in attempts; wait a moment and try again.";
 const DEVICE_SETTINGS_LOCAL_ONLY: &str =
     "\"Allow other devices\" can only be changed on the mini PC itself.";
@@ -50,6 +52,12 @@ struct ApiError(StatusCode, String);
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (self.0, Json(json!({ "error": self.1 }))).into_response()
+    }
+}
+
+impl From<String> for ApiError {
+    fn from(message: String) -> Self {
+        bad(message)
     }
 }
 
@@ -116,22 +124,65 @@ fn authorize_button(
     authorize(app, headers, addr)
 }
 
+/// `host` (a `Host` header) without its port: `127.0.0.1:8090` → `127.0.0.1`, `[::1]:8090` →
+/// `[::1]`.
+fn without_port(host: &str) -> &str {
+    if host.starts_with('[') {
+        host.find(']').map_or(host, |end| &host[..=end])
+    } else {
+        host.split(':').next().unwrap_or(host)
+    }
+}
+
+/// Whether the web address a request was sent to (its `Host`, port ignored) is `localhost` or a
+/// bare IP address (IPv4, or IPv6 in brackets). Any other name is refused: a web page on some
+/// other site whose name was made to point at this PC (DNS rebinding) always uses a name, so it
+/// gets nothing. Which devices may connect at all is decided by [`Devices::allows`].
+fn host_allowed(host: &str) -> bool {
+    let name = without_port(host.trim()).to_ascii_lowercase();
+    if name == "localhost" || name.parse::<Ipv4Addr>().is_ok() {
+        return true;
+    }
+    name.strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+        .is_some_and(|inside| inside.parse::<std::net::Ipv6Addr>().is_ok())
+}
+
+/// A refusal: JSON for the API, plain text for the page.
+fn refuse(path: &str, message: &'static str) -> Response {
+    if path.starts_with("/api/") {
+        fail(StatusCode::FORBIDDEN, message).into_response()
+    } else {
+        (StatusCode::FORBIDDEN, message).into_response()
+    }
+}
+
 /// Answers only this mini PC itself and the allowed devices; every other device is refused,
-/// whatever it asks for (the page included).
+/// whatever it asks for (the page included). Requests sent to a web address that is a name
+/// other than `localhost` are refused too (see [`host_allowed`]).
 async fn refuse_other_devices(
     State(app): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     request: Request,
     next: Next,
 ) -> Response {
-    if app.devices.allows(addr.ip()) {
-        return next.run(request).await;
+    if !app.devices.allows(addr.ip()) {
+        return refuse(request.uri().path(), DEVICE_NOT_ALLOWED);
     }
-    if request.uri().path().starts_with("/api/") {
-        fail(StatusCode::FORBIDDEN, DEVICE_NOT_ALLOWED).into_response()
-    } else {
-        (StatusCode::FORBIDDEN, DEVICE_NOT_ALLOWED).into_response()
+    let host = request
+        .headers()
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .or_else(|| {
+            request
+                .uri()
+                .authority()
+                .map(|authority| authority.as_str())
+        });
+    if !host.is_some_and(host_allowed) {
+        return refuse(request.uri().path(), HOST_NOT_ALLOWED);
     }
+    next.run(request).await
 }
 
 /// Whether the browser says the request comes from another web page (another site, or another
@@ -301,7 +352,8 @@ async fn logout(State(app): State<AppState>, headers: HeaderMap) -> Json<Value> 
     Json(json!({ "ok": true }))
 }
 
-/// Sets the PIN the first time (only from this laptop), or changes it (when logged in).
+/// Sets the PIN the first time (only from this laptop), or changes it (when logged in). Every
+/// other session is signed out; the one that changed it gets a new sign-in.
 async fn set_pin(
     State(app): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -311,15 +363,20 @@ async fn set_pin(
     if let Err(e) = authorize(&app, &headers, addr) {
         return e.into_response();
     }
-    let mut config = app.config();
-    config.pin = body.pin.trim().to_string();
-    if config.pin.is_empty() {
+    let pin = body.pin.trim().to_string();
+    if pin.is_empty() {
         return bad("The PIN can't be empty").into_response();
     }
-    if let Err(e) = app.apply_settings(config) {
+    if let Err(e) = app.update_settings(|current| {
+        Ok::<_, String>(Config {
+            pin,
+            ..current.clone()
+        })
+    }) {
         return bad(e).into_response();
     }
-    info!("PIN changed");
+    app.clear_sessions();
+    info!("PIN changed; every other session signed out");
     login_response(&app)
 }
 
@@ -394,15 +451,20 @@ struct SettingsBody {
     allowed_devices: Option<Vec<String>>,
 }
 
-/// The allowed devices' addresses as typed, blank lines skipped.
+/// The allowed devices' addresses as typed, blank lines skipped. IPv4 only: the control page
+/// listens on IPv4, so a device listed by an IPv6 address could never reach it.
 fn parse_devices(list: &[String]) -> Result<Vec<IpAddr>, String> {
     list.iter()
         .map(|text| text.trim())
         .filter(|text| !text.is_empty())
-        .map(|text| {
-            text.parse().map_err(|_| {
-                format!("\"{text}\" isn't a device address; use numbers like 192.168.1.50")
-            })
+        .map(|text| match text.parse::<IpAddr>() {
+            Ok(IpAddr::V4(ip)) => Ok(IpAddr::V4(ip)),
+            Ok(IpAddr::V6(_)) => Err(format!(
+                "\"{text}\" is an IPv6 address; use the device's IPv4 address (numbers like 192.168.1.50)"
+            )),
+            Err(_) => Err(format!(
+                "\"{text}\" isn't a device address; use numbers like 192.168.1.50"
+            )),
         })
         .collect()
 }
@@ -435,15 +497,10 @@ async fn get_settings(
     })))
 }
 
-async fn save_settings(
-    State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Json(body): Json<SettingsBody>,
-) -> ApiResult {
-    authorize(&app, &headers, addr)?;
-    let local = from_this_pc(addr);
-    let current = app.config();
+/// The settings to save: the page's `body` on top of the settings in use (`current`, read under
+/// the save's lock). The PIN and the button key are never taken from the body, so a save can't
+/// bring back a key replaced meanwhile. The device settings can only be changed from this PC.
+fn settings_from(body: SettingsBody, current: &Config, local: bool) -> Result<Config, ApiError> {
     let allow_other_devices = body
         .allow_other_devices
         .unwrap_or(current.allow_other_devices);
@@ -457,7 +514,7 @@ async fn save_settings(
     {
         return Err(fail(StatusCode::FORBIDDEN, DEVICE_SETTINGS_LOCAL_ONLY));
     }
-    let new = Config {
+    Ok(Config {
         portal_url: body.portal_url,
         event_slug: body.event_slug.trim().to_string(),
         privacy: body.privacy,
@@ -471,9 +528,19 @@ async fn save_settings(
         courts: body.courts,
         allow_other_devices,
         allowed_devices,
-        ..current
-    };
-    app.apply_settings(new).map_err(bad)?;
+        ..current.clone()
+    })
+}
+
+async fn save_settings(
+    State(app): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<SettingsBody>,
+) -> ApiResult {
+    authorize(&app, &headers, addr)?;
+    let local = from_this_pc(addr);
+    app.update_settings(|current| settings_from(body, current, local))?;
     Ok(Json(json!({
         "ok": true,
         "restart_needed": local && app.devices_need_restart(),
@@ -491,15 +558,19 @@ async fn make_new_button_key(
     if !from_this_pc(addr) {
         return Err(fail(StatusCode::FORBIDDEN, BUTTON_KEY_LOCAL_ONLY));
     }
-    let mut config = app.config();
-    config.button_key = access::new_button_key().map_err(|e| {
+    let key = access::new_button_key().map_err(|e| {
         fail(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Couldn't make a new key (no random numbers): {e}"),
         )
     })?;
-    let key = config.button_key.clone();
-    app.apply_settings(config).map_err(bad)?;
+    // Only the key changes, made from the settings in use under the save's lock.
+    app.update_settings(|current| {
+        Ok::<_, ApiError>(Config {
+            button_key: key.clone(),
+            ..current.clone()
+        })
+    })?;
     info!("Made a new Stream Deck button key");
     Ok(Json(json!({ "button_key": key })))
 }
@@ -1242,5 +1313,132 @@ mod tests {
         );
         assert_eq!(status(new_key).await.unwrap().status(), StatusCode::OK);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_localhost_and_ip_addresses_are_answered() {
+        for host in [
+            "127.0.0.1",
+            "127.0.0.1:8090",
+            "localhost",
+            "LocalHost:8090",
+            "[::1]",
+            "[::1]:8090",
+            "192.168.1.7:8090",
+            "192.168.1.7",
+        ] {
+            assert!(host_allowed(host), "{host} was refused");
+        }
+        for host in [
+            "evil.example",
+            "evil.example:8090",
+            "127.0.0.1.nip.io",
+            "localhost.evil.example:8090",
+            "[evil.example]",
+            "",
+        ] {
+            assert!(!host_allowed(host), "{host} was answered");
+        }
+    }
+
+    #[tokio::test]
+    async fn requests_sent_to_another_web_address_are_refused() {
+        let (base, dir) = test_server("host", None).await;
+        let client = reqwest::Client::new();
+        let get = |path: &str, host: &str| {
+            client
+                .get(format!("{base}{path}"))
+                .header(header::HOST, host)
+                .send()
+        };
+        let response = get("/", "evil.example:8090").await.unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(response.text().await.unwrap(), HOST_NOT_ALLOWED);
+        let response = get(&format!("/api/status?key={KEY}"), "evil.example")
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body: Value = response.json().await.unwrap();
+        assert_eq!(body["error"], HOST_NOT_ALLOWED);
+        for host in ["localhost:8090", "[::1]:8090", "127.0.0.1"] {
+            let response = get(&format!("/api/status?key={KEY}"), host).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{host}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn changing_the_pin_signs_out_every_other_session() {
+        let (base, dir) = test_server("pin-change", None).await;
+        let client = reqwest::Client::new();
+        let changer = sign_in(&client, &base).await;
+        let other = sign_in(&client, &base).await;
+        let response = client
+            .post(format!("{base}/api/pin"))
+            .header(header::COOKIE, &changer)
+            .json(&json!({ "pin": "5678" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = response.headers()[header::SET_COOKIE].to_str().unwrap();
+        let renewed = cookie.split(';').next().unwrap().to_string();
+        let status = |cookie: &str| {
+            client
+                .get(format!("{base}/api/status"))
+                .header(header::COOKIE, cookie)
+                .send()
+        };
+        assert_eq!(
+            status(&other).await.unwrap().status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(status(&renewed).await.unwrap().status(), StatusCode::OK);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_settings_save_keeps_the_key_and_pin_in_use() {
+        // The page's settings as read before a new key was made (and with an old key in them).
+        let before = Config {
+            button_key: "old-key".into(),
+            pin: "1111".into(),
+            ..Config::default()
+        };
+        let current = Config {
+            button_key: KEY.into(),
+            pin: "1234".into(),
+            ..Config::default()
+        };
+        for local in [true, false] {
+            let body: SettingsBody = serde_json::from_value(json!(before)).unwrap();
+            let saved = settings_from(body, &current, local).ok().unwrap();
+            assert_eq!(saved.button_key, KEY);
+            assert_eq!(saved.pin, "1234");
+        }
+    }
+
+    #[test]
+    fn allowed_devices_take_ipv4_addresses_only() {
+        let list = |items: &[&str]| {
+            parse_devices(&items.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        };
+        assert_eq!(
+            list(&["192.168.1.50", " ", "10.0.0.2 "]).unwrap(),
+            vec![IpAddr::from([192, 168, 1, 50]), IpAddr::from([10, 0, 0, 2])]
+        );
+        for v6 in ["fe80::1", "::ffff:192.168.1.50", "::1"] {
+            assert_eq!(
+                list(&[v6]).unwrap_err(),
+                format!(
+                    "\"{v6}\" is an IPv6 address; use the device's IPv4 address (numbers like 192.168.1.50)"
+                )
+            );
+        }
+        assert!(
+            list(&["tablet"])
+                .unwrap_err()
+                .contains("isn't a device address")
+        );
     }
 }

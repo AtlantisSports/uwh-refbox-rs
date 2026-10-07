@@ -13,6 +13,7 @@ mod google_auth;
 mod live;
 mod portal;
 mod prepare;
+mod quota;
 mod refbox;
 mod switcher;
 mod vmix;
@@ -116,11 +117,13 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
     let client_file = config_dir.join(&config.client_secret_file);
     let token_file = config_dir.join(app::TOKEN_FILE);
     let state_file = prepare::state_path(config_dir, &config.event_slug);
+    // The CLI uses the same allowance as the control page, so it counts in the same ledger.
+    let ledger_file = config_dir.join(quota::LEDGER_FILE);
     let youtube = || -> Result<YouTube, BoxError> {
-        Ok(YouTube::new(google_auth::GoogleAuth::load(
-            &client_file,
-            &token_file,
-        )?))
+        Ok(YouTube::new(
+            google_auth::GoogleAuth::load(&client_file, &token_file)?,
+            Some(ledger_file.clone()),
+        ))
     };
 
     match command {

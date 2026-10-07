@@ -215,10 +215,11 @@ pub async fn carry_out(
             };
         }
     };
-    let outcome = match action {
+    match action {
         Action::GoLive(game) => start(&mut yt, court, plan, &state, game, log).await,
         Action::Switch { from, to } => {
             let ctx = SwitchContext {
+                app,
                 court,
                 plan,
                 state: &state,
@@ -227,11 +228,7 @@ pub async fn carry_out(
             switch(&mut yt, &ctx, from, to, log).await
         }
         Action::End(game) => end(&mut yt, court, plan, &state, game, log).await,
-    };
-    let units = yt.units_used;
-    drop(yt);
-    app.record_youtube(None, units);
-    outcome
+    }
 }
 
 /// Which game's video is live if `action` doesn't happen at all.
@@ -281,6 +278,7 @@ async fn start(
 }
 
 struct SwitchContext<'a> {
+    app: &'a App,
     court: &'a CourtConfig,
     plan: Option<&'a EventPlan>,
     state: &'a prepare::EventState,
@@ -295,6 +293,7 @@ async fn switch(
     log: &mut (dyn FnMut(String) + Send),
 ) -> Outcome {
     let SwitchContext {
+        app,
         court,
         plan,
         state,
@@ -370,21 +369,30 @@ async fn switch(
         return Outcome::Warnings(warnings);
     };
 
+    // The chat message and the "Next game" link are extras: they stop when the allowance runs
+    // low, so the switches themselves can carry on (ADR 026 §7).
+    let extras = app.extras_allowed(&court.name);
+    if !extras {
+        log("Allowance low: skipped the chat message and Next game link".to_string());
+    }
+
     // 3: tell the old video's chat where the stream went (the chat closes when it ends).
-    let teams = plan
-        .and_then(|p| p.game(to))
-        .map(|g| format!(" ({} vs {})", g.dark, g.light))
-        .unwrap_or_default();
-    let message = format!("▶ Game {to}{teams} is live now: {link}");
-    match yt.broadcast_info(&from_video.broadcast_id).await {
-        Ok(info) => match info.live_chat_id {
-            Some(chat) => match yt.post_chat_message(&chat, &message).await {
-                Ok(()) => log(format!("Chat message posted in Game {from}")),
-                Err(e) => warnings.push(format!("Couldn't post the chat message: {e}")),
+    if extras {
+        let teams = plan
+            .and_then(|p| p.game(to))
+            .map(|g| format!(" ({} vs {})", g.dark, g.light))
+            .unwrap_or_default();
+        let message = format!("▶ Game {to}{teams} is live now: {link}");
+        match yt.broadcast_info(&from_video.broadcast_id).await {
+            Ok(info) => match info.live_chat_id {
+                Some(chat) => match yt.post_chat_message(&chat, &message).await {
+                    Ok(()) => log(format!("Chat message posted in Game {from}")),
+                    Err(e) => warnings.push(format!("Couldn't post the chat message: {e}")),
+                },
+                None => warnings.push(format!("Game {from}'s video has no live chat")),
             },
-            None => warnings.push(format!("Game {from}'s video has no live chat")),
-        },
-        Err(e) => warnings.push(format!("Couldn't post the chat message: {e}")),
+            Err(e) => warnings.push(format!("Couldn't post the chat message: {e}")),
+        }
     }
 
     // 4: end the old video and its vMix output.
@@ -414,7 +422,7 @@ async fn switch(
         scheduled_start: from_video.scheduled_start.clone(),
         privacy: String::new(),
     };
-    if from_video.next_game_link.as_deref() != Some(link.as_str()) {
+    if extras && from_video.next_game_link.as_deref() != Some(link.as_str()) {
         match yt.update_broadcast(&from_video.broadcast_id, &spec).await {
             Ok(()) => {
                 let saved = prepare::load_state(state_file, &state.event_slug).and_then(|mut s| {

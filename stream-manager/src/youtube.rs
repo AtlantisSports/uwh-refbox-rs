@@ -1,15 +1,19 @@
 //! The few YouTube Data API calls stream-manager needs, with a running count of the daily
-//! allowance ("quota units") they use.
+//! allowance ("quota units") they use. Every call is also added to the allowance ledger file
+//! (`quota.rs`), which counts this program's use for the whole day, across restarts.
 //!
 //! Costs follow Google's published quota table: list calls cost 1 unit, and creating,
 //! changing, binding or deleting costs 50 units.
 
-use crate::{BoxError, google_auth::GoogleAuth};
+use crate::{BoxError, google_auth::GoogleAuth, quota};
+use log::warn;
 use reqwest::{
     Method,
     header::{CONTENT_LENGTH, CONTENT_TYPE},
 };
 use serde_json::{Value, json};
+use std::path::PathBuf;
+use time::OffsetDateTime;
 
 const API: &str = "https://www.googleapis.com/youtube/v3";
 const LIST_COST: u32 = 1;
@@ -47,15 +51,19 @@ pub struct BroadcastSpec {
 pub struct YouTube {
     auth: GoogleAuth,
     http: reqwest::Client,
+    /// Units used through this connection since it was opened.
     pub units_used: u32,
+    /// The allowance ledger file every call is added to (`None` counts nowhere else).
+    ledger: Option<PathBuf>,
 }
 
 impl YouTube {
-    pub fn new(auth: GoogleAuth) -> Self {
+    pub fn new(auth: GoogleAuth, ledger: Option<PathBuf>) -> Self {
         Self {
             auth,
             http: reqwest::Client::new(),
             units_used: 0,
+            ledger,
         }
     }
 
@@ -85,6 +93,11 @@ impl YouTube {
         let response = request.send().await?;
         // Google charges for the call whether or not it succeeds.
         self.units_used += cost;
+        if let Some(ledger) = &self.ledger {
+            if let Err(e) = quota::record_to_file(ledger, cost, OffsetDateTime::now_utc()) {
+                warn!("Couldn't save the YouTube allowance count: {e}");
+            }
+        }
         let status = response.status();
         let text = response.text().await?;
         let value = if text.trim().is_empty() {

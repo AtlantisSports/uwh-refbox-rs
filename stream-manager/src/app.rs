@@ -8,6 +8,7 @@ use crate::{
     live::{self, Outcome},
     portal::{self, EventPlan, video_title},
     prepare,
+    quota::{self, Ledger},
     refbox::{self, RefboxEvent},
     switcher::{Action, Command, CourtSwitcher, Phase, SwitchRules},
     vmix,
@@ -52,7 +53,6 @@ struct Inner {
     executors: Vec<mpsc::UnboundedSender<Action>>,
     job: JobStatus,
     youtube_channel: Option<String>,
-    youtube_units: u32,
     sign_in: String,
 }
 
@@ -91,7 +91,11 @@ pub struct Status {
     pub privacy: String,
     pub youtube_connected: bool,
     pub youtube_channel: Option<String>,
-    pub youtube_units: u32,
+    /// What's left of this program's share of today's YouTube allowance, and the share itself.
+    pub quota_remaining: u32,
+    pub quota_share: u32,
+    /// The allowance is low: the chat message and "Next game" link are being skipped.
+    pub extras_paused: bool,
     pub sign_in: String,
     pub job: JobStatus,
     pub courts: Vec<CourtStatus>,
@@ -199,7 +203,6 @@ impl App {
                 executors: Vec::new(),
                 job: JobStatus::default(),
                 youtube_channel: None,
-                youtube_units: 0,
                 sign_in: String::new(),
             }),
             youtube: AsyncMutex::new(None),
@@ -223,6 +226,10 @@ impl App {
     pub fn client_file(&self) -> PathBuf {
         self.config_dir
             .join(&self.inner().config.client_secret_file)
+    }
+
+    pub fn ledger_file(&self) -> PathBuf {
+        self.config_dir.join(quota::LEDGER_FILE)
     }
 
     pub fn state_file(&self) -> PathBuf {
@@ -583,18 +590,30 @@ impl App {
                 );
             }
             let auth = GoogleAuth::load(&self.client_file(), &self.token_file())?;
-            *guard = Some(YouTube::new(auth));
+            *guard = Some(YouTube::new(auth, Some(self.ledger_file())));
         }
         AsyncMutexGuard::try_map(guard, |yt| yt.as_mut())
             .map_err(|_| "YouTube connection unavailable".into())
     }
 
-    pub fn record_youtube(&self, channel: Option<String>, units: u32) {
-        let mut inner = self.inner();
+    /// Remembers the connected channel's name for the page.
+    pub fn record_youtube(&self, channel: Option<String>) {
         if channel.is_some() {
-            inner.youtube_channel = channel;
+            self.inner().youtube_channel = channel;
         }
-        inner.youtube_units = units;
+    }
+
+    /// Units this program has used today, from the allowance ledger.
+    fn quota_used_today(&self) -> u32 {
+        Ledger::load(&self.ledger_file()).used_today(OffsetDateTime::now_utc())
+    }
+
+    /// Whether the extras (chat message, "Next game" link) may still run for this court: what's
+    /// left of the share must still cover the rest of today's switches plus a margin (ADR 026 §7).
+    pub fn extras_allowed(&self, court_name: &str) -> bool {
+        let used = self.quota_used_today();
+        let inner = self.inner();
+        extras_allowed_with(&inner, court_name, used, OffsetDateTime::now_utc())
     }
 
     pub async fn forget_youtube(&self) {
@@ -641,7 +660,17 @@ impl App {
 
     pub fn status(&self) -> Status {
         let connected = google_auth::is_connected(&self.token_file());
+        let quota_used = self.quota_used_today();
+        let now = OffsetDateTime::now_utc();
         let inner = self.inner();
+        let quota_share = quota::share(
+            inner.config.quota_daily_limit,
+            inner.config.quota_share_percent,
+        );
+        let extras_paused = inner
+            .courts
+            .iter()
+            .any(|c| !extras_allowed_with(&inner, &c.config.name, quota_used, now));
         let plan = inner.plan.as_ref();
         let courts = inner
             .courts
@@ -705,12 +734,47 @@ impl App {
             privacy: inner.config.privacy.clone(),
             youtube_connected: connected,
             youtube_channel: inner.youtube_channel.clone(),
-            youtube_units: inner.youtube_units,
+            quota_remaining: quota_share.saturating_sub(quota_used),
+            quota_share,
+            extras_paused,
             sign_in: inner.sign_in.clone(),
             job: inner.job.clone(),
             courts,
         }
     }
+}
+
+/// Switches still to come today on `court_name` and, as the share covers the whole program, on
+/// every other court whose day is running.
+fn switches_left(inner: &Inner, court_name: &str, now: OffsetDateTime) -> u32 {
+    let Some(plan) = inner.plan.as_ref() else {
+        return 0;
+    };
+    inner
+        .courts
+        .iter()
+        .filter(|c| c.config.name == court_name || c.switcher.status().day_running)
+        .map(|c| {
+            let status = c.switcher.status();
+            let next = match &status.phase {
+                Phase::Unknown => None,
+                Phase::Playing(game) => Some(game.as_str()),
+                Phase::Break { upcoming, .. } => Some(upcoming.as_str()),
+            };
+            quota::court_switches_left(plan, &c.config.name, status.live.as_deref(), next, now)
+        })
+        .fold(0, u32::saturating_add)
+}
+
+fn extras_allowed_with(inner: &Inner, court_name: &str, used: u32, now: OffsetDateTime) -> bool {
+    let share = quota::share(
+        inner.config.quota_daily_limit,
+        inner.config.quota_share_percent,
+    );
+    quota::extras_allowed(
+        share.saturating_sub(used),
+        switches_left(inner, court_name, now),
+    )
 }
 
 /// Logs a switching decision and, unless in practice mode, hands it to the court's worker.
@@ -729,5 +793,68 @@ fn dispatch(
     match executor {
         Some(tx) if tx.send(action).is_ok() => court.busy = true,
         _ => court.note("✖ Internal error: no switching worker for this court".to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::portal::parse_event_plan;
+    use time::macros::datetime;
+
+    fn temp_app(name: &str) -> Arc<App> {
+        let dir =
+            std::env::temp_dir().join(format!("stream-manager-app-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        App::new(dir.join("config.toml"), Config::default())
+    }
+
+    #[test]
+    fn status_shows_whats_left_of_the_share_from_the_ledger() {
+        let app = temp_app("status");
+        let status = app.status();
+        assert_eq!((status.quota_remaining, status.quota_share), (5_000, 5_000));
+        assert!(!status.extras_paused);
+
+        quota::record_to_file(&app.ledger_file(), 4_850, OffsetDateTime::now_utc()).unwrap();
+        let status = app.status();
+        assert_eq!((status.quota_remaining, status.quota_share), (150, 5_000));
+        // 150 left doesn't cover even the 200-unit margin.
+        assert!(status.extras_paused);
+        assert!(!app.extras_allowed("1"));
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn extras_need_todays_remaining_switches_plus_margin() {
+        let app = temp_app("extras");
+        let game = |number: &str, start: &str| {
+            format!(
+                r#"{{ "number": "{number}", "startsOn": "{start}", "court": "1",
+                    "dark": {{ "assignment": null }}, "light": {{ "assignment": null }} }}"#
+            )
+        };
+        let plan = parse_event_plan(&format!(
+            r#"{{ "event": {{ "name": "Test Cup" }}, "games": [ {}, {}, {} ] }}"#,
+            game("1", "2026-08-01T09:00:00+10:00"),
+            game("2", "2026-08-01T10:00:00+10:00"),
+            game("3", "2026-08-01T11:00:00+10:00"),
+        ))
+        .unwrap();
+        let now = datetime!(2026-08-01 08:00 +10);
+        let inner = app.inner();
+        // No schedule: only the margin is needed (share 5,000).
+        assert!(extras_allowed_with(&inner, "1", 4_800, now));
+        assert!(!extras_allowed_with(&inner, "1", 4_801, now));
+        drop(inner);
+
+        app.inner().plan = Some(plan);
+        let inner = app.inner();
+        // Three games today: 3 × 120 + 200 = 560 needed.
+        assert!(extras_allowed_with(&inner, "1", 4_440, now));
+        assert!(!extras_allowed_with(&inner, "1", 4_441, now));
+        drop(inner);
+        let _ = std::fs::remove_dir_all(&app.config_dir);
     }
 }

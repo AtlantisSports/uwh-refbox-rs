@@ -284,6 +284,8 @@ struct SettingsBody {
     roster_start_secs: u32,
     roster_end_secs: u32,
     practice_mode: bool,
+    quota_daily_limit: u32,
+    quota_share_percent: u8,
     courts: Vec<crate::config::CourtConfig>,
 }
 
@@ -320,6 +322,8 @@ async fn save_settings(
         roster_start_secs: body.roster_start_secs,
         roster_end_secs: body.roster_end_secs,
         practice_mode: body.practice_mode,
+        quota_daily_limit: body.quota_daily_limit,
+        quota_share_percent: body.quota_share_percent,
         courts: body.courts,
         ..current
     };
@@ -446,9 +450,7 @@ async fn prepare_preview(
     let lookups = prepare::lookups(&mut yt)
         .await
         .map_err(|e| bad(e.to_string()))?;
-    let units = yt.units_used;
     drop(yt);
-    app.record_youtube(None, units);
     let work = prepare::preview(&config, &plan, &state, &lookups, &selection)
         .map_err(|e| bad(e.to_string()))?;
     Ok(Json(json!({ "work": work, "empty": work.is_empty() })))
@@ -475,7 +477,7 @@ async fn prepare_run(
         let result = async {
             let mut yt = app.youtube().await?;
             let lookups = prepare::lookups(&mut yt).await?;
-            let outcome = prepare::run(
+            prepare::run(
                 &config,
                 &plan,
                 &mut yt,
@@ -484,9 +486,7 @@ async fn prepare_run(
                 &selection,
                 &mut log,
             )
-            .await;
-            app.record_youtube(None, yt.units_used);
-            outcome
+            .await
         }
         .await;
         app.end_job(result.err().map(|e| e.to_string()));
@@ -565,7 +565,6 @@ async fn videos_refresh(
                     .map_err(|e| bad(e.to_string()))?,
             );
         }
-        app.record_youtube(None, yt.units_used);
     }
     let plan = app.plan();
     let list: Vec<Value> = in_schedule_order(plan.as_ref(), &state)
@@ -617,9 +616,8 @@ async fn youtube_connect(
                 let channel = match app.youtube().await {
                     Ok(mut yt) => {
                         let title = yt.my_channel_title().await.ok();
-                        let units = yt.units_used;
                         drop(yt);
-                        app.record_youtube(title.clone(), units);
+                        app.record_youtube(title.clone());
                         title
                     }
                     Err(_) => None,
@@ -651,9 +649,8 @@ async fn youtube_check(
         .await
         .map_err(|e| bad(e.to_string()))?;
     let streams = yt.list_streams().await.map_err(|e| bad(e.to_string()))?;
-    let units = yt.units_used;
     drop(yt);
-    app.record_youtube(Some(channel.clone()), units);
+    app.record_youtube(Some(channel.clone()));
     let courts: Vec<Value> = config
         .courts
         .iter()
@@ -703,9 +700,7 @@ async fn cleanup(
         let mut log = move |line: String| log_app.job_log(line);
         let result = async {
             let mut yt = app.youtube().await?;
-            let outcome = prepare::cleanup(&mut yt, &state_file, &slug, &mut log).await;
-            app.record_youtube(None, yt.units_used);
-            outcome
+            prepare::cleanup(&mut yt, &state_file, &slug, &mut log).await
         }
         .await;
         app.end_job(result.err().map(|e| e.to_string()));

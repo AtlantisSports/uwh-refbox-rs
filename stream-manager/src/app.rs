@@ -3,7 +3,7 @@
 
 use crate::{
     BoxError,
-    access::{PinFailures, Sessions},
+    access::{PinFailures, Sessions, WaitingLine},
     companion,
     config::{Config, CourtConfig},
     google_auth::{self, GoogleAuth},
@@ -49,8 +49,14 @@ pub struct App {
     inner: Mutex<Inner>,
     youtube: AsyncMutex<Option<YouTube>>,
     sessions: Mutex<Sessions>,
+    /// Wrong PINs in a row.
+    pin_failures: Mutex<PinFailures>,
     /// Held while a wrong PIN waits for its answer, so wrong PINs are answered one at a time.
-    pin_failures: AsyncMutex<PinFailures>,
+    pin_turn: AsyncMutex<()>,
+    /// The wrong PINs waiting for their turn.
+    pin_line: WaitingLine,
+    /// When each court's vMix destinations were last stopped by a switch or End day.
+    stopped_keys: Mutex<live::StoppedKeys>,
 }
 
 struct Inner {
@@ -241,7 +247,10 @@ impl App {
             }),
             youtube: AsyncMutex::new(None),
             sessions: Mutex::new(Sessions::default()),
-            pin_failures: AsyncMutex::new(PinFailures::default()),
+            pin_failures: Mutex::new(PinFailures::default()),
+            pin_turn: AsyncMutex::new(()),
+            pin_line: WaitingLine::default(),
+            stopped_keys: Mutex::new(live::StoppedKeys::default()),
         })
     }
 
@@ -340,11 +349,27 @@ impl App {
     /// Waits before a wrong PIN (from `from`) is answered: longer for each one in a row (see
     /// [`PinFailures::record`]). Wrong PINs wait one after another, never side by side, so
     /// guesses can't be sped up by sending many at once. A correct PIN never waits here.
+    ///
+    /// With [`MAX_WAITING_WRONG_PINS`](crate::access::MAX_WAITING_WRONG_PINS) already waiting,
+    /// a wrong PIN is counted but answered straight away, so a flood can't pile up.
     pub async fn wrong_pin(&self, from: &str) {
-        let mut failures = self.pin_failures.lock().await;
-        let wait = failures.record(Instant::now());
+        let Some(_place) = self.pin_line.join() else {
+            self.record_wrong_pin();
+            warn!("Wrong PIN from {from}; too many waiting, answering now");
+            return;
+        };
+        let _turn = self.pin_turn.lock().await;
+        let wait = self.record_wrong_pin();
         warn!("Wrong PIN from {from}; answering in {} s", wait.as_secs());
         tokio::time::sleep(wait).await;
+    }
+
+    /// Counts a wrong PIN; returns how long its answer should wait.
+    fn record_wrong_pin(&self) -> Duration {
+        self.pin_failures
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .record(Instant::now())
     }
 
     // ----- Refbox connections and switching -----
@@ -628,7 +653,8 @@ impl App {
     ///
     /// A court is looked at until YouTube has been asked about it once, or until its day is
     /// started or ended by hand. So if the schedule or YouTube wasn't available the first time,
-    /// recovery runs again after the next schedule load (see [`App::refresh_plan_and_recover`]).
+    /// recovery runs again after the next schedule load (see [`App::refresh_plan_and_recover`])
+    /// and after YouTube is connected.
     /// After resuming, vMix's output for the live video is started again (it is off after a
     /// reboot), except in practice mode.
     pub async fn recover_live_videos(self: &Arc<Self>) {
@@ -942,6 +968,22 @@ impl App {
         let used = self.quota_used_today();
         let inner = self.inner();
         extras_allowed_with(&inner, court_name, used, OffsetDateTime::now_utc())
+    }
+
+    /// Notes that a switch or End day stopped `court_name`'s vMix `destination` just now.
+    pub fn note_stopped(&self, court_name: &str, destination: u8) {
+        self.stopped_keys
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .record(court_name, destination, Instant::now());
+    }
+
+    /// Whether a switch or End day stopped `court_name`'s vMix `destination` in the last minute.
+    pub fn stopped_recently(&self, court_name: &str, destination: u8) -> bool {
+        self.stopped_keys
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .recently(court_name, destination, Instant::now())
     }
 
     pub async fn forget_youtube(&self) {

@@ -2,6 +2,7 @@
 
 use std::{
     collections::VecDeque,
+    sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, Instant},
 };
 
@@ -16,6 +17,39 @@ const FIRST_FAILURE_WAIT: Duration = Duration::from_secs(1);
 const LONGEST_FAILURE_WAIT: Duration = Duration::from_secs(30);
 /// Wrong PINs are forgotten once there has been none for this long.
 const FAILURES_FORGOTTEN_AFTER: Duration = Duration::from_secs(15 * 60);
+
+/// At most this many wrong PINs wait for their answer at once; any more are answered at once.
+pub const MAX_WAITING_WRONG_PINS: usize = 20;
+
+/// The wrong PINs waiting for their answer, so a flood of them can't pile up without limit.
+#[derive(Debug, Default)]
+pub struct WaitingLine {
+    waiting: AtomicUsize,
+}
+
+/// A place in the [`WaitingLine`], given up when dropped (answered, or the request went away).
+#[derive(Debug)]
+pub struct Place<'a> {
+    line: &'a WaitingLine,
+}
+
+impl WaitingLine {
+    /// Takes a place in the line, unless [`MAX_WAITING_WRONG_PINS`] are already waiting.
+    pub fn join(&self) -> Option<Place<'_>> {
+        self.waiting
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |waiting| {
+                (waiting < MAX_WAITING_WRONG_PINS).then_some(waiting + 1)
+            })
+            .ok()
+            .map(|_| Place { line: self })
+    }
+}
+
+impl Drop for Place<'_> {
+    fn drop(&mut self) {
+        self.line.waiting.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 /// The signed-in sessions (cookie tokens), oldest first.
 #[derive(Debug, Default)]
@@ -122,6 +156,21 @@ mod tests {
             failures.record(later + FAILURES_FORGOTTEN_AFTER).as_secs(),
             1
         );
+    }
+
+    #[test]
+    fn at_most_twenty_wrong_pins_wait_at_once() {
+        let line = WaitingLine::default();
+        let mut places: Vec<Place<'_>> = (0..MAX_WAITING_WRONG_PINS)
+            .map(|_| line.join().expect("room in the line"))
+            .collect();
+        assert!(line.join().is_none());
+        // One answered (or gone): one more may wait.
+        drop(places.pop());
+        let again = line.join();
+        assert!(again.is_some());
+        assert!(line.join().is_none());
+        drop(places);
     }
 
     #[test]

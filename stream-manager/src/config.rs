@@ -43,8 +43,19 @@ pub struct Config {
     pub client_secret_file: PathBuf,
     /// Port of the control page (`http://<this computer>:<port>`).
     pub web_port: u16,
-    /// PIN needed to use the control page and the Companion links. Empty until set on first use.
+    /// PIN for signing in on the control page. Empty until set on first use.
     pub pin: String,
+    /// Off (the default): the control page answers only this mini PC itself. On: it also
+    /// answers the devices in `allowed_devices`. Either applies after a restart.
+    #[serde(default)]
+    pub allow_other_devices: bool,
+    /// The network addresses of the other devices allowed to use the control page.
+    #[serde(default)]
+    pub allowed_devices: Vec<IpAddr>,
+    /// Secret in the Stream Deck (Companion) links, `?key=…`: 64 hex characters, created on first
+    /// start. Never logged, and only shown on this mini PC itself.
+    #[serde(default)]
+    pub button_key: String,
     /// While on, the Live tab only shows what it would do; nothing is sent to YouTube or vMix.
     /// On by default so a fresh install can never touch a live channel by accident.
     pub practice_mode: bool,
@@ -147,6 +158,9 @@ impl Default for Config {
             client_secret_file: PathBuf::from("client_secret.json"),
             web_port: 8090,
             pin: String::new(),
+            allow_other_devices: false,
+            allowed_devices: Vec::new(),
+            button_key: String::new(),
             practice_mode: true,
             quota_daily_limit: default_quota_daily_limit(),
             quota_share_percent: default_quota_share_percent(),
@@ -395,5 +409,13 @@ mod tests {
         assert!(c.validate_for_save().unwrap_err().contains("at least 1"));
         c.quota_daily_limit = 1;
         assert_eq!(c.validate_for_save(), Ok(()));
+    }
+
+    #[test]
+    fn config_without_device_settings_loads_as_this_pc_only_with_no_key() {
+        let config: Config = serde_json::from_str(r#"{ "event_slug": "cup" }"#).unwrap();
+        assert!(!config.allow_other_devices);
+        assert!(config.allowed_devices.is_empty());
+        assert_eq!(config.button_key, "");
     }
 }

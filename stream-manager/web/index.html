@@ -59,7 +59,7 @@
   .muted { color: var(--muted); }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
   label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
-  input, select { background: #0b0f13; color: var(--text); border: 1px solid var(--line); border-radius: 7px;
+  input, select, textarea { background: #0b0f13; color: var(--text); border: 1px solid var(--line); border-radius: 7px;
                   padding: 8px 10px; font-size: 15px; }
   input[type=checkbox] { width: 18px; height: 18px; }
   table { width: 100%; border-collapse: collapse; }
@@ -116,7 +116,8 @@
       <details>
         <summary>Companion / Stream Deck links</summary>
         <p class="muted">In Companion, add a <b>Generic HTTP</b> connection and use these addresses with a
-          <b>GET</b> request. Replace <code>PIN</code> with your PIN.</p>
+          <b>GET</b> request. Each link carries the button key (Settings → Stream Deck button key).
+          <span id="companion-key-note"></span></p>
         <div id="companion-links"></div>
       </details>
     </section>
@@ -225,6 +226,17 @@
           <code>sm_court_1_rosters</code>, <code>sm_court_1_now</code> and <code>sm_court_1_next</code>.
           Saved with the button below.</p>
       </div>
+      <div class="card hidden" style="margin-top:16px" id="card-devices">
+        <h2>Allow other devices</h2>
+        <label class="row" style="font-size:16px"><input type="checkbox" id="s-allow-devices">
+          Allow other devices on the network to open the control page</label>
+        <label class="field">Their addresses, one per line (e.g. 192.168.1.50)
+          <textarea id="s-devices" rows="3" style="width:260px"></textarea></label>
+        <p class="muted">Off: only this mini PC can open the control page. On: the devices listed here can too,
+          once signed in with the PIN; any other device is refused. This mini PC's own address on the network:
+          <code id="s-this-pc"></code>. Changes apply after Stream Manager restarts. Saved with the button below.</p>
+        <p class="warn-text hidden" id="s-restart">Restart Stream Manager to apply the new device settings.</p>
+      </div>
       <div class="card" style="margin-top:16px">
         <h2>Courts</h2>
         <p class="muted">Court names must match the portal (e.g. <code>1</code>). Refbox address and port are the same
@@ -262,6 +274,18 @@
         </div>
         <p class="muted" id="s-lan"></p>
       </div>
+      <div class="card hidden" style="margin-top:16px" id="card-key">
+        <h2>Stream Deck button key</h2>
+        <p class="muted">The Stream Deck links on the Live tab carry this key instead of the PIN. Keep it secret.</p>
+        <div class="row"><code id="s-key"></code></div>
+        <div class="row">
+          <button class="small" onclick="copyKey()">Copy</button>
+          <button class="small" onclick="newKey()">Make a new key</button>
+          <span id="s-key-msg"></span>
+        </div>
+      </div>
+      <p class="muted hidden" id="s-local-only">The device settings and the Stream Deck button key are shown only on
+        the mini PC itself.</p>
     </section>
 
     <!-- TOOLS -->
@@ -286,6 +310,9 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const mmss = (s) => s == null ? '' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 let tab = 'live', status = null, settings = null, schedule = null, previewed = null, lanUrl = null;
+// The button key is only ever sent to the page on the mini PC itself.
+let isLocal = false, buttonKey = null;
+const KEY_ELSEWHERE = '<button key — copy it on the mini PC>';
 
 async function api(path, options = {}) {
   const opts = { ...options, headers: { 'Content-Type': 'application/json' } };
@@ -302,9 +329,10 @@ async function api(path, options = {}) {
 async function start() {
   const s = await (await fetch('/api/session')).json();
   lanUrl = s.lan_url;
+  isLocal = s.is_local;
   if (s.authed && s.pin_set) return showApp();
   if (!s.pin_set && s.is_local) {
-    $('login-body').innerHTML = `<p>Choose a PIN to protect the control page and the Companion links.</p>
+    $('login-body').innerHTML = `<p>Choose a PIN to protect the control page.</p>
       <input id="pin" type="password" inputmode="numeric" placeholder="4+ digits" autofocus>
       <button class="act" style="width:100%" onclick="createPin()">Save PIN</button><p id="login-msg" class="bad-text"></p>`;
   } else if (!s.pin_set) {
@@ -466,11 +494,13 @@ function renderCourts() {
     setHTML(f('log'), c.log.map(l => `<div>${esc(l)}</div>`).join('') || '<div class="muted">Nothing yet</div>');
   });
   const base = lanUrl || location.origin;
-  $('companion-links').innerHTML = status.courts.map(c => {
+  const key = isLocal && buttonKey ? buttonKey : KEY_ELSEWHERE;
+  $('companion-key-note').textContent = isLocal ? '' : 'The key is shown only on the mini PC itself.';
+  setHTML($('companion-links'), status.courts.map(c => {
     const n = encodeURIComponent(c.name);
     return `<p><b>Court ${esc(c.name)}</b><br>` + [['Start day','start'],['Hold on/off','hold-toggle'],['Switch now','next'],['End day','end']]
-      .map(([label, a]) => `${label}: <code>${esc(base)}/api/court/${n}/${a}?pin=PIN</code>`).join('<br>') + '</p>';
-  }).join('');
+      .map(([label, a]) => `${label}: <code>${esc(`${base}/api/court/${n}/${a}?key=${key}`)}</code>`).join('<br>') + '</p>';
+  }).join(''));
 }
 
 async function courtAction(court, action) {
@@ -580,13 +610,25 @@ async function loadSettings() {
     $('s-quota-limit').value = settings.quota_daily_limit;
     $('s-quota-share').value = settings.quota_share_percent;
     $('s-companion').value = settings.companion_address || '';
+    isLocal = r.is_local;
+    buttonKey = isLocal ? (settings.button_key || null) : null;
+    $('card-devices').classList.toggle('hidden', !isLocal);
+    $('card-key').classList.toggle('hidden', !isLocal);
+    $('s-local-only').classList.toggle('hidden', isLocal);
+    if (isLocal) {
+      $('s-allow-devices').checked = settings.allow_other_devices;
+      $('s-devices').value = (settings.allowed_devices || []).join('\n');
+      $('s-this-pc').textContent = r.this_pc_address || 'unknown';
+      $('s-restart').classList.toggle('hidden', !r.restart_needed);
+      $('s-key').textContent = buttonKey || '';
+    }
     renderCourtRows(settings.courts);
     privacyWarning();
     loadEvents();
     const local = ['127.0.0.1', 'localhost'].includes(location.hostname);
     $('yt-connect').disabled = !local;
     $('yt-local-note').textContent = local ? '' : 'Connect YouTube from the laptop running Stream Manager.';
-    $('s-lan').innerHTML = lanUrl ? `Other devices on the network can open <code>${esc(lanUrl)}</code>` : '';
+    $('s-lan').innerHTML = lanUrl ? `Allowed devices can open <code>${esc(lanUrl)}</code>` : '';
   } catch (_) {}
 }
 async function loadEvents() {
@@ -653,13 +695,18 @@ async function saveSettings() {
     quota_share_percent: Number($('s-quota-share').value),
     companion_address: $('s-companion').value.trim(),
   };
+  if (isLocal) {
+    body.allow_other_devices = $('s-allow-devices').checked;
+    body.allowed_devices = $('s-devices').value.split(/[\s,]+/).filter(a => a);
+  }
   if (settings.practice_mode && !body.practice_mode &&
       !confirm('Turn practice mode OFF? From now on, Start day / Switch now / End day and automatic switches will control YouTube and vMix for real.')) return;
   if (body.privacy === 'public' && settings.privacy !== 'public' &&
       !confirm('Make NEW videos and playlists PUBLIC? (Existing ones keep their current privacy.)')) return;
   try {
-    await api('/api/settings', { method: 'POST', body });
+    const r = await api('/api/settings', { method: 'POST', body });
     $('s-saved').innerHTML = '<span class="ok-text">Saved ✓</span>';
+    if (r.restart_needed) $('s-restart').classList.remove('hidden');
     setTimeout(() => $('s-saved').textContent = '', 3000);
     await loadSettings();
   } catch (e) { $('s-saved').innerHTML = `<span class="bad-text">${esc(e.message)}</span>`; }
@@ -668,6 +715,18 @@ async function changePin() {
   try { await api('/api/pin', { method: 'POST', body: { pin: $('s-pin').value } });
         $('s-pin').value = ''; $('s-pin-msg').innerHTML = '<span class="ok-text">PIN changed ✓</span>'; }
   catch (e) { $('s-pin-msg').innerHTML = `<span class="bad-text">${esc(e.message)}</span>`; }
+}
+async function copyKey() {
+  try { await navigator.clipboard.writeText(buttonKey || ''); $('s-key-msg').innerHTML = '<span class="ok-text">Copied ✓</span>'; }
+  catch (_) { $('s-key-msg').innerHTML = '<span class="bad-text">Couldn\'t copy; select the key and copy it by hand.</span>'; }
+}
+async function newKey() {
+  if (!confirm('Stream Deck links using the old key will stop working.')) return;
+  try {
+    const r = await api('/api/button-key', { method: 'POST' });
+    buttonKey = r.button_key; $('s-key').textContent = buttonKey;
+    $('s-key-msg').innerHTML = '<span class="ok-text">New key made ✓ Copy the Live tab links into Companion again.</span>';
+  } catch (e) { $('s-key-msg').innerHTML = `<span class="bad-text">${esc(e.message)}</span>`; }
 }
 async function connectYouTube() {
   try { const r = await api('/api/youtube/connect', { method: 'POST' }); window.open(r.url, '_blank'); }

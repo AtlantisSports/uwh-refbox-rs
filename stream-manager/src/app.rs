@@ -3,7 +3,7 @@
 
 use crate::{
     BoxError,
-    access::{PinFailures, Sessions, WaitingLine},
+    access::{self, Devices, Sessions, SignIn, SignInLine},
     companion,
     config::{Config, CourtConfig},
     google_auth::{self, GoogleAuth},
@@ -49,12 +49,10 @@ pub struct App {
     inner: Mutex<Inner>,
     youtube: AsyncMutex<Option<YouTube>>,
     sessions: Mutex<Sessions>,
-    /// Wrong PINs in a row.
-    pin_failures: Mutex<PinFailures>,
-    /// Held while a wrong PIN waits for its answer, so wrong PINs are answered one at a time.
-    pin_turn: AsyncMutex<()>,
-    /// The wrong PINs waiting for their turn.
-    pin_line: WaitingLine,
+    /// Every PIN sign-in waits here for its turn.
+    sign_ins: SignInLine,
+    /// The devices allowed to reach the control page, as they were when Stream Manager started.
+    pub devices: Devices,
     /// When each court's vMix destinations were last stopped by a switch or End day.
     stopped_keys: Mutex<live::StoppedKeys>,
 }
@@ -224,6 +222,7 @@ impl App {
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."));
         let rules = rules_of(&config);
+        let devices = Devices::from_config(&config);
         let courts = config
             .courts
             .iter()
@@ -247,9 +246,8 @@ impl App {
             }),
             youtube: AsyncMutex::new(None),
             sessions: Mutex::new(Sessions::default()),
-            pin_failures: Mutex::new(PinFailures::default()),
-            pin_turn: AsyncMutex::new(()),
-            pin_line: WaitingLine::default(),
+            sign_ins: SignInLine::default(),
+            devices,
             stopped_keys: Mutex::new(live::StoppedKeys::default()),
         })
     }
@@ -354,30 +352,25 @@ impl App {
             .remove(token);
     }
 
-    /// Waits before a wrong PIN (from `from`) is answered: longer for each one in a row (see
-    /// [`PinFailures::record`]). Wrong PINs wait one after another, never side by side, so
-    /// guesses can't be sped up by sending many at once. A correct PIN never waits here.
-    ///
-    /// With [`MAX_WAITING_WRONG_PINS`](crate::access::MAX_WAITING_WRONG_PINS) already waiting,
-    /// a wrong PIN is counted but answered straight away, so a flood can't pile up.
-    pub async fn wrong_pin(&self, from: &str) {
-        let Some(_place) = self.pin_line.join() else {
-            self.record_wrong_pin();
-            warn!("Wrong PIN from {from}; too many waiting, answering now");
-            return;
-        };
-        let _turn = self.pin_turn.lock().await;
-        let wait = self.record_wrong_pin();
-        warn!("Wrong PIN from {from}; answering in {} s", wait.as_secs());
-        tokio::time::sleep(wait).await;
+    /// Checks a PIN typed at the sign-in (from `from`), in the one line every sign-in waits in
+    /// (see [`SignInLine`]). The PIN is compared only once the attempt reaches the front.
+    pub async fn sign_in(&self, pin: &str, from: &str) -> SignIn {
+        let outcome = self
+            .sign_ins
+            .attempt(|| access::secret_matches(pin.trim(), &self.config().pin))
+            .await;
+        match outcome {
+            SignIn::Right => {}
+            SignIn::Wrong => warn!("Wrong PIN from {from}"),
+            SignIn::TooMany => warn!("Sign-in from {from} turned away: too many waiting"),
+        }
+        outcome
     }
 
-    /// Counts a wrong PIN; returns how long its answer should wait.
-    fn record_wrong_pin(&self) -> Duration {
-        self.pin_failures
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .record(Instant::now())
+    /// Whether the device settings saved now differ from those in use since Stream Manager
+    /// started.
+    pub fn devices_need_restart(&self) -> bool {
+        Devices::from_config(&self.config()) != self.devices
     }
 
     // ----- Refbox connections and switching -----

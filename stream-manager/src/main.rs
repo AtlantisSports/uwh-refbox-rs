@@ -275,10 +275,16 @@ fn load_config(path: &Path) -> Result<Config, BoxError> {
         confy::store_path(path, Config::default())?;
         info!("Created settings file {}", path.display());
     }
-    let config: Config = confy::load_path(path)?;
+    let mut config: Config = confy::load_path(path)?;
     config
         .validate()
         .map_err(|e| format!("{e} (in {})", path.display()))?;
+    if config.button_key.is_empty() {
+        config.button_key = access::new_button_key()
+            .map_err(|e| format!("Couldn't create the Stream Deck button key: {e}"))?;
+        confy::store_path(path, &config)?;
+        info!("Created the Stream Deck button key");
+    }
     Ok(config)
 }
 

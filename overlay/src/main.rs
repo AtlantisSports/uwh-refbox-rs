@@ -40,20 +40,42 @@ const APP_NAME: &str = "overlay";
 const OLD_BRIDGE_PORT: u16 = 8099;
 const NEW_BRIDGE_PORT: u16 = 8098;
 
-/// `url` with its port moved from 8099 to 8098, or `None` if it isn't on 8099. The rest of the
-/// address is kept as written.
+/// `url` with its port moved from 8099 to 8098, or `None` if it isn't on 8099. Only the port is
+/// changed in the text as written, so the rest of the address stays exactly as it was.
 fn moved_bridge_url(url: &str) -> Option<String> {
     let parsed = reqwest::Url::parse(url).ok()?;
     if parsed.port() != Some(OLD_BRIDGE_PORT) {
         return None;
     }
-    let mut moved = parsed.clone();
-    moved.set_port(Some(NEW_BRIDGE_PORT)).ok()?;
-    let mut text = moved.to_string();
-    if !url.ends_with('/') && moved.path() == "/" {
-        text.pop();
+    let start = url.find("://")? + 3;
+    let end = url[start..]
+        .find(['/', '?', '#'])
+        .map_or(url.len(), |index| start + index);
+    let host = url[start..end].strip_suffix(&format!(":{OLD_BRIDGE_PORT}"))?;
+    Some(format!(
+        "{}{host}:{NEW_BRIDGE_PORT}{}",
+        &url[..start],
+        &url[end..]
+    ))
+}
+
+/// Moves a bridge address on the old port 8099 to 8098, once: a settings file from before the
+/// move is moved whatever host it names, and marked, so that a bridge address on 8099 chosen
+/// afterwards is the operator's own choice and is kept. Returns whether `config` changed and
+/// needs saving.
+fn migrate_bridge_address(config: &mut AppConfig) -> bool {
+    if config.bridge_port_moved {
+        return false;
     }
-    Some(text)
+    if let Some(moved) = moved_bridge_url(&config.bridge_url) {
+        info!(
+            "Moved the overlay-bridge address from {} to {moved}",
+            config.bridge_url
+        );
+        config.bridge_url = moved;
+    }
+    config.bridge_port_moved = true;
+    true
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -277,18 +299,8 @@ async fn main() {
             config
         }
     };
-    // The bridge's default port moved from 8099 (vMix's hard-coded TCP API port) to 8098. A
-    // settings file from before that is moved once, whatever host it names; after that, a
-    // bridge address on 8099 is the operator's own choice and is kept.
-    if !config.bridge_port_moved {
-        if let Some(moved) = moved_bridge_url(&config.bridge_url) {
-            info!(
-                "Moved the overlay-bridge address from {} to {moved}",
-                config.bridge_url
-            );
-            config.bridge_url = moved;
-        }
-        config.bridge_port_moved = true;
+    // The bridge's default port moved from 8099 (vMix's hard-coded TCP API port) to 8098.
+    if migrate_bridge_address(&mut config) {
         if let Err(e) = confy::store(APP_NAME, None, &config) {
             warn!("Couldn't save the overlay-bridge address: {e}");
         }
@@ -610,6 +622,14 @@ mod tests {
             moved_bridge_url("http://192.168.1.20:8099").as_deref(),
             Some("http://192.168.1.20:8098")
         );
+        assert_eq!(
+            moved_bridge_url("http://127.0.0.1:8099?x=1").as_deref(),
+            Some("http://127.0.0.1:8098?x=1")
+        );
+        assert_eq!(
+            moved_bridge_url("http://127.0.0.1:8099/feed?x=1#top").as_deref(),
+            Some("http://127.0.0.1:8098/feed?x=1#top")
+        );
         assert_eq!(moved_bridge_url("http://127.0.0.1:8098"), None);
         assert_eq!(moved_bridge_url("http://127.0.0.1:9000"), None);
         assert_eq!(moved_bridge_url("not a url"), None);
@@ -626,5 +646,31 @@ mod tests {
         .expect("an old settings file still loads");
         assert!(!old.bridge_port_moved);
         assert!(AppConfig::default().bridge_port_moved);
+    }
+
+    #[test]
+    fn the_bridge_address_moves_once_and_a_later_8099_is_kept() {
+        let config = |url: &str, moved: bool| AppConfig {
+            bridge_url: url.to_string(),
+            bridge_port_moved: moved,
+            ..AppConfig::default()
+        };
+
+        // From before the move: moved, marked, and saved.
+        let mut old = config("http://localhost:8099", false);
+        assert!(migrate_bridge_address(&mut old));
+        assert_eq!(old.bridge_url, "http://localhost:8098");
+        assert!(old.bridge_port_moved);
+
+        // From before the move but on another port: left alone, but still marked and saved.
+        let mut other = config("http://127.0.0.1:9000", false);
+        assert!(migrate_bridge_address(&mut other));
+        assert_eq!(other.bridge_url, "http://127.0.0.1:9000");
+        assert!(other.bridge_port_moved);
+
+        // 8099 chosen after the move: kept, nothing to save.
+        let mut chosen = config("http://127.0.0.1:8099", true);
+        assert!(!migrate_bridge_address(&mut chosen));
+        assert_eq!(chosen.bridge_url, "http://127.0.0.1:8099");
     }
 }

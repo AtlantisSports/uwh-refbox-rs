@@ -41,7 +41,8 @@ Learn more about NDI and get NDI Tools at https://ndi.video.
 
 - **Each court has its own mini PC.** It runs vMix, the overlay, overlay-bridge and Stream Manager.
 - **Each Stream Manager handles only its own court.** To see the other court, open its control page
-  in another browser tab: `http://<other mini PC's IP>:8090`.
+  in another browser tab: `http://<other mini PC's IP>:8090`. That only works once the other
+  court's Stream Manager allows this mini PC (B5, **Allow other devices**).
 - The refbox is a separate device at the court. The overlay-bridge and Stream Manager both connect to it.
 
 **Where the programs come from:**
@@ -249,10 +250,14 @@ Also set:
 2. Double-click **stream-manager**. A console window opens and the control page opens at
    `http://127.0.0.1:8090`.
 3. ⛔ **STOP — ask a human** to choose the **PIN**. Use the same PIN on both mini PCs.
+   - The PIN is only for signing in on the control page. Stream Deck buttons use the button key
+     instead (B6).
    - A sign-in lasts 24 hours. After that the page asks for the PIN again.
-   - A wrong PIN (on the page or in a Stream Deck link) is answered only after a wait: 1 s, then
-     2, 4, 8… up to 30 s for each wrong PIN in a row, from any device. The count resets after 15
-     minutes without a wrong PIN. The right PIN is never slowed down.
+   - Sign-ins are checked one at a time, from every device together. After a wrong PIN, the next
+     try waits 1 s, then 2, 4, 8… up to 30 s for each wrong PIN in a row. The count resets after
+     15 minutes without a wrong PIN.
+   - If more than 20 tries are waiting, the page says "Too many sign-in attempts; wait a moment
+     and try again."
 4. **Settings tab:**
    - **Portal:** Live portal (Dev portal only for tests). **Event:** pick it from the list. An
      event name may only use letters, digits and dashes (as in its portal address); anything
@@ -270,6 +275,8 @@ Also set:
      streams). Each mini PC counts only what it uses itself, so the shares must add up to at most
      100%.
    - **Practice mode:** leave **ON** for now.
+   - **Allow other devices:** leave it **off** unless another device needs the control page (see
+     below). Off, only this mini PC can open it.
    - Click **Save settings**. **Check:** "Saved ✓".
 5. ⛔ **STOP — a human must do this.** Click **Connect YouTube**. In the browser, sign in with the
    Google account that manages the channel, choose the **Atlantis Sports** channel, and click
@@ -279,13 +286,31 @@ Also set:
    one-key mode).
 7. **Live tab.** **Check:** "Refbox connected" and "vMix connected" are both green.
 8. **Windows Firewall:** if Windows asks, allow stream-manager on **Private** networks. That lets the
-   other mini PC and the Stream Deck reach the control page.
+   allowed devices reach the control page (Windows only asks once **Allow other devices** is on).
+
+**Allow other devices.** By default the control page answers only the mini PC it runs on. Turn
+this on only when another device must open it: a tablet at the desk, a laptop running Companion,
+or the other court's mini PC. It can only be changed on the mini PC itself (Settings tab).
+
+1. Find the other device's address. On Windows: open PowerShell and type `ipconfig`; use the
+   **IPv4 Address** of the Wi-Fi or Ethernet adapter (e.g. `192.168.1.50`). On a phone or
+   tablet: the Wi-Fi network's details. The Settings card also shows this mini PC's own address.
+2. On this mini PC, Settings → **Allow other devices**: tick it and add the address, one per line.
+   Click **Save settings**. The page says "Restart Stream Manager to apply the new device
+   settings."
+3. Close Stream Manager's window (press **End day** first if a day is running) and start it again.
+4. On the other device, open `http://<this mini PC's address>:8090` and sign in with the PIN.
+
+Any device not on the list gets "This device isn't allowed." To view Court 1's page from Court 2's
+mini PC, add **Court 2's mini PC's address** on Court 1's Stream Manager, then restart Court 1's
+Stream Manager (and the other way round for Court 2's page). The button key and the device
+settings are shown only on the mini PC itself, never on another device.
 
 Settings and secrets live in `Documents\stream-manager\`:
 
 | File | What it is |
 |---|---|
-| `config.toml` | settings, including the PIN |
+| `config.toml` | settings, including the PIN and the Stream Deck button key (secret) |
 | `client_secret.json` | the Google sign-in file (secret) |
 | `youtube-token.json` | the saved YouTube connection (secret) |
 | `state-<event>.json` | the videos and playlists it created |
@@ -302,10 +327,21 @@ In Companion, add a **Generic HTTP** connection. Each button sends a **GET** to 
 at the bottom of the Live tab ("Companion / Stream Deck links"), for example:
 
 ```
-http://<mini PC IP>:8090/api/court/1/hold-toggle?pin=<PIN>
+http://127.0.0.1:8090/api/court/1/hold-toggle?key=<button key>
 ```
 
 The actions are `start`, `hold-toggle`, `next` (Switch now) and `end`.
+
+- Copy the links from the Live tab **on the mini PC itself**: only there do they show the button
+  key. On any other device they show `key=<button key — copy it on the mini PC>`. The key is also
+  under Settings → **Stream Deck button key**, with a **Copy** button.
+- When Companion runs on the same mini PC, use `127.0.0.1` as in the example. When it runs on
+  another computer, use the mini PC's network address, and add that computer under **Allow other
+  devices** (B5).
+- The key is a secret, like a password. If it may have been seen by someone else, press
+  **Make a new key** (Settings). Links with the old key stop working at once, so copy every
+  button's link again from the Live tab.
+- The PIN no longer works in these links.
 
 **Live status on the buttons.** Stream Manager can also put each court's status on buttons:
 Hold on or off, the time until the rosters ("Rosters in 0:45", then "Rosters on screen"), the
@@ -441,7 +477,11 @@ key A.
 | Stream Manager: "Refbox data can't be read: check the refbox port is 8000" (red) | Connected to the refbox's LED-panel port (8001) instead of its game-data port. In Settings → Courts set the refbox port to **8000**. |
 | Bridge's refbox scan lists the same refbox many times at 127.0.0.x | Older bridge versions did this on Windows (every 127.x is "this PC"). Pick `127.0.0.1:8000`; the current version lists it once. |
 | Settings: "The event … may only use letters, digits and dashes" | The event name isn't a portal event name. Pick the event from the list again. |
-| Stream Deck buttons answer slowly, or the page is slow to say "Wrong PIN" | Wrong PINs wait longer each time (up to 30 s). Check the PIN in the Companion links matches Stream Manager's. The wait resets 15 minutes after the last wrong PIN. |
+| Signing in is slow to say "Wrong PIN" | After a wrong PIN the next try waits longer each time (up to 30 s). Check the PIN. The wait resets 15 minutes after the last wrong PIN. |
+| "Too many sign-in attempts; wait a moment and try again." | More than 20 sign-ins are waiting, maybe someone guessing the PIN. Wait a minute and try again. |
+| "This device isn't allowed. On the mini PC, add its address under Settings → Allow other devices." | Only this mini PC and the listed devices can open the control page. On the mini PC, add this device's address (B5, **Allow other devices**), save, and restart Stream Manager. |
+| A device can't open the control page at all (no answer) | **Allow other devices** is off, or was turned on without a restart. Turn it on, add the device, and restart Stream Manager. |
+| Stream Deck buttons stopped working after **Make a new key** | The links still carry the old key. Copy every button's link again from the Live tab on the mini PC itself. |
 | "vMix not reachable" | vMix isn't running, or Web Controller is off or not on port 8088 (B4). |
 | Google: "Access blocked … can only be used within its organization" (org_internal) | The Google app is set to Internal but the channel is a Brand Account. Set the app's Audience to **External**. |
 | YouTube sign-in stops working after about 7 days | The Google app is in **Testing** mode. Switch it to **In production**, or press Connect YouTube again. |

@@ -1,10 +1,17 @@
-//! Who may use the control page: the signed-in sessions, and the slowdown after wrong PINs.
+//! Who may use the control page: the devices allowed to reach it, the signed-in sessions, the
+//! Stream Deck button key, and the one-at-a-time line for PIN sign-ins.
 
+use crate::config::Config;
 use std::{
     collections::VecDeque,
-    sync::atomic::{AtomicUsize, Ordering},
+    net::IpAddr,
+    sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::{Duration, Instant},
 };
+use tokio::sync::Mutex as AsyncMutex;
 
 /// A sign-in lasts this long; then the PIN is asked for again.
 pub const SESSION_LIFETIME: Duration = Duration::from_secs(24 * 60 * 60);
@@ -18,10 +25,72 @@ const LONGEST_FAILURE_WAIT: Duration = Duration::from_secs(30);
 /// Wrong PINs are forgotten once there has been none for this long.
 const FAILURES_FORGOTTEN_AFTER: Duration = Duration::from_secs(15 * 60);
 
-/// At most this many wrong PINs wait for their answer at once; any more are answered at once.
-pub const MAX_WAITING_WRONG_PINS: usize = 20;
+/// At most this many sign-in attempts wait in line at once; any more are turned away.
+pub const MAX_WAITING_SIGN_INS: usize = 20;
 
-/// The wrong PINs waiting for their answer, so a flood of them can't pile up without limit.
+/// Random bytes in the Stream Deck button key (64 hex characters).
+const BUTTON_KEY_BYTES: usize = 32;
+/// Random bytes in a sign-in (session) token.
+const SESSION_TOKEN_BYTES: usize = 32;
+
+/// `bytes` bytes from the operating system's random source, as lowercase hex.
+pub fn random_hex(bytes: usize) -> Result<String, getrandom::Error> {
+    let mut buffer = vec![0u8; bytes];
+    getrandom::fill(&mut buffer)?;
+    Ok(buffer.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// A new Stream Deck button key.
+pub fn new_button_key() -> Result<String, getrandom::Error> {
+    random_hex(BUTTON_KEY_BYTES)
+}
+
+/// A new sign-in token for the session cookie.
+pub fn new_session_token() -> Result<String, getrandom::Error> {
+    random_hex(SESSION_TOKEN_BYTES)
+}
+
+/// Whether `given` is `secret`, taking the same time wherever they differ. An empty secret
+/// (not created yet) never matches.
+pub fn secret_matches(given: &str, secret: &str) -> bool {
+    let (given, secret) = (given.as_bytes(), secret.as_bytes());
+    if secret.is_empty() || given.len() != secret.len() {
+        return false;
+    }
+    given
+        .iter()
+        .zip(secret)
+        .fold(0u8, |difference, (a, b)| difference | (a ^ b))
+        == 0
+}
+
+/// Which devices may reach the control page, as read when Stream Manager started: changes to
+/// these settings apply after a restart.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Devices {
+    /// Off: the page listens on this mini PC only. On: on the network, for the listed devices.
+    pub allow_others: bool,
+    pub allowed: Vec<IpAddr>,
+}
+
+impl Devices {
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            allow_others: config.allow_other_devices,
+            allowed: config.allowed_devices.clone(),
+        }
+    }
+
+    /// Whether a request from `ip` is answered: always from this mini PC itself, and from a
+    /// listed device while other devices are allowed.
+    pub fn allows(&self, ip: IpAddr) -> bool {
+        let ip = ip.to_canonical();
+        ip.is_loopback()
+            || (self.allow_others && self.allowed.iter().any(|a| a.to_canonical() == ip))
+    }
+}
+
+/// The sign-in attempts waiting, so a flood of them can't pile up without limit.
 #[derive(Debug, Default)]
 pub struct WaitingLine {
     waiting: AtomicUsize,
@@ -34,11 +103,11 @@ pub struct Place<'a> {
 }
 
 impl WaitingLine {
-    /// Takes a place in the line, unless [`MAX_WAITING_WRONG_PINS`] are already waiting.
+    /// Takes a place in the line, unless [`MAX_WAITING_SIGN_INS`] are already waiting.
     pub fn join(&self) -> Option<Place<'_>> {
         self.waiting
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |waiting| {
-                (waiting < MAX_WAITING_WRONG_PINS).then_some(waiting + 1)
+                (waiting < MAX_WAITING_SIGN_INS).then_some(waiting + 1)
             })
             .ok()
             .map(|_| Place { line: self })
@@ -48,6 +117,53 @@ impl WaitingLine {
 impl Drop for Place<'_> {
     fn drop(&mut self) {
         self.line.waiting.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// How a sign-in attempt was answered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignIn {
+    Right,
+    Wrong,
+    /// [`MAX_WAITING_SIGN_INS`] were already waiting: turned away without looking at the PIN.
+    TooMany,
+}
+
+/// Every PIN sign-in, right or wrong, from any device, goes through this one line, one at a
+/// time. The PIN is looked at only when an attempt reaches the front, and after a wrong PIN the
+/// next attempt waits (see [`PinFailures`]), so sending many guesses at once is no faster than
+/// sending them one by one.
+#[derive(Debug, Default)]
+pub struct SignInLine {
+    line: WaitingLine,
+    /// Held by the attempt at the front of the line. Tokio's mutex is fair, so attempts reach
+    /// the front in the order they arrived.
+    front: AsyncMutex<()>,
+    failures: Mutex<PinFailures>,
+}
+
+impl SignInLine {
+    /// Waits for this attempt's turn, then asks `is_right` whether its PIN is right.
+    pub async fn attempt(&self, is_right: impl FnOnce() -> bool) -> SignIn {
+        let Some(_place) = self.line.join() else {
+            return SignIn::TooMany;
+        };
+        let _front = self.front.lock().await;
+        // The lock is let go before waiting.
+        let ready = self.failures().ready_at();
+        if let Some(ready) = ready {
+            tokio::time::sleep_until(ready.into()).await;
+        }
+        if is_right() {
+            SignIn::Right
+        } else {
+            self.failures().record(Instant::now());
+            SignIn::Wrong
+        }
+    }
+
+    fn failures(&self) -> std::sync::MutexGuard<'_, PinFailures> {
+        self.failures.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -88,7 +204,7 @@ fn expired(signed_in: Instant, now: Instant) -> bool {
     now.saturating_duration_since(signed_in) >= SESSION_LIFETIME
 }
 
-/// Wrong PINs in a row, from any device and by any route (sign-in, `?pin=`, `x-pin`).
+/// Wrong PINs in a row at the sign-in, from any device.
 #[derive(Debug, Default)]
 pub struct PinFailures {
     count: u32,
@@ -96,10 +212,9 @@ pub struct PinFailures {
 }
 
 impl PinFailures {
-    /// Counts a wrong PIN at `now` and returns how long to wait before answering it: 1 s, then
+    /// Counts a wrong PIN at `now` and returns how long the next attempt waits: 1 s, then
     /// doubling, up to 30 s. A run of wrong PINs is forgotten after 15 minutes without one.
-    /// A correct PIN never comes here, so it is never slowed down, and it doesn't reset the
-    /// count either.
+    /// A right PIN doesn't reset the count.
     pub fn record(&mut self, now: Instant) -> Duration {
         if self
             .last
@@ -111,9 +226,14 @@ impl PinFailures {
         self.last = Some(now);
         failure_wait(self.count)
     }
+
+    /// When the next attempt may be looked at, after the last wrong PIN (if any).
+    pub fn ready_at(&self) -> Option<Instant> {
+        self.last.map(|last| last + failure_wait(self.count))
+    }
 }
 
-/// The wait for the `count`th wrong PIN in a row.
+/// The wait after the `count`th wrong PIN in a row.
 fn failure_wait(count: u32) -> Duration {
     let doublings = count.saturating_sub(1).min(16);
     FIRST_FAILURE_WAIT
@@ -159,9 +279,9 @@ mod tests {
     }
 
     #[test]
-    fn at_most_twenty_wrong_pins_wait_at_once() {
+    fn at_most_twenty_sign_ins_wait_at_once() {
         let line = WaitingLine::default();
-        let mut places: Vec<Place<'_>> = (0..MAX_WAITING_WRONG_PINS)
+        let mut places: Vec<Place<'_>> = (0..MAX_WAITING_SIGN_INS)
             .map(|_| line.join().expect("room in the line"))
             .collect();
         assert!(line.join().is_none());
@@ -212,5 +332,104 @@ mod tests {
         sessions.add("new".into(), now);
         assert!(sessions.has("t1", now) && sessions.has("new", now));
         assert_eq!(sessions.sessions.len(), MAX_SESSIONS);
+    }
+
+    #[test]
+    fn the_next_attempt_waits_after_a_wrong_pin() {
+        let start = Instant::now();
+        let mut failures = PinFailures::default();
+        assert_eq!(failures.ready_at(), None);
+        failures.record(start);
+        assert_eq!(failures.ready_at(), Some(start + SECOND));
+        failures.record(start + SECOND * 5);
+        assert_eq!(failures.ready_at(), Some(start + SECOND * 7));
+    }
+
+    #[test]
+    fn device_check_allows_this_pc_and_listed_devices_only() {
+        let listed: IpAddr = "192.168.1.50".parse().unwrap();
+        let other: IpAddr = "192.168.1.51".parse().unwrap();
+        let mut devices = Devices {
+            allow_others: true,
+            allowed: vec![listed],
+        };
+        for local in ["127.0.0.1", "::1", "::ffff:127.0.0.1"] {
+            assert!(devices.allows(local.parse().unwrap()), "{local}");
+        }
+        assert!(devices.allows(listed));
+        assert!(devices.allows("::ffff:192.168.1.50".parse().unwrap()));
+        assert!(!devices.allows(other));
+        // With other devices off, even a listed one is refused.
+        devices.allow_others = false;
+        assert!(!devices.allows(listed));
+        assert!(devices.allows("127.0.0.1".parse().unwrap()));
+    }
+
+    #[test]
+    fn secrets_match_only_exactly_and_never_when_empty() {
+        let key = new_button_key().unwrap();
+        assert_eq!(key.len(), 64);
+        assert!(key.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(key, new_button_key().unwrap());
+        assert!(secret_matches(&key, &key));
+        let mut wrong = key.clone();
+        wrong.replace_range(63.., if key.ends_with('0') { "1" } else { "0" });
+        assert!(!secret_matches(&wrong, &key));
+        assert!(!secret_matches(&key[..63], &key));
+        assert!(!secret_matches("", &key));
+        assert!(!secret_matches("", ""));
+    }
+
+    #[tokio::test]
+    async fn a_pin_is_looked_at_only_at_the_front_of_the_line() {
+        let line = SignInLine::default();
+        // Someone else is at the front.
+        let front = line.front.lock().await;
+        let looked = std::sync::atomic::AtomicBool::new(false);
+        let attempt = line.attempt(|| {
+            looked.store(true, Ordering::SeqCst);
+            true
+        });
+        tokio::pin!(attempt);
+        // The attempt waits; its PIN isn't looked at yet.
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), &mut attempt)
+                .await
+                .is_err()
+        );
+        assert!(!looked.load(Ordering::SeqCst));
+        drop(front);
+        assert_eq!(attempt.await, SignIn::Right);
+        assert!(looked.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn a_full_line_turns_attempts_away_without_looking_or_counting() {
+        let line = SignInLine::default();
+        let places: Vec<Place<'_>> = (0..MAX_WAITING_SIGN_INS)
+            .map(|_| line.line.join().expect("room in the line"))
+            .collect();
+        let outcome = line
+            .attempt(|| panic!("the PIN must not be looked at"))
+            .await;
+        assert_eq!(outcome, SignIn::TooMany);
+        assert_eq!(line.failures().ready_at(), None, "not counted");
+        drop(places);
+    }
+
+    #[tokio::test]
+    async fn after_a_wrong_pin_the_next_attempt_waits_and_a_right_one_keeps_the_count() {
+        let line = SignInLine::default();
+        let started = Instant::now();
+        assert_eq!(line.attempt(|| false).await, SignIn::Wrong);
+        // The wrong PIN itself is answered at once.
+        assert!(started.elapsed() < Duration::from_millis(500));
+        assert_eq!(line.attempt(|| true).await, SignIn::Right);
+        // The next attempt waited about 1 s.
+        assert!(started.elapsed() >= SECOND);
+        // The right PIN didn't reset the count: the next wrong PIN is the second in a row.
+        let mut failures = line.failures();
+        let last = failures.last.unwrap();
+        assert_eq!(failures.record(last), SECOND * 2);
     }
 }

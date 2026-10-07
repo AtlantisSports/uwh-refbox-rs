@@ -11,6 +11,7 @@ axum = "0.8"
 clap = { version = "4", features = ["derive"] }
 confy = "1.0"
 directories = "6.0.0"
+getrandom = "0.3.3"
 log = "0.4"
 log-panics = "2"
 log4rs = { version = "1", default-features = false, features = ["console_appender", "pattern_encoder"]}

@@ -7,9 +7,14 @@ fn main() {
     // the deferred loading.
     let ndi = std::env::var_os("CARGO_FEATURE_NDI").is_some();
     let msvc = std::env::var("CARGO_CFG_TARGET_ENV").is_ok_and(|env| env == "msvc");
+    let windows = std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "windows");
     if ndi && msvc {
         println!("cargo:rustc-link-arg-bins=/DELAYLOAD:Processing.NDI.Lib.x64.dll");
         println!("cargo:rustc-link-arg-bins=delayimp.lib");
+    } else if ndi && windows {
+        println!(
+            "cargo:warning=The ndi feature on a non-MSVC Windows target links NDI's DLL at start-up (no delayed load): overlay.exe won't start on a PC without NDI, so the Install NDI button can't appear. Build with the MSVC target."
+        );
     }
     println!("cargo:rerun-if-changed=build.rs");
 }

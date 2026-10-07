@@ -358,6 +358,10 @@ Per `.claude/rules/pr-review.md`:
 Recorded here per `plan-execution.md` (the ADR is not amended mid-execution; any ADR change is one
 amendment at the end, with the user's OK).
 
+- **Task 4:** the one-key readiness message reads "Re-run Prepare: some of today's videos use a
+  stream key other than A", not the plan's "…use stream key B". The check catches any video bound to
+  a key that isn't the court's key A (for example a key renamed in Settings after Prepare), not
+  only key B.
 - **Task 5:** the allowance share and limit can change while a day is running (the Global
   Constraints listed the share among switching settings). It only decides when the extras pause,
   never a switch.
@@ -365,8 +369,14 @@ amendment at the end, with the user's OK).
   `App::record_youtube` (which received a cumulative count that resets on reconnect). CLI commands
   count too.
 - **Task 7:** the 10-minute title check is also skipped in practice mode (nothing is sent to
-  YouTube in practice mode). The check before each switch is limited to 15 seconds, and each
-  court's 10-minute check to 60 seconds, so a hung portal can't stall a switch.
+  YouTube in practice mode). Each court's 10-minute check is limited to 60 seconds. The check
+  before each switch never delays it by more than 5 seconds. With two keys it runs while YouTube
+  warms up to the new key and is given up if it hasn't answered by then. With one key it is
+  limited to 5 seconds. This was changed after the final review: 15 seconds could push a switch
+  into the rosters.
+- **Final review:** a one-key switch checks that the next video can go live (ready, testing or
+  already live, and its stream key receiving) before ending the old one. "Already live" is
+  accepted so that a court can't get stuck with two live videos and every Switch now refused.
 - **Task 7:** removed games are found from the court and day saved on each video record (new
   fields), not from the title. Records made before this change are skipped until their next update.
 - **Task 8:** "Next" shows whenever the refbox knows the next game. In the break after a switch it

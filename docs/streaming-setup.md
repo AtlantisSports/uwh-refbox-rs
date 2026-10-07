@@ -254,14 +254,17 @@ Also set:
 2. Double-click **stream-manager**. A console window opens and the control page opens at
    `http://127.0.0.1:8090`.
 3. ⛔ **STOP — ask a human** to choose the **PIN**. Use the same PIN on both mini PCs.
+   - Until a PIN is set, nothing else works: not the other tabs, not the Stream Deck buttons.
+     They answer "Set a PIN on the mini PC first". The PIN can only be set on the mini PC itself.
    - The PIN is only for signing in on the control page. Stream Deck buttons use the button key
      instead (B6).
    - A sign-in lasts 24 hours. After that the page asks for the PIN again.
-   - Changing the PIN (Settings) signs out every other device; the one that changed it stays
-     signed in.
-   - Sign-ins are checked one at a time, from every device together. After a wrong PIN, the next
-     try waits 1 s, then 2, 4, 8… up to 30 s for each wrong PIN in a row. The count resets after
-     15 minutes without a wrong PIN.
+   - The PIN can only be changed on the mini PC itself (Settings). Changing it signs out every
+     other device; the mini PC stays signed in.
+   - Sign-ins from other devices are checked one at a time, all together. After a wrong PIN, the
+     next try waits 1 s, then 2, 4, 8… up to 30 s for each wrong PIN in a row. The count resets
+     after 15 minutes without a wrong PIN. A sign-in on the mini PC itself is checked at once and
+     never waits.
    - If more than 20 tries are waiting, the page says "Too many sign-in attempts; wait a moment
      and try again."
 4. **Settings tab:**
@@ -314,8 +317,8 @@ you no longer need.
 
 Any device not on the list gets "This device isn't allowed." To view Court 1's page from Court 2's
 mini PC, add **Court 2's mini PC's address** on Court 1's Stream Manager, then restart Court 1's
-Stream Manager (and the other way round for Court 2's page). The button key and the device
-settings are shown only on the mini PC itself, never on another device.
+Stream Manager (and the other way round for Court 2's page). The button key, the device settings
+and Change PIN are shown only on the mini PC itself, never on another device.
 
 Settings and secrets live in `Documents\stream-manager\`:
 
@@ -499,6 +502,8 @@ key A.
 | Settings: "The event … may only use letters, digits and dashes" | The event name isn't a portal event name. Pick the event from the list again. |
 | Signing in is slow to say "Wrong PIN" | After a wrong PIN the next try waits longer each time (up to 30 s). Check the PIN. The wait resets 15 minutes after the last wrong PIN. |
 | "Too many sign-in attempts; wait a moment and try again." | More than 20 sign-ins are waiting, maybe someone guessing the PIN. Wait a minute and try again. |
+| "Set a PIN on the mini PC first" | No PIN has been chosen yet, so nothing works (not even the Stream Deck buttons). Open the control page on the mini PC itself and choose the PIN (B5 step 3). |
+| "The PIN can only be changed on the mini PC itself." | Change the PIN on the mini PC itself (Settings → PIN), not on another device. |
 | "This device isn't allowed. On the mini PC, add its address under Settings → Allow other devices." | Only this mini PC and the listed devices can open the control page. On the mini PC, add this device's address (B5, **Allow other devices**), save, and restart Stream Manager. |
 | "This web address isn't allowed. On the mini PC, open the control page at http://127.0.0.1; on an allowed device, use the mini PC's own address." | The page was opened by a name (for example a bookmark with a computer name) instead of an address. Only `localhost` and numeric addresses are answered. Open it as the message says. |
 | A device can't open the control page at all (no answer) | **Allow other devices** is off, or was turned on without a restart. Turn it on, add the device, and restart Stream Manager. |

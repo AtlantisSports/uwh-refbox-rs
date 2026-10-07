@@ -129,10 +129,11 @@ pub enum SignIn {
     TooMany,
 }
 
-/// Every PIN sign-in, right or wrong, from any device, goes through this one line, one at a
-/// time. The PIN is looked at only when an attempt reaches the front, and after a wrong PIN the
+/// Every PIN sign-in, right or wrong, from any other device, goes through this one line, one at
+/// a time. The PIN is looked at only when an attempt reaches the front, and after a wrong PIN the
 /// next attempt waits (see [`PinFailures`]), so sending many guesses at once is no faster than
-/// sending them one by one.
+/// sending them one by one. A sign-in on the mini PC itself skips the line: someone guessing from
+/// another device can never lock out the operator at the mini PC.
 #[derive(Debug, Default)]
 pub struct SignInLine {
     line: WaitingLine,
@@ -143,8 +144,17 @@ pub struct SignInLine {
 }
 
 impl SignInLine {
-    /// Waits for this attempt's turn, then asks `is_right` whether its PIN is right.
-    pub async fn attempt(&self, is_right: impl FnOnce() -> bool) -> SignIn {
+    /// Waits for this attempt's turn, then asks `is_right` whether its PIN is right. An attempt
+    /// made on the mini PC itself (`on_this_pc`) is answered at once: never delayed, never
+    /// counted as a wrong PIN, never turned away for a full line.
+    pub async fn attempt(&self, on_this_pc: bool, is_right: impl FnOnce() -> bool) -> SignIn {
+        if on_this_pc {
+            return if is_right() {
+                SignIn::Right
+            } else {
+                SignIn::Wrong
+            };
+        }
         let Some(_place) = self.line.join() else {
             return SignIn::TooMany;
         };
@@ -391,7 +401,7 @@ mod tests {
         // Someone else is at the front.
         let front = line.front.lock().await;
         let looked = std::sync::atomic::AtomicBool::new(false);
-        let attempt = line.attempt(|| {
+        let attempt = line.attempt(false, || {
             looked.store(true, Ordering::SeqCst);
             true
         });
@@ -415,7 +425,7 @@ mod tests {
             .map(|_| line.line.join().expect("room in the line"))
             .collect();
         let outcome = line
-            .attempt(|| panic!("the PIN must not be looked at"))
+            .attempt(false, || panic!("the PIN must not be looked at"))
             .await;
         assert_eq!(outcome, SignIn::TooMany);
         assert_eq!(line.failures().ready_at(), None, "not counted");
@@ -423,13 +433,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_sign_in_on_this_pc_skips_the_line_and_is_never_counted() {
+        let line = SignInLine::default();
+        // A wrong PIN from another device: the next one from there would wait.
+        assert_eq!(line.attempt(false, || false).await, SignIn::Wrong);
+        let ready = line.failures().ready_at();
+        assert!(ready.is_some());
+        // Someone else is at the front, and the line is full.
+        let front = line.front.lock().await;
+        let places: Vec<Place<'_>> = (0..MAX_WAITING_SIGN_INS)
+            .map(|_| line.line.join().expect("room in the line"))
+            .collect();
+        let started = Instant::now();
+        assert_eq!(line.attempt(true, || false).await, SignIn::Wrong);
+        assert_eq!(line.attempt(true, || true).await, SignIn::Right);
+        // Answered at once, and the wrong PIN wasn't counted.
+        assert!(started.elapsed() < Duration::from_millis(500));
+        assert_eq!(line.failures().ready_at(), ready);
+        // Other devices are still turned away.
+        assert_eq!(line.attempt(false, || true).await, SignIn::TooMany);
+        drop(places);
+        drop(front);
+    }
+
+    #[tokio::test]
     async fn after_a_wrong_pin_the_next_attempt_waits_and_a_right_one_keeps_the_count() {
         let line = SignInLine::default();
         let started = Instant::now();
-        assert_eq!(line.attempt(|| false).await, SignIn::Wrong);
+        assert_eq!(line.attempt(false, || false).await, SignIn::Wrong);
         // The wrong PIN itself is answered at once.
         assert!(started.elapsed() < Duration::from_millis(500));
-        assert_eq!(line.attempt(|| true).await, SignIn::Right);
+        assert_eq!(line.attempt(false, || true).await, SignIn::Right);
         // The next attempt waited about 1 s.
         assert!(started.elapsed() >= SECOND);
         // The right PIN didn't reset the count: the next wrong PIN is the second in a row.

@@ -198,6 +198,15 @@ impl Config {
     /// an existing settings file from loading.
     pub fn validate_for_save(&self) -> Result<(), String> {
         self.validate()?;
+        // Only the two portals are offered; anything else could send the schedule requests (and
+        // the event's titles) somewhere unexpected.
+        let portal = self
+            .portal_url
+            .strip_suffix('/')
+            .unwrap_or(&self.portal_url);
+        if portal != LIVE_PORTAL_URL && portal != DEV_PORTAL_URL {
+            return Err("Choose the live or dev portal".into());
+        }
         // The event may still be unset; once chosen, it must be usable in a file name.
         if !self.event_slug.is_empty() {
             check_event_slug(&self.event_slug)?;
@@ -398,6 +407,35 @@ mod tests {
             );
         }
         assert!(check_event_slug("").is_err());
+    }
+
+    #[test]
+    fn only_the_live_or_dev_portal_is_saved() {
+        let mut c = Config::default();
+        for good in [
+            LIVE_PORTAL_URL.to_string(),
+            DEV_PORTAL_URL.to_string(),
+            format!("{LIVE_PORTAL_URL}/"),
+            format!("{DEV_PORTAL_URL}/"),
+        ] {
+            c.portal_url = good.clone();
+            assert_eq!(c.validate_for_save(), Ok(()), "{good}");
+        }
+        for bad in [
+            "https://evil.example".to_string(),
+            "http://api.uwhportal.com".to_string(),
+            format!("{LIVE_PORTAL_URL}//"),
+            format!("{LIVE_PORTAL_URL}.evil.example"),
+            format!(" {DEV_PORTAL_URL}"),
+            String::new(),
+        ] {
+            c.portal_url = bad.clone();
+            assert_eq!(
+                c.validate_for_save(),
+                Err("Choose the live or dev portal".to_string()),
+                "{bad}"
+            );
+        }
     }
 
     #[test]

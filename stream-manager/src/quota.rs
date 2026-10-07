@@ -8,7 +8,11 @@
 
 use crate::{BoxError, portal::EventPlan};
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path, sync::Mutex};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, UtcOffset, macros::time};
 
 /// Units each switch can cost: go live and end (50 each) plus status checks while waiting.
@@ -16,10 +20,6 @@ pub const SWITCH_COST: u32 = 120;
 /// Kept spare on top of the switches still to come.
 pub const MARGIN: u32 = 200;
 pub const LEDGER_FILE: &str = "youtube-allowance.json";
-
-/// Only one load-add-save of the ledger file runs at a time, so two YouTube calls finishing
-/// together can't lose each other's units.
-static LEDGER_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ledger {
@@ -84,13 +84,41 @@ impl Ledger {
     }
 }
 
-/// Adds units to the ledger file (load, add, save, one at a time across the program).
-pub fn record_to_file(path: &Path, units: u32, now: OffsetDateTime) -> Result<(), BoxError> {
-    // A panic while holding the lock leaves nothing half-done in memory; keep going.
-    let _guard = LEDGER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut ledger = Ledger::load(path);
-    ledger.record(units, now);
-    ledger.save(path)
+/// The ledger file and, in memory, what it held after this program last read or wrote it, so
+/// today's total can be asked for (e.g. by the page every second) without reading the file.
+#[derive(Debug)]
+pub struct LedgerFile {
+    path: PathBuf,
+    /// Also held for each load-add-save of the file, so two YouTube calls made together can't
+    /// lose each other's units.
+    ledger: Mutex<Ledger>,
+}
+
+impl LedgerFile {
+    /// Reads the file once (missing or unreadable → an empty ledger).
+    pub fn open(path: PathBuf) -> Self {
+        let ledger = Mutex::new(Ledger::load(&path));
+        Self { path, ledger }
+    }
+
+    /// Adds units used at `now` to the file (load, add, save) and to the total in memory. The
+    /// file is read again first, so units another program (the command line) added are kept.
+    pub fn record(&self, units: u32, now: OffsetDateTime) -> Result<(), BoxError> {
+        // A panic while holding the lock leaves nothing half-done in memory; keep going.
+        let mut in_memory = self.ledger.lock().unwrap_or_else(|e| e.into_inner());
+        let mut ledger = Ledger::load(&self.path);
+        ledger.record(units, now);
+        *in_memory = ledger;
+        in_memory.save(&self.path)
+    }
+
+    /// Units used today (in Pacific time; none once Google's day has changed), from memory.
+    pub fn used_today(&self, now: OffsetDateTime) -> u32 {
+        self.ledger
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .used_today(now)
+    }
 }
 
 pub fn share(limit: u32, percent: u8) -> u32 {
@@ -243,8 +271,9 @@ mod tests {
         let _ = fs::remove_file(&path);
         assert_eq!(Ledger::load(&path), Ledger::default());
 
-        record_to_file(&path, 50, datetime!(2026-01-15 09:00 UTC)).unwrap();
-        record_to_file(&path, 1, datetime!(2026-01-15 10:00 UTC)).unwrap();
+        let file = LedgerFile::open(path.clone());
+        file.record(50, datetime!(2026-01-15 09:00 UTC)).unwrap();
+        file.record(1, datetime!(2026-01-15 10:00 UTC)).unwrap();
         assert_eq!(
             Ledger::load(&path),
             Ledger {
@@ -255,6 +284,51 @@ mod tests {
 
         fs::write(&path, "not json").unwrap();
         assert_eq!(Ledger::load(&path), Ledger::default());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_ledger_file_keeps_todays_total_in_memory_and_resets_with_googles_day() {
+        let dir = std::env::temp_dir().join(format!(
+            "stream-manager-quota-memory-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(LEDGER_FILE);
+        Ledger {
+            day: Some(date!(2026 - 01 - 15)),
+            used: 100,
+        }
+        .save(&path)
+        .unwrap();
+        // Read once, when opened.
+        let file = LedgerFile::open(path.clone());
+        let today = datetime!(2026-01-15 09:00 UTC);
+        assert_eq!(file.used_today(today), 100);
+        // Asking again doesn't read the file.
+        fs::write(&path, "not json").unwrap();
+        assert_eq!(file.used_today(today), 100);
+        Ledger {
+            day: Some(date!(2026 - 01 - 15)),
+            used: 100,
+        }
+        .save(&path)
+        .unwrap();
+        // Recording adds to the file and to the total in memory.
+        file.record(50, today).unwrap();
+        assert_eq!(file.used_today(today), 150);
+        assert_eq!(Ledger::load(&path).used, 150);
+        // Units another program added to the file are kept on the next record.
+        Ledger {
+            day: Some(date!(2026 - 01 - 15)),
+            used: 400,
+        }
+        .save(&path)
+        .unwrap();
+        file.record(1, today).unwrap();
+        assert_eq!(file.used_today(today), 401);
+        // A new Pacific day starts from zero.
+        assert_eq!(file.used_today(datetime!(2026-01-16 08:00 UTC)), 0);
         let _ = fs::remove_dir_all(&dir);
     }
 

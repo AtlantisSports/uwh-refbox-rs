@@ -1,6 +1,7 @@
 //! The control page: a small web server on this mini PC. By default only the mini PC itself can
 //! reach it; with "Allow other devices" on, the listed devices on the venue network can too.
 //! Everything except the page itself needs a PIN sign-in, or the button key (Stream Deck links).
+//! Until a PIN is set on the mini PC, nothing but setting it works.
 
 use crate::{
     access::{self, Devices, SignIn},
@@ -27,7 +28,7 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 const INDEX_HTML: &str = include_str!("../web/index.html");
@@ -42,6 +43,8 @@ const DEVICE_SETTINGS_LOCAL_ONLY: &str =
     "\"Allow other devices\" can only be changed on the mini PC itself.";
 const BUTTON_KEY_LOCAL_ONLY: &str =
     "The button key can only be seen or changed on the mini PC itself.";
+const PIN_LOCAL_ONLY: &str = "The PIN can only be changed on the mini PC itself.";
+const PIN_NOT_SET: &str = "Set a PIN on the mini PC first";
 
 type AppState = Arc<App>;
 type ApiResult = Result<Json<Value>, ApiError>;
@@ -85,18 +88,10 @@ fn from_this_pc(addr: SocketAddr) -> bool {
     addr.ip().is_loopback()
 }
 
-/// Allowed if: signed in with the PIN (cookie), or no PIN has been set yet and the request
-/// comes from this mini PC itself.
-fn authorize(app: &App, headers: &HeaderMap, addr: SocketAddr) -> Result<(), ApiError> {
+/// Allowed if signed in with the PIN (cookie). Nothing is allowed until a PIN has been set.
+fn authorize(app: &App, headers: &HeaderMap) -> Result<(), ApiError> {
     if app.config().pin.is_empty() {
-        return if from_this_pc(addr) {
-            Ok(())
-        } else {
-            Err(fail(
-                StatusCode::UNAUTHORIZED,
-                "Set a PIN on the laptop running Stream Manager first",
-            ))
-        };
+        return Err(fail(StatusCode::UNAUTHORIZED, PIN_NOT_SET));
     }
     if session_cookie(headers).is_some_and(|token| app.has_session(&token)) {
         return Ok(());
@@ -109,8 +104,10 @@ fn authorize_button(
     app: &App,
     headers: &HeaderMap,
     query: &HashMap<String, String>,
-    addr: SocketAddr,
 ) -> Result<(), ApiError> {
+    if app.config().pin.is_empty() {
+        return Err(fail(StatusCode::UNAUTHORIZED, PIN_NOT_SET));
+    }
     if let Some(key) = query.get("key") {
         return if access::secret_matches(key, &app.config().button_key) {
             Ok(())
@@ -121,7 +118,7 @@ fn authorize_button(
             ))
         };
     }
-    authorize(app, headers, addr)
+    authorize(app, headers)
 }
 
 /// `host` (a `Host` header) without its port: `127.0.0.1:8090` → `127.0.0.1`, `[::1]:8090` →
@@ -199,7 +196,7 @@ fn from_another_page(headers: &HeaderMap) -> bool {
 }
 
 /// Refuses every API request made from another web page, before any handler (including login
-/// and the no-PIN case on this laptop) sees it.
+/// and the no-PIN case on this mini PC) sees it.
 async fn refuse_other_pages(request: Request, next: Next) -> Response {
     if from_another_page(request.headers()) {
         return fail(
@@ -207,6 +204,21 @@ async fn refuse_other_pages(request: Request, next: Next) -> Response {
             "Requests from other web pages are refused",
         )
         .into_response();
+    }
+    next.run(request).await
+}
+
+/// Until a PIN is set, refuses every API request except what setting the first PIN needs:
+/// `/api/session`, and `/api/pin` (which only this mini PC itself may use). The page itself is
+/// not behind this.
+async fn refuse_until_pin_set(
+    State(app): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let path = request.uri().path();
+    if app.config().pin.is_empty() && path != "/api/session" && path != "/api/pin" {
+        return fail(StatusCode::UNAUTHORIZED, PIN_NOT_SET).into_response();
     }
     next.run(request).await
 }
@@ -233,7 +245,12 @@ fn router(app: Arc<App>) -> Router {
         .route("/api/youtube/connect", post(youtube_connect))
         .route("/api/youtube/check", post(youtube_check))
         .route("/api/cleanup", post(cleanup))
-        // Only the API: the page itself may be opened from a link anywhere.
+        // Only the API: the page itself opens before a PIN is set, so it can set one.
+        .route_layer(middleware::from_fn_with_state(
+            Arc::clone(&app),
+            refuse_until_pin_set,
+        ))
+        // Only the API: the page itself may be opened from a link anywhere. Checked first.
         .route_layer(middleware::from_fn(refuse_other_pages))
         .route("/", get(|| async { Html(INDEX_HTML) }))
         // Every route, the page included.
@@ -256,6 +273,8 @@ fn bind_ip(devices: &Devices) -> Ipv4Addr {
 
 pub async fn serve(app: Arc<App>, open_browser: bool) -> Result<(), crate::BoxError> {
     let port = app.config().web_port;
+    // Worked out once, here at start-up; the page asks for it on every load.
+    let this_pc = lan_ip();
     let router = router(Arc::clone(&app));
 
     let listener = tokio::net::TcpListener::bind((bind_ip(&app.devices), port))
@@ -266,7 +285,7 @@ pub async fn serve(app: Arc<App>, open_browser: bool) -> Result<(), crate::BoxEr
     println!("Control page on this mini PC:  {local_url}");
     if !app.devices.allow_others {
         println!("Other devices can't open it (Settings → Allow other devices).");
-    } else if let Some(ip) = lan_ip() {
+    } else if let Some(ip) = this_pc {
         println!("From the allowed devices: http://{ip}:{port}");
     }
     println!();
@@ -281,8 +300,16 @@ pub async fn serve(app: Arc<App>, open_browser: bool) -> Result<(), crate::BoxEr
     Ok(())
 }
 
-/// This laptop's address on the local network (no traffic is sent).
+/// This mini PC's address on the local network, worked out the first time it is asked for (at
+/// start-up, by [`serve`]) and kept.
 pub fn lan_ip() -> Option<IpAddr> {
+    static LAN_IP: OnceLock<Option<IpAddr>> = OnceLock::new();
+    *LAN_IP.get_or_init(find_lan_ip)
+}
+
+/// Asks the network which address this mini PC would use to reach the internet (no traffic is
+/// sent).
+fn find_lan_ip() -> Option<IpAddr> {
     let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("8.8.8.8:80").ok()?;
     socket.local_addr().ok().map(|a| a.ip())
@@ -296,7 +323,7 @@ async fn session(
     headers: HeaderMap,
 ) -> Json<Value> {
     let pin_set = !app.config().pin.is_empty();
-    let authed = authorize(&app, &headers, addr).is_ok();
+    let authed = authorize(&app, &headers).is_ok();
     let lan_url = lan_ip()
         .filter(|_| app.devices.allow_others)
         .map(|ip| format!("http://{ip}:{}", app.config().web_port));
@@ -338,7 +365,10 @@ async fn login(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(body): Json<PinBody>,
 ) -> Response {
-    match app.sign_in(&body.pin, &addr.ip().to_string()).await {
+    match app
+        .sign_in(&body.pin, &addr.ip().to_string(), from_this_pc(addr))
+        .await
+    {
         SignIn::Right => login_response(&app),
         SignIn::Wrong => fail(StatusCode::UNAUTHORIZED, "Wrong PIN").into_response(),
         SignIn::TooMany => fail(StatusCode::TOO_MANY_REQUESTS, TOO_MANY_SIGN_INS).into_response(),
@@ -352,16 +382,22 @@ async fn logout(State(app): State<AppState>, headers: HeaderMap) -> Json<Value> 
     Json(json!({ "ok": true }))
 }
 
-/// Sets the PIN the first time (only from this laptop), or changes it (when logged in). Every
-/// other session is signed out; the one that changed it gets a new sign-in.
+/// Sets the PIN the first time, or changes it (when signed in). Only on this mini PC itself,
+/// like the device settings and the button key. Every other session is signed out; the one that
+/// changed it gets a new sign-in.
 async fn set_pin(
     State(app): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(body): Json<PinBody>,
 ) -> Response {
-    if let Err(e) = authorize(&app, &headers, addr) {
-        return e.into_response();
+    if !from_this_pc(addr) {
+        return fail(StatusCode::FORBIDDEN, PIN_LOCAL_ONLY).into_response();
+    }
+    if !app.config().pin.is_empty() {
+        if let Err(e) = authorize(&app, &headers) {
+            return e.into_response();
+        }
     }
     let pin = body.pin.trim().to_string();
     if pin.is_empty() {
@@ -384,22 +420,20 @@ async fn set_pin(
 
 async fn status(
     State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
 ) -> ApiResult {
-    authorize_button(&app, &headers, &query, addr)?;
+    authorize_button(&app, &headers, &query)?;
     Ok(Json(json!(app.status())))
 }
 
 async fn court_action(
     State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
     Path((court, action)): Path<(String, String)>,
 ) -> ApiResult {
-    authorize_button(&app, &headers, &query, addr)?;
+    authorize_button(&app, &headers, &query)?;
     let command = match action.as_str() {
         "start" => Command::StartDay,
         "end" => Command::EndDay,
@@ -474,7 +508,7 @@ async fn get_settings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+    authorize(&app, &headers)?;
     let local = from_this_pc(addr);
     let mut settings = json!(app.config());
     if let Some(settings) = settings.as_object_mut() {
@@ -538,7 +572,7 @@ async fn save_settings(
     headers: HeaderMap,
     Json(body): Json<SettingsBody>,
 ) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+    authorize(&app, &headers)?;
     let local = from_this_pc(addr);
     app.update_settings(|current| settings_from(body, current, local))?;
     Ok(Json(json!({
@@ -554,7 +588,7 @@ async fn make_new_button_key(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+    authorize(&app, &headers)?;
     if !from_this_pc(addr) {
         return Err(fail(StatusCode::FORBIDDEN, BUTTON_KEY_LOCAL_ONLY));
     }
@@ -583,11 +617,10 @@ struct EventsQuery {
 /// Events on the chosen portal with a published schedule, newest first.
 async fn events(
     State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Query(query): Query<EventsQuery>,
 ) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+    authorize(&app, &headers)?;
     if query.portal_url != LIVE_PORTAL_URL && query.portal_url != DEV_PORTAL_URL {
         return Err(bad("Unknown portal"));
     }
@@ -627,12 +660,8 @@ async fn events(
 // ----- Schedule and prepare -----
 
 /// Days and courts in the loaded schedule, for the Prepare tab.
-async fn schedule(
-    State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+async fn schedule(State(app): State<AppState>, headers: HeaderMap) -> ApiResult {
+    authorize(&app, &headers)?;
     let Some(plan) = app.plan() else {
         return Ok(Json(json!({ "loaded": false })));
     };
@@ -670,12 +699,8 @@ async fn schedule(
     })))
 }
 
-async fn refresh_schedule(
-    State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+async fn refresh_schedule(State(app): State<AppState>, headers: HeaderMap) -> ApiResult {
+    authorize(&app, &headers)?;
     if app.refresh_plan().await {
         // Recovery may wait for a switch to finish, so it runs after the answer.
         let recover_app = Arc::clone(&app);
@@ -686,11 +711,10 @@ async fn refresh_schedule(
 
 async fn prepare_preview(
     State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(selection): Json<Selection>,
 ) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+    authorize(&app, &headers)?;
     let plan = app
         .plan()
         .ok_or_else(|| bad("The schedule isn't loaded yet"))?;
@@ -718,11 +742,10 @@ async fn prepare_preview(
 
 async fn prepare_run(
     State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(selection): Json<Selection>,
 ) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+    authorize(&app, &headers)?;
     let plan = app
         .plan()
         .ok_or_else(|| bad("The schedule isn't loaded yet"))?;
@@ -782,12 +805,8 @@ fn in_schedule_order<'a>(
 }
 
 /// Videos recorded for this event (no YouTube call).
-async fn videos(
-    State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+async fn videos(State(app): State<AppState>, headers: HeaderMap) -> ApiResult {
+    authorize(&app, &headers)?;
     let config = app.config();
     let state = app
         .state_file()
@@ -804,12 +823,8 @@ async fn videos(
 }
 
 /// Asks YouTube for the current state of every recorded video (about 1 unit per 50 videos).
-async fn videos_refresh(
-    State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+async fn videos_refresh(State(app): State<AppState>, headers: HeaderMap) -> ApiResult {
+    authorize(&app, &headers)?;
     let config = app.config();
     let state = app
         .state_file()
@@ -854,17 +869,17 @@ async fn videos_refresh(
 
 // ----- YouTube connection -----
 
-/// Starts the Google sign-in. Must be done on the laptop itself, because Google sends the
+/// Starts the Google sign-in. Must be done on the mini PC itself, because Google sends the
 /// browser back to an address on this computer.
 async fn youtube_connect(
     State(app): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+    authorize(&app, &headers)?;
     if !addr.ip().is_loopback() {
         return Err(bad(
-            "Connect YouTube from the laptop running Stream Manager (Google sends you back to it)",
+            "Connect YouTube from the mini PC running Stream Manager (Google sends you back to it)",
         ));
     }
     let pending = google_auth::begin_sign_in(&app.client_file())
@@ -903,12 +918,8 @@ async fn youtube_connect(
     Ok(Json(json!({ "url": url })))
 }
 
-async fn youtube_check(
-    State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+async fn youtube_check(State(app): State<AppState>, headers: HeaderMap) -> ApiResult {
+    authorize(&app, &headers)?;
     let config = app.config();
     let mut yt = app.youtube().await.map_err(|e| bad(e.to_string()))?;
     let channel = yt
@@ -946,11 +957,10 @@ struct CleanupBody {
 
 async fn cleanup(
     State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(body): Json<CleanupBody>,
 ) -> ApiResult {
-    authorize(&app, &headers, addr)?;
+    authorize(&app, &headers)?;
     if body.confirm != "DELETE" {
         return Err(bad("Type DELETE to confirm"));
     }
@@ -1017,25 +1027,48 @@ mod tests {
         };
 
         for site in ["cross-site", "same-site"] {
-            let response = send("/api/login", Some(site)).await.unwrap();
-            assert_eq!(response.status(), StatusCode::FORBIDDEN);
-            let body: Value = response.json().await.unwrap();
-            assert_eq!(body["error"], "Requests from other web pages are refused");
+            for path in ["/api/login", "/api/pin"] {
+                let response = send(path, Some(site)).await.unwrap();
+                assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}");
+                let body: Value = response.json().await.unwrap();
+                assert_eq!(body["error"], "Requests from other web pages are refused");
+            }
             let response = send("/api/court/1/hold", Some(site)).await.unwrap();
             assert_eq!(response.status(), StatusCode::FORBIDDEN);
         }
-        // The control page's own requests and Companion's (no header) still work: no PIN is set
-        // and this is the laptop itself.
+        // The control page's own requests get past this check (to the "no PIN yet" one).
         let response = send("/api/court/1/hold", Some("same-origin"))
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let response = send("/api/court/1/release", None).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         // The page itself opens from anywhere.
         let response = client
             .get(format!("{base}/"))
             .header("sec-fetch-site", "cross-site")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn the_page_and_companion_still_work_with_a_pin_and_the_key() {
+        let (base, dir) = test_server("pages", None).await;
+        let client = reqwest::Client::new();
+        let cookie = sign_in(&client, &base).await;
+        // The control page's own request, signed in.
+        let response = client
+            .post(format!("{base}/api/court/1/hold"))
+            .header("sec-fetch-site", "same-origin")
+            .header(header::COOKIE, &cookie)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        // Companion's (no header), with the button key.
+        let response = client
+            .post(format!("{base}/api/court/1/release?key={KEY}"))
             .send()
             .await
             .unwrap();
@@ -1060,12 +1093,21 @@ mod tests {
     /// Runs the control page on a free port with a PIN, the button key and one listed device.
     /// With `from`, every request looks as if it came from that address.
     async fn test_server(name: &str, from: Option<[u8; 4]>) -> (String, std::path::PathBuf) {
+        test_server_with_pin(name, from, "1234").await
+    }
+
+    /// As [`test_server`], with `pin` as the PIN (empty: none set yet).
+    async fn test_server_with_pin(
+        name: &str,
+        from: Option<[u8; 4]>,
+        pin: &str,
+    ) -> (String, std::path::PathBuf) {
         let dir =
             std::env::temp_dir().join(format!("stream-manager-web-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let config = Config {
-            pin: "1234".into(),
+            pin: pin.into(),
             button_key: KEY.into(),
             allow_other_devices: true,
             allowed_devices: vec![IpAddr::from(LISTED)],
@@ -1394,6 +1436,129 @@ mod tests {
             StatusCode::UNAUTHORIZED
         );
         assert_eq!(status(&renewed).await.unwrap().status(), StatusCode::OK);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn the_pin_can_only_be_changed_on_this_pc() {
+        let (base, dir) = test_server("pin-remote", Some(LISTED)).await;
+        let client = reqwest::Client::new();
+        let cookie = sign_in(&client, &base).await;
+        let response = client
+            .post(format!("{base}/api/pin"))
+            .header(header::COOKIE, &cookie)
+            .json(&json!({ "pin": "5678" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body: Value = response.json().await.unwrap();
+        assert_eq!(body["error"], PIN_LOCAL_ONLY);
+        // Nothing changed: the old PIN still signs in, and the session still works.
+        sign_in(&client, &base).await;
+        let response = client
+            .get(format!("{base}/api/status"))
+            .header(header::COOKIE, &cookie)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn nothing_works_until_a_pin_is_set_on_this_pc() {
+        let (base, dir) = test_server_with_pin("no-pin", None, "").await;
+        let client = reqwest::Client::new();
+        let refused = |response: reqwest::Response| async move {
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            let body: Value = response.json().await.unwrap();
+            assert_eq!(body["error"], PIN_NOT_SET);
+        };
+        // Even on this mini PC, and even with the button key.
+        for path in [
+            "/api/status".to_string(),
+            format!("/api/status?key={KEY}"),
+            format!("/api/court/1/hold?key={KEY}"),
+            "/api/court/1/start".to_string(),
+            "/api/settings".to_string(),
+            "/api/schedule".to_string(),
+            "/api/videos".to_string(),
+        ] {
+            refused(client.get(format!("{base}{path}")).send().await.unwrap()).await;
+        }
+        for path in [
+            "/api/login",
+            "/api/settings",
+            "/api/prepare/preview",
+            "/api/prepare/run",
+            "/api/button-key",
+            "/api/youtube/connect",
+            "/api/cleanup",
+        ] {
+            let response = client
+                .post(format!("{base}{path}"))
+                .json(&json!({ "pin": "1234" }))
+                .send()
+                .await
+                .unwrap();
+            refused(response).await;
+        }
+        // The page and the sign-in check still answer.
+        let response = client.get(format!("{base}/")).send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let session: Value = client
+            .get(format!("{base}/api/session"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(
+            (&session["pin_set"], &session["authed"]),
+            (&json!(false), &json!(false))
+        );
+
+        // Setting the first PIN on this mini PC signs it in.
+        let response = client
+            .post(format!("{base}/api/pin"))
+            .json(&json!({ "pin": "1234" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = response.headers()[header::SET_COOKIE].to_str().unwrap();
+        let cookie = cookie.split(';').next().unwrap().to_string();
+        let response = client
+            .get(format!("{base}/api/status"))
+            .header(header::COOKIE, &cookie)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn another_device_cant_set_the_first_pin() {
+        let (base, dir) = test_server_with_pin("no-pin-remote", Some(LISTED), "").await;
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!("{base}/api/pin"))
+            .json(&json!({ "pin": "1234" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body: Value = response.json().await.unwrap();
+        assert_eq!(body["error"], PIN_LOCAL_ONLY);
+        let response = client
+            .get(format!("{base}/api/status?key={KEY}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

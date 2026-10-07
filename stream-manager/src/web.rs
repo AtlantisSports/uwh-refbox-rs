@@ -6,7 +6,6 @@ use crate::{
     config::{Config, DEV_PORTAL_URL, LIVE_PORTAL_URL},
     google_auth,
     portal::EventPlan,
-    portal_links,
     prepare::{self, Selection},
     switcher::Command,
 };
@@ -22,7 +21,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, HashMap, hash_map::RandomState},
+    collections::{HashMap, hash_map::RandomState},
     hash::{BuildHasher, Hasher},
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
     sync::Arc,
@@ -123,9 +122,6 @@ pub async fn serve(app: Arc<App>, open_browser: bool) -> Result<(), crate::BoxEr
         .route("/api/youtube/connect", post(youtube_connect))
         .route("/api/youtube/check", post(youtube_check))
         .route("/api/cleanup", post(cleanup))
-        .route("/api/portal-login", post(portal_login_save))
-        .route("/api/portal-login/forget", post(portal_login_forget))
-        .route("/api/portal-links/send", post(portal_links_send))
         .with_state(Arc::clone(&app));
 
     let listener = tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, port))
@@ -490,18 +486,6 @@ async fn prepare_run(
             )
             .await;
             app.record_youtube(None, yt.units_used);
-            drop(yt);
-            // Whatever got made (even if the run stopped partway) gets its portal link.
-            if let Ok(state) = prepare::load_state(&state_file, &config.event_slug) {
-                portal_links::sync(
-                    &app.config_dir,
-                    &config.portal_url,
-                    &config.event_slug,
-                    &portal_links::links_for(&state),
-                    &mut log,
-                )
-                .await;
-            }
             outcome
         }
         .await;
@@ -718,106 +702,13 @@ async fn cleanup(
         let log_app = Arc::clone(&app);
         let mut log = move |line: String| log_app.job_log(line);
         let result = async {
-            let before = prepare::load_state(&state_file, &slug)?;
             let mut yt = app.youtube().await?;
             let outcome = prepare::cleanup(&mut yt, &state_file, &slug, &mut log).await;
             app.record_youtube(None, yt.units_used);
-            drop(yt);
-            // Clear the portal links of every video that's now gone, so the portal never points
-            // to a deleted video.
-            let after = prepare::load_state(&state_file, &slug).unwrap_or_default();
-            let cleared: BTreeMap<String, Option<String>> = before
-                .videos
-                .keys()
-                .filter(|game| !after.videos.contains_key(*game))
-                .map(|game| (game.clone(), None))
-                .collect();
-            let portal_url = app.config().portal_url;
-            portal_links::sync(&app.config_dir, &portal_url, &slug, &cleared, &mut log).await;
             outcome
         }
         .await;
         app.end_job(result.err().map(|e| e.to_string()));
-    });
-    Ok(Json(json!({ "started": true })))
-}
-
-// ----- Portal watch links -----
-
-#[derive(Deserialize)]
-struct PortalLoginBody {
-    email: String,
-    password: String,
-}
-
-/// Saves the portal admin sign-in used to set watch links. Only from this PC itself, because the
-/// password travels from the browser to Stream Manager unencrypted on the local network.
-async fn portal_login_save(
-    State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Json(body): Json<PortalLoginBody>,
-) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
-    if !addr.ip().is_loopback() {
-        return Err(bad(
-            "Enter the portal sign-in on the PC running Stream Manager, not over the network",
-        ));
-    }
-    let email = body.email.trim();
-    if email.is_empty() || body.password.is_empty() {
-        return Err(bad("Enter the portal email and password"));
-    }
-    let portal_url = app.config().portal_url;
-    portal_links::save(&app.config_dir, &portal_url, email, &body.password)
-        .await
-        .map_err(|e| bad(format!("Not saved: {e}")))?;
-    info!("Portal sign-in saved for {email}");
-    Ok(Json(json!({ "email": email })))
-}
-
-async fn portal_login_forget(
-    State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
-    portal_links::forget(&app.config_dir);
-    Ok(Json(json!({ "ok": true })))
-}
-
-/// Sends every recorded video's link to the portal again (e.g. after the portal was unreachable).
-async fn portal_links_send(
-    State(app): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
-    app.begin_job("Send links to portal").map_err(bad)?;
-    let job_app = Arc::clone(&app);
-    tokio::spawn(async move {
-        let app = job_app;
-        let config = app.config();
-        let log_app = Arc::clone(&app);
-        let mut log = move |line: String| log_app.job_log(line);
-        match prepare::load_state(&app.state_file(), &config.event_slug) {
-            Ok(state) => {
-                let links = portal_links::links_for(&state);
-                if links.is_empty() {
-                    log("No videos recorded for this event yet".to_string());
-                }
-                portal_links::sync(
-                    &app.config_dir,
-                    &config.portal_url,
-                    &config.event_slug,
-                    &links,
-                    &mut log,
-                )
-                .await;
-                app.end_job(None);
-            }
-            Err(e) => app.end_job(Some(e.to_string())),
-        }
     });
     Ok(Json(json!({ "started": true })))
 }

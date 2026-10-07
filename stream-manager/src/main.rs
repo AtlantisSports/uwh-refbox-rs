@@ -12,7 +12,6 @@ mod config;
 mod google_auth;
 mod live;
 mod portal;
-mod portal_links;
 mod prepare;
 mod refbox;
 mod switcher;
@@ -146,17 +145,7 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
                 courts: court.into_iter().collect(),
                 limit,
             };
-            prepare::run_cli(&config, &plan, &mut yt, &state_file, &selection).await?;
-            let state = prepare::load_state(&state_file, &config.event_slug)?;
-            portal_links::sync(
-                config_dir,
-                &config.portal_url,
-                &config.event_slug,
-                &portal_links::links_for(&state),
-                &mut |line| info!("{line}"),
-            )
-            .await;
-            Ok(())
+            prepare::run_cli(&config, &plan, &mut yt, &state_file, &selection).await
         }
         CliCommand::Videos => show_videos(&config, &mut youtube()?, &state_file).await,
         CliCommand::Cleanup => {

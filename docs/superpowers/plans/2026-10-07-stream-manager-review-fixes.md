@@ -355,4 +355,21 @@ Per `.claude/rules/pr-review.md`:
 
 ## Deviations
 
-(none yet)
+Recorded here per `plan-execution.md` (the ADR is not amended mid-execution; any ADR change is one
+amendment at the end, with the user's OK).
+
+- **Task 5:** the allowance share and limit can change while a day is running (the Global
+  Constraints listed the share among switching settings). It only decides when the extras pause,
+  never a switch.
+- **Task 5:** units are recorded per YouTube call into the ledger file, not through
+  `App::record_youtube` (which received a cumulative count that resets on reconnect). CLI commands
+  count too.
+- **Task 7:** the 10-minute title check is also skipped in practice mode (nothing is sent to
+  YouTube in practice mode). The check before each switch is limited to 15 seconds, and each
+  court's 10-minute check to 60 seconds, so a hung portal can't stall a switch.
+- **Task 7:** removed games are found from the court and day saved on each video record (new
+  fields), not from the title. Records made before this change are skipped until their next update.
+- **Task 8:** "Next" shows whenever the refbox knows the next game. In the break after a switch it
+  stays blank until kickoff, because the refbox doesn't yet know the game after.
+- **Task 8:** Companion values are re-sent every 60 seconds and after any failed send, so buttons
+  recover if Companion restarts.

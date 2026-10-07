@@ -22,7 +22,7 @@
 //! without NDI, says why, and offers the button again.
 
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
@@ -123,18 +123,39 @@ impl EngineWatch {
                 log::info!("{message}");
                 background.set(EngineStatus::Installing(message.to_string()));
             };
-            let status = match install_engine(&progress) {
-                Ok(()) => match look_for_engine() {
-                    EngineStatus::Missing => EngineStatus::Unavailable(format!(
-                        "The NDI engine still isn't installed (was the installer cancelled?). {MANUAL_HELP}"
-                    )),
-                    other => other,
-                },
-                Err(message) => EngineStatus::Unavailable(message),
-            };
-            background.set(status);
+            let installed = install_engine(&progress);
+            // Looked for even when the installer reported a failure: see `status_after_install`.
+            background.set(status_after_install(installed, look_for_engine()));
         });
     }
+}
+
+/// What the preview shows after an install, given what the installer reported and what a fresh
+/// look for the engine found. An installer can exit non-zero yet still have installed the engine
+/// (3010 "restart needed", or "already installed"), so an engine that is now loadable wins over
+/// the installer's error. Otherwise the installer's error is kept, as it says more.
+pub fn status_after_install(installed: Result<(), String>, found: EngineStatus) -> EngineStatus {
+    match (installed, found) {
+        (_, EngineStatus::Ready(dir)) => EngineStatus::Ready(dir),
+        (Ok(()), EngineStatus::Missing) => EngineStatus::Unavailable(format!(
+            "The NDI engine still isn't installed (was the installer cancelled?). {MANUAL_HELP}"
+        )),
+        (Ok(()), other) => other,
+        (Err(message), _) => EngineStatus::Unavailable(message),
+    }
+}
+
+/// The first of `candidates` that is an absolute folder holding the engine (`has_engine`).
+/// A relative folder (say, a hand-edited `NDI_RUNTIME_DIR_V6`) is skipped: Windows' loading
+/// with `LOAD_WITH_ALTERED_SEARCH_PATH` is undefined for a relative path.
+pub fn first_engine_folder(
+    candidates: impl IntoIterator<Item = Option<PathBuf>>,
+    has_engine: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    candidates
+        .into_iter()
+        .flatten()
+        .find(|dir| dir.is_absolute() && has_engine(dir))
 }
 
 /// The organisation NDI's runtime installer is signed by (checked 2026-10-07 against
@@ -239,10 +260,19 @@ fn look_for_engine() -> EngineStatus {
                 log::info!("NDI engine loaded from {}", dir.display());
                 EngineStatus::Ready(Some(dir))
             }
-            Err(e) => EngineStatus::Unavailable(format!("{e}. {MANUAL_HELP}")),
+            Err(e) => {
+                // The raw Windows error (which may read "%1 is not a valid Win32 application")
+                // goes to the log only; the preview gets a plain sentence.
+                log::warn!("{e}");
+                EngineStatus::Unavailable(ENGINE_WONT_LOAD.to_string())
+            }
         },
     }
 }
+
+/// Shown when Windows finds the engine but can't load it.
+#[cfg(windows)]
+const ENGINE_WONT_LOAD: &str = "Windows couldn't load the NDI engine (it may be damaged or the wrong version). Click Install NDI to reinstall it.";
 
 #[cfg(windows)]
 use windows::install_engine;
@@ -280,15 +310,15 @@ mod windows {
         let next_to_exe = std::env::current_exe()
             .ok()
             .and_then(|exe| exe.parent().map(Path::to_path_buf));
-        [
-            std::env::var_os(RUNTIME_ENV).map(PathBuf::from),
-            system_environment_value(RUNTIME_ENV).map(PathBuf::from),
-            Some(PathBuf::from(DEFAULT_RUNTIME_DIR)),
-            next_to_exe,
-        ]
-        .into_iter()
-        .flatten()
-        .find(|dir| dir.join(ENGINE_DLL).is_file())
+        super::first_engine_folder(
+            [
+                std::env::var_os(RUNTIME_ENV).map(PathBuf::from),
+                system_environment_value(RUNTIME_ENV).map(PathBuf::from),
+                Some(PathBuf::from(DEFAULT_RUNTIME_DIR)),
+                next_to_exe,
+            ],
+            |dir| dir.join(ENGINE_DLL).is_file(),
+        )
     }
 
     #[link(name = "kernel32")]
@@ -542,6 +572,65 @@ ConvertTo-Json -InputObject $facts -Compress
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_installer_error_gives_way_to_an_engine_that_now_loads() {
+        let engine = Some(PathBuf::from("engine folder"));
+        // e.g. exit 3010 "restart needed": the engine is installed and loads, so use it.
+        assert_eq!(
+            status_after_install(
+                Err("the installer exited with 3010".to_string()),
+                EngineStatus::Ready(engine.clone())
+            ),
+            EngineStatus::Ready(engine.clone())
+        );
+        assert_eq!(
+            status_after_install(Ok(()), EngineStatus::Ready(engine.clone())),
+            EngineStatus::Ready(engine)
+        );
+        // Otherwise the installer's own error is kept.
+        let error = "the installer exited with 1603".to_string();
+        for found in [
+            EngineStatus::Missing,
+            EngineStatus::Unavailable("won't load".to_string()),
+        ] {
+            assert_eq!(
+                status_after_install(Err(error.clone()), found),
+                EngineStatus::Unavailable(error.clone())
+            );
+        }
+        // A clean exit with no engine afterwards: probably cancelled.
+        assert!(matches!(
+            status_after_install(Ok(()), EngineStatus::Missing),
+            EngineStatus::Unavailable(message) if message.contains("still isn't installed")
+        ));
+        // A clean exit with an engine that won't load says so.
+        assert_eq!(
+            status_after_install(Ok(()), EngineStatus::Unavailable("won't load".to_string())),
+            EngineStatus::Unavailable("won't load".to_string())
+        );
+    }
+
+    #[test]
+    fn a_relative_engine_folder_is_skipped() {
+        let absolute = std::env::temp_dir();
+        assert!(absolute.is_absolute());
+        let relative = PathBuf::from("NDI 6 Runtime");
+        let everywhere = |_: &Path| true;
+        assert_eq!(
+            first_engine_folder(
+                [None, Some(relative.clone()), Some(absolute.clone())],
+                everywhere
+            ),
+            Some(absolute.clone())
+        );
+        assert_eq!(first_engine_folder([Some(relative)], everywhere), None);
+        // An absolute folder without the engine is skipped too.
+        assert_eq!(
+            first_engine_folder([Some(absolute.clone())], |_: &Path| false),
+            None
+        );
+    }
 
     #[cfg(windows)]
     #[test]

@@ -134,9 +134,7 @@ pub fn court_switches_left(
         return 0;
     };
     let todays: Vec<&str> = plan
-        .games
-        .iter()
-        .filter(|g| g.court == court && g.day == day)
+        .court_games(court, day)
         .map(|g| g.number.as_str())
         .collect();
     let left = match live.and_then(|l| todays.iter().position(|g| *g == l)) {

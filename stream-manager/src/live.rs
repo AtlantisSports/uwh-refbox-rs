@@ -21,7 +21,7 @@ use crate::{
     portal::EventPlan,
     prepare::{self, VideoState, with_next_link},
     switcher::{Action, GameNumber},
-    vmix,
+    title_sync, vmix,
     youtube::{BroadcastSpec, YouTube},
 };
 use std::time::Duration;
@@ -29,6 +29,8 @@ use std::time::Duration;
 const STREAM_WAIT: Duration = Duration::from_secs(90);
 const LIVE_WAIT: Duration = Duration::from_secs(30);
 const POLL_EVERY: Duration = Duration::from_secs(3);
+/// The longest a switch waits for the portal check before going ahead without it.
+const TITLE_CHECK_WAIT: Duration = Duration::from_secs(15);
 
 pub enum Outcome {
     Done,
@@ -113,9 +115,7 @@ fn todays_games<'a>(
     let Some((plan, day)) = plan.and_then(|p| p.game(game).map(|g| (p, g.day))) else {
         return vec![game];
     };
-    plan.games
-        .iter()
-        .filter(|g| g.court == court.name && g.day == day)
+    plan.court_games(&court.name, day)
         .map(|g| g.number.as_str())
         .collect()
 }
@@ -318,6 +318,19 @@ async fn switch(
     let names = court.stream_names();
     let mut warnings = Vec::new();
 
+    // The video about to go live gets the portal's latest title, description and start time.
+    // This check runs even when the allowance is low; if it fails, the switch goes ahead.
+    let check = title_sync::sync_court_with(app, yt, court, Some(to), log);
+    match tokio::time::timeout(TITLE_CHECK_WAIT, check).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => warnings.push(format!(
+            "Couldn't check Game {to}'s title against the portal: {e}"
+        )),
+        Err(_) => warnings.push(format!(
+            "The portal didn't answer in time, so Game {to}'s title wasn't checked"
+        )),
+    }
+
     if court.stream_mode == StreamMode::OneKey || from_index == Some(to_index) {
         // Both videos use the same stream key (one-key mode, or a game was skipped), so they
         // can't overlap: end the old one first, then start the new one on the stream that's
@@ -339,7 +352,11 @@ async fn switch(
             "Game {to} is LIVE: https://youtu.be/{}",
             to_video.broadcast_id
         ));
-        return Outcome::Done;
+        return if warnings.is_empty() {
+            Outcome::Done
+        } else {
+            Outcome::Warnings(warnings)
+        };
     }
 
     // 1–2: start the new stream key and put the new video live while the old one keeps going.
@@ -495,6 +512,7 @@ mod tests {
             bound_stream: bound.map(str::to_string),
             in_playlist: true,
             next_game_link: None,
+            portal_start: None,
         }
     }
 

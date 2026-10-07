@@ -18,9 +18,7 @@ pub fn todays_videos(
     let Some(day) = quota::todays_day(plan, court, now) else {
         return Vec::new();
     };
-    plan.games
-        .iter()
-        .filter(|g| g.court == court && g.day == day)
+    plan.court_games(court, day)
         .filter_map(|g| {
             state
                 .videos
@@ -123,6 +121,7 @@ mod tests {
             bound_stream: None,
             in_playlist: true,
             next_game_link: None,
+            portal_start: None,
         };
         let mut state = EventState::default();
         // Game 3 has no video yet.

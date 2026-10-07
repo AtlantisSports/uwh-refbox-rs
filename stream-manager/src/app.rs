@@ -12,7 +12,7 @@ use crate::{
     recovery,
     refbox::{self, RefboxEvent},
     switcher::{Action, Command, CourtSwitcher, Phase, SwitchRules},
-    vmix,
+    title_sync, vmix,
     youtube::YouTube,
 };
 use log::{info, warn};
@@ -31,6 +31,8 @@ use tokio::{
 
 pub const TOKEN_FILE: &str = "youtube-token.json";
 const COURT_LOG_LINES: usize = 12;
+/// How often a running court's upcoming titles are checked against the portal (ADR 026 §2).
+const TITLE_SYNC_EVERY: Duration = Duration::from_secs(600);
 
 pub struct App {
     pub config_path: PathBuf,
@@ -72,6 +74,9 @@ struct CourtRuntime {
     /// Why the last switch failed, until the next one succeeds.
     error: Option<String>,
     vmix_reachable: Option<bool>,
+    /// Games already reported as gone from the portal since Start day or End day, so each is
+    /// noted only once.
+    removed_reported: HashSet<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -144,6 +149,7 @@ impl CourtRuntime {
             busy: false,
             error: None,
             vmix_reachable: None,
+            removed_reported: HashSet::new(),
         }
     }
 
@@ -239,6 +245,43 @@ impl App {
 
     pub fn plan(&self) -> Option<EventPlan> {
         self.inner().plan.clone()
+    }
+
+    /// Replaces the cached schedule with one just fetched for `event_slug`, as
+    /// [`App::refresh_plan`] does. Ignored if the event has changed meanwhile.
+    pub fn set_plan(&self, event_slug: &str, plan: EventPlan) {
+        let mut inner = self.inner();
+        if inner.config.event_slug == event_slug {
+            inner.plan = Some(plan);
+            inner.plan_error = None;
+        }
+    }
+
+    /// The game whose video the court's switcher has live, if any.
+    pub fn live_game(&self, court_name: &str) -> Option<String> {
+        self.inner()
+            .courts
+            .iter()
+            .find(|c| c.config.name == court_name)
+            .and_then(|c| c.switcher.status().live)
+    }
+
+    /// Of `removed`, the games not yet reported for this court since Start day or End day.
+    /// They count as reported from now on.
+    pub fn newly_removed(&self, court_name: &str, removed: &[String]) -> Vec<String> {
+        let mut inner = self.inner();
+        let Some(court) = inner
+            .courts
+            .iter_mut()
+            .find(|c| c.config.name == court_name)
+        else {
+            return Vec::new();
+        };
+        removed
+            .iter()
+            .filter(|game| court.removed_reported.insert((*game).clone()))
+            .cloned()
+            .collect()
     }
 
     // ----- Sessions (PIN) -----
@@ -385,6 +428,9 @@ impl App {
             .position(|c| c.config.name == court_name)
             .ok_or_else(|| format!("There is no court \"{court_name}\""))?;
         let court = &mut courts[i];
+        if matches!(command, Command::StartDay | Command::EndDay) {
+            court.removed_reported.clear();
+        }
         if court.busy
             && matches!(
                 command,
@@ -527,6 +573,39 @@ impl App {
                 }
                 Ok((None, _)) => {}
                 Err(e) => warn!("[Court {court}] Couldn't check which video is live: {e}"),
+            }
+        }
+    }
+
+    // ----- Portal title sync -----
+
+    /// Every 10 minutes, brings each running court's upcoming videos in line with the portal
+    /// (ADR 026 §2). A court is skipped while its share of the allowance is low; the check just
+    /// before each switch still runs. Runs for as long as the program does.
+    pub async fn run_title_sync(self: &Arc<Self>) {
+        let mut every = tokio::time::interval(TITLE_SYNC_EVERY);
+        // The first tick is immediate: the first check comes 10 minutes after start.
+        every.tick().await;
+        loop {
+            every.tick().await;
+            let (generation, courts) = {
+                let inner = self.inner();
+                (inner.generation, courts_to_sync(&inner))
+            };
+            for (i, court) in courts {
+                if !self.extras_allowed(&court.name) {
+                    continue;
+                }
+                let log_app = Arc::clone(self);
+                let mut log =
+                    move |line: String| log_app.with_court(generation, i, |c| c.note(line));
+                if let Err(e) = title_sync::sync_court(self, &court, None, &mut log).await {
+                    self.with_court(generation, i, |c| {
+                        c.note(format!(
+                            "⚠ Couldn't check the titles against the portal: {e}"
+                        ));
+                    });
+                }
             }
         }
     }
@@ -832,6 +911,21 @@ fn extras_allowed_with(inner: &Inner, court_name: &str, used: u32, now: OffsetDa
     )
 }
 
+/// Courts the 10-minute title check covers: those whose day is running, unless in practice
+/// mode, where nothing is sent to YouTube.
+fn courts_to_sync(inner: &Inner) -> Vec<(usize, CourtConfig)> {
+    if inner.config.practice_mode {
+        return Vec::new();
+    }
+    inner
+        .courts
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.switcher.status().day_running)
+        .map(|(i, c)| (i, c.config.clone()))
+        .collect()
+}
+
 /// Carries on from `live` after a restart, unless the court's day is already running.
 fn resume_court(court: &mut CourtRuntime, live: &str, also_live: &[String]) {
     if court.switcher.status().day_running {
@@ -903,6 +997,39 @@ mod tests {
         resume_court(&mut court, "14", &[]);
         assert_eq!(court.switcher.status().live.as_deref(), Some("7"));
         assert!(court.log.is_empty());
+    }
+
+    #[test]
+    fn a_removed_game_is_reported_once_until_start_day_or_end_day() {
+        let app = temp_app("removed");
+        let removed = ["22".to_string()];
+        assert_eq!(app.newly_removed("1", &removed), ["22"]);
+        assert!(app.newly_removed("1", &removed).is_empty());
+        assert_eq!(
+            app.newly_removed("1", &["22".to_string(), "23".to_string()]),
+            ["23"]
+        );
+        // End day (even with the day not running) starts the memory afresh.
+        let _ = app.court_command("1", Command::EndDay);
+        assert_eq!(app.newly_removed("1", &removed), ["22"]);
+        let _ = app.court_command("1", Command::StartDay);
+        assert_eq!(app.newly_removed("1", &removed), ["22"]);
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn the_title_check_covers_running_courts_outside_practice_mode() {
+        let app = temp_app("sync-courts");
+        app.inner().courts[0].switcher.resume("20".into());
+        // Practice mode is on by default: nothing is sent to YouTube.
+        assert!(courts_to_sync(&app.inner()).is_empty());
+        app.inner().config.practice_mode = false;
+        let courts: Vec<String> = courts_to_sync(&app.inner())
+            .into_iter()
+            .map(|(_, c)| c.name)
+            .collect();
+        assert_eq!(courts, ["1"]);
+        let _ = std::fs::remove_dir_all(&app.config_dir);
     }
 
     #[test]

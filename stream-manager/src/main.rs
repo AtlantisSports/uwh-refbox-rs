@@ -17,6 +17,7 @@ mod quota;
 mod recovery;
 mod refbox;
 mod switcher;
+mod title_sync;
 mod vmix;
 mod web;
 mod youtube;
@@ -108,6 +109,9 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
             plan_app.refresh_plan().await;
             plan_app.recover_live_videos().await;
         });
+        // Every 10 minutes, keeps running courts' upcoming titles in step with the portal.
+        let sync_app = std::sync::Arc::clone(&app);
+        tokio::spawn(async move { sync_app.run_title_sync().await });
         return web::serve(app, open_browser).await;
     }
 

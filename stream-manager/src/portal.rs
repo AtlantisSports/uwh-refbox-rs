@@ -45,6 +45,17 @@ impl EventPlan {
     pub fn game(&self, number: &str) -> Option<&PlannedGame> {
         self.games.iter().find(|g| g.number == number)
     }
+
+    /// One court's games on one schedule day, in schedule order.
+    pub fn court_games<'a>(
+        &'a self,
+        court: &str,
+        day: usize,
+    ) -> impl Iterator<Item = &'a PlannedGame> {
+        self.games
+            .iter()
+            .filter(move |g| g.court == court && g.day == day)
+    }
 }
 
 pub fn playlist_title(day: usize, court: &str) -> String {
@@ -294,6 +305,20 @@ mod tests {
             ]
         );
         assert_eq!(playlist_title(1, "2"), "Day 1 · Court 2");
+    }
+
+    #[test]
+    fn court_games_are_one_courts_games_on_one_day_in_order() {
+        let plan = parse_event_plan(SAMPLE).unwrap();
+        let numbers = |court: &str, day: usize| -> Vec<String> {
+            plan.court_games(court, day)
+                .map(|g| g.number.clone())
+                .collect()
+        };
+        assert_eq!(numbers("1", 1), ["1"]);
+        assert_eq!(numbers("2", 1), ["2"]);
+        assert_eq!(numbers("1", 2), ["10"]);
+        assert!(numbers("2", 2).is_empty());
     }
 
     #[test]

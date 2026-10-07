@@ -27,7 +27,7 @@ mod flag;
 mod load_images;
 #[cfg(feature = "ndi")]
 mod ndi_output;
-#[cfg(feature = "ndi")]
+#[cfg(any(feature = "ndi", test))]
 mod ndi_runtime;
 mod network;
 use network::{BLACK_TEAM_NAME, WHITE_TEAM_NAME};

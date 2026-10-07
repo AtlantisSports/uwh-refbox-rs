@@ -206,7 +206,7 @@
           With one stream key there is a gap of a few seconds before each kickoff; the stream keys setting
           can only be changed while that court's day isn't running.</p>
         <table>
-          <thead><tr><th>Court</th><th>Refbox IP address</th><th>Port</th><th>vMix address</th><th>Stream keys</th><th>Stream key A (vMix destination 1)</th><th>Stream key B (vMix destination 2)</th><th></th></tr></thead>
+          <thead><tr><th>Court</th><th>Refbox IP address</th><th>Port</th><th>vMix address</th><th>Stream keys</th><th>Stream key A (vMix destination 1)</th><th id="s-b-header">Stream key B (vMix destination 2)</th><th></th></tr></thead>
           <tbody id="s-courts"></tbody>
         </table>
         <div class="row"><button class="small" onclick="addCourt()">+ Add court</button></div>
@@ -573,7 +573,8 @@ function renderCourtRows(courts) {
       <option value="one-key" ${c.stream_mode === 'one-key' ? 'selected' : ''}>One (short gap)</option></select></td>
     <td><input class="c-a" value="${esc(c.stream_a || '')}" placeholder="Court ${esc(c.name)} - A"></td>
     <td><input class="c-b ${c.stream_mode === 'one-key' ? 'hidden' : ''}" value="${esc(c.stream_b || '')}" placeholder="Court ${esc(c.name)} - B"></td>
-    <td><button class="small" onclick="this.closest('tr').remove()">Remove</button></td></tr>`).join('');
+    <td><button class="small" onclick="this.closest('tr').remove(); showStreamBHeader()">Remove</button></td></tr>`).join('');
+  showStreamBHeader();
 }
 function readCourtRows() {
   return [...$('s-courts').querySelectorAll('tr')].map(tr => ({
@@ -588,6 +589,12 @@ function readCourtRows() {
 }
 function showStreamB(select) {
   select.closest('tr').querySelector('.c-b').classList.toggle('hidden', select.value === 'one-key');
+  showStreamBHeader();
+}
+// The B column's heading is shared by every court, so it shows while any court uses two keys.
+function showStreamBHeader() {
+  const modes = [...document.querySelectorAll('#s-courts .c-mode')].map(m => m.value);
+  $('s-b-header').classList.toggle('hidden', modes.length > 0 && modes.every(m => m === 'one-key'));
 }
 function addCourt() {
   const courts = readCourtRows();

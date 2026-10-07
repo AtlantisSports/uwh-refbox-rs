@@ -10,9 +10,7 @@ use log::info;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::hash_map::RandomState,
     fs,
-    hash::{BuildHasher, Hasher},
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -84,10 +82,9 @@ fn now_secs() -> u64 {
 }
 
 /// An unguessable value so we only accept the sign-in we started ourselves.
-fn random_state() -> String {
-    let a = RandomState::new().build_hasher().finish();
-    let b = RandomState::new().build_hasher().finish();
-    format!("{a:016x}{b:016x}")
+fn random_state() -> Result<String, BoxError> {
+    crate::access::random_hex(16)
+        .map_err(|e| format!("Couldn't start the Google sign-in (no random numbers): {e}").into())
 }
 
 pub fn open_browser(url: &str) {
@@ -137,7 +134,7 @@ pub async fn begin_sign_in(client_file: &Path) -> Result<PendingSignIn, BoxError
     let client = ClientSecret::load(client_file)?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let redirect_uri = format!("http://127.0.0.1:{}", listener.local_addr()?.port());
-    let state = random_state();
+    let state = random_state()?;
 
     let mut url = Url::parse(&client.auth_uri)?;
     url.query_pairs_mut()

@@ -118,6 +118,20 @@ pub fn court_streams<'a>(
     }
 }
 
+/// The stream key the court's game at `position` must be (re)bound to, or `None` when its video
+/// is already bound to it. In one-key mode a video bound to B is rebound to A.
+fn stream_to_bind<'a>(
+    court: &CourtConfig,
+    keys: &[&'a StreamInfo],
+    position: usize,
+    bound: Option<&str>,
+) -> Option<&'a StreamInfo> {
+    // `keys` comes from `court_streams` for the same court: two keys in two-key mode, where
+    // the position is 0 or 1, and one in one-key mode, where it is always 0.
+    let wanted = keys[court.stream_for_position(position)];
+    (bound != Some(wanted.title.as_str())).then_some(wanted)
+}
+
 /// The public portal web address for the event (derived from the API address).
 fn portal_event_page(config: &Config) -> String {
     let web = config
@@ -278,7 +292,6 @@ pub fn preview(
         }
         for (i, game) in target.games.iter().enumerate() {
             let spec = broadcast_spec(config, plan, game);
-            let stream = &pair[target.court.stream_for_position(i)].title;
             match state.videos.get(&game.number) {
                 None => {
                     work.videos_to_create += 1;
@@ -291,7 +304,7 @@ pub fn preview(
                     if v.title != spec.title || v.description != description {
                         work.videos_to_update += 1;
                     }
-                    if v.bound_stream.as_ref() != Some(stream) {
+                    if stream_to_bind(target.court, &pair, i, v.bound_stream.as_deref()).is_some() {
                         work.binds += 1;
                     }
                     if !v.in_playlist {
@@ -358,7 +371,6 @@ pub async fn run(
 
         for (i, game) in target.games.iter().enumerate() {
             let spec = broadcast_spec(config, plan, game);
-            let stream = pair[target.court.stream_for_position(i)];
 
             let video = match state.videos.get(&game.number).cloned() {
                 None => {
@@ -395,7 +407,9 @@ pub async fn run(
                 }
             };
 
-            if video.bound_stream.as_ref() != Some(&stream.title) {
+            if let Some(stream) =
+                stream_to_bind(target.court, &pair, i, video.bound_stream.as_deref())
+            {
                 youtube
                     .bind_broadcast(&video.broadcast_id, &stream.id)
                     .await?;
@@ -558,6 +572,26 @@ mod tests {
         let keys = court_streams(&court, &streams).unwrap();
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0].title, "Court 1 - A");
+    }
+
+    #[test]
+    fn rerunning_prepare_in_one_key_mode_rebinds_videos_on_b_to_a() {
+        let mut court = Config::default().courts.remove(0);
+        let both = [stream("Court 1 - A"), stream("Court 1 - B")];
+        let keys: Vec<&StreamInfo> = both.iter().collect();
+        // Two keys: game 2 (position 1) belongs on B, so a video already there stays put.
+        assert!(stream_to_bind(&court, &keys, 1, Some("Court 1 - B")).is_none());
+
+        court.stream_mode = StreamMode::OneKey;
+        let keys = court_streams(&court, &both).unwrap();
+        let rebind = stream_to_bind(&court, &keys, 1, Some("Court 1 - B")).unwrap();
+        assert_eq!(rebind.title, "Court 1 - A");
+        assert!(stream_to_bind(&court, &keys, 1, Some("Court 1 - A")).is_none());
+        // A new video is always bound.
+        assert_eq!(
+            stream_to_bind(&court, &keys, 0, None).map(|s| s.title.as_str()),
+            Some("Court 1 - A")
+        );
     }
 
     #[test]

@@ -48,7 +48,7 @@ Learn more about NDI and get NDI Tools at https://ndi.video.
 
 | Program | Code | Ready-made download |
 |---|---|---|
-| overlay, overlay-bridge | `master` (the NDI picture fix and offline team names from PR #3383 are merged) | `streaming-tools-windows.zip` (A0) |
+| overlay, overlay-bridge | `master` (the NDI picture fix and offline team names from PR #3383 are merged). The streaming-PC fixes this guide relies on (NDI engine installs itself, bridge on port 8098, a local refbox listed once) are on `feat/overlay/streaming-pc-setup` until that PR is merged | `streaming-tools-windows.zip` (A0) |
 | Stream Manager | `feat/workspace/stream-manager` until its PR is merged, then `master` | the same zip |
 
 ---
@@ -255,13 +255,22 @@ Also set:
    - **Courts:** **only this mini PC's court**. Remove any other. Court name exactly as the portal
      uses it (e.g. `1`), refbox IP and port `8000`, **vMix address `127.0.0.1:8088`**. Leave the
      stream key names empty to use `Court N - A` / `Court N - B`.
+   - **Stream keys:** **Two (A/B, no gap)** unless a human says the venue's upload can't take the
+     brief doubling at each switch. Then choose **One (short gap)**: vMix streams to key A all
+     day, and each switch leaves a gap of a few seconds before kickoff. Only key A is needed. The
+     setting can only change while no day is running on that court.
+   - **YouTube allowance:** **Daily allowance (units)** 10,000 (raise it only once Google has
+     granted more) and **This program's share (%)** 50 with two courts (100 if only one court
+     streams). Each mini PC counts only what it uses itself, so the shares must add up to at most
+     100%.
    - **Practice mode:** leave **ON** for now.
    - Click **Save settings**. **Check:** "Saved ✓".
 5. ⛔ **STOP — a human must do this.** Click **Connect YouTube**. In the browser, sign in with the
    Google account that manages the channel, choose the **Atlantis Sports** channel, and click
    through "Google hasn't verified this app" (Advanced → Go to Stream-Manager) → Allow.
    - **Check:** the header shows the channel name with a green dot.
-6. Click **Check stream keys**. **Check:** both of this court's keys are found.
+6. Click **Check stream keys**. **Check:** both of this court's keys are found (only key A in
+   one-key mode).
 7. **Live tab.** **Check:** "Refbox connected" and "vMix connected" are both green.
 8. **Windows Firewall:** if Windows asks, allow stream-manager on **Private** networks. That lets the
    other mini PC and the Stream Deck reach the control page.
@@ -274,8 +283,12 @@ Settings and secrets live in `Documents\stream-manager\`:
 | `client_secret.json` | the Google sign-in file (secret) |
 | `youtube-token.json` | the saved YouTube connection (secret) |
 | `state-<event>.json` | the videos and playlists it created |
+| `youtube-allowance.json` | how much of YouTube's daily allowance this PC has used today |
 
 **Never put this folder in the code repository.**
+
+If the folder holds a `portal-login.json` from an early test version, delete it: it holds a saved
+portal password that the current version no longer uses.
 
 ### B6. Stream Deck (Companion)
 
@@ -342,11 +355,13 @@ should answer `ok`.
 ⛔ **STOP — a human confirms.** This creates videos on the YouTube channel.
 
 Prepare tab → choose the **day** and this mini PC's **court** → **1. Preview**. Check the number of
-videos, the privacy and the cost (YouTube's daily allowance is 10,000 units) → **2. Create on
-YouTube**.
+videos, the privacy and the cost (the Live tab shows how much of this PC's YouTube allowance is
+left today) → **2. Create on YouTube**.
 
 **Check:** the "Videos for this event" list shows every game in schedule order, each linked to
-stream key A or B, alternating.
+stream key A or B, alternating (all to A in one-key mode). Prepare is safe to run again: it updates
+the existing videos, and after switching a court to one-key mode it moves that day's videos to
+key A.
 
 ### C2. Dry run (strongly recommended)
 
@@ -370,8 +385,20 @@ stream key A or B, alternating.
 - **Hold** stops the automatic switch (e.g. a long interview). **Switch now** switches
   immediately.
 - If a switch fails, the court shows a **red message** and goes to Hold. The old video stays live.
-  Fix the cause, then press **Switch now**.
-- At the end, press **End day**. It ends the last video and stops both vMix destinations.
+  Fix the cause, then press **Switch now**. Stream Manager never retries by itself, so a failing
+  step can't use up the YouTube allowance.
+- **Titles follow the portal:** every 10 minutes, and again just before each switch, upcoming
+  videos are updated when the portal changes a team (e.g. "Winner G12" → the real team) or a start
+  time. A game removed from the portal is listed on the court's card ("No longer on the portal: …")
+  and its video is kept; delete it in YouTube Studio if it's really cancelled.
+- **If the allowance runs low**, the court's log says "Allowance low: skipped the chat message and
+  Next game link". The switches carry on; only the chat message, the "Next game" link and the
+  10-minute title checks pause.
+- **If Stream Manager or the mini PC restarts** during the day, it asks YouTube which video is live
+  and carries on: the court's log shows "Resumed: Game 14 is live". Don't press Start day again.
+  If it shows "Game 13 is also still live on YouTube", end that one in YouTube Studio.
+- At the end, press **End day**. It ends the last video and stops the vMix destinations (only
+  destination 1 in one-key mode).
 
 ---
 
@@ -396,7 +423,10 @@ stream key A or B, alternating.
 | "vMix not reachable" | vMix isn't running, or Web Controller is off or not on port 8088 (B4). |
 | Google: "Access blocked … can only be used within its organization" (org_internal) | The Google app is set to Internal but the channel is a Brand Account. Set the app's Audience to **External**. |
 | YouTube sign-in stops working after about 7 days | The Google app is in **Testing** mode. Switch it to **In production**, or press Connect YouTube again. |
-| End day pressed, but vMix still streaming | Older versions stopped only one destination. Update Stream Manager; End day now stops both. |
+| End day pressed, but vMix still streaming | Older versions stopped only one destination. Update Stream Manager; End day now stops both (in one-key mode only destination 1, so anything else on destination 2 keeps running). |
+| Start day: "Re-run Prepare: some of today's videos use a stream key other than A" | The court was switched to one-key mode after Prepare. Run **Prepare** again for that day and court; it moves the videos to key A. |
+| Log: "Allowance low: skipped the chat message and Next game link" | This PC's share of YouTube's daily allowance is nearly used. Switching carries on. If Google has granted a higher limit, raise **Daily allowance (units)** in Settings; otherwise nothing to do until midnight US Pacific time. |
+| Log: "⚠ The portal or YouTube didn't answer in time; titles weren't checked" | The internet or the portal was slow. Nothing to do: titles are checked again in 10 minutes and just before each switch. |
 
 ---
 

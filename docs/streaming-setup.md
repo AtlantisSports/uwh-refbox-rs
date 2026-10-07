@@ -253,6 +253,8 @@ Also set:
    - The PIN is only for signing in on the control page. Stream Deck buttons use the button key
      instead (B6).
    - A sign-in lasts 24 hours. After that the page asks for the PIN again.
+   - Changing the PIN (Settings) signs out every other device; the one that changed it stays
+     signed in.
    - Sign-ins are checked one at a time, from every device together. After a wrong PIN, the next
      try waits 1 s, then 2, 4, 8… up to 30 s for each wrong PIN in a row. The count resets after
      15 minutes without a wrong PIN.
@@ -301,6 +303,11 @@ or the other court's mini PC. It can only be changed on the mini PC itself (Sett
 3. Close Stream Manager's window (press **End day** first if a day is running) and start it again.
 4. On the other device, open `http://<this mini PC's address>:8090` and sign in with the PIN.
 
+Use the device's **IPv4** address (numbers like `192.168.1.50`); an IPv6 address is refused. The
+venue Wi-Fi can give an address to a different device later, so ask the venue for a fixed
+(reserved) address for each allowed device, or check the list again at each event. Remove devices
+you no longer need.
+
 Any device not on the list gets "This device isn't allowed." To view Court 1's page from Court 2's
 mini PC, add **Court 2's mini PC's address** on Court 1's Stream Manager, then restart Court 1's
 Stream Manager (and the other way round for Court 2's page). The button key and the device
@@ -335,13 +342,22 @@ The actions are `start`, `hold-toggle`, `next` (Switch now) and `end`.
 - Copy the links from the Live tab **on the mini PC itself**: only there do they show the button
   key. On any other device they show `key=<button key — copy it on the mini PC>`. The key is also
   under Settings → **Stream Deck button key**, with a **Copy** button.
-- When Companion runs on the same mini PC, use `127.0.0.1` as in the example. When it runs on
-  another computer, use the mini PC's network address, and add that computer under **Allow other
+- On the mini PC the links always start with `http://127.0.0.1:8090`: that is right for
+  Companion on the same mini PC. When Companion runs on another computer, use the address in the
+  line under the links ("Companion on another computer: use http://<this mini PC's address>:8090
+  instead…", shown while **Allow other devices** is on), and add that computer under **Allow other
   devices** (B5).
 - The key is a secret, like a password. If it may have been seen by someone else, press
   **Make a new key** (Settings). Links with the old key stop working at once, so copy every
   button's link again from the Live tab.
 - The PIN no longer works in these links.
+
+**Keep Companion off the venue Wi-Fi.** Companion's own web connection has no password, so anyone
+who can reach it can press these buttons or read their links (with the key). When Companion runs
+on the mini PC, set its interface to `127.0.0.1` in Companion's launcher window, and don't allow
+Companion through Windows Firewall. Stream Manager still reaches it at `127.0.0.1:8000`. If
+Companion has to run on another computer, that computer and its Companion port must not be
+reachable from the venue Wi-Fi.
 
 **Live status on the buttons.** Stream Manager can also put each court's status on buttons:
 Hold on or off, the time until the rosters ("Rosters in 0:45", then "Rosters on screen"), the
@@ -480,6 +496,7 @@ key A.
 | Signing in is slow to say "Wrong PIN" | After a wrong PIN the next try waits longer each time (up to 30 s). Check the PIN. The wait resets 15 minutes after the last wrong PIN. |
 | "Too many sign-in attempts; wait a moment and try again." | More than 20 sign-ins are waiting, maybe someone guessing the PIN. Wait a minute and try again. |
 | "This device isn't allowed. On the mini PC, add its address under Settings → Allow other devices." | Only this mini PC and the listed devices can open the control page. On the mini PC, add this device's address (B5, **Allow other devices**), save, and restart Stream Manager. |
+| "This web address isn't allowed. On the mini PC, open the control page at http://127.0.0.1; on an allowed device, use the mini PC's own address." | The page was opened by a name (for example a bookmark with a computer name) instead of an address. Only `localhost` and numeric addresses are answered. Open it as the message says. |
 | A device can't open the control page at all (no answer) | **Allow other devices** is off, or was turned on without a restart. Turn it on, add the device, and restart Stream Manager. |
 | Stream Deck buttons stopped working after **Make a new key** | The links still carry the old key. Copy every button's link again from the Live tab on the mini PC itself. |
 | "vMix not reachable" | vMix isn't running, or Web Controller is off or not on port 8088 (B4). |

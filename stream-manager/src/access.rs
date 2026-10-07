@@ -187,11 +187,16 @@ impl Sessions {
     pub fn has(&self, token: &str, now: Instant) -> bool {
         self.sessions
             .iter()
-            .any(|(t, signed_in)| t == token && !expired(*signed_in, now))
+            .any(|(t, signed_in)| secret_matches(token, t) && !expired(*signed_in, now))
     }
 
     pub fn remove(&mut self, token: &str) {
         self.sessions.retain(|(t, _)| t != token);
+    }
+
+    /// Signs out every session (after a PIN change).
+    pub fn clear(&mut self) {
+        self.sessions.clear();
     }
 
     fn drop_expired(&mut self, now: Instant) {

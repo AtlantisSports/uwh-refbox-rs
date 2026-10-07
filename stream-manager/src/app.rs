@@ -352,6 +352,14 @@ impl App {
             .remove(token);
     }
 
+    /// Signs out every session, e.g. after the PIN was changed.
+    pub fn clear_sessions(&self) {
+        self.sessions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+    }
+
     /// Checks a PIN typed at the sign-in (from `from`), in the one line every sign-in waits in
     /// (see [`SignInLine`]). The PIN is compared only once the attempt reaches the front.
     pub async fn sign_in(&self, pin: &str, from: &str) -> SignIn {
@@ -825,13 +833,26 @@ impl App {
 
     // ----- Settings and schedule -----
 
-    /// Saves new settings. Court changes are refused while a court's day is running, or while
-    /// a court's worker is still carrying out a switch or End day.
+    /// Saves `new` in place of the settings in use (tests only; the web page edits through
+    /// [`App::update_settings`]).
+    #[cfg(test)]
     pub fn apply_settings(self: &Arc<Self>, new: Config) -> Result<(), String> {
-        new.validate_for_save()?;
+        self.update_settings(|_| Ok(new))
+    }
+
+    /// Saves new settings, made by `edit` from the settings in use under the same lock as the
+    /// save, so two changes made at the same moment (e.g. a new button key and a settings save
+    /// from another device) can't undo each other. Court changes are refused while a court's day
+    /// is running, or while a court's worker is still carrying out a switch or End day.
+    pub fn update_settings<E: From<String>>(
+        self: &Arc<Self>,
+        edit: impl FnOnce(&Config) -> Result<Config, E>,
+    ) -> Result<(), E> {
         let courts_changed;
         {
             let mut inner = self.inner();
+            let new = edit(&inner.config)?;
+            new.validate_for_save()?;
             courts_changed = inner.config.courts != new.courts;
             let day_running = inner.courts.iter().any(|c| c.switcher.status().day_running);
             for running in inner
@@ -846,7 +867,8 @@ impl App {
                     return Err(format!(
                         "End the day on Court {} before changing its stream keys setting",
                         running.config.name
-                    ));
+                    )
+                    .into());
                 }
             }
             let risky = courts_changed
@@ -857,7 +879,8 @@ impl App {
             if risky && day_running {
                 return Err(
                     "End the day on every court before changing courts, event, timing or practice mode"
-                        .to_string(),
+                        .to_string()
+                        .into(),
                 );
             }
             // Changing the courts restarts every court, so a worker still carrying out End day
@@ -871,7 +894,8 @@ impl App {
                 return Err(format!(
                     "Court {} is still finishing its last action; try again in a moment.",
                     busy.config.name
-                ));
+                )
+                .into());
             }
             confy::store_path(&self.config_path, &new)
                 .map_err(|e| format!("Couldn't save settings: {e}"))?;

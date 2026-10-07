@@ -2,7 +2,9 @@
 //! connections and background jobs.
 
 use crate::{
-    BoxError, companion,
+    BoxError,
+    access::{PinFailures, Sessions},
+    companion,
     config::{Config, CourtConfig},
     google_auth::{self, GoogleAuth},
     live::{self, Outcome},
@@ -18,10 +20,10 @@ use crate::{
 use log::{info, warn};
 use serde::Serialize;
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::VecDeque,
     path::PathBuf,
     sync::{Arc, Mutex, MutexGuard},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use time::{OffsetDateTime, macros::format_description};
 use tokio::{
@@ -46,7 +48,9 @@ pub struct App {
     pub config_dir: PathBuf,
     inner: Mutex<Inner>,
     youtube: AsyncMutex<Option<YouTube>>,
-    sessions: Mutex<HashSet<String>>,
+    sessions: Mutex<Sessions>,
+    /// Held while a wrong PIN waits for its answer, so wrong PINs are answered one at a time.
+    pin_failures: AsyncMutex<PinFailures>,
 }
 
 struct Inner {
@@ -75,6 +79,10 @@ struct CourtRuntime {
     refbox_has_data: bool,
     /// Why the refbox's data couldn't be read, until a readable update arrives.
     refbox_unreadable: Option<String>,
+    /// The break countdown was running, so the refbox should be sending every second, but
+    /// nothing has come for [`refbox::SILENCE`]. Until the next snapshot, the refbox counts as
+    /// not responding; automatic switching waits for it, as when it is disconnected.
+    refbox_silent: bool,
     log: VecDeque<String>,
     /// A switch is being carried out on YouTube/vMix right now.
     busy: bool,
@@ -161,6 +169,7 @@ impl CourtRuntime {
             refbox_connected: false,
             refbox_has_data: false,
             refbox_unreadable: None,
+            refbox_silent: false,
             log: VecDeque::new(),
             busy: false,
             error: None,
@@ -231,7 +240,8 @@ impl App {
                 sign_in: String::new(),
             }),
             youtube: AsyncMutex::new(None),
-            sessions: Mutex::new(HashSet::new()),
+            sessions: Mutex::new(Sessions::default()),
+            pin_failures: AsyncMutex::new(PinFailures::default()),
         })
     }
 
@@ -257,7 +267,7 @@ impl App {
         self.config_dir.join(quota::LEDGER_FILE)
     }
 
-    pub fn state_file(&self) -> PathBuf {
+    pub fn state_file(&self) -> Result<PathBuf, BoxError> {
         prepare::state_path(&self.config_dir, &self.inner().config.event_slug)
     }
 
@@ -310,14 +320,14 @@ impl App {
         self.sessions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(token);
+            .add(token, Instant::now());
     }
 
     pub fn has_session(&self, token: &str) -> bool {
         self.sessions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .contains(token)
+            .has(token, Instant::now())
     }
 
     pub fn remove_session(&self, token: &str) {
@@ -325,6 +335,16 @@ impl App {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(token);
+    }
+
+    /// Waits before a wrong PIN (from `from`) is answered: longer for each one in a row (see
+    /// [`PinFailures::record`]). Wrong PINs wait one after another, never side by side, so
+    /// guesses can't be sped up by sending many at once. A correct PIN never waits here.
+    pub async fn wrong_pin(&self, from: &str) {
+        let mut failures = self.pin_failures.lock().await;
+        let wait = failures.record(Instant::now());
+        warn!("Wrong PIN from {from}; answering in {} s", wait.as_secs());
+        tokio::time::sleep(wait).await;
     }
 
     // ----- Refbox connections and switching -----
@@ -409,11 +429,13 @@ impl App {
             RefboxEvent::Connected => {
                 court.refbox_connected = true;
                 court.refbox_has_data = false;
+                court.refbox_silent = false;
                 court.note("Refbox connected".into());
             }
             RefboxEvent::Disconnected => {
                 court.refbox_connected = false;
                 court.refbox_has_data = false;
+                court.refbox_silent = false;
                 court.note("Refbox connection lost — automatic switching paused".into());
             }
             RefboxEvent::Unreadable(reason) => {
@@ -423,9 +445,26 @@ impl App {
                      8000 (8001 is the LED panel's). Details: {reason}"
                 ));
             }
+            // Only a silence during the break counts: the refbox also goes quiet while a game's
+            // clock is stopped, which can last minutes. The break countdown always runs.
+            RefboxEvent::Silent => {
+                let in_break = matches!(court.switcher.status().phase, Phase::Break { .. });
+                if court.refbox_has_data && in_break && !court.refbox_silent {
+                    court.refbox_silent = true;
+                    court.note(
+                        "✖ The refbox has stopped sending its countdown (not responding) — \
+                         automatic switching paused"
+                            .into(),
+                    );
+                }
+            }
             RefboxEvent::Snapshot(snapshot) => {
                 court.refbox_has_data = true;
                 court.refbox_unreadable = None;
+                if court.refbox_silent {
+                    court.refbox_silent = false;
+                    court.note("Refbox responding again".into());
+                }
                 if let Some(action) = court.switcher.on_snapshot(&snapshot) {
                     dispatch(court, executors.get(i), plan.as_ref(), action, practice);
                 }
@@ -609,7 +648,8 @@ impl App {
         let Some(plan) = plan.filter(|_| !slug.is_empty()) else {
             return;
         };
-        let state = match prepare::load_state(&prepare::state_path(&self.config_dir, &slug), &slug)
+        let state = match prepare::state_path(&self.config_dir, &slug)
+            .and_then(|path| prepare::load_state(&path, &slug))
         {
             Ok(state) => state,
             Err(e) => {
@@ -865,8 +905,10 @@ impl App {
 
     // ----- YouTube -----
 
-    /// The YouTube connection, opened on first use. Held for the whole call, so only one
-    /// YouTube operation runs at a time.
+    /// The YouTube connection, opened on first use. Only one holder at a time, so only one
+    /// YouTube operation runs at a time. A switch holds it for its whole run; longer jobs
+    /// (Prepare, the 10-minute title check) take it one game at a time through
+    /// [`YouTubeAccess`](crate::youtube::YouTubeAccess), so a switch never waits long.
     pub async fn youtube(&self) -> Result<MappedMutexGuard<'_, YouTube>, BoxError> {
         let mut guard = self.youtube.lock().await;
         if guard.is_none() {
@@ -876,7 +918,7 @@ impl App {
                 );
             }
             let auth = GoogleAuth::load(&self.client_file(), &self.token_file())?;
-            *guard = Some(YouTube::new(auth, Some(self.ledger_file())));
+            *guard = Some(YouTube::new(auth, Some(self.ledger_file()))?);
         }
         AsyncMutexGuard::try_map(guard, |yt| yt.as_mut())
             .map_err(|_| "YouTube connection unavailable".into())
@@ -981,6 +1023,7 @@ impl App {
                         c.refbox_unreadable.is_some(),
                     ) {
                         (false, _, _) => "disconnected",
+                        (true, true, _) if c.refbox_silent => "not_responding",
                         (true, true, _) => "ok",
                         (true, false, true) => "unreadable",
                         (true, false, false) => "waiting",
@@ -1301,9 +1344,47 @@ mod tests {
         assert!(court.log.is_empty());
     }
 
+    #[test]
+    fn a_refbox_silent_during_the_break_shows_as_not_responding_until_it_sends_again() {
+        let app = temp_app("silent");
+        let generation = app.inner().generation;
+        let refbox = |app: &App| app.status().courts[0].refbox;
+        let send = |event| app.on_refbox_event(generation, 0, event);
+        send(RefboxEvent::Connected);
+        // Quiet before anything arrived: still just waiting for the first update.
+        send(RefboxEvent::Silent);
+        assert_eq!(refbox(&app), "waiting");
+        // Quiet during a game (its clock may be stopped): not a fault.
+        let playing = snapshot(GamePeriod::SecondHalf, "14", "15", 300);
+        send(RefboxEvent::Snapshot(Box::new(playing)));
+        send(RefboxEvent::Silent);
+        assert_eq!(refbox(&app), "ok");
+        // Quiet during the break, whose countdown always runs: not responding.
+        let between = snapshot(GamePeriod::BetweenGames, "14", "15", 240);
+        send(RefboxEvent::Snapshot(Box::new(between.clone())));
+        send(RefboxEvent::Silent);
+        assert_eq!(refbox(&app), "not_responding");
+        assert!(
+            app.inner().courts[0].log[0].contains("not responding"),
+            "{:?}",
+            app.inner().courts[0].log
+        );
+        send(RefboxEvent::Snapshot(Box::new(between)));
+        assert_eq!(refbox(&app), "ok");
+        assert!(app.inner().courts[0].log[0].ends_with("Refbox responding again"));
+        // A reconnect starts afresh.
+        send(RefboxEvent::Silent);
+        send(RefboxEvent::Disconnected);
+        assert_eq!(refbox(&app), "disconnected");
+        send(RefboxEvent::Connected);
+        assert_eq!(refbox(&app), "waiting");
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
     #[tokio::test]
     async fn a_failed_switch_drops_the_actions_queued_behind_it() {
         let app = temp_app("dropped");
+        app.inner().config.event_slug = "test-cup".to_string();
         let court = app.config().courts.remove(0);
         let (tx, rx) = mpsc::unbounded_channel();
         // Not connected to YouTube, so the first action fails.

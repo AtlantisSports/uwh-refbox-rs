@@ -62,8 +62,7 @@ impl Ledger {
     }
 
     pub fn save(&self, path: &Path) -> Result<(), BoxError> {
-        fs::write(path, serde_json::to_string_pretty(self)?)?;
-        Ok(())
+        crate::prepare::write_atomically(path, &serde_json::to_string_pretty(self)?)
     }
 
     /// Adds units used at `now`, starting from zero when the Pacific day has changed.

@@ -25,7 +25,10 @@ use crate::{
     vmix,
     youtube::{BroadcastSpec, YouTube},
 };
-use std::time::Duration;
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 const STREAM_WAIT: Duration = Duration::from_secs(90);
 const LIVE_WAIT: Duration = Duration::from_secs(30);
@@ -38,9 +41,36 @@ const TITLE_CHECK_WAIT: Duration = Duration::from_secs(15);
 /// videos on one stream key), and the longest a two-key switch waits for the check's YouTube
 /// update.
 const TITLE_CHECK_ON_PATH_WAIT: Duration = Duration::from_secs(5);
+/// In a one-key switch, the longest the chat message may hold up ending the old video.
+const CHAT_ON_PATH_WAIT: Duration = Duration::from_secs(5);
 /// After vMix starts a stream key that YouTube already showed as receiving, how long "active"
 /// may still be left over from the key's last use (YouTube's status lags behind a stop).
 const STALE_ACTIVE_WAIT: Duration = Duration::from_secs(30);
+
+/// How long after Stream Manager stopped a stream key an "active" status on it may be left over
+/// from that stop. A key it hasn't stopped in this time that shows "active" is really receiving.
+const RECENT_STOP: Duration = Duration::from_secs(60);
+
+/// When Stream Manager last stopped each court's vMix destinations (in a switch or at End day),
+/// so a switch knows whether a stream key's "active" status may be left over from that stop.
+#[derive(Debug, Default)]
+pub struct StoppedKeys {
+    stopped: HashMap<(String, u8), Instant>,
+}
+
+impl StoppedKeys {
+    /// Notes that `court`'s vMix `destination` was stopped at `now`.
+    pub fn record(&mut self, court: &str, destination: u8, now: Instant) {
+        self.stopped.insert((court.to_string(), destination), now);
+    }
+
+    /// Whether `court`'s vMix `destination` was stopped within [`RECENT_STOP`] before `now`.
+    pub fn recently(&self, court: &str, destination: u8, now: Instant) -> bool {
+        self.stopped
+            .get(&(court.to_string(), destination))
+            .is_some_and(|&at| now.saturating_duration_since(at) < RECENT_STOP)
+    }
+}
 
 pub enum Outcome {
     Done,
@@ -276,9 +306,9 @@ async fn stream_id(yt: &mut YouTube, title: &str) -> Result<String, BoxError> {
 /// Starts vMix sending on stream key `index` and waits until YouTube receives it.
 ///
 /// With `may_be_leftover`, an "active" status the key already had before vMix started is not
-/// trusted (see [`stream_receiving`]). A switch sets it: the new key may have been stopped by
-/// the switch just before. Start day doesn't: there, a key already receiving is usually vMix
-/// sending before the day starts, and Start day shouldn't wait for nothing.
+/// trusted (see [`stream_receiving`]). A switch sets it when Stream Manager stopped that key
+/// within the last minute, so "active" may be left over from that stop. Otherwise a key already
+/// receiving is really receiving (vMix already sending on it), and nothing is waited for.
 async fn start_stream(
     yt: &mut YouTube,
     court: &CourtConfig,
@@ -384,6 +414,18 @@ pub async fn carry_out(
     action: &Action,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Outcome {
+    let mut yt = match app.youtube().await {
+        Ok(yt) => yt,
+        Err(e) => {
+            return Outcome::Failed {
+                actually_live: before(action),
+                error: e.to_string(),
+            };
+        }
+    };
+    // Read only once the YouTube lock is held: nothing else can change the recorded videos
+    // from here on, so the old video's title and description sent back to YouTube with the
+    // "Next game" link are current.
     let loaded = app.state_file().and_then(|file| {
         let state = prepare::load_state(&file, &app.config().event_slug)?;
         Ok((file, state))
@@ -394,15 +436,6 @@ pub async fn carry_out(
             return Outcome::Failed {
                 actually_live: before(action),
                 error: format!("Couldn't read the list of videos: {e}"),
-            };
-        }
-    };
-    let mut yt = match app.youtube().await {
-        Ok(yt) => yt,
-        Err(e) => {
-            return Outcome::Failed {
-                actually_live: before(action),
-                error: e.to_string(),
             };
         }
     };
@@ -418,7 +451,7 @@ pub async fn carry_out(
             };
             switch(&mut yt, &ctx, from, to, log).await
         }
-        Action::End(game) => end(&mut yt, court, &state, game, log).await,
+        Action::End(game) => end(&mut yt, app, court, &state, game, log).await,
     }
 }
 
@@ -510,6 +543,20 @@ async fn post_switch_message(
     }
 }
 
+/// Runs `post` (the chat message into Game `from`'s chat) for at most `wait`. Its warning, if
+/// any, is returned; if it takes too long it is given up, and that is only a warning too.
+async fn post_within(
+    wait: Duration,
+    from: &str,
+    post: impl Future<Output = Option<String>>,
+) -> Option<String> {
+    tokio::time::timeout(wait, post).await.unwrap_or_else(|_| {
+        Some(format!(
+            "YouTube didn't answer in time, so the chat message in Game {from} may not have been posted"
+        ))
+    })
+}
+
 /// Step 5: a "Next game" link in the old video's description, for replay viewers.
 async fn add_next_link(
     yt: &mut YouTube,
@@ -590,6 +637,14 @@ async fn same_key_switch(
     let (app, court) = (ctx.app, ctx.court);
     let mut warnings = Vec::new();
 
+    // In one-key mode only stream key A is ever sent on, so a video linked to B can't go live.
+    if let Err(e) = one_key_ready(court, ctx.state, &[to]) {
+        return Outcome::Failed {
+            actually_live: Some(from.to_string()),
+            error: format!("Switch to Game {to} didn't happen; Game {from} is still live: {e}"),
+        };
+    }
+
     // The video about to go live gets the portal's latest title, description and start time.
     // Nothing else can be done while waiting for it here, so it gets only a short time.
     let check = title_sync::sync_court_with(app, yt, court, Some(to), log);
@@ -610,9 +665,10 @@ async fn same_key_switch(
     if let Some(from_video) = &videos.from_video {
         // The new video's link is known in advance, so the message goes in before the old
         // video (and its chat) ends.
+        // It holds up the end, so it gets only a short time.
         if extras {
-            let problem = post_switch_message(yt, ctx.plan, from, from_video, to, &link, log).await;
-            warnings.extend(problem);
+            let post = post_switch_message(yt, ctx.plan, from, from_video, to, &link, log);
+            warnings.extend(post_within(CHAT_ON_PATH_WAIT, from, post).await);
         }
         if let Err(e) = yt.transition(&from_video.broadcast_id, "complete").await {
             return Outcome::Failed {
@@ -658,8 +714,9 @@ async fn two_key_switch(
 
     // 1: start the new stream key. While YouTube warms up to it, the portal is asked for the
     // new video's latest title, description and start time; the switch never waits for it.
+    let may_be_leftover = app.stopped_recently(&court.name, vmix_destination(videos.to_index));
     let (receiving, fetched) = alongside(
-        start_stream(yt, court, videos.to_index, true, log),
+        start_stream(yt, court, videos.to_index, may_be_leftover, log),
         tokio::time::timeout(TITLE_CHECK_WAIT, title_sync::begin(app, court, Some(to))),
     )
     .await;
@@ -688,7 +745,13 @@ async fn two_key_switch(
         Err(e) => {
             // Undo the extra vMix output so the old one carries on alone.
             if let Some(index) = output_to_undo(videos.from_index, videos.to_index) {
-                let _ = vmix::stop_destination(&court.vmix_address, vmix_destination(index)).await;
+                let destination = vmix_destination(index);
+                if vmix::stop_destination(&court.vmix_address, destination)
+                    .await
+                    .is_ok()
+                {
+                    app.note_stopped(&court.name, destination);
+                }
             }
             return Outcome::Failed {
                 actually_live: Some(from.to_string()),
@@ -723,10 +786,13 @@ async fn two_key_switch(
     }
     if let Some(index) = videos.from_index {
         match vmix::stop_destination(&court.vmix_address, vmix_destination(index)).await {
-            Ok(()) => log(format!(
-                "vMix: stopped destination {}",
-                vmix_destination(index)
-            )),
+            Ok(()) => {
+                app.note_stopped(&court.name, vmix_destination(index));
+                log(format!(
+                    "vMix: stopped destination {}",
+                    vmix_destination(index)
+                ));
+            }
             Err(e) => warnings.push(format!(
                 "Couldn't stop vMix destination {}: {e}",
                 vmix_destination(index)
@@ -743,6 +809,7 @@ async fn two_key_switch(
 
 async fn end(
     yt: &mut YouTube,
+    app: &App,
     court: &CourtConfig,
     state: &prepare::EventState,
     game: &str,
@@ -764,7 +831,10 @@ async fn end(
     }
     for &destination in destinations_to_stop(court) {
         match vmix::stop_destination(&court.vmix_address, destination).await {
-            Ok(()) => log(format!("vMix: stopped destination {destination}")),
+            Ok(()) => {
+                app.note_stopped(&court.name, destination);
+                log(format!("vMix: stopped destination {destination}"));
+            }
             Err(e) => warnings.push(format!("Couldn't stop vMix destination {destination}: {e}")),
         }
     }
@@ -822,6 +892,17 @@ mod tests {
 
         let all_a = state(&[("1", Some("Court 1 - A")), ("2", Some("court 1 – a"))]);
         assert_eq!(one_key_ready(&court, &all_a, &["1", "2"]), Ok(()));
+    }
+
+    #[test]
+    fn a_one_key_switch_to_a_video_on_stream_b_says_to_rerun_prepare() {
+        let mut court = Config::default().courts.remove(0);
+        court.stream_mode = StreamMode::OneKey;
+        let mixed = state(&[("1", Some("Court 1 - A")), ("2", Some("Court 1 - B"))]);
+        // What a one-key switch from Game 1 to Game 2 checks before anything else.
+        let refusal = one_key_ready(&court, &mixed, &["2"]).unwrap_err();
+        assert!(refusal.starts_with("Re-run Prepare"), "{refusal}");
+        assert_eq!(one_key_ready(&court, &mixed, &["1"]), Ok(()));
     }
 
     #[test]
@@ -962,6 +1043,45 @@ mod tests {
         assert!(!stream_receiving("active", true, false, soon));
         assert!(stream_receiving("active", true, true, soon));
         assert!(stream_receiving("active", true, false, STALE_ACTIVE_WAIT));
+    }
+
+    #[test]
+    fn only_a_key_stopped_in_the_last_minute_may_show_a_leftover_active() {
+        let start = Instant::now();
+        let mut stopped = StoppedKeys::default();
+        // Never stopped by Stream Manager: "active" is real, so no extra wait.
+        assert!(!stopped.recently("1", 2, start));
+        stopped.record("1", 2, start);
+        assert!(stopped.recently("1", 2, start + Duration::from_secs(59)));
+        assert!(!stopped.recently("1", 2, start + RECENT_STOP));
+        // Other destinations and other courts aren't affected.
+        assert!(!stopped.recently("1", 1, start));
+        assert!(!stopped.recently("2", 2, start));
+    }
+
+    #[tokio::test]
+    async fn a_slow_chat_message_only_gives_a_warning() {
+        let wait = Duration::from_millis(20);
+        let started = std::time::Instant::now();
+        let slow = async {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            None
+        };
+        let warning = post_within(wait, "1", slow).await;
+        assert_eq!(
+            warning.as_deref(),
+            Some(
+                "YouTube didn't answer in time, so the chat message in Game 1 may not have been posted"
+            )
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
+        // A message that's posted (or fails) in time gives its own result.
+        assert_eq!(post_within(wait, "1", async { None }).await, None);
+        let failed = async { Some("Game 1's video has no live chat".to_string()) };
+        assert_eq!(
+            post_within(wait, "1", failed).await.as_deref(),
+            Some("Game 1's video has no live chat")
+        );
     }
 
     #[tokio::test]

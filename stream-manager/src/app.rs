@@ -25,7 +25,10 @@ use std::{
 };
 use time::{OffsetDateTime, macros::format_description};
 use tokio::{
-    sync::{MappedMutexGuard, Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard, mpsc},
+    sync::{
+        MappedMutexGuard, Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard,
+        mpsc::{self, UnboundedReceiver},
+    },
     task::JoinHandle,
 };
 
@@ -83,6 +86,9 @@ struct CourtRuntime {
     removed_reported: Vec<String>,
     /// Why the Stream Deck's live status couldn't be sent to Companion, until it next succeeds.
     companion_error: Option<String>,
+    /// Restart recovery has asked YouTube about this court's videos, or its day was started or
+    /// ended by hand, so recovery doesn't look at it again.
+    recovered: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -161,6 +167,7 @@ impl CourtRuntime {
             vmix_reachable: None,
             removed_reported: Vec::new(),
             companion_error: None,
+            recovered: false,
         }
     }
 
@@ -351,15 +358,15 @@ impl App {
         }
         let mut executors = Vec::new();
         for (i, court) in inner.config.courts.iter().enumerate() {
-            let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
+            let (action_tx, action_rx) = mpsc::unbounded_channel::<Action>();
             executors.push(action_tx);
             let app = Arc::clone(self);
-            let court_config = court.clone();
-            tasks.push(tokio::spawn(async move {
-                while let Some(action) = action_rx.recv().await {
-                    app.execute(generation, i, &court_config, action).await;
-                }
-            }));
+            tasks.push(tokio::spawn(app.run_worker(
+                generation,
+                i,
+                court.clone(),
+                action_rx,
+            )));
             let app = Arc::clone(self);
             let address = court.vmix_address.clone();
             tasks.push(tokio::spawn(async move {
@@ -452,9 +459,11 @@ impl App {
         let was_hold = court.switcher.status().hold;
         let was_running = court.switcher.status().day_running;
         let result = court.switcher.on_command(command);
-        // Start day or End day took effect: the removed games are looked at afresh.
+        // Start day or End day took effect: the removed games are looked at afresh, and restart
+        // recovery leaves the court alone from now on.
         if was_running != court.switcher.status().day_running {
             court.removed_reported.clear();
+            court.recovered = true;
         }
         if let Some(action) = result {
             let message = describe_action(plan.as_ref(), &action, practice);
@@ -483,13 +492,30 @@ impl App {
         Ok(message)
     }
 
-    /// Carries out one switching decision on YouTube/vMix (runs on the court's worker).
+    /// A court's worker: carries out its switching decisions one at a time.
+    async fn run_worker(
+        self: Arc<Self>,
+        generation: u64,
+        i: usize,
+        court: CourtConfig,
+        mut actions: UnboundedReceiver<Action>,
+    ) {
+        while let Some(action) = actions.recv().await {
+            self.execute(generation, i, &court, action, &mut actions)
+                .await;
+        }
+    }
+
+    /// Carries out one switching decision on YouTube/vMix (runs on the court's worker). If it
+    /// fails, the decisions queued behind it are dropped: they were made before the failure and
+    /// would start from a game that isn't live.
     async fn execute(
         self: &Arc<Self>,
         generation: u64,
         i: usize,
         court: &CourtConfig,
         action: Action,
+        queued: &mut UnboundedReceiver<Action>,
     ) {
         self.with_court(generation, i, |c| c.busy = true);
         let plan = self.plan();
@@ -518,6 +544,18 @@ impl App {
                     };
                     c.note(format!("✖ {error} — {advice}"));
                     c.error = Some(format!("{error} — {advice}"));
+                    // Emptied in the same step as the failure is recorded, so nothing the
+                    // operator sends after it is lost.
+                    let mut dropped = Vec::new();
+                    while let Ok(next) = queued.try_recv() {
+                        dropped.push(describe_action(plan.as_ref(), &next, false));
+                    }
+                    if !dropped.is_empty() {
+                        c.note(format!(
+                            "✖ Not carried out, because the switch before it failed: {}",
+                            dropped.join("; ")
+                        ));
+                    }
                 }
             }
         });
@@ -548,17 +586,26 @@ impl App {
     /// After a restart, or when the courts change, asks YouTube which of each court's videos
     /// today is live and carries on from it (ADR 026 §9). Without a schedule, prepared videos or
     /// a YouTube connection nothing changes, and the court waits for Start day.
+    ///
+    /// A court is looked at until YouTube has been asked about it once, or until its day is
+    /// started or ended by hand. So if the schedule or YouTube wasn't available the first time,
+    /// recovery runs again after the next schedule load (see [`App::refresh_plan_and_recover`]).
+    /// After resuming, vMix's output for the live video is started again (it is off after a
+    /// reboot), except in practice mode.
     pub async fn recover_live_videos(self: &Arc<Self>) {
-        let (generation, courts, plan, slug) = {
+        let (generation, courts, plan, slug, practice) = {
             let inner = self.inner();
-            let courts: Vec<String> = inner.courts.iter().map(|c| c.config.name.clone()).collect();
             (
                 inner.generation,
-                courts,
+                courts_to_recover(&inner),
                 inner.plan.clone(),
                 inner.config.event_slug.clone(),
+                inner.config.practice_mode,
             )
         };
+        if courts.is_empty() {
+            return;
+        }
         let Some(plan) = plan.filter(|_| !slug.is_empty()) else {
             return;
         };
@@ -571,12 +618,14 @@ impl App {
             }
         };
         let now = OffsetDateTime::now_utc();
-        for (i, court) in courts.iter().enumerate() {
-            let videos = recovery::todays_videos(&plan, &state, court, now);
+        for (i, court) in courts {
+            let videos = recovery::todays_videos(&plan, &state, &court.name, now);
             if videos.is_empty() {
+                // No video today, so none can be live.
+                self.with_court(generation, i, |c| c.recovered = true);
                 continue;
             }
-            // Not connected to YouTube: nothing to resume from.
+            // Not connected to YouTube: nothing to resume from (yet).
             let Ok(mut youtube) = self.youtube().await else {
                 return;
             };
@@ -584,12 +633,48 @@ impl App {
             drop(youtube);
             match found {
                 Ok((Some(live), also_live)) => {
-                    self.with_court(generation, i, |c| resume_court(c, &live, &also_live));
+                    let mut resumed = false;
+                    self.with_court(generation, i, |c| {
+                        c.recovered = true;
+                        resumed = resume_court(c, &live, &also_live);
+                    });
+                    if resumed && !practice {
+                        self.restart_output(generation, i, &court, &state, &live)
+                            .await;
+                    }
                 }
-                Ok((None, _)) => {}
-                Err(e) => warn!("[Court {court}] Couldn't check which video is live: {e}"),
+                Ok((None, _)) => self.with_court(generation, i, |c| c.recovered = true),
+                Err(e) => warn!(
+                    "[Court {}] Couldn't check which video is live: {e}",
+                    court.name
+                ),
             }
         }
+    }
+
+    /// Starts vMix's output for a resumed live video again: after a reboot vMix's outputs are
+    /// off. Starting one that is already running changes nothing.
+    async fn restart_output(
+        &self,
+        generation: u64,
+        i: usize,
+        court: &CourtConfig,
+        state: &prepare::EventState,
+        live: &str,
+    ) {
+        let line = match live::resume_destination(court, state, live) {
+            Ok(destination) => {
+                match vmix::start_destination(&court.vmix_address, destination).await {
+                    Ok(()) => format!("vMix: started destination {destination}"),
+                    Err(e) => format!(
+                        "⚠ Couldn't start vMix destination {destination} for Game {live}: {e}. \
+                         Start it in vMix."
+                    ),
+                }
+            }
+            Err(e) => format!("⚠ {e}: start Game {live}'s vMix destination by hand"),
+        };
+        self.with_court(generation, i, |c| c.note(line));
     }
 
     // ----- Portal title sync -----
@@ -730,16 +815,20 @@ impl App {
             self.start_refbox_connections();
         }
         let app = Arc::clone(self);
-        tokio::spawn(async move {
-            app.refresh_plan().await;
-            if courts_changed {
-                app.recover_live_videos().await;
-            }
-        });
+        tokio::spawn(async move { app.refresh_plan_and_recover().await });
         Ok(())
     }
 
-    pub async fn refresh_plan(&self) {
+    /// Loads the schedule and, if that worked, runs restart recovery for the courts it hasn't
+    /// covered yet (e.g. because the first schedule load failed).
+    pub async fn refresh_plan_and_recover(self: &Arc<Self>) {
+        if self.refresh_plan().await {
+            self.recover_live_videos().await;
+        }
+    }
+
+    /// Loads the schedule from the portal. Returns whether that worked.
+    pub async fn refresh_plan(&self) -> bool {
         let (url, slug) = {
             let inner = self.inner();
             (
@@ -748,12 +837,12 @@ impl App {
             )
         };
         if slug.is_empty() {
-            return;
+            return false;
         }
         let result = portal::fetch_event_plan(&url, &slug).await;
         let mut inner = self.inner();
         if inner.config.event_slug != slug {
-            return; // settings changed meanwhile
+            return false; // settings changed meanwhile
         }
         match result {
             Ok(plan) => {
@@ -764,10 +853,12 @@ impl App {
                 );
                 inner.plan = Some(plan);
                 inner.plan_error = None;
+                true
             }
             Err(e) => {
                 warn!("Couldn't load the schedule: {e}");
                 inner.plan_error = Some(format!("Couldn't load the schedule: {e}"));
+                false
             }
         }
     }
@@ -1021,10 +1112,22 @@ fn courts_to_sync(inner: &Inner) -> Vec<(usize, CourtConfig)> {
         .collect()
 }
 
-/// Carries on from `live` after a restart, unless the court's day is already running.
-fn resume_court(court: &mut CourtRuntime, live: &str, also_live: &[String]) {
+/// The courts restart recovery still has to look at: not yet covered, and the day not running.
+fn courts_to_recover(inner: &Inner) -> Vec<(usize, CourtConfig)> {
+    inner
+        .courts
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| !c.recovered && !c.switcher.status().day_running)
+        .map(|(i, c)| (i, c.config.clone()))
+        .collect()
+}
+
+/// Carries on from `live` after a restart, unless the court's day is already running. Returns
+/// whether it did.
+fn resume_court(court: &mut CourtRuntime, live: &str, also_live: &[String]) -> bool {
     if court.switcher.status().day_running {
-        return;
+        return false;
     }
     court.switcher.resume(live.to_string());
     court.note(format!("Resumed: Game {live} is live"));
@@ -1033,6 +1136,7 @@ fn resume_court(court: &mut CourtRuntime, live: &str, also_live: &[String]) {
             "⚠ Game {other} is also still live on YouTube; end it from YouTube Studio"
         ));
     }
+    true
 }
 
 /// Logs a switching decision and, unless in practice mode, hands it to the court's worker.
@@ -1176,7 +1280,7 @@ mod tests {
         let rules = rules_of(&Config::default());
         let court_config = Config::default().courts.remove(0);
         let mut court = CourtRuntime::new(court_config.clone(), rules);
-        resume_court(&mut court, "14", &["13".to_string()]);
+        assert!(resume_court(&mut court, "14", &["13".to_string()]));
         let status = court.switcher.status();
         assert!(status.day_running);
         assert_eq!(status.live.as_deref(), Some("14"));
@@ -1192,9 +1296,69 @@ mod tests {
         // The operator pressed Start day while recovery was asking YouTube: leave it alone.
         let mut court = CourtRuntime::new(court_config, rules);
         court.switcher.resume("7".into());
-        resume_court(&mut court, "14", &[]);
+        assert!(!resume_court(&mut court, "14", &[]));
         assert_eq!(court.switcher.status().live.as_deref(), Some("7"));
         assert!(court.log.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_failed_switch_drops_the_actions_queued_behind_it() {
+        let app = temp_app("dropped");
+        let court = app.config().courts.remove(0);
+        let (tx, rx) = mpsc::unbounded_channel();
+        // Not connected to YouTube, so the first action fails.
+        tx.send(Action::GoLive("1".into())).unwrap();
+        tx.send(Action::Switch {
+            from: "1".into(),
+            to: "2".into(),
+        })
+        .unwrap();
+        drop(tx);
+        let generation = app.inner().generation;
+        Arc::clone(&app).run_worker(generation, 0, court, rx).await;
+
+        let log: Vec<String> = app.inner().courts[0].log.iter().cloned().collect();
+        // Newest first: the dropped switch, then the failure; the switch was never tried.
+        assert_eq!(log.len(), 2, "{log:?}");
+        assert!(
+            log[0].ends_with(
+                " ✖ Not carried out, because the switch before it failed: SWITCH: Game 1 → Game 2"
+            ),
+            "{log:?}"
+        );
+        assert!(log[1].contains("✖ Not connected to YouTube yet"), "{log:?}");
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[tokio::test]
+    async fn recovery_waits_for_a_schedule_and_stops_once_the_day_is_started() {
+        let app = temp_app("recover");
+        app.inner().config.event_slug = "test-cup".to_string();
+        let pending = |app: &App| -> Vec<usize> {
+            courts_to_recover(&app.inner())
+                .into_iter()
+                .map(|(i, _)| i)
+                .collect()
+        };
+        assert_eq!(pending(&app), [0]);
+        // The first schedule load failed: recovery can't run yet, so the court stays pending.
+        app.recover_live_videos().await;
+        assert_eq!(pending(&app), [0]);
+
+        // With a schedule but no video for today, nothing can be live: the court is covered.
+        app.inner().plan =
+            Some(parse_event_plan(r#"{ "event": { "name": "Test Cup" }, "games": [] }"#).unwrap());
+        app.recover_live_videos().await;
+        assert!(pending(&app).is_empty());
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+
+        // A court whose day is started by hand is never resumed afterwards.
+        let app = temp_app("recover-started");
+        app.inner().courts[0].switcher.resume("3".into());
+        assert!(pending(&app).is_empty());
+        let _ = app.court_command("1", Command::EndDay);
+        assert!(pending(&app).is_empty());
+        let _ = std::fs::remove_dir_all(&app.config_dir);
     }
 
     #[test]

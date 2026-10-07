@@ -107,6 +107,14 @@ pub fn extras_allowed(remaining: u32, switches_left: u32) -> bool {
     remaining >= needed
 }
 
+/// The schedule day whose games on `court` start on today's date (in the games' own time zone).
+pub fn todays_day(plan: &EventPlan, court: &str, now: OffsetDateTime) -> Option<usize> {
+    plan.games
+        .iter()
+        .find(|g| g.court == court && g.start.date() == now.to_offset(g.start.offset()).date())
+        .map(|g| g.day)
+}
+
 /// Switches still to come today on one court: its games after the live one, on the schedule
 /// day of the live (or else the next) game. Without a live game, all of the court's games that
 /// day. Without either game, the day is the one whose games start on today's date.
@@ -121,14 +129,7 @@ pub fn court_switches_left(
         .or(next)
         .and_then(|game| plan.game(game))
         .map(|game| game.day)
-        .or_else(|| {
-            plan.games
-                .iter()
-                .find(|g| {
-                    g.court == court && g.start.date() == now.to_offset(g.start.offset()).date()
-                })
-                .map(|g| g.day)
-        });
+        .or_else(|| todays_day(plan, court, now));
     let Some(day) = day else {
         return 0;
     };

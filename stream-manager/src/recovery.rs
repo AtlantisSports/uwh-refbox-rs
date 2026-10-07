@@ -122,6 +122,8 @@ mod tests {
             in_playlist: true,
             next_game_link: None,
             portal_start: None,
+            court: None,
+            day: None,
         };
         let mut state = EventState::default();
         // Game 3 has no video yet.

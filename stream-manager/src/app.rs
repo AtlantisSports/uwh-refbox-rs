@@ -11,7 +11,7 @@ use crate::{
     quota::{self, Ledger},
     recovery,
     refbox::{self, RefboxEvent},
-    switcher::{Action, Command, CourtSwitcher, Phase, SwitchRules},
+    switcher::{Action, Command, CourtSwitcher, Phase, Status as SwitchStatus, SwitchRules},
     title_sync, vmix,
     youtube::YouTube,
 };
@@ -648,7 +648,7 @@ impl App {
             let (address, generation, courts) = {
                 let inner = self.inner();
                 (
-                    inner.config.companion_address.trim().to_string(),
+                    companion::normalise_address(&inner.config.companion_address),
                     inner.generation,
                     companion_values(&inner),
                 )
@@ -661,18 +661,11 @@ impl App {
                 }
                 continue;
             }
+            // Values Companion lost (e.g. it restarted) come back within a minute.
+            last.resend_all_if_due(std::time::Instant::now());
             for (i, wanted) in courts {
-                let mut error = None;
-                for (name, value) in last.changes(&address, &wanted) {
-                    match companion::set_variable(&address, &name, &value).await {
-                        Ok(()) => last.record(&name, &value),
-                        Err(e) => {
-                            // Unsent values stay pending and are tried again next second.
-                            error = Some(e.to_string());
-                            break;
-                        }
-                    }
-                }
+                // A court with a failed value has all its values sent again next second.
+                let error = companion::send_court(&mut last, &address, &wanted).await;
                 self.with_court(generation, i, |c| c.companion_error = error);
             }
         }
@@ -682,7 +675,7 @@ impl App {
 
     /// Saves new settings. Court changes are refused while a court's day is running.
     pub fn apply_settings(self: &Arc<Self>, new: Config) -> Result<(), String> {
-        new.validate()?;
+        new.validate_for_save()?;
         let courts_changed;
         {
             let mut inner = self.inner();
@@ -984,6 +977,21 @@ fn in_rosters(config: &Config, secs_left: Option<u32>) -> bool {
         .is_some_and(|secs| (config.roster_end_secs..=config.roster_start_secs).contains(&secs))
 }
 
+/// What one court's Stream Deck buttons show, from its switcher's status (ADR 026 §4).
+fn companion_state<'a>(status: &'a SwitchStatus, config: &Config) -> companion::CourtState<'a> {
+    let secs_left = match &status.phase {
+        Phase::Break { secs_left, .. } => Some(*secs_left),
+        Phase::Unknown | Phase::Playing(_) => None,
+    };
+    companion::CourtState {
+        hold: status.hold,
+        secs_until_rosters: status.secs_until_rosters,
+        in_rosters: in_rosters(config, secs_left),
+        live: status.live.as_deref().filter(|_| status.day_running),
+        next: status.next.as_deref(),
+    }
+}
+
 /// Each court's Companion variables and their values, by court index.
 fn companion_values(inner: &Inner) -> Vec<(usize, Vec<(String, String)>)> {
     inner
@@ -991,23 +999,8 @@ fn companion_values(inner: &Inner) -> Vec<(usize, Vec<(String, String)>)> {
         .iter()
         .enumerate()
         .map(|(i, c)| {
-            let s = c.switcher.status();
-            let (game, secs_left) = match &s.phase {
-                Phase::Unknown => (None, None),
-                Phase::Playing(game) => (Some(game.as_str()), None),
-                Phase::Break {
-                    upcoming,
-                    secs_left,
-                } => (Some(upcoming.as_str()), Some(*secs_left)),
-            };
-            let state = companion::CourtState {
-                hold: s.hold,
-                secs_until_rosters: s.secs_until_rosters,
-                in_rosters: in_rosters(&inner.config, secs_left),
-                live: s.live.as_deref(),
-                // The game on the refbox goes live next, unless it already is.
-                next: game.filter(|g| s.live.as_deref() != Some(*g)),
-            };
+            let status = c.switcher.status();
+            let state = companion_state(&status, &inner.config);
             (i, companion::court_pairs(&c.config.name, &state))
         })
         .collect()
@@ -1066,6 +1059,109 @@ mod tests {
     use super::*;
     use crate::portal::parse_event_plan;
     use time::macros::datetime;
+    use uwh_common::game_snapshot::{GamePeriod, GameSnapshot};
+
+    fn snapshot(period: GamePeriod, game: &str, next: &str, secs: u32) -> GameSnapshot {
+        GameSnapshot {
+            current_period: period,
+            secs_in_period: secs,
+            game_number: game.to_string(),
+            next_game_number: next.to_string(),
+            ..Default::default()
+        }
+    }
+
+    /// The four Stream Deck values after feeding `snapshots`, starting the day after the first
+    /// one when `start` is set.
+    fn buttons(start: bool, hold: bool, snapshots: &[GameSnapshot]) -> [String; 4] {
+        let config = Config::default();
+        let mut switcher = CourtSwitcher::new(rules_of(&config));
+        for (i, snap) in snapshots.iter().enumerate() {
+            switcher.on_snapshot(snap);
+            if i == 0 && start {
+                switcher.on_command(Command::StartDay);
+            }
+            if i == 0 && hold {
+                switcher.on_command(Command::Hold);
+            }
+        }
+        let status = switcher.status();
+        companion::court_values(&companion_state(&status, &config))
+    }
+
+    fn values(hold: &str, rosters: &str, now: &str, next: &str) -> [String; 4] {
+        [hold, rosters, now, next].map(String::from)
+    }
+
+    #[test]
+    fn stream_deck_shows_the_next_game_while_playing() {
+        let playing = snapshot(GamePeriod::SecondHalf, "14", "15", 300);
+        assert_eq!(
+            buttons(true, false, &[playing]),
+            values("OFF", "", "Now: Game 14", "Next: Game 15")
+        );
+    }
+
+    #[test]
+    fn stream_deck_counts_down_to_the_rosters_before_the_switch() {
+        let playing = snapshot(GamePeriod::SecondHalf, "14", "15", 300);
+        let early_break = snapshot(GamePeriod::BetweenGames, "14", "15", 240);
+        assert_eq!(
+            buttons(true, false, &[playing, early_break]),
+            values("OFF", "Rosters in 0:59", "Now: Game 14", "Next: Game 15")
+        );
+    }
+
+    #[test]
+    fn stream_deck_shows_rosters_on_screen() {
+        // Held, so the switch hasn't happened when the rosters come up.
+        let playing = snapshot(GamePeriod::SecondHalf, "14", "15", 300);
+        let rosters = snapshot(GamePeriod::BetweenGames, "14", "15", 100);
+        assert_eq!(
+            buttons(true, true, &[playing, rosters]),
+            values("ON", "Rosters on screen", "Now: Game 14", "Next: Game 15")
+        );
+    }
+
+    #[test]
+    fn stream_deck_after_the_switch_has_no_next_game_until_the_refbox_names_one() {
+        let playing = snapshot(GamePeriod::SecondHalf, "14", "15", 300);
+        let switched = snapshot(GamePeriod::BetweenGames, "14", "15", 190);
+        assert_eq!(
+            buttons(true, false, &[playing, switched]),
+            values("OFF", "Rosters in 0:09", "Now: Game 15", "")
+        );
+        // Once 15 kicks off, the refbox names 16 as its next game.
+        let playing = snapshot(GamePeriod::SecondHalf, "14", "15", 300);
+        let switched = snapshot(GamePeriod::BetweenGames, "14", "15", 190);
+        let kickoff = snapshot(GamePeriod::FirstHalf, "15", "16", 600);
+        assert_eq!(
+            buttons(true, false, &[playing, switched, kickoff]),
+            values("OFF", "", "Now: Game 15", "Next: Game 16")
+        );
+    }
+
+    #[test]
+    fn stream_deck_before_start_day_shows_the_game_start_day_would_put_live() {
+        let playing = snapshot(GamePeriod::SecondHalf, "14", "15", 300);
+        assert_eq!(
+            buttons(false, false, &[playing]),
+            values("OFF", "", "", "Next: Game 14")
+        );
+        let between = snapshot(GamePeriod::BetweenGames, "0", "1", 240);
+        assert_eq!(
+            buttons(false, false, &[between]),
+            values("OFF", "Rosters in 0:59", "", "Next: Game 1")
+        );
+        assert_eq!(buttons(false, false, &[]), values("OFF", "", "", ""));
+    }
+
+    #[test]
+    fn stream_deck_shows_hold_on_and_off() {
+        let playing = snapshot(GamePeriod::SecondHalf, "14", "15", 300);
+        assert_eq!(buttons(true, true, std::slice::from_ref(&playing))[0], "ON");
+        assert_eq!(buttons(true, false, &[playing])[0], "OFF");
+    }
 
     fn temp_app(name: &str) -> Arc<App> {
         let dir =

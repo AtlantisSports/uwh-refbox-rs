@@ -444,7 +444,11 @@ async fn refresh_schedule(
     headers: HeaderMap,
 ) -> ApiResult {
     authorize(&app, &headers, &HashMap::new(), addr).await?;
-    app.refresh_plan_and_recover().await;
+    if app.refresh_plan().await {
+        // Recovery may wait for a switch to finish, so it runs after the answer.
+        let recover_app = Arc::clone(&app);
+        tokio::spawn(async move { recover_app.recover_live_videos().await });
+    }
     Ok(Json(json!({ "ok": app.plan().is_some() })))
 }
 
@@ -647,6 +651,8 @@ async fn youtube_connect(
                     "Connected to YouTube channel: {}",
                     channel.as_deref().unwrap_or("(unknown)")
                 ));
+                // A court that couldn't be recovered without YouTube is looked at now.
+                app.recover_live_videos().await;
             }
             Err(e) => {
                 warn!("YouTube sign-in failed: {e}");

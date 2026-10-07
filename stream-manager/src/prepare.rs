@@ -95,6 +95,29 @@ pub fn save_state(path: &Path, state: &EventState) -> Result<(), BoxError> {
     write_atomically(path, &serde_json::to_string_pretty(state)?)
 }
 
+/// How many more times a failed rename in [`write_atomically`] is tried, and how long apart.
+/// On Windows, antivirus or OneDrive can hold the file for a moment, which makes it fail.
+const RENAME_RETRIES: u32 = 5;
+const RENAME_PAUSE: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Runs `attempt`, and if it fails tries again up to `retries` more times, `pause` apart.
+fn with_retries<T>(
+    retries: u32,
+    pause: std::time::Duration,
+    mut attempt: impl FnMut() -> io::Result<T>,
+) -> io::Result<T> {
+    let mut tries_left = retries;
+    loop {
+        match attempt() {
+            Err(_) if tries_left > 0 => {
+                tries_left -= 1;
+                std::thread::sleep(pause);
+            }
+            result => return result,
+        }
+    }
+}
+
 /// Writes `contents` to a new file next to `path`, then puts it in `path`'s place, so a crash
 /// or power cut mid-write leaves either the old file or the new one, never half of one.
 pub fn write_atomically(path: &Path, contents: &str) -> Result<(), BoxError> {
@@ -113,7 +136,9 @@ pub fn write_atomically(path: &Path, contents: &str) -> Result<(), BoxError> {
         file.write_all(contents.as_bytes())?;
         file.sync_all()
     });
-    if let Err(e) = written.and_then(|()| fs::rename(&temp, path)) {
+    let renamed = written
+        .and_then(|()| with_retries(RENAME_RETRIES, RENAME_PAUSE, || fs::rename(&temp, path)));
+    if let Err(e) = renamed {
         let _ = fs::remove_file(&temp);
         return Err(format!("Couldn't save {}: {e}", path.display()).into());
     }
@@ -645,6 +670,28 @@ pub async fn cleanup_cli(
 mod tests {
     use super::*;
     use crate::portal::parse_event_plan;
+
+    #[test]
+    fn a_failed_rename_is_tried_again_up_to_five_more_times() {
+        let no_pause = std::time::Duration::ZERO;
+        let busy = || io::Error::new(io::ErrorKind::PermissionDenied, "in use");
+        // Fails twice, then works.
+        let mut tries = 0;
+        let result = with_retries(RENAME_RETRIES, no_pause, || {
+            tries += 1;
+            if tries <= 2 { Err(busy()) } else { Ok(()) }
+        });
+        assert!(result.is_ok());
+        assert_eq!(tries, 3);
+        // Never works: one try and five more, then the error.
+        let mut tries = 0;
+        let result: io::Result<()> = with_retries(RENAME_RETRIES, no_pause, || {
+            tries += 1;
+            Err(busy())
+        });
+        assert!(result.is_err());
+        assert_eq!(tries, 6);
+    }
 
     #[test]
     fn the_record_file_is_refused_for_an_event_that_isnt_a_plain_name() {

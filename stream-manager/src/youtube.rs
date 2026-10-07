@@ -139,14 +139,16 @@ impl YouTube {
             // Google rejects a POST/PUT that doesn't state its (empty) length.
             request = request.header(CONTENT_LENGTH, "0").body(Vec::new());
         }
-        let response = request.send().await?;
-        // Google charges for the call whether or not it succeeds.
+        // Google charges for the call whether or not it succeeds. It is counted as it is sent,
+        // so a call given up while waiting for its answer (which YouTube may still carry out)
+        // is counted too.
         self.units_used += cost;
         if let Some(ledger) = &self.ledger {
             if let Err(e) = quota::record_to_file(ledger, cost, OffsetDateTime::now_utc()) {
                 warn!("Couldn't save the YouTube allowance count: {e}");
             }
         }
+        let response = request.send().await?;
         let status = response.status();
         let text = response.text().await?;
         let value = if text.trim().is_empty() {

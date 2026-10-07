@@ -414,6 +414,8 @@ key A.
   - If the schedule couldn't load when it started (for example, the network wasn't up yet), this
     happens after the next schedule load that works. Press **Reload schedule from portal** on the
     Prepare tab to try again.
+  - If YouTube wasn't connected when it started, this happens once you connect it (**Connect
+    YouTube** in Settings).
 - At the end, press **End day**. It ends the last video and stops the vMix destinations (only
   destination 1 in one-key mode).
 

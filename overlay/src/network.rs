@@ -468,6 +468,7 @@ pub async fn networking_thread(
         uwhportal_url,
         // Only used by `bridge_network.rs`'s alternate networking path.
         bridge_url: _,
+        bridge_port_moved: _,
     } = config;
 
     let (snapshot_tx, mut snapshot_rx) = tokio::sync::mpsc::unbounded_channel::<GameSnapshot>();

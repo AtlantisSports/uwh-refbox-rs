@@ -56,6 +56,10 @@ pub struct Config {
     /// two. A program that runs more than one court uses this share for all of them.
     #[serde(default = "default_quota_share_percent")]
     pub quota_share_percent: u8,
+    /// Bitfocus Companion's address (`ip:port`, e.g. `127.0.0.1:8000`), for live status on the
+    /// Stream Deck buttons (ADR 026 §4). Empty turns the feature off.
+    #[serde(default)]
+    pub companion_address: String,
     pub courts: Vec<CourtConfig>,
 }
 
@@ -146,6 +150,7 @@ impl Default for Config {
             practice_mode: true,
             quota_daily_limit: default_quota_daily_limit(),
             quota_share_percent: default_quota_share_percent(),
+            companion_address: String::new(),
             courts: vec![CourtConfig {
                 name: "1".to_string(),
                 refbox_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
@@ -245,6 +250,12 @@ mod tests {
             };
             assert_eq!(c.validate().is_ok(), ok, "{percent}%");
         }
+    }
+
+    #[test]
+    fn config_without_companion_address_loads_with_it_off() {
+        let config: Config = serde_json::from_str(r#"{ "event_slug": "cup" }"#).unwrap();
+        assert_eq!(config.companion_address, "");
     }
 
     #[test]

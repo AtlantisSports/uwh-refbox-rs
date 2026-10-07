@@ -2,7 +2,7 @@
 //! connections and background jobs.
 
 use crate::{
-    BoxError,
+    BoxError, companion,
     config::{Config, CourtConfig},
     google_auth::{self, GoogleAuth},
     live::{self, Outcome},
@@ -35,6 +35,8 @@ const COURT_LOG_LINES: usize = 12;
 const TITLE_SYNC_EVERY: Duration = Duration::from_secs(600);
 /// The longest one court's 10-minute check may take before it is given up.
 const TITLE_SYNC_WAIT: Duration = Duration::from_secs(60);
+/// How often the Stream Deck's live status is brought up to date in Companion (ADR 026 §4).
+const COMPANION_EVERY: Duration = Duration::from_secs(1);
 
 pub struct App {
     pub config_path: PathBuf,
@@ -79,6 +81,8 @@ struct CourtRuntime {
     /// Games reported as gone from the portal since Start day or End day, in the order found.
     /// Each is noted in the log once, and stays listed on the court's card.
     removed_reported: Vec<String>,
+    /// Why the Stream Deck's live status couldn't be sent to Companion, until it next succeeds.
+    companion_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -132,6 +136,8 @@ pub struct CourtStatus {
     pub removed_games: Vec<String>,
     pub vmix_address: String,
     pub vmix: &'static str,
+    /// Why the Stream Deck's live status couldn't be sent to Companion, until it next succeeds.
+    pub companion_error: Option<String>,
 }
 
 fn clock() -> String {
@@ -154,6 +160,7 @@ impl CourtRuntime {
             error: None,
             vmix_reachable: None,
             removed_reported: Vec::new(),
+            companion_error: None,
         }
     }
 
@@ -628,6 +635,49 @@ impl App {
         }
     }
 
+    /// Every second, sends each court's Hold, rosters, now live and up next to Companion's
+    /// custom variables, but only the values that changed (ADR 026 §4). Off while the Companion
+    /// address is empty. Runs on its own, so a slow or missing Companion never holds up a switch.
+    pub async fn run_companion_sync(self: &Arc<Self>) {
+        let mut every = tokio::time::interval(COMPANION_EVERY);
+        every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut last = companion::LastSent::default();
+        loop {
+            every.tick().await;
+            // Read everything first: the lock is never held while waiting for Companion.
+            let (address, generation, courts) = {
+                let inner = self.inner();
+                (
+                    inner.config.companion_address.trim().to_string(),
+                    inner.generation,
+                    companion_values(&inner),
+                )
+            };
+            if address.is_empty() {
+                last.forget();
+                let mut inner = self.inner();
+                for court in &mut inner.courts {
+                    court.companion_error = None;
+                }
+                continue;
+            }
+            for (i, wanted) in courts {
+                let mut error = None;
+                for (name, value) in last.changes(&address, &wanted) {
+                    match companion::set_variable(&address, &name, &value).await {
+                        Ok(()) => last.record(&name, &value),
+                        Err(e) => {
+                            // Unsent values stay pending and are tried again next second.
+                            error = Some(e.to_string());
+                            break;
+                        }
+                    }
+                }
+                self.with_court(generation, i, |c| c.companion_error = error);
+            }
+        }
+    }
+
     // ----- Settings and schedule -----
 
     /// Saves new settings. Court changes are refused while a court's day is running.
@@ -858,10 +908,7 @@ impl App {
                     phase,
                     game_title: game.as_deref().map(|g| describe(plan, g)),
                     game,
-                    in_rosters: secs_left.is_some_and(|secs| {
-                        (inner.config.roster_end_secs..=inner.config.roster_start_secs)
-                            .contains(&secs)
-                    }),
+                    in_rosters: in_rosters(&inner.config, secs_left),
                     secs_left,
                     secs_until_switch: s.secs_until_switch,
                     secs_until_rosters: s.secs_until_rosters,
@@ -875,6 +922,7 @@ impl App {
                         Some(true) => "ok",
                         Some(false) => "unreachable",
                     },
+                    companion_error: c.companion_error.clone(),
                 }
             })
             .collect();
@@ -928,6 +976,41 @@ fn extras_allowed_with(inner: &Inner, court_name: &str, used: u32, now: OffsetDa
         share.saturating_sub(used),
         switches_left(inner, court_name, now),
     )
+}
+
+/// The overlay is showing rosters: the break countdown is inside the roster window.
+fn in_rosters(config: &Config, secs_left: Option<u32>) -> bool {
+    secs_left
+        .is_some_and(|secs| (config.roster_end_secs..=config.roster_start_secs).contains(&secs))
+}
+
+/// Each court's Companion variables and their values, by court index.
+fn companion_values(inner: &Inner) -> Vec<(usize, Vec<(String, String)>)> {
+    inner
+        .courts
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let s = c.switcher.status();
+            let (game, secs_left) = match &s.phase {
+                Phase::Unknown => (None, None),
+                Phase::Playing(game) => (Some(game.as_str()), None),
+                Phase::Break {
+                    upcoming,
+                    secs_left,
+                } => (Some(upcoming.as_str()), Some(*secs_left)),
+            };
+            let state = companion::CourtState {
+                hold: s.hold,
+                secs_until_rosters: s.secs_until_rosters,
+                in_rosters: in_rosters(&inner.config, secs_left),
+                live: s.live.as_deref(),
+                // The game on the refbox goes live next, unless it already is.
+                next: game.filter(|g| s.live.as_deref() != Some(*g)),
+            };
+            (i, companion::court_pairs(&c.config.name, &state))
+        })
+        .collect()
 }
 
 /// Courts the 10-minute title check covers: those whose day is running, unless in practice

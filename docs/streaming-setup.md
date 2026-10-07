@@ -288,6 +288,41 @@ http://<mini PC IP>:8090/api/court/1/hold-toggle?pin=<PIN>
 
 The actions are `start`, `hold-toggle`, `next` (Switch now) and `end`.
 
+**Live status on the buttons.** Stream Manager can also put each court's status on buttons:
+Hold on or off, the time until the rosters ("Rosters in 0:45", then "Rosters on screen"), the
+game live now ("Now: Game 14") and the next game ("Next: Game 15"). It sends a value to
+Companion only when it changes. A problem reaching Companion shows on the court's card on the
+Live tab and never affects switching.
+
+1. In Companion (version 5.0.7 is in use), open **Settings** and make sure the **HTTP API** is
+   turned on (Companion answers "403" to Stream Manager while it is off).
+2. In Companion's **Variables** tab, create four **custom variables** per court. The names use
+   only lowercase letters, digits and `_`: the court name lowercased, with spaces and other
+   characters turned into `_`. For Court 1:
+   - `sm_court_1_hold` (shows `ON` or `OFF`)
+   - `sm_court_1_rosters` (`Rosters in 0:45`, `Rosters on screen`, or empty)
+   - `sm_court_1_now` (`Now: Game 14`, or empty)
+   - `sm_court_1_next` (`Next: Game 15`, or empty)
+
+   For Court 2, the same names with `court_2`. Leave their starting values empty. Stream
+   Manager can't create them: Companion refuses a value for a variable that doesn't exist
+   (the court card then says which one is missing).
+3. In Stream Manager's **Settings** tab, under **Stream Deck live status (Companion)**, enter
+   Companion's address and port, e.g. `127.0.0.1:8000` when Companion runs on the same mini PC,
+   and save. Leave it empty to turn this off.
+4. On a button, put the variable in the button text, e.g. `$(custom:sm_court_1_now)`. The Hold
+   button can show `HOLD $(custom:sm_court_1_hold)`.
+
+The request Stream Manager sends for each value, confirmed from Companion 5.0.7's source
+(<https://github.com/bitfocus/companion/blob/v5.0.7/companion/lib/Service/HttpApi.ts>):
+
+```
+POST http://<Companion address>/api/custom-variable/<name>/value?value=<text>
+```
+
+To test it by hand: `curl -X POST "http://127.0.0.1:8000/api/custom-variable/sm_court_1_hold/value?value=ON"`
+should answer `ok`.
+
 ---
 
 ## Part C — Before the day and on the day

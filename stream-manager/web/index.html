@@ -268,7 +268,7 @@
       </div>
       <div class="card" style="margin-top:16px">
         <h2>PIN</h2>
-        <div class="row">
+        <div class="row" id="s-pin-row">
           <input id="s-pin" type="password" inputmode="numeric" placeholder="New PIN (4+ digits)">
           <button class="small" onclick="changePin()">Change PIN</button>
           <span id="s-pin-msg"></span>
@@ -285,8 +285,8 @@
           <span id="s-key-msg"></span>
         </div>
       </div>
-      <p class="muted hidden" id="s-local-only">The device settings and the Stream Deck button key are shown only on
-        the mini PC itself.</p>
+      <p class="muted hidden" id="s-local-only">The device settings, the Stream Deck button key and Change PIN are shown
+        only on the mini PC itself.</p>
     </section>
 
     <!-- TOOLS -->
@@ -337,7 +337,7 @@ async function start() {
       <input id="pin" type="password" inputmode="numeric" placeholder="4+ digits" autofocus>
       <button class="act" style="width:100%" onclick="createPin()">Save PIN</button><p id="login-msg" class="bad-text"></p>`;
   } else if (!s.pin_set) {
-    $('login-body').innerHTML = `<p>Set a PIN on the laptop running Stream Manager first, then reload this page.</p>`;
+    $('login-body').innerHTML = `<p>Set a PIN on the mini PC running Stream Manager first, then reload this page.</p>`;
   } else {
     $('login-body').innerHTML = `<p>Enter the PIN</p>
       <input id="pin" type="password" inputmode="numeric" autofocus>
@@ -477,6 +477,7 @@ function renderCourts() {
     let phase = '<span class="muted">Waiting for refbox…</span>';
     if (c.phase === 'playing') phase = `In play: ${esc(c.game_title)}`;
     if (c.phase === 'break') phase = `Next: ${esc(c.game_title)} <span class="muted">in ${mmss(c.secs_left)}</span>`;
+    if (c.phase === 'finished') phase = 'No more games on this court';
     setHTML(f('phase'), phase);
     const counts = [];
     if (c.secs_until_switch != null) {
@@ -625,6 +626,7 @@ async function loadSettings() {
     buttonKey = isLocal ? (settings.button_key || null) : null;
     $('card-devices').classList.toggle('hidden', !isLocal);
     $('card-key').classList.toggle('hidden', !isLocal);
+    $('s-pin-row').classList.toggle('hidden', !isLocal);
     $('s-local-only').classList.toggle('hidden', isLocal);
     if (isLocal) {
       $('s-allow-devices').checked = settings.allow_other_devices;
@@ -638,7 +640,7 @@ async function loadSettings() {
     loadEvents();
     const local = ['127.0.0.1', 'localhost'].includes(location.hostname);
     $('yt-connect').disabled = !local;
-    $('yt-local-note').textContent = local ? '' : 'Connect YouTube from the laptop running Stream Manager.';
+    $('yt-local-note').textContent = local ? '' : 'Connect YouTube from the mini PC running Stream Manager.';
     $('s-lan').innerHTML = lanUrl ? `Allowed devices can open <code>${esc(lanUrl)}</code>` : '';
   } catch (_) {}
 }

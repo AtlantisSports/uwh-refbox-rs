@@ -10,7 +10,7 @@ use crate::{
     live::{self, Outcome},
     portal::{self, EventPlan, video_title},
     prepare,
-    quota::{self, Ledger},
+    quota::{self, LedgerFile},
     recovery,
     refbox::{self, RefboxEvent},
     switcher::{Action, Command, CourtSwitcher, Phase, Status as SwitchStatus, SwitchRules},
@@ -22,7 +22,10 @@ use serde::Serialize;
 use std::{
     collections::VecDeque,
     path::PathBuf,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{
+        Arc, Mutex, MutexGuard,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 use time::{OffsetDateTime, macros::format_description};
@@ -55,6 +58,12 @@ pub struct App {
     pub devices: Devices,
     /// When each court's vMix destinations were last stopped by a switch or End day.
     stopped_keys: Mutex<live::StoppedKeys>,
+    /// This program's use of today's YouTube allowance, read from its file once at start and
+    /// kept up to date as each YouTube call is counted.
+    ledger: Arc<LedgerFile>,
+    /// Whether the YouTube sign-in file exists, as last checked: at start, and whenever the
+    /// YouTube connection is dropped (e.g. after connecting).
+    youtube_connected: AtomicBool,
 }
 
 struct Inner {
@@ -230,7 +239,6 @@ impl App {
             .collect();
         Arc::new(Self {
             config_path,
-            config_dir,
             inner: Mutex::new(Inner {
                 config,
                 plan: None,
@@ -249,6 +257,11 @@ impl App {
             sign_ins: SignInLine::default(),
             devices,
             stopped_keys: Mutex::new(live::StoppedKeys::default()),
+            ledger: Arc::new(LedgerFile::open(config_dir.join(quota::LEDGER_FILE))),
+            youtube_connected: AtomicBool::new(google_auth::is_connected(
+                &config_dir.join(TOKEN_FILE),
+            )),
+            config_dir,
         })
     }
 
@@ -268,10 +281,6 @@ impl App {
     pub fn client_file(&self) -> PathBuf {
         self.config_dir
             .join(&self.inner().config.client_secret_file)
-    }
-
-    pub fn ledger_file(&self) -> PathBuf {
-        self.config_dir.join(quota::LEDGER_FILE)
     }
 
     pub fn state_file(&self) -> Result<PathBuf, BoxError> {
@@ -360,12 +369,15 @@ impl App {
             .clear();
     }
 
-    /// Checks a PIN typed at the sign-in (from `from`), in the one line every sign-in waits in
-    /// (see [`SignInLine`]). The PIN is compared only once the attempt reaches the front.
-    pub async fn sign_in(&self, pin: &str, from: &str) -> SignIn {
+    /// Checks a PIN typed at the sign-in (from `from`), in the one line every sign-in from
+    /// another device waits in (see [`SignInLine`]). The PIN is compared only once the attempt
+    /// reaches the front. A sign-in on the mini PC itself (`on_this_pc`) is checked at once.
+    pub async fn sign_in(&self, pin: &str, from: &str, on_this_pc: bool) -> SignIn {
         let outcome = self
             .sign_ins
-            .attempt(|| access::secret_matches(pin.trim(), &self.config().pin))
+            .attempt(on_this_pc, || {
+                access::secret_matches(pin.trim(), &self.config().pin)
+            })
             .await;
         match outcome {
             SignIn::Right => {}
@@ -482,7 +494,10 @@ impl App {
             // Only a silence during the break counts: the refbox also goes quiet while a game's
             // clock is stopped, which can last minutes. The break countdown always runs.
             RefboxEvent::Silent => {
-                let in_break = matches!(court.switcher.status().phase, Phase::Break { .. });
+                let in_break = matches!(
+                    court.switcher.status().phase,
+                    Phase::Break { .. } | Phase::Finished
+                );
                 if court.refbox_has_data && in_break && !court.refbox_silent {
                     court.refbox_silent = true;
                     court.note(
@@ -545,8 +560,11 @@ impl App {
         }
         let message = match command {
             Command::StartDay => {
-                if court.switcher.status().day_running {
+                let status = court.switcher.status();
+                if status.day_running {
                     "The day is already running".to_string()
+                } else if status.phase == Phase::Finished {
+                    "No more games on this court".to_string()
                 } else {
                     "Can't start yet: no data from this court's refbox".to_string()
                 }
@@ -843,7 +861,8 @@ impl App {
     /// Saves new settings, made by `edit` from the settings in use under the same lock as the
     /// save, so two changes made at the same moment (e.g. a new button key and a settings save
     /// from another device) can't undo each other. Court changes are refused while a court's day
-    /// is running, or while a court's worker is still carrying out a switch or End day.
+    /// is running. Changes to the courts, the event or the portal are refused while a court's
+    /// worker is still carrying out a switch or End day.
     pub fn update_settings<E: From<String>>(
         self: &Arc<Self>,
         edit: impl FnOnce(&Config) -> Result<Config, E>,
@@ -883,13 +902,16 @@ impl App {
                         .into(),
                 );
             }
-            // Changing the courts restarts every court, so a worker still carrying out End day
-            // or a switch would lose track of it.
+            // Changing the courts restarts every court, and changing the event or the portal
+            // drops the schedule, so a worker still carrying out End day or a switch would lose
+            // track of it.
+            let event_or_portal_changed = inner.config.event_slug != new.event_slug
+                || inner.config.portal_url != new.portal_url;
             let busy = inner
                 .courts
                 .iter()
                 .find(|c| c.busy)
-                .filter(|_| courts_changed);
+                .filter(|_| courts_changed || event_or_portal_changed);
             if let Some(busy) = busy {
                 return Err(format!(
                     "Court {} is still finishing its last action; try again in a moment.",
@@ -899,8 +921,7 @@ impl App {
             }
             confy::store_path(&self.config_path, &new)
                 .map_err(|e| format!("Couldn't save settings: {e}"))?;
-            let event_changed = inner.config.event_slug != new.event_slug
-                || inner.config.portal_url != new.portal_url;
+            let event_changed = event_or_portal_changed;
             let rules_changed = rules_of(&inner.config) != rules_of(&new);
             if event_changed {
                 inner.plan = None;
@@ -989,7 +1010,7 @@ impl App {
                 );
             }
             let auth = GoogleAuth::load(&self.client_file(), &self.token_file())?;
-            *guard = Some(YouTube::new(auth, Some(self.ledger_file()))?);
+            *guard = Some(YouTube::new(auth, Some(Arc::clone(&self.ledger)))?);
         }
         AsyncMutexGuard::try_map(guard, |yt| yt.as_mut())
             .map_err(|_| "YouTube connection unavailable".into())
@@ -1002,9 +1023,9 @@ impl App {
         }
     }
 
-    /// Units this program has used today, from the allowance ledger.
+    /// Units this program has used today, from the allowance ledger (kept in memory).
     fn quota_used_today(&self) -> u32 {
-        Ledger::load(&self.ledger_file()).used_today(OffsetDateTime::now_utc())
+        self.ledger.used_today(OffsetDateTime::now_utc())
     }
 
     /// Whether the extras (chat message, "Next game" link) may still run for this court: what's
@@ -1031,9 +1052,15 @@ impl App {
             .recently(court_name, destination, Instant::now())
     }
 
+    /// Drops the YouTube connection (it is opened again on next use), e.g. after connecting
+    /// afresh, and checks again whether the sign-in file exists.
     pub async fn forget_youtube(&self) {
         *self.youtube.lock().await = None;
         self.inner().youtube_channel = None;
+        self.youtube_connected.store(
+            google_auth::is_connected(&self.token_file()),
+            Ordering::SeqCst,
+        );
     }
 
     pub fn set_sign_in(&self, message: &str) {
@@ -1074,7 +1101,7 @@ impl App {
     // ----- Status for the page -----
 
     pub fn status(&self) -> Status {
-        let connected = google_auth::is_connected(&self.token_file());
+        let connected = self.youtube_connected.load(Ordering::SeqCst);
         let quota_used = self.quota_used_today();
         let now = OffsetDateTime::now_utc();
         let inner = self.inner();
@@ -1094,6 +1121,7 @@ impl App {
                 let s = c.switcher.status();
                 let (phase, game, secs_left) = match &s.phase {
                     Phase::Unknown => ("unknown", None, None),
+                    Phase::Finished => ("finished", None, None),
                     Phase::Playing(game) => ("playing", Some(game.clone()), None),
                     Phase::Break {
                         upcoming,
@@ -1172,7 +1200,7 @@ fn switches_left(inner: &Inner, court_name: &str, now: OffsetDateTime) -> u32 {
         .map(|c| {
             let status = c.switcher.status();
             let next = match &status.phase {
-                Phase::Unknown => None,
+                Phase::Unknown | Phase::Finished => None,
                 Phase::Playing(game) => Some(game.as_str()),
                 Phase::Break { upcoming, .. } => Some(upcoming.as_str()),
             };
@@ -1202,7 +1230,7 @@ fn in_rosters(config: &Config, secs_left: Option<u32>) -> bool {
 fn companion_state<'a>(status: &'a SwitchStatus, config: &Config) -> companion::CourtState<'a> {
     let secs_left = match &status.phase {
         Phase::Break { secs_left, .. } => Some(*secs_left),
-        Phase::Unknown | Phase::Playing(_) => None,
+        Phase::Unknown | Phase::Playing(_) | Phase::Finished => None,
     };
     companion::CourtState {
         hold: status.hold,
@@ -1391,10 +1419,51 @@ mod tests {
     }
 
     #[test]
+    fn stream_deck_after_the_last_game_has_no_next_game_and_no_rosters() {
+        // The refbox sends a blank upcoming game after the court's last game.
+        let last = snapshot(GamePeriod::SecondHalf, "20", "", 300);
+        let finished = snapshot(GamePeriod::BetweenGames, "20", "", 100);
+        assert_eq!(
+            buttons(true, false, &[last, finished.clone()]),
+            values("OFF", "", "Now: Game 20", "")
+        );
+        let finished_early = snapshot(GamePeriod::BetweenGames, "20", "", 600);
+        assert_eq!(
+            buttons(false, false, &[finished_early]),
+            values("OFF", "", "", "")
+        );
+        assert_eq!(
+            buttons(false, false, &[finished]),
+            values("OFF", "", "", "")
+        );
+    }
+
+    #[test]
     fn stream_deck_shows_hold_on_and_off() {
         let playing = snapshot(GamePeriod::SecondHalf, "14", "15", 300);
         assert_eq!(buttons(true, true, std::slice::from_ref(&playing))[0], "ON");
         assert_eq!(buttons(true, false, &[playing])[0], "OFF");
+    }
+
+    #[test]
+    fn start_day_says_why_it_did_nothing() {
+        let app = temp_app("start-day-message");
+        assert_eq!(
+            app.court_command("1", Command::StartDay),
+            Ok("Can't start yet: no data from this court's refbox".to_string())
+        );
+        // After the court's last game the refbox sends a blank upcoming game.
+        app.inner().courts[0].switcher.on_snapshot(&snapshot(
+            GamePeriod::BetweenGames,
+            "20",
+            "",
+            600,
+        ));
+        assert_eq!(
+            app.court_command("1", Command::StartDay),
+            Ok("No more games on this court".to_string())
+        );
+        let _ = std::fs::remove_dir_all(&app.config_dir);
     }
 
     fn temp_app(name: &str) -> Arc<App> {
@@ -1592,6 +1661,22 @@ mod tests {
         );
         assert_ne!(app.config().courts, new.courts);
 
+        // Nor the event or the portal (e.g. while End day is still being carried out).
+        let mut event = app.config();
+        event.event_slug = "another-cup".into();
+        let mut portal = app.config();
+        portal.portal_url = crate::config::LIVE_PORTAL_URL.into();
+        for changed in [event, portal] {
+            assert_eq!(
+                app.apply_settings(changed),
+                Err(
+                    "Court 1 is still finishing its last action; try again in a moment."
+                        .to_string()
+                )
+            );
+        }
+        assert_eq!(app.config().event_slug, "");
+
         // Other settings can still be saved.
         let mut timing = app.config();
         timing.switch_lead_secs += 10;
@@ -1633,12 +1718,34 @@ mod tests {
         assert_eq!((status.quota_remaining, status.quota_share), (5_000, 5_000));
         assert!(!status.extras_paused);
 
-        quota::record_to_file(&app.ledger_file(), 4_850, OffsetDateTime::now_utc()).unwrap();
+        app.ledger.record(4_850, OffsetDateTime::now_utc()).unwrap();
         let status = app.status();
         assert_eq!((status.quota_remaining, status.quota_share), (150, 5_000));
         // 150 left doesn't cover even the 200-unit margin.
         assert!(status.extras_paused);
         assert!(!app.extras_allowed("1"));
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn status_reads_the_allowance_from_memory_not_the_file() {
+        let app = temp_app("status-memory");
+        app.ledger.record(1_000, OffsetDateTime::now_utc()).unwrap();
+        // An unreadable file isn't looked at by the status.
+        std::fs::write(app.config_dir.join(quota::LEDGER_FILE), "not json").unwrap();
+        assert_eq!(app.status().quota_remaining, 4_000);
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[tokio::test]
+    async fn the_youtube_sign_in_file_is_checked_on_connect_not_on_every_status() {
+        let app = temp_app("token-cache");
+        assert!(!app.status().youtube_connected);
+        std::fs::write(app.token_file(), "{}").unwrap();
+        assert!(!app.status().youtube_connected, "not read on every status");
+        // Connecting drops the old connection, which checks the file again.
+        app.forget_youtube().await;
+        assert!(app.status().youtube_connected);
         let _ = std::fs::remove_dir_all(&app.config_dir);
     }
 

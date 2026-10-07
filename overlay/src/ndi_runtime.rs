@@ -1,34 +1,62 @@
 #![cfg_attr(not(feature = "ndi"), allow(dead_code))]
-//! Makes sure NDI®'s runtime (the "engine", `Processing.NDI.Lib.x64.dll`) is available before NDI
-//! output starts, so a fresh streaming PC needs no manual NDI setup. NDI® is a registered
-//! trademark of Vizrt NDI AB (https://ndi.video).
+//! Finds NDI®'s runtime (the "engine", `Processing.NDI.Lib.x64.dll`) before NDI output starts, and
+//! installs it when the operator asks, so a fresh streaming PC needs no manual NDI setup. NDI® is
+//! a registered trademark of Vizrt NDI AB (https://ndi.video).
 //!
 //! On Windows the overlay is linked so that NDI's DLL is only loaded when NDI is first used (see
-//! `build.rs`), which lets the overlay start without it. At startup, a background thread:
-//! 1. looks for the engine where NDI's own installer puts it (and next to `overlay.exe`);
-//! 2. if it isn't there, downloads NDI's official runtime installer (`ndi.link/NDIRedistV6`, the
-//!    link NDI's distribution guidelines point applications to), refuses it unless Windows
-//!    confirms it is validly signed by Vizrt, and starts it. Windows asks for permission and the
-//!    person accepts NDI's licence in the installer;
-//! 3. looks for the engine again once the installer has finished.
+//! `build.rs`), which lets the overlay start without it.
+//! 1. At start-up a background thread only looks for the engine, where NDI's own installer puts
+//!    it (and next to `overlay.exe`). It never installs anything by itself.
+//! 2. Once found, the engine is loaded by its full path before any NDI call. If Windows can't load
+//!    it, the overlay carries on without NDI and says why, rather than crashing at the first NDI
+//!    call.
+//! 3. If it isn't there, the local preview shows an **Install NDI** button. Only when the operator
+//!    clicks it does the overlay download NDI's official runtime installer
+//!    (`ndi.link/NDIRedistV6`, the link NDI's distribution guidelines point applications to),
+//!    refuse it unless Windows confirms it is validly signed by Vizrt, and start it. Windows asks
+//!    for permission and the person accepts NDI's licence in the installer. The engine is then
+//!    looked for and loaded again.
 //!
 //! The render loop polls [`EngineWatch::ready`] and starts NDI output as soon as the engine is
-//! there, so no restart is needed after installing. If anything fails, the overlay keeps running
-//! without NDI and says why.
+//! loaded, so no restart is needed after installing. If anything fails, the overlay keeps running
+//! without NDI, says why, and offers the button again.
 
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
+/// Shown with every failure: how to retry, or install NDI by hand.
+pub const MANUAL_HELP: &str = "Click Install NDI to try again, or install the NDI engine from https://ndi.link/NDIRedistV6 (or NDI Tools from https://ndi.video/tools/) and restart the overlay.";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EngineStatus {
-    /// Still looking for, downloading or installing the engine.
-    Preparing(String),
-    /// The engine can be loaded. On Windows, `Some(folder)` is where it lives.
+    /// Looking for the engine at start-up.
+    Looking,
+    /// Not installed: the preview offers the Install NDI button.
+    Missing,
+    /// The operator clicked Install NDI; downloading, checking or installing.
+    Installing(String),
+    /// Loaded and ready. On Windows, `Some(folder)` is where it lives.
     Ready(Option<PathBuf>),
-    /// No engine and it couldn't be installed; NDI output stays off until the next start.
+    /// Couldn't be installed or loaded; the preview says why and offers the button again.
     Unavailable(String),
+}
+
+/// Whether the Install NDI button is shown (and a click acted on).
+pub fn install_allowed(status: &EngineStatus) -> bool {
+    matches!(status, EngineStatus::Missing | EngineStatus::Unavailable(_))
+}
+
+/// The line shown on the local preview while NDI output isn't running.
+pub fn preview_note(status: &EngineStatus) -> String {
+    match status {
+        EngineStatus::Looking => "NDI: Looking for the NDI engine…".to_string(),
+        EngineStatus::Missing => "NDI off: NDI isn't installed on this PC. Click Install NDI (Windows will ask for permission).".to_string(),
+        EngineStatus::Installing(message) => format!("NDI: {message}"),
+        EngineStatus::Unavailable(message) => format!("NDI off: {message}"),
+        EngineStatus::Ready(_) => "NDI off: couldn't start NDI output (see the log)".to_string(),
+    }
 }
 
 #[derive(Clone)]
@@ -37,31 +65,25 @@ pub struct EngineWatch {
 }
 
 impl EngineWatch {
-    /// Starts looking for (and if needed installing) the engine in the background.
+    /// Looks for the engine in the background. Never installs anything: that waits for the
+    /// operator's click (see [`EngineWatch::install`]).
     pub fn start() -> Self {
-        let watch = Self {
-            status: Arc::new(Mutex::new(EngineStatus::Preparing(
-                "Looking for the NDI engine…".to_string(),
-            ))),
-        };
+        let watch = Self::with_status(EngineStatus::Looking);
         let background = watch.clone();
-        std::thread::spawn(move || {
-            let result = prepare_engine(&|message: &str| {
-                log::info!("{message}");
-                background.set(EngineStatus::Preparing(message.to_string()));
-            });
-            match result {
-                Ok(dir) => background.set(EngineStatus::Ready(dir)),
-                Err(message) => {
-                    log::warn!("{message}");
-                    background.set(EngineStatus::Unavailable(message));
-                }
-            }
-        });
+        std::thread::spawn(move || background.set(look_for_engine()));
         watch
     }
 
+    fn with_status(status: EngineStatus) -> Self {
+        Self {
+            status: Arc::new(Mutex::new(status)),
+        }
+    }
+
     fn set(&self, status: EngineStatus) {
+        if let EngineStatus::Unavailable(message) = &status {
+            log::warn!("{message}");
+        }
         *self.status.lock().unwrap_or_else(|e| e.into_inner()) = status;
     }
 
@@ -72,38 +94,47 @@ impl EngineWatch {
             .clone()
     }
 
-    /// `Some(folder)` once the engine can be loaded.
+    /// `Some(folder)` once the engine is loaded.
     pub fn ready(&self) -> Option<Option<PathBuf>> {
         match self.status() {
             EngineStatus::Ready(dir) => Some(dir),
             _ => None,
         }
     }
-}
 
-/// Runs `start_ndi` (which makes the first NDI call, loading the engine) with Windows able to
-/// find the engine's DLL in `dir`.
-///
-/// The DLL is loaded through the standard Windows search order, which includes the process's
-/// current directory, so the current directory is pointed at the engine's folder just for that
-/// first call and restored afterwards. Nothing else in the overlay uses relative file paths
-/// (settings and logs use full paths), and once loaded the DLL stays loaded.
-pub fn with_engine_dir<T>(dir: Option<&Path>, start_ndi: impl FnOnce() -> T) -> T {
-    let Some(dir) = dir else {
-        return start_ndi();
-    };
-    let previous = std::env::current_dir().ok();
-    if let Err(e) = std::env::set_current_dir(dir) {
-        log::warn!(
-            "Couldn't switch to the NDI engine folder {}: {e}",
-            dir.display()
-        );
+    /// Moves to Installing if an install is allowed now; false if not (e.g. one is running).
+    fn begin_install(&self) -> bool {
+        let mut status = self.status.lock().unwrap_or_else(|e| e.into_inner());
+        if !install_allowed(&status) {
+            return false;
+        }
+        *status = EngineStatus::Installing("Starting the NDI install…".to_string());
+        true
     }
-    let result = start_ndi();
-    if let Some(previous) = previous {
-        let _ = std::env::set_current_dir(previous);
+
+    /// The operator clicked Install NDI: installs in the background, then loads the engine.
+    pub fn install(&self) {
+        if !self.begin_install() {
+            return;
+        }
+        let background = self.clone();
+        std::thread::spawn(move || {
+            let progress = |message: &str| {
+                log::info!("{message}");
+                background.set(EngineStatus::Installing(message.to_string()));
+            };
+            let status = match install_engine(&progress) {
+                Ok(()) => match look_for_engine() {
+                    EngineStatus::Missing => EngineStatus::Unavailable(format!(
+                        "The NDI engine still isn't installed (was the installer cancelled?). {MANUAL_HELP}"
+                    )),
+                    other => other,
+                },
+                Err(message) => EngineStatus::Unavailable(message),
+            };
+            background.set(status);
+        });
     }
-    result
 }
 
 /// The organisation NDI's runtime installer is signed by (checked 2026-10-07 against
@@ -138,6 +169,9 @@ pub struct InstallerFacts {
 /// common name and the organisation must match exactly) through DigiCert, and it calls itself
 /// NDI's runtime installer.
 pub fn installer_is_acceptable(facts: &InstallerFacts) -> Result<(), String> {
+    if facts.status == "NotSigned" {
+        return Err("it isn't signed".to_string());
+    }
     if facts.status != "Valid" {
         return Err(format!("its signature status is \"{}\"", facts.status));
     }
@@ -186,15 +220,32 @@ pub fn within_size_limit(so_far: u64, more: u64) -> Result<u64, String> {
 }
 
 #[cfg(not(windows))]
-fn prepare_engine(_progress: &dyn Fn(&str)) -> Result<Option<PathBuf>, String> {
+fn look_for_engine() -> EngineStatus {
     // Elsewhere the NDI library is found by the system's normal library search, as before.
-    Ok(None)
+    EngineStatus::Ready(None)
+}
+
+#[cfg(not(windows))]
+fn install_engine(_progress: &dyn Fn(&str)) -> Result<(), String> {
+    Err("Installing NDI is only automated on Windows".to_string())
 }
 
 #[cfg(windows)]
-fn prepare_engine(progress: &dyn Fn(&str)) -> Result<Option<PathBuf>, String> {
-    windows::prepare_engine(progress).map(Some)
+fn look_for_engine() -> EngineStatus {
+    match windows::find_engine() {
+        None => EngineStatus::Missing,
+        Some(dir) => match windows::preload_engine(&dir) {
+            Ok(()) => {
+                log::info!("NDI engine loaded from {}", dir.display());
+                EngineStatus::Ready(Some(dir))
+            }
+            Err(e) => EngineStatus::Unavailable(format!("{e}. {MANUAL_HELP}")),
+        },
+    }
 }
+
+#[cfg(windows)]
+use windows::install_engine;
 
 #[cfg(windows)]
 mod windows {
@@ -207,12 +258,13 @@ mod windows {
         time::Duration,
     };
 
+    use super::MANUAL_HELP;
+
     pub const ENGINE_DLL: &str = "Processing.NDI.Lib.x64.dll";
     /// NDI's official, versioned link to its runtime installer.
     const INSTALLER_URL: &str = "https://ndi.link/NDIRedistV6";
     const RUNTIME_ENV: &str = "NDI_RUNTIME_DIR_V6";
     const DEFAULT_RUNTIME_DIR: &str = r"C:\Program Files\NDI\NDI 6 Runtime\v6";
-    const MANUAL_HELP: &str = "Click Install NDI to try again, or install the NDI engine from https://ndi.link/NDIRedistV6 (or NDI Tools from https://ndi.video/tools/) and restart the overlay.";
     const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
     const READ_TIMEOUT: Duration = Duration::from_secs(30);
     const TOTAL_TIMEOUT: Duration = Duration::from_secs(10 * 60);
@@ -221,25 +273,10 @@ mod windows {
     /// The environment variable PowerShell reads the installer's path from.
     const PATH_VARIABLE: &str = "UWH_NDI_INSTALLER";
 
-    pub fn prepare_engine(progress: &dyn Fn(&str)) -> Result<PathBuf, String> {
-        if let Some(dir) = find_engine() {
-            progress(&format!("NDI engine found in {}", dir.display()));
-            return Ok(dir);
-        }
-
-        install_engine(progress)?;
-
-        find_engine().ok_or_else(|| {
-            format!(
-                "The NDI engine still isn't installed (was the installer cancelled?). {MANUAL_HELP}"
-            )
-        })
-    }
-
     /// Where NDI's installer puts the engine, in order of preference. The installer records the
     /// folder in a system environment variable; this process's own copy of the environment is
     /// from before any install it just ran, so the stored system value is read as well.
-    fn find_engine() -> Option<PathBuf> {
+    pub(super) fn find_engine() -> Option<PathBuf> {
         let next_to_exe = std::env::current_exe()
             .ok()
             .and_then(|exe| exe.parent().map(Path::to_path_buf));
@@ -252,6 +289,45 @@ mod windows {
         .into_iter()
         .flatten()
         .find(|dir| dir.join(ENGINE_DLL).is_file())
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn LoadLibraryExW(
+            name: *const u16,
+            file: *mut std::ffi::c_void,
+            flags: u32,
+        ) -> *mut std::ffi::c_void;
+    }
+    /// Lets the engine's own dependencies be found in its folder.
+    const LOAD_WITH_ALTERED_SEARCH_PATH: u32 = 0x0000_0008;
+
+    /// Loads the engine by its full path before any NDI call. If Windows can't load it, the overlay
+    /// carries on without NDI and says why; otherwise the delayed load of
+    /// `Processing.NDI.Lib.x64.dll` (see `build.rs`) finds this already-loaded copy by name, so it
+    /// can no longer fail and crash the overlay. The module is never unloaded.
+    pub(super) fn preload_engine(dir: &Path) -> Result<(), String> {
+        use std::os::windows::ffi::OsStrExt;
+        let path = dir.join(ENGINE_DLL);
+        let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        // SAFETY: `wide` is a NUL-terminated UTF-16 path that lives until the call returns; no file
+        // handle is passed (null), and the flags are a documented LoadLibraryExW value.
+        let module = unsafe {
+            LoadLibraryExW(
+                wide.as_ptr(),
+                std::ptr::null_mut(),
+                LOAD_WITH_ALTERED_SEARCH_PATH,
+            )
+        };
+        if module.is_null() {
+            Err(format!(
+                "Windows couldn't load the NDI engine {}: {}",
+                path.display(),
+                std::io::Error::last_os_error()
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     /// `%SystemRoot%\System32\<rest>`, so a same-named program elsewhere on the PATH is never run.
@@ -307,13 +383,22 @@ mod windows {
             format!("Couldn't download the NDI engine installer: {e}. {MANUAL_HELP}")
         })?;
         let result = check_and_run(&installer, progress);
-        let _ = std::fs::remove_dir_all(&folder);
+        remove_folder(&folder);
         result
     }
 
+    fn remove_folder(folder: &Path) {
+        if let Err(e) = std::fs::remove_dir_all(folder) {
+            log::warn!(
+                "Couldn't remove the NDI installer's temporary folder {}: {e}",
+                folder.display()
+            );
+        }
+    }
+
     fn check_and_run(installer: &Path, progress: &dyn Fn(&str)) -> Result<(), String> {
-        // Held until the installer has finished: while it is open, nobody can change or replace
-        // the file, so what is checked is exactly what runs.
+        // Held until the installer has finished: while it is open, the file can't be written to,
+        // deleted or renamed, so it can't be changed or replaced between the check and the run.
         let _locked = OpenOptions::new()
             .read(true)
             .share_mode(FILE_SHARE_READ)
@@ -334,7 +419,7 @@ mod windows {
     }
 
     /// Into a new folder of its own under the temp folder (refusing one that already exists), so
-    /// two overlays can't collide and nothing can be planted there beforehand.
+    /// two overlays can't collide and no file is already waiting there when the download starts.
     fn download_installer() -> Result<(PathBuf, PathBuf), String> {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -346,7 +431,7 @@ mod windows {
         let installer = folder.join("NDI 6 Runtime.exe");
         let written = fetch_into(&installer);
         if let Err(e) = written {
-            let _ = std::fs::remove_dir_all(&folder);
+            remove_folder(&folder);
             return Err(e);
         }
         Ok((folder, installer))
@@ -406,7 +491,7 @@ $c = $s.SignerCertificate
 $facts = [ordered]@{
   status = $s.Status.ToString()
   signer_name = if ($c) { $c.GetNameInfo('SimpleName', $false) } else { '' }
-  signer_subject = if ($c) { @($c.SubjectName.Format($true) -split "`r?`n" | Where-Object { $_ }) } else { @() }
+  signer_subject = @(if ($c) { $c.SubjectName.Format($true) -split "`r?`n" | Where-Object { $_ } })
   issuer_name = if ($c) { $c.GetNameInfo('SimpleName', $true) } else { '' }
   product_name = [string](Get-Item -LiteralPath $path).VersionInfo.ProductName
 }
@@ -427,18 +512,30 @@ ConvertTo-Json -InputObject $facts -Compress
 
     /// Starts the installer with administrator rights (Windows shows its permission prompt) and
     /// waits for it to finish.
+    ///
+    /// The path is handed to .NET as is (never read as a wildcard pattern), and the installer's
+    /// own exit code comes back as PowerShell's. A refused permission prompt throws, so
+    /// PowerShell then exits non-zero too.
     fn run_installer(installer: &Path) -> Result<(), String> {
-        const SCRIPT: &str = "Start-Process -FilePath $env:UWH_NDI_INSTALLER -Verb RunAs -Wait";
-        let status = powershell()
+        const SCRIPT: &str = "$ErrorActionPreference = 'Stop'; $i = New-Object System.Diagnostics.ProcessStartInfo; $i.FileName = $env:UWH_NDI_INSTALLER; $i.Verb = 'runas'; $i.UseShellExecute = $true; $p = [System.Diagnostics.Process]::Start($i); $p.WaitForExit(); exit $p.ExitCode";
+        let output = powershell()
             .arg(SCRIPT)
             .env(PATH_VARIABLE, installer)
-            .status()
+            .output()
             .map_err(|e| e.to_string())?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err("permission was refused or the installer couldn't start".to_string())
+        if output.status.success() {
+            return Ok(());
         }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.trim().is_empty() {
+            log::warn!("The NDI installer launch reported: {}", stderr.trim());
+        }
+        Err(match output.status.code() {
+            Some(code) => format!(
+                "permission was refused, the installer couldn't start, or it ended with exit code {code}"
+            ),
+            None => "permission was refused or the installer couldn't start".to_string(),
+        })
     }
 }
 
@@ -486,6 +583,19 @@ mod tests {
             ..genuine()
         };
         assert!(installer_is_acceptable(&not_valid).is_err());
+
+        // A file with no signature at all: the reason says so plainly.
+        let unsigned = InstallerFacts {
+            status: "NotSigned".into(),
+            signer_name: String::new(),
+            signer_subject: vec![],
+            issuer_name: String::new(),
+            ..genuine()
+        };
+        assert_eq!(
+            installer_is_acceptable(&unsigned),
+            Err("it isn't signed".to_string())
+        );
 
         // "Vizrt" somewhere in another company's name is not Vizrt.
         let lookalike = InstallerFacts {
@@ -537,5 +647,53 @@ mod tests {
         assert!(within_size_limit(MAX_INSTALLER_BYTES - 1, 1).is_ok());
         assert!(within_size_limit(MAX_INSTALLER_BYTES, 1).is_err());
         assert!(within_size_limit(u64::MAX, 1).is_err());
+    }
+
+    #[test]
+    fn the_install_button_is_offered_only_when_ndi_is_missing_or_failed() {
+        assert!(install_allowed(&EngineStatus::Missing));
+        assert!(install_allowed(&EngineStatus::Unavailable(
+            "permission was refused".into()
+        )));
+        assert!(!install_allowed(&EngineStatus::Looking));
+        assert!(!install_allowed(&EngineStatus::Installing(
+            "Downloading…".into()
+        )));
+        assert!(!install_allowed(&EngineStatus::Ready(None)));
+    }
+
+    #[test]
+    fn a_second_click_while_installing_starts_nothing() {
+        let watch = EngineWatch::with_status(EngineStatus::Missing);
+        assert!(watch.begin_install());
+        assert!(matches!(watch.status(), EngineStatus::Installing(_)));
+        assert!(!watch.begin_install());
+    }
+
+    #[test]
+    fn nothing_is_installed_until_the_operator_asks() {
+        // Not missing yet: begin_install refuses, so nothing can start by itself.
+        let watch = EngineWatch::with_status(EngineStatus::Looking);
+        assert!(!watch.begin_install());
+    }
+
+    #[test]
+    fn the_preview_explains_each_state() {
+        assert_eq!(
+            preview_note(&EngineStatus::Missing),
+            "NDI off: NDI isn't installed on this PC. Click Install NDI (Windows will ask for permission)."
+        );
+        assert_eq!(
+            preview_note(&EngineStatus::Looking),
+            "NDI: Looking for the NDI engine…"
+        );
+        assert_eq!(
+            preview_note(&EngineStatus::Installing("Downloading…".into())),
+            "NDI: Downloading…"
+        );
+        assert_eq!(
+            preview_note(&EngineStatus::Unavailable("no".into())),
+            "NDI off: no"
+        );
     }
 }

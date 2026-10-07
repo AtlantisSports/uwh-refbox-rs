@@ -54,6 +54,9 @@ pub enum Phase {
         upcoming: GameNumber,
         secs_left: u32,
     },
+    /// Between games after the court's last game: the refbox sends a blank upcoming game, so
+    /// there is no next game (see [`GameSnapshot::court_schedule_finished`]).
+    Finished,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,10 +106,8 @@ impl CourtSwitcher {
                 upcoming,
                 secs_left,
             } => {
-                let switch = (self.day_running
-                    && !upcoming.is_empty()
-                    && self.live.as_ref() != Some(upcoming))
-                .then(|| secs_left.saturating_sub(self.rules.switch_lead_secs));
+                let switch = (self.day_running && self.live.as_ref() != Some(upcoming))
+                    .then(|| secs_left.saturating_sub(self.rules.switch_lead_secs));
                 let rosters = (*secs_left > self.rules.roster_start_secs)
                     .then(|| secs_left - self.rules.roster_start_secs);
                 (switch, rosters)
@@ -131,16 +132,16 @@ impl CourtSwitcher {
         let Some(live) = self.live.as_ref().filter(|_| self.day_running) else {
             return match phase {
                 Phase::Playing(game) | Phase::Break { upcoming: game, .. } => Some(game),
-                Phase::Unknown => None,
+                Phase::Unknown | Phase::Finished => None,
             };
         };
         let target = match phase {
             Phase::Playing(game) | Phase::Break { upcoming: game, .. } if game != *live => game,
             // The live video already shows the current/upcoming game, so move on to the one
-            // after it.
-            _ => snapshot.next_game_number.clone(),
+            // after it (none after the court's last game).
+            _ => snapshot.next_game_number()?.clone(),
         };
-        (target != *live && !target.is_empty()).then_some(target)
+        (target != *live).then_some(target)
     }
 
     /// Feed every snapshot the refbox sends. Returns an action when it's time to switch.
@@ -206,7 +207,9 @@ impl CourtSwitcher {
         }
         let live = self.live.as_ref()?;
         let target = match phase_of(self.last.as_ref()?) {
-            Phase::Unknown => return None,
+            // After the court's last game there is no next video, so the last one simply waits
+            // for End day (ADR 026).
+            Phase::Unknown | Phase::Finished => return None,
             // Catch up: a game is in progress but its video isn't live.
             Phase::Playing(game) => (game != *live).then_some(game)?,
             Phase::Break {
@@ -215,12 +218,7 @@ impl CourtSwitcher {
             } => {
                 let in_rosters = (self.rules.roster_end_secs..=self.rules.roster_start_secs)
                     .contains(&secs_left);
-                // After the court's last game the refbox sends a blank upcoming game: there is
-                // no next video, so the last one simply waits for End day (ADR 026).
-                (!upcoming.is_empty()
-                    && upcoming != *live
-                    && secs_left <= self.rules.switch_lead_secs
-                    && !in_rosters)
+                (upcoming != *live && secs_left <= self.rules.switch_lead_secs && !in_rosters)
                     .then_some(upcoming)?
             }
         };
@@ -234,6 +232,9 @@ impl CourtSwitcher {
 }
 
 fn phase_of(snapshot: &GameSnapshot) -> Phase {
+    if snapshot.court_schedule_finished() {
+        return Phase::Finished;
+    }
     match snapshot.current_period {
         GamePeriod::BetweenGames => Phase::Break {
             // The refbox only changes `game_number` when the next game kicks off, so during the
@@ -381,8 +382,28 @@ mod tests {
         let status = s.status();
         assert_eq!(status.live.as_deref(), Some("20"));
         assert!(!status.hold);
+        assert_eq!(status.phase, Phase::Finished);
         assert_eq!(status.secs_until_switch, None);
+        assert_eq!(status.secs_until_rosters, None);
         assert_eq!(status.next, None);
+        assert_eq!(s.on_command(Command::SwitchNow), None);
+    }
+
+    #[test]
+    fn start_day_after_the_last_game_does_nothing() {
+        // Stream Manager started (or the day ended) after the court's last game.
+        let mut s = CourtSwitcher::new(RULES);
+        s.on_snapshot(&break_old("20", "", 600));
+        assert_eq!(s.status().next, None);
+        assert_eq!(s.on_command(Command::StartDay), None);
+        let status = s.status();
+        assert!(!status.day_running);
+        assert_eq!((status.live, status.next), (None, None));
+        assert_eq!(status.secs_until_rosters, None);
+        // The same once the refbox has been reset after the last game.
+        s.on_snapshot(&break_new("20", "", 600));
+        assert_eq!(s.on_command(Command::StartDay), None);
+        assert_eq!(s.status().next, None);
     }
 
     #[test]

@@ -165,7 +165,7 @@ impl PendingSignIn {
                 .await
                 .map_err(|_| "Sign-in wasn't finished within 5 minutes; please try again")??;
 
-        let http = reqwest::Client::new();
+        let http = crate::http_client()?;
         let token = post_token_request(
             &http,
             &self.client.token_uri,
@@ -302,7 +302,7 @@ impl GoogleAuth {
             client,
             token,
             token_file: token_file.to_path_buf(),
-            http: reqwest::Client::new(),
+            http: crate::http_client()?,
         })
     }
 

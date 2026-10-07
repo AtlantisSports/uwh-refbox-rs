@@ -8,6 +8,7 @@ use crate::{
     portal::EventPlan,
     prepare::{self, Selection},
     switcher::Command,
+    youtube::YouTubeAccess,
 };
 use axum::{
     Json, Router,
@@ -25,7 +26,6 @@ use std::{
     hash::{BuildHasher, Hasher},
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
     sync::Arc,
-    time::Duration,
 };
 
 const INDEX_HTML: &str = include_str!("../web/index.html");
@@ -69,8 +69,9 @@ fn session_cookie(headers: &HeaderMap) -> Option<String> {
 }
 
 /// Allowed if: logged in with the PIN (cookie), or the request carries the PIN (Companion), or
-/// no PIN has been set yet and the request comes from this laptop itself.
-fn authorize(
+/// no PIN has been set yet and the request comes from this laptop itself. A request that carries
+/// a wrong PIN (and isn't logged in) is answered only after a wait (see [`App::wrong_pin`]).
+async fn authorize(
     app: &App,
     headers: &HeaderMap,
     query: &HashMap<String, String>,
@@ -88,13 +89,16 @@ fn authorize(
         };
     }
     let header_pin = headers.get("x-pin").and_then(|v| v.to_str().ok());
-    if query.get("pin").map(String::as_str) == Some(pin.as_str())
-        || header_pin == Some(pin.as_str())
-    {
+    let query_pin = query.get("pin").map(String::as_str);
+    if query_pin == Some(pin.as_str()) || header_pin == Some(pin.as_str()) {
         return Ok(());
     }
     if session_cookie(headers).is_some_and(|token| app.has_session(&token)) {
         return Ok(());
+    }
+    if query_pin.is_some() || header_pin.is_some() {
+        app.wrong_pin(&addr.ip().to_string()).await;
+        return Err(fail(StatusCode::UNAUTHORIZED, "Wrong PIN"));
     }
     Err(fail(StatusCode::UNAUTHORIZED, "PIN required"))
 }
@@ -160,7 +164,9 @@ async fn session(
     headers: HeaderMap,
 ) -> Json<Value> {
     let pin_set = !app.config().pin.is_empty();
-    let authed = authorize(&app, &headers, &HashMap::new(), addr).is_ok();
+    let authed = authorize(&app, &headers, &HashMap::new(), addr)
+        .await
+        .is_ok();
     Json(json!({
         "pin_set": pin_set,
         "authed": authed,
@@ -185,13 +191,16 @@ fn login_response(app: &App) -> Response {
     response
 }
 
-async fn login(State(app): State<AppState>, Json(body): Json<PinBody>) -> Response {
+async fn login(
+    State(app): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(body): Json<PinBody>,
+) -> Response {
     let pin = app.config().pin;
     if !pin.is_empty() && body.pin.trim() == pin {
         login_response(&app)
     } else {
-        // Slow down guessing.
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        app.wrong_pin(&addr.ip().to_string()).await;
         fail(StatusCode::UNAUTHORIZED, "Wrong PIN").into_response()
     }
 }
@@ -210,7 +219,7 @@ async fn set_pin(
     headers: HeaderMap,
     Json(body): Json<PinBody>,
 ) -> Response {
-    if let Err(e) = authorize(&app, &headers, &HashMap::new(), addr) {
+    if let Err(e) = authorize(&app, &headers, &HashMap::new(), addr).await {
         return e.into_response();
     }
     let mut config = app.config();
@@ -233,7 +242,7 @@ async fn status(
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
 ) -> ApiResult {
-    authorize(&app, &headers, &query, addr)?;
+    authorize(&app, &headers, &query, addr).await?;
     Ok(Json(json!(app.status())))
 }
 
@@ -244,7 +253,7 @@ async fn court_action(
     Query(query): Query<HashMap<String, String>>,
     Path((court, action)): Path<(String, String)>,
 ) -> ApiResult {
-    authorize(&app, &headers, &query, addr)?;
+    authorize(&app, &headers, &query, addr).await?;
     let command = match action.as_str() {
         "start" => Command::StartDay,
         "end" => Command::EndDay,
@@ -296,7 +305,7 @@ async fn get_settings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
+    authorize(&app, &headers, &HashMap::new(), addr).await?;
     let mut config = app.config();
     config.pin = String::new();
     Ok(Json(json!({
@@ -314,7 +323,7 @@ async fn save_settings(
     headers: HeaderMap,
     Json(body): Json<SettingsBody>,
 ) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
+    authorize(&app, &headers, &HashMap::new(), addr).await?;
     let current = app.config();
     let new = Config {
         portal_url: body.portal_url,
@@ -346,11 +355,11 @@ async fn events(
     headers: HeaderMap,
     Query(query): Query<EventsQuery>,
 ) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
+    authorize(&app, &headers, &HashMap::new(), addr).await?;
     if query.portal_url != LIVE_PORTAL_URL && query.portal_url != DEV_PORTAL_URL {
         return Err(bad("Unknown portal"));
     }
-    let client = reqwest::Client::new();
+    let client = crate::http_client().map_err(|e| bad(e.to_string()))?;
     let mut events = Vec::new();
     for filter in ["InProgressOrUpcoming", "Past"] {
         let response = client
@@ -391,12 +400,15 @@ async fn schedule(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
+    authorize(&app, &headers, &HashMap::new(), addr).await?;
     let Some(plan) = app.plan() else {
         return Ok(Json(json!({ "loaded": false })));
     };
     let config = app.config();
-    let state = prepare::load_state(&app.state_file(), &config.event_slug).unwrap_or_default();
+    let state = app
+        .state_file()
+        .and_then(|file| prepare::load_state(&file, &config.event_slug))
+        .unwrap_or_default();
     let playlists: Vec<Value> = plan
         .playlists()
         .into_iter()
@@ -431,7 +443,7 @@ async fn refresh_schedule(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
+    authorize(&app, &headers, &HashMap::new(), addr).await?;
     app.refresh_plan_and_recover().await;
     Ok(Json(json!({ "ok": app.plan().is_some() })))
 }
@@ -442,12 +454,14 @@ async fn prepare_preview(
     headers: HeaderMap,
     Json(selection): Json<Selection>,
 ) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
+    authorize(&app, &headers, &HashMap::new(), addr).await?;
     let plan = app
         .plan()
         .ok_or_else(|| bad("The schedule isn't loaded yet"))?;
     let config = app.config();
-    let state = prepare::load_state(&app.state_file(), &config.event_slug)
+    let state = app
+        .state_file()
+        .and_then(|file| prepare::load_state(&file, &config.event_slug))
         .map_err(|e| bad(e.to_string()))?;
     let mut yt = app.youtube().await.map_err(|e| bad(e.to_string()))?;
     let lookups = prepare::lookups(&mut yt)
@@ -465,7 +479,7 @@ async fn prepare_run(
     headers: HeaderMap,
     Json(selection): Json<Selection>,
 ) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
+    authorize(&app, &headers, &HashMap::new(), addr).await?;
     let plan = app
         .plan()
         .ok_or_else(|| bad("The schedule isn't loaded yet"))?;
@@ -474,16 +488,16 @@ async fn prepare_run(
     tokio::spawn(async move {
         let app = job_app;
         let config = app.config();
-        let state_file = app.state_file();
         let log_app = Arc::clone(&app);
         let mut log = move |line: String| log_app.job_log(line);
         let result = async {
-            let mut yt = app.youtube().await?;
-            let lookups = prepare::lookups(&mut yt).await?;
+            let state_file = app.state_file()?;
+            let lookups = prepare::lookups(&mut *app.youtube().await?).await?;
+            // Takes the YouTube connection one game at a time, so switches carry on meanwhile.
             prepare::run(
                 &config,
                 &plan,
-                &mut yt,
+                &mut YouTubeAccess::Shared(&app),
                 &state_file,
                 &lookups,
                 &selection,
@@ -529,9 +543,11 @@ async fn videos(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
+    authorize(&app, &headers, &HashMap::new(), addr).await?;
     let config = app.config();
-    let state = prepare::load_state(&app.state_file(), &config.event_slug)
+    let state = app
+        .state_file()
+        .and_then(|file| prepare::load_state(&file, &config.event_slug))
         .map_err(|e| bad(e.to_string()))?;
     let plan = app.plan();
     let list: Vec<Value> = in_schedule_order(plan.as_ref(), &state)
@@ -549,9 +565,11 @@ async fn videos_refresh(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
+    authorize(&app, &headers, &HashMap::new(), addr).await?;
     let config = app.config();
-    let state = prepare::load_state(&app.state_file(), &config.event_slug)
+    let state = app
+        .state_file()
+        .and_then(|file| prepare::load_state(&file, &config.event_slug))
         .map_err(|e| bad(e.to_string()))?;
     let ids: Vec<&str> = state
         .videos
@@ -599,7 +617,7 @@ async fn youtube_connect(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
+    authorize(&app, &headers, &HashMap::new(), addr).await?;
     if !addr.ip().is_loopback() {
         return Err(bad(
             "Connect YouTube from the laptop running Stream Manager (Google sends you back to it)",
@@ -644,7 +662,7 @@ async fn youtube_check(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
+    authorize(&app, &headers, &HashMap::new(), addr).await?;
     let config = app.config();
     let mut yt = app.youtube().await.map_err(|e| bad(e.to_string()))?;
     let channel = yt
@@ -686,7 +704,7 @@ async fn cleanup(
     headers: HeaderMap,
     Json(body): Json<CleanupBody>,
 ) -> ApiResult {
-    authorize(&app, &headers, &HashMap::new(), addr)?;
+    authorize(&app, &headers, &HashMap::new(), addr).await?;
     if body.confirm != "DELETE" {
         return Err(bad("Type DELETE to confirm"));
     }
@@ -698,10 +716,10 @@ async fn cleanup(
     tokio::spawn(async move {
         let app = job_app;
         let slug = app.config().event_slug;
-        let state_file = app.state_file();
         let log_app = Arc::clone(&app);
         let mut log = move |line: String| log_app.job_log(line);
         let result = async {
+            let state_file = app.state_file()?;
             let mut yt = app.youtube().await?;
             prepare::cleanup(&mut yt, &state_file, &slug, &mut log).await
         }

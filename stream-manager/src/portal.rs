@@ -86,7 +86,7 @@ pub async fn fetch_event_plan(portal_url: &str, event_slug: &str) -> Result<Even
         "{}/api/events/{event_slug}/schedule",
         portal_url.trim_end_matches('/')
     );
-    let response = reqwest::get(&url).await?;
+    let response = crate::http_client()?.get(&url).send().await?;
     let status = response.status();
     let body = response.text().await?;
     if !status.is_success() {

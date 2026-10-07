@@ -309,15 +309,17 @@ async fn main() {
     let mut flag_renderer = flag::Renderer::new();
     macroquad::window::miniquad::window::show_mouse(false);
 
-    // NDI output starts as soon as NDI's engine is available. On a PC without it, the engine
-    // is downloaded and installed in the background first (see `ndi_runtime.rs`); the overlay
-    // runs normally meanwhile.
+    // NDI output starts as soon as NDI's engine is loaded. On a PC without it, the preview offers
+    // an Install NDI button and nothing is installed until the operator clicks it (see
+    // `ndi_runtime.rs`); the overlay runs normally meanwhile.
     #[cfg(feature = "ndi")]
     let ndi_engine = ndi_runtime::EngineWatch::start();
     #[cfg(feature = "ndi")]
     let mut ndi_output: Option<ndi_output::NdiOutput> = None;
     #[cfg(feature = "ndi")]
     let mut ndi_started = false;
+    #[cfg(feature = "ndi")]
+    let mut mouse_shown = false;
 
     // Every page draws assuming a fixed 3840x1080 canvas (see `pages::mod`'s
     // `draw_texture_both!` family, which hardcodes a 1920 split). The *window* `window_conf()`
@@ -397,22 +399,18 @@ async fn main() {
         // `get_screen_data()` (the visible window), which may be smaller than that on this
         // machine (see `canvas`'s doc above).
         #[cfg(feature = "ndi")]
-        if !ndi_started {
-            if let Some(engine_dir) = ndi_engine.ready() {
-                ndi_started = true;
-                ndi_output = match ndi_runtime::with_engine_dir(engine_dir.as_deref(), || {
-                    ndi_output::NdiOutput::new("UWH Overlay")
-                }) {
-                    Ok(output) => {
-                        info!("NDI output started");
-                        Some(output)
-                    }
-                    Err(e) => {
-                        warn!("Failed to start NDI output, continuing without it: {e}");
-                        None
-                    }
-                };
-            }
+        if !ndi_started && ndi_engine.ready().is_some() {
+            ndi_started = true;
+            ndi_output = match ndi_output::NdiOutput::new("UWH Overlay") {
+                Ok(output) => {
+                    info!("NDI output started");
+                    Some(output)
+                }
+                Err(e) => {
+                    warn!("Failed to start NDI output, continuing without it: {e}");
+                    None
+                }
+            };
         }
         #[cfg(feature = "ndi")]
         if let Some(ndi_output) = ndi_output.as_mut() {
@@ -440,17 +438,33 @@ async fn main() {
                 ..Default::default()
             },
         );
-        // Only on the local preview, never in the NDI picture: why NDI isn't running yet.
+        // Only on the local preview, never in the NDI picture: why NDI isn't running, and the button
+        // that installs it. The mouse pointer shows only while the button does.
         #[cfg(feature = "ndi")]
         if ndi_output.is_none() {
-            let note = match ndi_engine.status() {
-                ndi_runtime::EngineStatus::Preparing(message) => format!("NDI: {message}"),
-                ndi_runtime::EngineStatus::Unavailable(message) => format!("NDI off: {message}"),
-                ndi_runtime::EngineStatus::Ready(_) => {
-                    "NDI off: couldn't start NDI output (see the log)".to_string()
+            let status = ndi_engine.status();
+            draw_text(&ndi_runtime::preview_note(&status), 10., 30., 24., YELLOW);
+            let offer = ndi_runtime::install_allowed(&status);
+            if offer != mouse_shown {
+                macroquad::window::miniquad::window::show_mouse(offer);
+                mouse_shown = offer;
+            }
+            if offer {
+                let button = Rect::new(10., 44., 220., 40.);
+                draw_rectangle(button.x, button.y, button.w, button.h, DARKGRAY);
+                draw_rectangle_lines(button.x, button.y, button.w, button.h, 2., YELLOW);
+                draw_text("Install NDI", button.x + 16., button.y + 28., 28., WHITE);
+                if is_mouse_button_pressed(MouseButton::Left)
+                    && button.contains(mouse_position().into())
+                {
+                    ndi_engine.install();
                 }
-            };
-            draw_text(&note, 10., 30., 24., YELLOW);
+            }
+        }
+        #[cfg(feature = "ndi")]
+        if ndi_output.is_some() && mouse_shown {
+            macroquad::window::miniquad::window::show_mouse(false);
+            mouse_shown = false;
         }
 
         next_frame().await;

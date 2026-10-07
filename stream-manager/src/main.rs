@@ -105,11 +105,9 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
         let app = app::App::new(config_path.to_path_buf(), config);
         app.start_refbox_connections();
         let plan_app = std::sync::Arc::clone(&app);
-        // Recovery needs the schedule, so it runs once the schedule has loaded.
-        tokio::spawn(async move {
-            plan_app.refresh_plan().await;
-            plan_app.recover_live_videos().await;
-        });
+        // Recovery needs the schedule, so it runs once the schedule has loaded. If that fails,
+        // it runs after the next schedule load that works.
+        tokio::spawn(async move { plan_app.refresh_plan_and_recover().await });
         // Every 10 minutes, keeps running courts' upcoming titles in step with the portal.
         let sync_app = std::sync::Arc::clone(&app);
         tokio::spawn(async move { sync_app.run_title_sync().await });

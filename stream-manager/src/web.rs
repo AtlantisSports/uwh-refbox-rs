@@ -432,7 +432,7 @@ async fn refresh_schedule(
     headers: HeaderMap,
 ) -> ApiResult {
     authorize(&app, &headers, &HashMap::new(), addr)?;
-    app.refresh_plan().await;
+    app.refresh_plan_and_recover().await;
     Ok(Json(json!({ "ok": app.plan().is_some() })))
 }
 

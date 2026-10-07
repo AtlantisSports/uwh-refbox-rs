@@ -76,15 +76,20 @@ pub fn removed_games(state: &EventState, plan: &EventPlan, court: &str, day: usi
 }
 
 /// What one check works with: the settings, the fresh schedule and the games to check.
-struct Check {
+pub struct Check {
     config: Config,
     plan: EventPlan,
     day: Option<usize>,
     games: Vec<String>,
 }
 
-/// Fetches the schedule, replaces the app's cached copy, and picks the games to check.
-async fn begin(app: &App, court: &CourtConfig, only_game: Option<&str>) -> Result<Check, BoxError> {
+/// Fetches the schedule, replaces the app's cached copy, and picks the games to check. Needs no
+/// YouTube connection, so a switch can run it while it waits for YouTube.
+pub async fn begin(
+    app: &App,
+    court: &CourtConfig,
+    only_game: Option<&str>,
+) -> Result<Check, BoxError> {
     let config = app.config();
     let plan = portal::fetch_event_plan(&config.portal_url, &config.event_slug).await?;
     app.set_plan(&config.event_slug, plan.clone());
@@ -190,8 +195,20 @@ pub async fn sync_court_with(
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<SyncReport, BoxError> {
     let check = begin(app, court, only_game).await?;
-    let updated = update(app, yt, &check, log).await?;
-    finish(app, court, &check, updated, log)
+    complete(app, yt, court, &check, log).await
+}
+
+/// The rest of [`sync_court_with`] after [`begin`]: updates the videos where the portal has
+/// changed and reports the removed games.
+pub async fn complete(
+    app: &App,
+    yt: &mut YouTube,
+    court: &CourtConfig,
+    check: &Check,
+    log: &mut (dyn FnMut(String) + Send),
+) -> Result<SyncReport, BoxError> {
+    let updated = update(app, yt, check, log).await?;
+    finish(app, court, check, updated, log)
 }
 
 #[cfg(test)]

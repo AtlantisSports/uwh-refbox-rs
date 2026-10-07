@@ -384,9 +384,15 @@ key A.
   the overlay shows the rosters, so interviews stay in the previous game's video.
 - **Hold** stops the automatic switch (e.g. a long interview). **Switch now** switches
   immediately.
-- If a switch fails, the court shows a **red message** and goes to Hold. The old video stays live.
-  Fix the cause, then press **Switch now**. Stream Manager never retries by itself, so a failing
-  step can't use up the YouTube allowance.
+- If a switch fails, the court shows a **red message** and goes to Hold. Fix the cause, then
+  press **Switch now**. Stream Manager never retries by itself, so a failing step can't use up the
+  YouTube allowance.
+  - With two stream keys, the old video stays live.
+  - With one stream key, Stream Manager first checks that the next video can go live on the
+    running stream. If it can't, nothing is ended and the old video stays live. If the next video
+    fails only after the old one has ended, the message says "Game 13 ended but Game 14 couldn't go
+    live" and nothing is live on that court. Hold is not on then; fix the cause and press
+    **Start day** to put the next game live.
 - **Titles follow the portal:** every 10 minutes, and again just before each switch, upcoming
   videos are updated when the portal changes a team (e.g. "Winner G12" → the real team) or a start
   time. A game removed from the portal is listed on the court's card ("No longer on the portal: …")
@@ -397,6 +403,11 @@ key A.
 - **If Stream Manager or the mini PC restarts** during the day, it asks YouTube which video is live
   and carries on: the court's log shows "Resumed: Game 14 is live". Don't press Start day again.
   If it shows "Game 13 is also still live on YouTube", end that one in YouTube Studio.
+  - It also starts that video's vMix destination again, because vMix's outputs are off after a
+    reboot (not in practice mode). If the log says it couldn't, start the destination in vMix.
+  - If the schedule couldn't load when it started (for example, the network wasn't up yet), this
+    happens after the next schedule load that works. Press **Reload schedule from portal** on the
+    Prepare tab to try again.
 - At the end, press **End day**. It ends the last video and stops the vMix destinations (only
   destination 1 in one-key mode).
 

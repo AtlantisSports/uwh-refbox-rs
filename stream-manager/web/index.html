@@ -216,6 +216,16 @@
           link are skipped; switching itself never stops. Saved with the button below.</p>
       </div>
       <div class="card" style="margin-top:16px">
+        <h2>Stream Deck live status (Companion)</h2>
+        <label class="field">Companion address
+          <input id="s-companion" placeholder="127.0.0.1:8000" style="width:200px"></label>
+        <p class="muted">Shows Hold, the rosters countdown, the game live now and the next game on Stream Deck
+          buttons. Enter Companion's address and port; leave it empty to turn this off. Each court needs four
+          custom variables in Companion (see the setup guide), e.g. <code>sm_court_1_hold</code>,
+          <code>sm_court_1_rosters</code>, <code>sm_court_1_now</code> and <code>sm_court_1_next</code>.
+          Saved with the button below.</p>
+      </div>
+      <div class="card" style="margin-top:16px">
         <h2>Courts</h2>
         <p class="muted">Court names must match the portal (e.g. <code>1</code>). Refbox address and port are the same
           ones the overlay uses. Leave the stream key names empty to use "Court &lt;name&gt; - A" and "- B".
@@ -374,6 +384,7 @@ function courtCard(name) {
       <span class="pill"><span class="dot" data-f="vmixdot"></span><span data-f="vmixtext"></span></span></div>
     <div class="banner error hidden" data-f="error"></div>
     <div class="banner hidden" data-f="removed"></div>
+    <div class="banner hidden" data-f="companion"></div>
     <div class="banner info hidden" data-f="busy">Switching on YouTube… this can take up to a minute.</div>
     <div class="label">Live now</div><div class="big" data-f="live"></div>
     <div class="label">Court</div><div class="big" data-f="phase"></div>
@@ -429,6 +440,8 @@ function renderCourts() {
     f('removed').textContent = removed.length
       ? 'No longer on the portal: ' + removed.map(g => 'Game ' + g).join(', ') + ' (videos kept)'
       : '';
+    f('companion').classList.toggle('hidden', !c.companion_error);
+    f('companion').textContent = c.companion_error ? '⚠ Stream Deck status not updated: ' + c.companion_error : '';
     f('busy').classList.toggle('hidden', !c.busy);
     setHTML(f('live'), c.day_running ? esc(c.live_title) : '<span class="muted">Day not started</span>');
     let phase = '<span class="muted">Waiting for refbox…</span>';
@@ -565,6 +578,7 @@ async function loadSettings() {
     $('s-rend').value = settings.roster_end_secs;
     $('s-quota-limit').value = settings.quota_daily_limit;
     $('s-quota-share').value = settings.quota_share_percent;
+    $('s-companion').value = settings.companion_address || '';
     renderCourtRows(settings.courts);
     privacyWarning();
     loadEvents();
@@ -636,6 +650,7 @@ async function saveSettings() {
     practice_mode: $('s-practice').checked,
     quota_daily_limit: Number($('s-quota-limit').value),
     quota_share_percent: Number($('s-quota-share').value),
+    companion_address: $('s-companion').value.trim(),
   };
   if (settings.practice_mode && !body.practice_mode &&
       !confirm('Turn practice mode OFF? From now on, Start day / Switch now / End day and automatic switches will control YouTube and vMix for real.')) return;

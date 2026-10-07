@@ -40,23 +40,32 @@ const APP_NAME: &str = "overlay";
 const OLD_BRIDGE_PORT: u16 = 8099;
 const NEW_BRIDGE_PORT: u16 = 8098;
 
-/// `url` with its port moved from 8099 to 8098, or `None` if it isn't on 8099. Only the port is
-/// changed in the text as written, so the rest of the address stays exactly as it was.
+/// `url` (trimmed) with its port moved from 8099 to 8098, or `None` if it isn't on 8099. Where
+/// the port is written as `:8099`, only the port is changed in the text as written, so the rest of
+/// the address stays exactly as it was; otherwise (say, `:08099`) the address is rewritten in its
+/// standard form.
 fn moved_bridge_url(url: &str) -> Option<String> {
-    let parsed = reqwest::Url::parse(url).ok()?;
+    let url = url.trim();
+    let mut parsed = reqwest::Url::parse(url).ok()?;
     if parsed.port() != Some(OLD_BRIDGE_PORT) {
         return None;
     }
-    let start = url.find("://")? + 3;
-    let end = url[start..]
-        .find(['/', '?', '#'])
-        .map_or(url.len(), |index| start + index);
-    let host = url[start..end].strip_suffix(&format!(":{OLD_BRIDGE_PORT}"))?;
-    Some(format!(
-        "{}{host}:{NEW_BRIDGE_PORT}{}",
-        &url[..start],
-        &url[end..]
-    ))
+    let as_written = || {
+        let start = url.find("://")? + 3;
+        let end = url[start..]
+            .find(['/', '?', '#'])
+            .map_or(url.len(), |index| start + index);
+        let host = url[start..end].strip_suffix(&format!(":{OLD_BRIDGE_PORT}"))?;
+        Some(format!(
+            "{}{host}:{NEW_BRIDGE_PORT}{}",
+            &url[..start],
+            &url[end..]
+        ))
+    };
+    as_written().or_else(|| {
+        parsed.set_port(Some(NEW_BRIDGE_PORT)).ok()?;
+        Some(parsed.to_string())
+    })
 }
 
 /// Moves a bridge address on the old port 8099 to 8098, once: a settings file from before the
@@ -360,6 +369,11 @@ async fn main() {
     let mut ndi_started = false;
     #[cfg(feature = "ndi")]
     let mut mouse_shown = false;
+    // The preview's note, worked out again only when the engine's status changes.
+    #[cfg(feature = "ndi")]
+    let mut last_status: Option<ndi_runtime::EngineStatus> = None;
+    #[cfg(feature = "ndi")]
+    let mut note = String::new();
 
     // Every page draws assuming a fixed 3840x1080 canvas (see `pages::mod`'s
     // `draw_texture_both!` family, which hardcodes a 1920 split). The *window* `window_conf()`
@@ -439,7 +453,7 @@ async fn main() {
         // `get_screen_data()` (the visible window), which may be smaller than that on this
         // machine (see `canvas`'s doc above).
         #[cfg(feature = "ndi")]
-        if !ndi_started && ndi_engine.ready().is_some() {
+        if !ndi_started && ndi_engine.is_ready() {
             ndi_started = true;
             ndi_output = match ndi_output::NdiOutput::new("UWH Overlay") {
                 Ok(output) => {
@@ -481,15 +495,21 @@ async fn main() {
         // Only on the local preview, never in the NDI picture: why NDI isn't running, and the button
         // that installs it. The mouse pointer shows only while the button does.
         #[cfg(feature = "ndi")]
-        if ndi_output.is_none() {
+        {
             let status = ndi_engine.status();
-            draw_text(&ndi_runtime::preview_note(&status), 10., 30., 24., YELLOW);
-            let offer = ndi_runtime::install_allowed(&status);
-            if offer != mouse_shown {
-                macroquad::window::miniquad::window::show_mouse(offer);
-                mouse_shown = offer;
+            let want_mouse = ndi_output.is_none() && ndi_runtime::install_allowed(&status);
+            if want_mouse != mouse_shown {
+                macroquad::window::miniquad::window::show_mouse(want_mouse);
+                mouse_shown = want_mouse;
             }
-            if offer {
+            if ndi_output.is_none() {
+                if last_status.as_ref() != Some(&status) {
+                    note = ndi_runtime::preview_note(&status);
+                    last_status = Some(status);
+                }
+                draw_text(&note, 10., 30., 24., YELLOW);
+            }
+            if want_mouse {
                 let button = Rect::new(10., 44., 220., 40.);
                 draw_rectangle(button.x, button.y, button.w, button.h, DARKGRAY);
                 draw_rectangle_lines(button.x, button.y, button.w, button.h, 2., YELLOW);
@@ -500,11 +520,6 @@ async fn main() {
                     ndi_engine.install();
                 }
             }
-        }
-        #[cfg(feature = "ndi")]
-        if ndi_output.is_some() && mouse_shown {
-            macroquad::window::miniquad::window::show_mouse(false);
-            mouse_shown = false;
         }
 
         next_frame().await;
@@ -629,6 +644,17 @@ mod tests {
         assert_eq!(
             moved_bridge_url("http://127.0.0.1:8099/feed?x=1#top").as_deref(),
             Some("http://127.0.0.1:8098/feed?x=1#top")
+        );
+        // Spaces around a typed address don't stop the move.
+        assert_eq!(
+            moved_bridge_url("  http://127.0.0.1:8099  ").as_deref(),
+            Some("http://127.0.0.1:8098")
+        );
+        // Written another way that still means 8099: moved, in the address's standard form.
+        let unusual = moved_bridge_url("http://127.0.0.1:08099").expect("an address on 8099 moves");
+        assert_eq!(
+            reqwest::Url::parse(&unusual).unwrap().port(),
+            Some(NEW_BRIDGE_PORT)
         );
         assert_eq!(moved_bridge_url("http://127.0.0.1:8098"), None);
         assert_eq!(moved_bridge_url("http://127.0.0.1:9000"), None);

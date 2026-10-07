@@ -7,9 +7,9 @@
 //! `build.rs`), which lets the overlay start without it.
 //! 1. At start-up a background thread only looks for the engine, where NDI's own installer puts
 //!    it (and next to `overlay.exe`). It never installs anything by itself.
-//! 2. Once found, the engine is loaded by its full path before any NDI call. If Windows can't load
-//!    it, the overlay carries on without NDI and says why, rather than crashing at the first NDI
-//!    call.
+//! 2. Each folder that holds the engine is tried in turn, loading it by its full path before any
+//!    NDI call, until one loads. If Windows can't load any of them, the overlay carries on
+//!    without NDI and says why, rather than crashing at the first NDI call.
 //! 3. If it isn't there, the local preview shows an **Install NDI** button. Only when the operator
 //!    clicks it does the overlay download NDI's official runtime installer
 //!    (`ndi.link/NDIRedistV6`, the link NDI's distribution guidelines point applications to),
@@ -17,7 +17,7 @@
 //!    for permission and the person accepts NDI's licence in the installer. The engine is then
 //!    looked for and loaded again.
 //!
-//! The render loop polls [`EngineWatch::ready`] and starts NDI output as soon as the engine is
+//! The render loop polls [`EngineWatch::is_ready`] and starts NDI output as soon as the engine is
 //! loaded, so no restart is needed after installing. If anything fails, the overlay keeps running
 //! without NDI, says why, and offers the button again.
 
@@ -37,8 +37,8 @@ pub enum EngineStatus {
     Missing,
     /// The operator clicked Install NDI; downloading, checking or installing.
     Installing(String),
-    /// Loaded and ready. On Windows, `Some(folder)` is where it lives.
-    Ready(Option<PathBuf>),
+    /// Loaded and ready.
+    Ready,
     /// Couldn't be installed or loaded; the preview says why and offers the button again.
     Unavailable(String),
 }
@@ -55,7 +55,7 @@ pub fn preview_note(status: &EngineStatus) -> String {
         EngineStatus::Missing => "NDI off: NDI isn't installed on this PC. Click Install NDI (Windows will ask for permission).".to_string(),
         EngineStatus::Installing(message) => format!("NDI: {message}"),
         EngineStatus::Unavailable(message) => format!("NDI off: {message}"),
-        EngineStatus::Ready(_) => "NDI off: couldn't start NDI output (see the log)".to_string(),
+        EngineStatus::Ready => "NDI off: couldn't start NDI output (see the log)".to_string(),
     }
 }
 
@@ -94,12 +94,9 @@ impl EngineWatch {
             .clone()
     }
 
-    /// `Some(folder)` once the engine is loaded.
-    pub fn ready(&self) -> Option<Option<PathBuf>> {
-        match self.status() {
-            EngineStatus::Ready(dir) => Some(dir),
-            _ => None,
-        }
+    /// Whether the engine is loaded.
+    pub fn is_ready(&self) -> bool {
+        self.status() == EngineStatus::Ready
     }
 
     /// Moves to Installing if an install is allowed now; false if not (e.g. one is running).
@@ -136,7 +133,7 @@ impl EngineWatch {
 /// the installer's error. Otherwise the installer's error is kept, as it says more.
 pub fn status_after_install(installed: Result<(), String>, found: EngineStatus) -> EngineStatus {
     match (installed, found) {
-        (_, EngineStatus::Ready(dir)) => EngineStatus::Ready(dir),
+        (_, EngineStatus::Ready) => EngineStatus::Ready,
         (Ok(()), EngineStatus::Missing) => EngineStatus::Unavailable(format!(
             "The NDI engine still isn't installed (was the installer cancelled?). {MANUAL_HELP}"
         )),
@@ -145,17 +142,43 @@ pub fn status_after_install(installed: Result<(), String>, found: EngineStatus) 
     }
 }
 
-/// The first of `candidates` that is an absolute folder holding the engine (`has_engine`).
-/// A relative folder (say, a hand-edited `NDI_RUNTIME_DIR_V6`) is skipped: Windows' loading
-/// with `LOAD_WITH_ALTERED_SEARCH_PATH` is undefined for a relative path.
-pub fn first_engine_folder(
+/// Shown when Windows finds the engine but can't load it.
+const ENGINE_WONT_LOAD: &str = "Windows couldn't load the NDI engine (it may be damaged or the wrong version). Click Install NDI to reinstall it.";
+
+/// Tries each of `candidates` in order that is an absolute folder holding the engine
+/// (`has_engine`), loading it (`load`) until one loads: Ready if one does; if some held the
+/// engine but none loaded, Unavailable (each load error goes to the log); if none held it,
+/// Missing.
+///
+/// `candidates` is read lazily, so the folders after the one that loads are never worked out. A
+/// relative folder (say, a hand-edited `NDI_RUNTIME_DIR_V6`) is skipped: Windows' loading with
+/// `LOAD_WITH_ALTERED_SEARCH_PATH` is undefined for a relative path.
+pub fn load_first_engine(
     candidates: impl IntoIterator<Item = Option<PathBuf>>,
     has_engine: impl Fn(&Path) -> bool,
-) -> Option<PathBuf> {
-    candidates
-        .into_iter()
-        .flatten()
-        .find(|dir| dir.is_absolute() && has_engine(dir))
+    mut load: impl FnMut(&Path) -> Result<(), String>,
+) -> EngineStatus {
+    let mut found = false;
+    for dir in candidates.into_iter().flatten() {
+        if !dir.is_absolute() || !has_engine(&dir) {
+            continue;
+        }
+        found = true;
+        match load(&dir) {
+            Ok(()) => {
+                log::info!("NDI engine loaded from {}", dir.display());
+                return EngineStatus::Ready;
+            }
+            // The raw Windows error (which may read "%1 is not a valid Win32 application") goes
+            // to the log only; the preview gets a plain sentence.
+            Err(error) => log::warn!("{error}"),
+        }
+    }
+    if found {
+        EngineStatus::Unavailable(ENGINE_WONT_LOAD.to_string())
+    } else {
+        EngineStatus::Missing
+    }
 }
 
 /// The organisation NDI's runtime installer is signed by (checked 2026-10-07 against
@@ -243,7 +266,7 @@ pub fn within_size_limit(so_far: u64, more: u64) -> Result<u64, String> {
 #[cfg(not(windows))]
 fn look_for_engine() -> EngineStatus {
     // Elsewhere the NDI library is found by the system's normal library search, as before.
-    EngineStatus::Ready(None)
+    EngineStatus::Ready
 }
 
 #[cfg(not(windows))]
@@ -253,26 +276,8 @@ fn install_engine(_progress: &dyn Fn(&str)) -> Result<(), String> {
 
 #[cfg(windows)]
 fn look_for_engine() -> EngineStatus {
-    match windows::find_engine() {
-        None => EngineStatus::Missing,
-        Some(dir) => match windows::preload_engine(&dir) {
-            Ok(()) => {
-                log::info!("NDI engine loaded from {}", dir.display());
-                EngineStatus::Ready(Some(dir))
-            }
-            Err(e) => {
-                // The raw Windows error (which may read "%1 is not a valid Win32 application")
-                // goes to the log only; the preview gets a plain sentence.
-                log::warn!("{e}");
-                EngineStatus::Unavailable(ENGINE_WONT_LOAD.to_string())
-            }
-        },
-    }
+    windows::find_engine()
 }
-
-/// Shown when Windows finds the engine but can't load it.
-#[cfg(windows)]
-const ENGINE_WONT_LOAD: &str = "Windows couldn't load the NDI engine (it may be damaged or the wrong version). Click Install NDI to reinstall it.";
 
 #[cfg(windows)]
 use windows::install_engine;
@@ -303,21 +308,26 @@ mod windows {
     /// The environment variable PowerShell reads the installer's path from.
     const PATH_VARIABLE: &str = "UWH_NDI_INSTALLER";
 
-    /// Where NDI's installer puts the engine, in order of preference. The installer records the
-    /// folder in a system environment variable; this process's own copy of the environment is
-    /// from before any install it just ran, so the stored system value is read as well.
-    pub(super) fn find_engine() -> Option<PathBuf> {
-        let next_to_exe = std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(Path::to_path_buf));
-        super::first_engine_folder(
-            [
-                std::env::var_os(RUNTIME_ENV).map(PathBuf::from),
-                system_environment_value(RUNTIME_ENV).map(PathBuf::from),
-                Some(PathBuf::from(DEFAULT_RUNTIME_DIR)),
-                next_to_exe,
-            ],
+    /// Looks for the engine where NDI's installer puts it, in order of preference, and loads the
+    /// first copy that loads (see [`super::load_first_engine`]). The installer records the folder
+    /// in a system environment variable, read first: this process's own copy of the environment
+    /// is from before any install it just ran, so it is stale after one. Each folder is worked
+    /// out only when the ones before it haven't loaded.
+    pub(super) fn find_engine() -> super::EngineStatus {
+        let candidates: [fn() -> Option<PathBuf>; 4] = [
+            || system_environment_value(RUNTIME_ENV).map(PathBuf::from),
+            || std::env::var_os(RUNTIME_ENV).map(PathBuf::from),
+            || Some(PathBuf::from(DEFAULT_RUNTIME_DIR)),
+            || {
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|exe| exe.parent().map(Path::to_path_buf))
+            },
+        ];
+        super::load_first_engine(
+            candidates.into_iter().map(|candidate| candidate()),
             |dir| dir.join(ENGINE_DLL).is_file(),
+            preload_engine,
         )
     }
 
@@ -575,18 +585,17 @@ mod tests {
 
     #[test]
     fn an_installer_error_gives_way_to_an_engine_that_now_loads() {
-        let engine = Some(PathBuf::from("engine folder"));
         // e.g. exit 3010 "restart needed": the engine is installed and loads, so use it.
         assert_eq!(
             status_after_install(
                 Err("the installer exited with 3010".to_string()),
-                EngineStatus::Ready(engine.clone())
+                EngineStatus::Ready
             ),
-            EngineStatus::Ready(engine.clone())
+            EngineStatus::Ready
         );
         assert_eq!(
-            status_after_install(Ok(()), EngineStatus::Ready(engine.clone())),
-            EngineStatus::Ready(engine)
+            status_after_install(Ok(()), EngineStatus::Ready),
+            EngineStatus::Ready
         );
         // Otherwise the installer's own error is kept.
         let error = "the installer exited with 1603".to_string();
@@ -617,18 +626,100 @@ mod tests {
         assert!(absolute.is_absolute());
         let relative = PathBuf::from("NDI 6 Runtime");
         let everywhere = |_: &Path| true;
-        assert_eq!(
-            first_engine_folder(
-                [None, Some(relative.clone()), Some(absolute.clone())],
-                everywhere
-            ),
-            Some(absolute.clone())
+        let mut tried = Vec::new();
+        let status = load_first_engine(
+            [None, Some(relative.clone()), Some(absolute.clone())],
+            everywhere,
+            |dir: &Path| {
+                tried.push(dir.to_path_buf());
+                Ok(())
+            },
         );
-        assert_eq!(first_engine_folder([Some(relative)], everywhere), None);
+        assert_eq!(status, EngineStatus::Ready);
+        assert_eq!(tried, std::slice::from_ref(&absolute));
+        // Only a relative folder: nothing is tried, so it counts as missing.
+        assert_eq!(
+            load_first_engine(
+                [Some(relative)],
+                everywhere,
+                |_: &Path| -> Result<(), String> {
+                    panic!("a relative folder must never be loaded")
+                }
+            ),
+            EngineStatus::Missing
+        );
         // An absolute folder without the engine is skipped too.
         assert_eq!(
-            first_engine_folder([Some(absolute.clone())], |_: &Path| false),
-            None
+            load_first_engine([Some(absolute)], |_: &Path| false, |_: &Path| Ok(())),
+            EngineStatus::Missing
+        );
+    }
+
+    #[test]
+    fn each_engine_copy_is_tried_in_order_until_one_loads() {
+        let folder = |name: &str| std::env::temp_dir().join(name);
+        let (system, process, default, beside_exe) = (
+            folder("system"),
+            folder("process"),
+            folder("default"),
+            folder("beside exe"),
+        );
+        // The first copy won't load, the second does: Ready, and the later folders are never
+        // even worked out.
+        let mut worked_out = Vec::new();
+        let mut tried = Vec::new();
+        let status = load_first_engine(
+            [&system, &process, &default, &beside_exe]
+                .into_iter()
+                .map(|dir| {
+                    worked_out.push(dir.clone());
+                    Some(dir.clone())
+                }),
+            |_: &Path| true,
+            |dir: &Path| {
+                tried.push(dir.to_path_buf());
+                if dir == system {
+                    Err("Windows couldn't load the NDI engine: bad image".to_string())
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert_eq!(status, EngineStatus::Ready);
+        assert_eq!(tried, [system.clone(), process.clone()]);
+        assert_eq!(worked_out, [system.clone(), process.clone()]);
+
+        // A folder without the engine is passed over, not tried.
+        let mut tried = Vec::new();
+        let status = load_first_engine(
+            [Some(system.clone()), Some(default.clone())],
+            |dir: &Path| dir == default,
+            |dir: &Path| {
+                tried.push(dir.to_path_buf());
+                Ok(())
+            },
+        );
+        assert_eq!(status, EngineStatus::Ready);
+        assert_eq!(tried, std::slice::from_ref(&default));
+
+        // Copies found but none loads: the plain sentence, not the raw Windows error.
+        assert_eq!(
+            load_first_engine(
+                [Some(system.clone()), None, Some(beside_exe.clone())],
+                |_: &Path| true,
+                |_: &Path| Err("bad image".to_string()),
+            ),
+            EngineStatus::Unavailable(ENGINE_WONT_LOAD.to_string())
+        );
+
+        // No copy anywhere: missing, so the Install NDI button is offered.
+        assert_eq!(
+            load_first_engine(
+                [Some(system), None, Some(beside_exe)],
+                |_: &Path| false,
+                |_: &Path| Ok(()),
+            ),
+            EngineStatus::Missing
         );
     }
 
@@ -748,7 +839,7 @@ mod tests {
         assert!(!install_allowed(&EngineStatus::Installing(
             "Downloading…".into()
         )));
-        assert!(!install_allowed(&EngineStatus::Ready(None)));
+        assert!(!install_allowed(&EngineStatus::Ready));
     }
 
     #[test]

@@ -11,7 +11,7 @@ use crate::{
     quota,
     youtube::YouTube,
 };
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::OffsetDateTime;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SyncReport {
@@ -60,32 +60,16 @@ pub fn games_to_sync<'a>(
     }
 }
 
-/// Games recorded in the state for `court` on `day` that are no longer on the portal.
-///
-/// A removed game isn't in the schedule any more, so its court is read from its video title
-/// ("Court 1 · Game 22 · …") and its day from its recorded start time.
+/// Games recorded in the state for `court` on `day` that are no longer on the portal. A record
+/// that doesn't say its court and day (written before they were recorded) is skipped.
 pub fn removed_games(state: &EventState, plan: &EventPlan, court: &str, day: usize) -> Vec<String> {
-    let Some(date) = plan
-        .games
-        .iter()
-        .find(|g| g.day == day)
-        .map(|g| g.start.date())
-    else {
-        return Vec::new();
-    };
     state
         .videos
         .iter()
         .filter(|(number, video)| {
-            let start = video
-                .portal_start
-                .as_deref()
-                .unwrap_or(&video.scheduled_start);
-            plan.game(number).is_none()
-                && video
-                    .title
-                    .contains(&format!("Court {court} · Game {number} ·"))
-                && OffsetDateTime::parse(start, &Rfc3339).is_ok_and(|start| start.date() == date)
+            video.court.as_deref() == Some(court)
+                && video.day == Some(day)
+                && plan.game(number).is_none()
         })
         .map(|(number, _)| number.clone())
         .collect()
@@ -287,42 +271,42 @@ mod tests {
         );
     }
 
-    fn video(court: &str, number: &str, portal_start: Option<&str>) -> VideoState {
+    fn video(number: &str, court_and_day: Option<(&str, usize)>) -> VideoState {
         VideoState {
             broadcast_id: format!("v{number}"),
-            title: format!("Test Cup · Court {court} · Game {number} · TBD vs TBD"),
+            title: format!("Test Cup · Court 1 · Game {number} · TBD vs TBD"),
             description: String::new(),
             scheduled_start: "2026-08-01T12:00:00+10:00".to_string(),
             bound_stream: None,
             in_playlist: true,
             next_game_link: None,
-            portal_start: portal_start.map(str::to_string),
+            portal_start: Some("2026-08-01T12:00:00+10:00".to_string()),
+            court: court_and_day.map(|(court, _)| court.to_string()),
+            day: court_and_day.map(|(_, day)| day),
         }
     }
 
     #[test]
     fn a_game_gone_from_the_portal_is_listed_as_removed() {
         let mut state = EventState::default();
-        for (court, number, start) in [
-            ("1", "20", "2026-08-01T09:00:00+10:00"),
-            ("1", "22", "2026-08-01T10:00:00+10:00"),
+        for (number, court_and_day) in [
+            ("20", Some(("1", 1))),
+            ("22", Some(("1", 1))),
             // Gone from the portal: game 23 on court 1, day 1.
-            ("1", "23", "2026-08-01T10:30:00+10:00"),
-            // Also gone, but on court 2 and on day 2.
-            ("2", "25", "2026-08-01T10:30:00+10:00"),
-            ("1", "31", "2026-08-02T10:30:00+10:00"),
+            ("23", Some(("1", 1))),
+            // Also gone, but on court 2, and on day 2.
+            ("25", Some(("2", 1))),
+            ("31", Some(("1", 2))),
+            // Gone, but an older record that doesn't say its court or day: skipped.
+            ("26", None),
         ] {
             state
                 .videos
-                .insert(number.to_string(), video(court, number, Some(start)));
+                .insert(number.to_string(), video(number, court_and_day));
         }
-        // An older record without a portal start falls back to its scheduled start (day 1).
-        state.videos.insert("2".to_string(), video("1", "2", None));
         let plan = sample();
-        assert_eq!(removed_games(&state, &plan, "1", 1), ["2", "23"]);
+        assert_eq!(removed_games(&state, &plan, "1", 1), ["23"]);
         assert_eq!(removed_games(&state, &plan, "2", 1), ["25"]);
         assert_eq!(removed_games(&state, &plan, "1", 2), ["31"]);
-        // "Court 1 · Game 2" must not match game 20's or 23's title.
-        assert!(!removed_games(&state, &plan, "1", 1).contains(&"20".to_string()));
     }
 }

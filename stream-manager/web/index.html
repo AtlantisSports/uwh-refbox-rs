@@ -373,6 +373,7 @@ function courtCard(name) {
     <div class="row"><span class="pill"><span class="dot" data-f="refdot"></span><span data-f="reftext"></span></span>
       <span class="pill"><span class="dot" data-f="vmixdot"></span><span data-f="vmixtext"></span></span></div>
     <div class="banner error hidden" data-f="error"></div>
+    <div class="banner hidden" data-f="removed"></div>
     <div class="banner info hidden" data-f="busy">Switching on YouTube… this can take up to a minute.</div>
     <div class="label">Live now</div><div class="big" data-f="live"></div>
     <div class="label">Court</div><div class="big" data-f="phase"></div>
@@ -423,6 +424,11 @@ function renderCourts() {
     f('vmixtext').title = c.vmix_address;
     f('error').classList.toggle('hidden', !c.error);
     f('error').textContent = c.error ? '✖ ' + c.error : '';
+    const removed = c.removed_games || [];
+    f('removed').classList.toggle('hidden', removed.length === 0);
+    f('removed').textContent = removed.length
+      ? 'No longer on the portal: ' + removed.map(g => 'Game ' + g).join(', ') + ' (videos kept)'
+      : '';
     f('busy').classList.toggle('hidden', !c.busy);
     setHTML(f('live'), c.day_running ? esc(c.live_title) : '<span class="muted">Day not started</span>');
     let phase = '<span class="muted">Waiting for refbox…</span>';

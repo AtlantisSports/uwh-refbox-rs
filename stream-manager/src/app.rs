@@ -33,6 +33,8 @@ pub const TOKEN_FILE: &str = "youtube-token.json";
 const COURT_LOG_LINES: usize = 12;
 /// How often a running court's upcoming titles are checked against the portal (ADR 026 §2).
 const TITLE_SYNC_EVERY: Duration = Duration::from_secs(600);
+/// The longest one court's 10-minute check may take before it is given up.
+const TITLE_SYNC_WAIT: Duration = Duration::from_secs(60);
 
 pub struct App {
     pub config_path: PathBuf,
@@ -74,9 +76,9 @@ struct CourtRuntime {
     /// Why the last switch failed, until the next one succeeds.
     error: Option<String>,
     vmix_reachable: Option<bool>,
-    /// Games already reported as gone from the portal since Start day or End day, so each is
-    /// noted only once.
-    removed_reported: HashSet<String>,
+    /// Games reported as gone from the portal since Start day or End day, in the order found.
+    /// Each is noted in the log once, and stays listed on the court's card.
+    removed_reported: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -126,6 +128,8 @@ pub struct CourtStatus {
     pub log: Vec<String>,
     pub busy: bool,
     pub error: Option<String>,
+    /// Games with a video that are no longer on the portal (the videos were kept).
+    pub removed_games: Vec<String>,
     pub vmix_address: String,
     pub vmix: &'static str,
 }
@@ -149,7 +153,7 @@ impl CourtRuntime {
             busy: false,
             error: None,
             vmix_reachable: None,
-            removed_reported: HashSet::new(),
+            removed_reported: Vec::new(),
         }
     }
 
@@ -277,11 +281,13 @@ impl App {
         else {
             return Vec::new();
         };
-        removed
+        let new: Vec<String> = removed
             .iter()
-            .filter(|game| court.removed_reported.insert((*game).clone()))
+            .filter(|game| !court.removed_reported.contains(game))
             .cloned()
-            .collect()
+            .collect();
+        court.removed_reported.extend(new.iter().cloned());
+        new
     }
 
     // ----- Sessions (PIN) -----
@@ -428,9 +434,6 @@ impl App {
             .position(|c| c.config.name == court_name)
             .ok_or_else(|| format!("There is no court \"{court_name}\""))?;
         let court = &mut courts[i];
-        if matches!(command, Command::StartDay | Command::EndDay) {
-            court.removed_reported.clear();
-        }
         if court.busy
             && matches!(
                 command,
@@ -440,7 +443,12 @@ impl App {
             return Err("Please wait: the previous switch is still being carried out".to_string());
         }
         let was_hold = court.switcher.status().hold;
+        let was_running = court.switcher.status().day_running;
         let result = court.switcher.on_command(command);
+        // Start day or End day took effect: the removed games are looked at afresh.
+        if was_running != court.switcher.status().day_running {
+            court.removed_reported.clear();
+        }
         if let Some(action) = result {
             let message = describe_action(plan.as_ref(), &action, practice);
             dispatch(court, executors.get(i), plan.as_ref(), action, practice);
@@ -584,6 +592,8 @@ impl App {
     /// before each switch still runs. Runs for as long as the program does.
     pub async fn run_title_sync(self: &Arc<Self>) {
         let mut every = tokio::time::interval(TITLE_SYNC_EVERY);
+        // A slow round doesn't bring the next checks forward.
+        every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         // The first tick is immediate: the first check comes 10 minutes after start.
         every.tick().await;
         loop {
@@ -599,12 +609,20 @@ impl App {
                 let log_app = Arc::clone(self);
                 let mut log =
                     move |line: String| log_app.with_court(generation, i, |c| c.note(line));
-                if let Err(e) = title_sync::sync_court(self, &court, None, &mut log).await {
-                    self.with_court(generation, i, |c| {
-                        c.note(format!(
-                            "⚠ Couldn't check the titles against the portal: {e}"
-                        ));
-                    });
+                // Giving up drops the check, which releases the YouTube connection for switches.
+                let check = title_sync::sync_court(self, &court, None, &mut log);
+                let problem = match tokio::time::timeout(TITLE_SYNC_WAIT, check).await {
+                    Ok(Ok(_)) => None,
+                    Ok(Err(e)) => Some(format!(
+                        "⚠ Couldn't check the titles against the portal: {e}"
+                    )),
+                    Err(_) => Some(
+                        "⚠ The portal or YouTube didn't answer in time; titles weren't checked"
+                            .to_string(),
+                    ),
+                };
+                if let Some(line) = problem {
+                    self.with_court(generation, i, |c| c.note(line));
                 }
             }
         }
@@ -850,6 +868,7 @@ impl App {
                     log: c.log.iter().cloned().collect(),
                     busy: c.busy,
                     error: c.error.clone(),
+                    removed_games: c.removed_reported.clone(),
                     vmix_address: c.config.vmix_address.clone(),
                     vmix: match c.vmix_reachable {
                         None => "checking",
@@ -1000,8 +1019,9 @@ mod tests {
     }
 
     #[test]
-    fn a_removed_game_is_reported_once_until_start_day_or_end_day() {
+    fn a_removed_game_is_reported_once_and_listed_until_the_day_starts_or_ends() {
         let app = temp_app("removed");
+        app.inner().courts[0].switcher.resume("20".into());
         let removed = ["22".to_string()];
         assert_eq!(app.newly_removed("1", &removed), ["22"]);
         assert!(app.newly_removed("1", &removed).is_empty());
@@ -1009,11 +1029,23 @@ mod tests {
             app.newly_removed("1", &["22".to_string(), "23".to_string()]),
             ["23"]
         );
-        // End day (even with the day not running) starts the memory afresh.
+        // The card keeps listing them after the log line.
+        assert_eq!(app.status().courts[0].removed_games, ["22", "23"]);
+
+        // End day refused while a switch is still running: the list stays.
+        app.inner().courts[0].busy = true;
+        assert!(app.court_command("1", Command::EndDay).is_err());
+        assert_eq!(app.status().courts[0].removed_games, ["22", "23"]);
+
+        // End day taking effect starts afresh.
+        app.inner().courts[0].busy = false;
+        assert!(app.court_command("1", Command::EndDay).is_ok());
+        assert!(app.status().courts[0].removed_games.is_empty());
+        assert_eq!(app.newly_removed("1", &removed), ["22"]);
+
+        // End day with the day not running changes nothing, so the list stays.
         let _ = app.court_command("1", Command::EndDay);
-        assert_eq!(app.newly_removed("1", &removed), ["22"]);
-        let _ = app.court_command("1", Command::StartDay);
-        assert_eq!(app.newly_removed("1", &removed), ["22"]);
+        assert_eq!(app.status().courts[0].removed_games, ["22"]);
         let _ = std::fs::remove_dir_all(&app.config_dir);
     }
 

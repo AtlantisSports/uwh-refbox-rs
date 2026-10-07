@@ -513,6 +513,8 @@ mod tests {
             in_playlist: true,
             next_game_link: None,
             portal_start: None,
+            court: None,
+            day: None,
         }
     }
 

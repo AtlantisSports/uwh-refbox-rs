@@ -16,10 +16,41 @@
 //! empty values ("") are needed to blank a button.
 
 use crate::BoxError;
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 /// How long to wait for Companion. Short, so a missing Companion is noticed quickly.
 const TIMEOUT: Duration = Duration::from_secs(2);
+/// Every value is sent again this often, in case Companion restarted and lost them.
+const RESEND_ALL_EVERY: Duration = Duration::from_secs(60);
+
+/// Companion's address as URLs are built from it: `http://` or `https://` in front and `/` at
+/// the end are dropped, so "http://127.0.0.1:8000/" becomes "127.0.0.1:8000".
+pub fn normalise_address(text: &str) -> String {
+    let text = text.trim();
+    let lower = text.to_ascii_lowercase();
+    let without_scheme = ["http://", "https://"]
+        .iter()
+        .find(|scheme| lower.starts_with(*scheme))
+        .map_or(text, |scheme| &text[scheme.len()..]);
+    without_scheme.trim_end_matches('/').to_string()
+}
+
+/// The start every one of a court's variable names shares, e.g. "sm_court_1".
+pub fn variable_prefix(court_name: &str) -> String {
+    let slug = slug(court_name);
+    let court = match slug.strip_prefix("court") {
+        Some(rest) if rest.is_empty() || rest.starts_with('_') => rest.trim_start_matches('_'),
+        _ => slug.as_str(),
+    };
+    if court.is_empty() {
+        "sm_court".to_string()
+    } else {
+        format!("sm_court_{court}")
+    }
+}
 
 /// The four custom-variable names for one court.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,19 +62,11 @@ pub struct CourtVariables {
 }
 
 /// Custom-variable names for one court, e.g. "sm_court_1_hold". Only `[a-z0-9_]` is used: the
-/// name is lowercased, every run of other characters becomes one `_`, and a leading "Court" is
-/// dropped, so court "1" and "Court 1" both give `sm_court_1_…`.
+/// name is lowercased, every run of other characters becomes one `_` (none at either end), a
+/// leading word "court" is dropped, and the rest follows `sm_court_`. So court "1" and
+/// "Court 1" both give `sm_court_1_…`, and a court named just "Court" gives `sm_court_…`.
 pub fn variable_names(court_name: &str) -> CourtVariables {
-    let slug = slug(court_name);
-    let court = match slug.strip_prefix("court") {
-        Some(rest) if rest.is_empty() || rest.starts_with('_') => rest.trim_start_matches('_'),
-        _ => slug.as_str(),
-    };
-    let base = if court.is_empty() {
-        "sm_court".to_string()
-    } else {
-        format!("sm_court_{court}")
-    };
+    let base = variable_prefix(court_name);
     CourtVariables {
         hold: format!("{base}_hold"),
         rosters: format!("{base}_rosters"),
@@ -114,6 +137,8 @@ pub fn court_pairs(court_name: &str, state: &CourtState) -> Vec<(String, String)
 pub struct LastSent {
     address: String,
     sent: HashMap<String, String>,
+    /// When everything was last forgotten for the once-a-minute full re-send.
+    last_resend_all: Option<Instant>,
 }
 
 impl LastSent {
@@ -140,29 +165,103 @@ impl LastSent {
     pub fn forget(&mut self) {
         self.sent.clear();
     }
+
+    /// Forgets the values for these names (one court's), so they are all sent again.
+    pub fn forget_names(&mut self, wanted: &[(String, String)]) {
+        for (name, _) in wanted {
+            self.sent.remove(name);
+        }
+    }
+
+    /// Forgets everything once a minute, so values Companion lost (e.g. it restarted) come back.
+    pub fn resend_all_if_due(&mut self, now: Instant) {
+        match self.last_resend_all {
+            Some(last) if now.saturating_duration_since(last) < RESEND_ALL_EVERY => {}
+            Some(_) => {
+                self.sent.clear();
+                self.last_resend_all = Some(now);
+            }
+            None => self.last_resend_all = Some(now),
+        }
+    }
+}
+
+/// Sends one court's changed values to Companion at `address`, all at once, and remembers the
+/// ones it accepted. Returns the problems, naming each variable that failed. After a failure all
+/// of the court's values are forgotten, so they are all sent again next time.
+pub async fn send_court(
+    last: &mut LastSent,
+    address: &str,
+    wanted: &[(String, String)],
+) -> Option<String> {
+    let mut sends = tokio::task::JoinSet::new();
+    for (order, (name, value)) in last.changes(address, wanted).into_iter().enumerate() {
+        let address = address.to_string();
+        sends.spawn(async move {
+            let result = set_variable(&address, &name, &value).await;
+            (order, name, value, result.map_err(|e| e.to_string()))
+        });
+    }
+    let mut results = sends.join_all().await;
+    results.sort_by_key(|(order, ..)| *order);
+    // Each problem once, with the variables it applied to, in the order they were sent.
+    let mut problems: Vec<(String, Vec<String>)> = Vec::new();
+    for (_, name, value, result) in results {
+        match result {
+            Ok(()) => last.record(&name, &value),
+            Err(reason) => match problems.iter_mut().find(|(r, _)| *r == reason) {
+                Some((_, names)) => names.push(name),
+                None => problems.push((reason, vec![name])),
+            },
+        }
+    }
+    if problems.is_empty() {
+        return None;
+    }
+    last.forget_names(wanted);
+    let lines: Vec<String> = problems
+        .into_iter()
+        .map(|(reason, names)| format!("{}: {reason}", names.join(", ")))
+        .collect();
+    Some(lines.join("; "))
 }
 
 /// Sets Companion's custom variable `name` to `value`. `address` is Companion's address, e.g.
-/// "127.0.0.1:8000"; empty means the feature is off and callers don't call this.
+/// "127.0.0.1:8000"; empty means the feature is off and callers don't call this. The error
+/// doesn't repeat the variable's name, so `send_court` can show one problem once for several
+/// variables, naming them.
 pub async fn set_variable(address: &str, name: &str, value: &str) -> Result<(), BoxError> {
+    let address = normalise_address(address);
     let client = reqwest::Client::builder().timeout(TIMEOUT).build()?;
     let response = client
         .post(format!("http://{address}/api/custom-variable/{name}/value"))
         .query(&[("value", value)])
         .send()
         .await
-        .map_err(|e| format!("Couldn't reach Companion at {address}: {e}"))?;
+        .map_err(|e| format!("Couldn't reach Companion at {address}: {}", without_url(e)))?;
     match response.status() {
         status if status.is_success() => Ok(()),
-        reqwest::StatusCode::NOT_FOUND => Err(format!(
-            "Companion has no custom variable \"{name}\"; create it in Companion's Variables tab"
-        )
-        .into()),
+        reqwest::StatusCode::NOT_FOUND => Err(
+            "Companion has no custom variable with this name; create it in Companion's Variables tab"
+                .into(),
+        ),
         reqwest::StatusCode::FORBIDDEN => {
             Err("Companion's HTTP API is turned off; turn it on in Companion's settings".into())
         }
-        status => Err(format!("Companion at {address} refused {name} ({status})").into()),
+        status => Err(format!("Companion at {address} refused it ({status})").into()),
     }
+}
+
+/// A connection error and its causes, without the request's URL (which names the variable).
+fn without_url(error: reqwest::Error) -> String {
+    let error = error.without_url();
+    let mut text = error.to_string();
+    let mut source = std::error::Error::source(&error);
+    while let Some(cause) = source {
+        text.push_str(&format!(": {cause}"));
+        source = cause.source();
+    }
+    text
 }
 
 #[cfg(test)]
@@ -292,6 +391,70 @@ mod tests {
         assert_eq!(last.changes("10.0.0.5:8000", &wanted).len(), 4);
     }
 
+    #[test]
+    fn addresses_typed_as_links_are_normalised() {
+        for typed in [
+            "127.0.0.1:8000",
+            " 127.0.0.1:8000 ",
+            "http://127.0.0.1:8000",
+            "HTTP://127.0.0.1:8000/",
+            "https://127.0.0.1:8000//",
+        ] {
+            assert_eq!(normalise_address(typed), "127.0.0.1:8000", "{typed:?}");
+        }
+        assert_eq!(normalise_address(""), "");
+        assert_eq!(normalise_address("http://"), "");
+    }
+
+    #[test]
+    fn prefix_is_shared_by_all_four_names() {
+        assert_eq!(variable_prefix("1"), "sm_court_1");
+        assert_eq!(variable_prefix("Court 1"), "sm_court_1");
+        assert_eq!(variable_prefix("Courtyard"), "sm_court_courtyard");
+        assert_eq!(variable_prefix("Court"), "sm_court");
+        assert_eq!(variable_names("Court").hold, "sm_court_hold");
+    }
+
+    #[test]
+    fn forgetting_one_court_resends_only_that_court() {
+        let mut last = LastSent::default();
+        let one = court_pairs("1", &state());
+        let two = court_pairs("2", &state());
+        for (name, value) in last
+            .changes("a", &one)
+            .into_iter()
+            .chain(last.changes("a", &two))
+        {
+            last.record(&name, &value);
+        }
+        last.forget_names(&one);
+        assert_eq!(last.changes("a", &one), one);
+        assert!(last.changes("a", &two).is_empty());
+    }
+
+    #[test]
+    fn everything_is_resent_once_a_minute() {
+        let mut last = LastSent::default();
+        let wanted = court_pairs("1", &state());
+        let start = Instant::now();
+        last.resend_all_if_due(start);
+        for (name, value) in last.changes("a", &wanted) {
+            last.record(&name, &value);
+        }
+        last.resend_all_if_due(start + Duration::from_secs(59));
+        assert!(last.changes("a", &wanted).is_empty());
+        last.resend_all_if_due(start + Duration::from_secs(60));
+        assert_eq!(last.changes("a", &wanted).len(), 4);
+        for (name, value) in last.changes("a", &wanted) {
+            last.record(&name, &value);
+        }
+        // The minute starts again from the last full re-send.
+        last.resend_all_if_due(start + Duration::from_secs(100));
+        assert!(last.changes("a", &wanted).is_empty());
+        last.resend_all_if_due(start + Duration::from_secs(120));
+        assert_eq!(last.changes("a", &wanted).len(), 4);
+    }
+
     /// Review Focus 5: a Companion that isn't there fails fast instead of holding anything up.
     #[tokio::test]
     async fn closed_port_fails_in_under_two_seconds() {
@@ -337,6 +500,108 @@ mod tests {
         );
     }
 
+    /// Answers `count` requests, 404 for any whose request line contains `missing`, otherwise ok.
+    async fn fake_companion_missing(missing: &'static str, count: usize) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        tokio::spawn(async move {
+            for _ in 0..count {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                tokio::spawn(async move {
+                    let mut buffer = vec![0; 4096];
+                    let read = socket.read(&mut buffer).await.unwrap();
+                    let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+                    let line = request.lines().next().unwrap_or_default();
+                    let reply = if line.contains(missing) {
+                        "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\nConnection: close\r\n\r\nNot found"
+                    } else {
+                        "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
+                    };
+                    socket.write_all(reply.as_bytes()).await.unwrap();
+                });
+            }
+        });
+        address
+    }
+
+    #[tokio::test]
+    async fn one_missing_variable_does_not_stop_the_others() {
+        let address = fake_companion_missing("sm_court_1_rosters", 4).await;
+        let mut last = LastSent::default();
+        let wanted = court_pairs("1", &state());
+        let error = send_court(&mut last, &address, &wanted).await.unwrap();
+        assert!(error.contains("sm_court_1_rosters"), "{error}");
+        for other in ["sm_court_1_hold", "sm_court_1_now", "sm_court_1_next"] {
+            assert!(!error.contains(other), "{error}");
+        }
+        // After a failure the court's values are all sent again.
+        assert_eq!(last.changes(&address, &wanted).len(), 4);
+    }
+
+    #[tokio::test]
+    async fn every_failed_variable_is_named() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        drop(listener);
+        let mut last = LastSent::default();
+        let wanted = court_pairs("1", &state());
+        let error = send_court(&mut last, &address, &wanted).await.unwrap();
+        for name in [
+            "sm_court_1_hold",
+            "sm_court_1_rosters",
+            "sm_court_1_now",
+            "sm_court_1_next",
+        ] {
+            assert!(error.contains(name), "{error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_same_problem_is_shown_once_naming_every_variable() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        drop(listener);
+        let mut last = LastSent::default();
+        let wanted = court_pairs("1", &state());
+        let error = send_court(&mut last, &address, &wanted).await.unwrap();
+        assert_eq!(
+            error.matches("Couldn't reach Companion").count(),
+            1,
+            "{error}"
+        );
+        assert!(
+            error.starts_with(
+                "sm_court_1_hold, sm_court_1_rosters, sm_court_1_now, sm_court_1_next: Couldn't reach Companion"
+            ),
+            "{error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_successful_court_has_no_error_and_is_remembered() {
+        let address = fake_companion_missing("nothing_missing", 4).await;
+        let mut last = LastSent::default();
+        let wanted = court_pairs("1", &state());
+        assert_eq!(send_court(&mut last, &address, &wanted).await, None);
+        assert!(last.changes(&address, &wanted).is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_link_style_address_still_reaches_companion() {
+        let (address, request) =
+            fake_companion("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+                .await;
+        set_variable(&format!("http://{address}/"), "sm_court_1_hold", "ON")
+            .await
+            .unwrap();
+        assert!(
+            request
+                .await
+                .unwrap()
+                .starts_with("POST /api/custom-variable/sm_court_1_hold/")
+        );
+    }
+
     #[tokio::test]
     async fn missing_variable_says_to_create_it() {
         let (address, _request) = fake_companion(
@@ -347,7 +612,8 @@ mod tests {
             .await
             .unwrap_err()
             .to_string();
-        assert!(error.contains("sm_court_1_hold"), "{error}");
+        // `send_court` names the variable (see `one_missing_variable_does_not_stop_the_others`).
+        assert!(error.contains("no custom variable"), "{error}");
         assert!(error.contains("create"), "{error}");
     }
 }

@@ -48,7 +48,23 @@ pub struct Config {
     /// While on, the Live tab only shows what it would do; nothing is sent to YouTube or vMix.
     /// On by default so a fresh install can never touch a live channel by accident.
     pub practice_mode: bool,
+    /// YouTube's daily allowance for the Google Cloud project, in units (10,000 unless Google
+    /// granted more). Every court's Stream Manager shares it.
+    #[serde(default = "default_quota_daily_limit")]
+    pub quota_daily_limit: u32,
+    /// This program's share of the daily allowance, in percent: 100 with one court, 50 each with
+    /// two. A program that runs more than one court uses this share for all of them.
+    #[serde(default = "default_quota_share_percent")]
+    pub quota_share_percent: u8,
     pub courts: Vec<CourtConfig>,
+}
+
+fn default_quota_daily_limit() -> u32 {
+    10_000
+}
+
+fn default_quota_share_percent() -> u8 {
+    50
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +144,8 @@ impl Default for Config {
             web_port: 8090,
             pin: String::new(),
             practice_mode: true,
+            quota_daily_limit: default_quota_daily_limit(),
+            quota_share_percent: default_quota_share_percent(),
             courts: vec![CourtConfig {
                 name: "1".to_string(),
                 refbox_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
@@ -156,6 +174,9 @@ impl Config {
                 "Privacy must be \"unlisted\", \"private\" or \"public\", not {:?}",
                 self.privacy
             ));
+        }
+        if !(1..=100).contains(&self.quota_share_percent) {
+            return Err("This program's share of the YouTube allowance must be 1 to 100%".into());
         }
         if self.courts.is_empty() {
             return Err("Add at least one court".into());
@@ -205,6 +226,25 @@ mod tests {
         assert!(c.validate().is_err());
         c.pin = "1234".into();
         assert_eq!(c.validate(), Ok(()));
+    }
+
+    #[test]
+    fn config_without_allowance_settings_loads_with_10000_and_half() {
+        let config: Config = serde_json::from_str(r#"{ "event_slug": "cup" }"#).unwrap();
+        assert_eq!(config.quota_daily_limit, 10_000);
+        assert_eq!(config.quota_share_percent, 50);
+        assert_eq!(config.event_slug, "cup");
+    }
+
+    #[test]
+    fn allowance_share_must_be_1_to_100_percent() {
+        for (percent, ok) in [(0, false), (1, true), (50, true), (100, true), (101, false)] {
+            let c = Config {
+                quota_share_percent: percent,
+                ..Default::default()
+            };
+            assert_eq!(c.validate().is_ok(), ok, "{percent}%");
+        }
     }
 
     #[test]

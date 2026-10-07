@@ -427,6 +427,7 @@ function renderCourts() {
       ok: 'Refbox connected',
       waiting: 'Refbox connected, waiting for its first update',
       unreadable: "Refbox data can't be read: check the refbox port is 8000",
+      not_responding: 'Refbox not responding: no countdown for 10 s, automatic switching paused',
       disconnected: 'Refbox not connected',
     }[c.refbox] || c.refbox;
     f('reftext').title = c.refbox_address;

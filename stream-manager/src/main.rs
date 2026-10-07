@@ -7,6 +7,7 @@ use log4rs::{
 };
 use std::path::{Path, PathBuf};
 
+mod access;
 mod app;
 mod companion;
 mod config;
@@ -29,6 +30,15 @@ use youtube::YouTube;
 
 /// Error type used throughout; thread-safe so errors can come back from background tasks.
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
+/// How long a request to YouTube, Google sign-in or the portal may take before it is given up,
+/// so a server that never answers can't hold up a court's switches.
+const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The web client for YouTube, Google sign-in and the portal.
+pub fn http_client() -> Result<reqwest::Client, BoxError> {
+    Ok(reqwest::Client::builder().timeout(HTTP_TIMEOUT).build()?)
+}
 
 const APP_NAME: &str = "stream_manager";
 
@@ -127,14 +137,14 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
     let config_dir = config_path.parent().unwrap_or(Path::new("."));
     let client_file = config_dir.join(&config.client_secret_file);
     let token_file = config_dir.join(app::TOKEN_FILE);
-    let state_file = prepare::state_path(config_dir, &config.event_slug);
+    let state_file = prepare::state_path(config_dir, &config.event_slug)?;
     // The CLI uses the same allowance as the control page, so it counts in the same ledger.
     let ledger_file = config_dir.join(quota::LEDGER_FILE);
     let youtube = || -> Result<YouTube, BoxError> {
-        Ok(YouTube::new(
+        YouTube::new(
             google_auth::GoogleAuth::load(&client_file, &token_file)?,
             Some(ledger_file.clone()),
-        ))
+        )
     };
 
     match command {

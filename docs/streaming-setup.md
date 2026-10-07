@@ -49,7 +49,7 @@ Learn more about NDI and get NDI Tools at https://ndi.video.
 
 | Program | Code | Ready-made download |
 |---|---|---|
-| overlay, overlay-bridge | `master` (the NDI picture fix and offline team names from PR #3383 are merged). The streaming-PC fixes this guide relies on (NDI engine installs itself, bridge on port 8098, a local refbox listed once) are on `feat/overlay/streaming-pc-setup` until that PR is merged | `streaming-tools-windows.zip` (A0) |
+| overlay, overlay-bridge | `master` (the NDI picture fix and offline team names from PR #3383 are merged). The streaming-PC fixes this guide relies on (the Install NDI button, bridge on port 8098, a local refbox listed once) are on `feat/overlay/streaming-pc-setup` until that PR is merged | `streaming-tools-windows.zip` (A0) |
 | Stream Manager | `feat/workspace/stream-manager` until its PR is merged, then `master` | the same zip |
 
 ---
@@ -157,9 +157,9 @@ single file; the overlay's images and fonts are built into it.
    NVIDIA encoder with current drivers.
    - **Check:** in vMix, Help → About shows 29 or newer.
 2. **The NDI engine: nothing to do here.** The overlay needs NDI's engine (the "NDI runtime") to
-   send its picture. If it isn't installed, the overlay installs it itself the first time it
-   starts (B3). Installing **NDI Tools** (https://ndi.video/tools/) is optional; it includes the
-   same engine plus NDI's own monitoring apps.
+   send its picture. If it isn't installed, the overlay offers an **Install NDI** button the first
+   time it starts (B3). Installing **NDI Tools** (https://ndi.video/tools/) is optional; it
+   includes the same engine plus NDI's own monitoring apps.
 3. Create `C:\Streaming\` and copy `overlay.exe`, `overlay-bridge.exe` and `stream-manager.exe`
    (from A0 or A4) into it.
 4. Make a desktop shortcut for each (right-click the `.exe` → Send to → Desktop).
@@ -186,13 +186,17 @@ files in `%APPDATA%\overlay-bridge\config\csv-files\`.
 ### B3. overlay
 
 1. Double-click **overlay**.
-   - **First time on this PC, without the NDI engine:** the overlay downloads NDI's official engine
-     installer (https://ndi.link/NDIRedistV6) and only uses it if Windows confirms it's signed by
-     Vizrt (NDI's owner). Progress shows in yellow at the top-left of the overlay's window
-     ("NDI: …").
-   - ⛔ **STOP — a human:** Windows asks "Allow this app to make changes?" → **Yes**. NDI's
-     installer opens → read and **accept NDI's licence** → **Install**. When it finishes, the
-     overlay starts its NDI output by itself; no restart needed.
+   - **First time on this PC, without the NDI engine:** the top-left of the overlay's window says
+     "NDI off: NDI isn't installed on this PC" in yellow, with an **Install NDI** button. Nothing
+     is installed until you click it.
+   - ⛔ **STOP — a human:** click **Install NDI**. The overlay downloads NDI's official engine
+     installer (https://ndi.link/NDIRedistV6) and only uses it if Windows confirms it is NDI's
+     runtime installer signed by Vizrt (NDI's owner). Progress shows in yellow ("NDI: …"). Windows
+     asks "Allow this app to make changes?" → **Yes**. NDI's installer opens → read and **accept
+     NDI's licence** → **Install**. When it finishes, the overlay starts its NDI output by itself;
+     no restart needed.
+   - If you click **No**, or the install fails, the yellow line says why and the button comes back.
+     The overlay never asks by itself.
    - If the engine is already installed, there's nothing to see: it's found automatically.
    - Then close the overlay. This first start also created its settings file at
      `%APPDATA%\overlay\config\default-config.toml`.
@@ -480,7 +484,7 @@ key A.
 | "Couldn't use port 8090 … (is Stream Manager already running?)" | Another copy is running, maybe minimised. Task Manager → Details → `stream-manager.exe` → End task (press **End day** first if a day is running). |
 | "Access is denied" when building | That program is running. Close it, then build again. |
 | Rebuilt, but nothing changed | The build ran in the wrong folder. `cd` into the right folder first (A3). |
-| NDI source missing in vMix | Look at the top-left of the overlay's window: a yellow "NDI…" line says why NDI isn't running. If the engine install failed or was cancelled, install it from https://ndi.link/NDIRedistV6 and restart the overlay. Also allow `overlay.exe` through the firewall (B3). |
+| NDI source missing in vMix | Look at the top-left of the overlay's window: a yellow "NDI…" line says why NDI isn't running. If NDI isn't installed, click **Install NDI** there. If the install keeps failing, install it from https://ndi.link/NDIRedistV6 and restart the overlay. Also allow `overlay.exe` through the firewall (B3). |
 | Wrong team names on the overlay | The overlay was built without `bridge`. Rebuild with `--features ndi,bridge`. |
 | vMix: "Cannot get the preset configuration: unsupported param (12)" | That destination uses the old **FFMPEG**. Set Application to **FFMPEG6** (vMix 29+). |
 | YouTube: "bitrate … lower than recommended" / new graphics look blocky for a few seconds | Turn on **Strict CBR + NAL CBR**, use Preset **P5**, and check vMix's `bitrate=` shows about 12000. |

@@ -303,6 +303,14 @@ impl App {
             .and_then(|c| c.switcher.status().live)
     }
 
+    /// Whether the court's day is running right now.
+    pub fn day_running(&self, court_name: &str) -> bool {
+        self.inner()
+            .courts
+            .iter()
+            .any(|c| c.config.name == court_name && c.switcher.status().day_running)
+    }
+
     /// Of `removed`, the games not yet reported for this court since Start day or End day.
     /// They count as reported from now on.
     pub fn newly_removed(&self, court_name: &str, removed: &[String]) -> Vec<String> {
@@ -824,7 +832,8 @@ impl App {
 
     // ----- Settings and schedule -----
 
-    /// Saves new settings. Court changes are refused while a court's day is running.
+    /// Saves new settings. Court changes are refused while a court's day is running, or while
+    /// a court's worker is still carrying out a switch or End day.
     pub fn apply_settings(self: &Arc<Self>, new: Config) -> Result<(), String> {
         new.validate_for_save()?;
         let courts_changed;
@@ -858,6 +867,19 @@ impl App {
                         .to_string(),
                 );
             }
+            // Changing the courts restarts every court, so a worker still carrying out End day
+            // or a switch would lose track of it.
+            let busy = inner
+                .courts
+                .iter()
+                .find(|c| c.busy)
+                .filter(|_| courts_changed);
+            if let Some(busy) = busy {
+                return Err(format!(
+                    "Court {} is still finishing its last action; try again in a moment.",
+                    busy.config.name
+                ));
+            }
             confy::store_path(&self.config_path, &new)
                 .map_err(|e| format!("Couldn't save settings: {e}"))?;
             let event_changed = inner.config.event_slug != new.event_slug
@@ -867,13 +889,19 @@ impl App {
                 inner.plan = None;
                 inner.plan_error = None;
             }
-            if courts_changed || rules_changed {
-                let rules = rules_of(&new);
+            let rules = rules_of(&new);
+            if courts_changed {
                 inner.courts = new
                     .courts
                     .iter()
                     .map(|c| CourtRuntime::new(c.clone(), rules))
                     .collect();
+            } else if rules_changed {
+                // Same courts and the same refbox connections: only the timing changes, so each
+                // court keeps its connection state, last game update and log.
+                for court in &mut inner.courts {
+                    court.switcher.set_rules(rules);
+                }
             }
             inner.config = new;
         }
@@ -1512,6 +1540,57 @@ mod tests {
         // End day with the day not running changes nothing, so the list stays.
         let _ = app.court_command("1", Command::EndDay);
         assert_eq!(app.status().courts[0].removed_games, ["22"]);
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[tokio::test]
+    async fn changing_only_the_timing_keeps_each_courts_refbox_connection() {
+        let app = temp_app("timing");
+        let generation = app.inner().generation;
+        app.on_refbox_event(generation, 0, RefboxEvent::Connected);
+        let playing = snapshot(GamePeriod::SecondHalf, "14", "15", 300);
+        app.on_refbox_event(generation, 0, RefboxEvent::Snapshot(Box::new(playing)));
+        assert_eq!(app.status().courts[0].refbox, "ok");
+
+        let mut new = app.config();
+        new.switch_lead_secs += 10;
+        app.apply_settings(new).unwrap();
+        assert_eq!(app.status().courts[0].refbox, "ok");
+        assert_eq!(app.inner().generation, generation);
+        // The last game update is kept too.
+        let switcher = app.inner().courts[0].switcher.status();
+        assert_eq!(switcher.next.as_deref(), Some("14"));
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[tokio::test]
+    async fn court_changes_wait_for_a_court_still_carrying_out_a_switch() {
+        let app = temp_app("busy-settings");
+        app.inner().courts[0].busy = true;
+        let mut new = app.config();
+        new.courts[0].refbox_port += 1;
+        assert_eq!(
+            app.apply_settings(new.clone()),
+            Err("Court 1 is still finishing its last action; try again in a moment.".to_string())
+        );
+        assert_ne!(app.config().courts, new.courts);
+
+        // Other settings can still be saved.
+        let mut timing = app.config();
+        timing.switch_lead_secs += 10;
+        assert!(app.apply_settings(timing).is_ok());
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn day_running_answers_for_the_court_at_the_moment_it_is_asked() {
+        let app = temp_app("day-running");
+        assert!(!app.day_running("1"));
+        app.inner().courts[0].switcher.resume("3".into());
+        assert!(app.day_running("1"));
+        assert!(!app.day_running("2"));
+        assert!(app.court_command("1", Command::EndDay).is_ok());
+        assert!(!app.day_running("1"));
         let _ = std::fs::remove_dir_all(&app.config_dir);
     }
 

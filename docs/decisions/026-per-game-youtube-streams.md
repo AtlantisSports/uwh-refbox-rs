@@ -1,7 +1,8 @@
 # 026 — Per-game YouTube live streams
 
 **Date:** 2026-09-29
-**Status:** accepted — approved by Eric, 2026-10-01
+**Status:** accepted — approved by Eric, 2026-10-01; amended 2026-10-07 after review (see
+"Amendments, 2026-10-07" at the end)
 
 ## Context
 
@@ -65,11 +66,17 @@ Doing this the day before matters because YouTube's daily allowance resets every
 
 ### 2. Keeping titles in sync with the portal
 
-During the day the program re-checks the portal regularly (e.g. every 10 minutes, and again
-just before each game goes live). If the portal changed something (placeholder teams resolved,
-e.g. "Winner G12" → real team name, or a changed start time), it updates that YouTube video.
-Games removed from the portal are **not** deleted automatically; they're flagged to the
-operator.
+While a day is running, the program re-reads the portal schedule every 10 minutes, and again
+just before each switch. If the portal changed something for an upcoming game on this court
+(placeholder teams resolved, e.g. "Winner G12" → real team name, or a changed start time), it
+updates that game's YouTube title, description and scheduled start.
+
+- Games removed from the portal are **not** deleted automatically. They're flagged on the
+  operator page.
+- When this court's allowance runs low (§7), the 10-minute checks stop, but the check just before
+  each switch still runs, so the video that is about to go live always has the right title.
+- Re-running Prepare also updates a changed start time, not only a changed title or
+  description.
 
 ### 3. When to switch: just before the next game, not at the end of this one
 
@@ -113,18 +120,28 @@ The program shows a small web page on the local network (streamdeck) for each co
   until Hold is released, even if the next game has already started.
 - **Switch now:** switch to the next game immediately.
 - **Start day / End day.**
-- Status: YouTube connected, vMix connected, remaining daily allowance, last error.
+- Status: YouTube connected, vMix connected, this court's remaining allowance for today (§7),
+  last error.
 
 The operator never needs to touch the refbox.
 
 **Stream Deck through Bitfocus Companion (primary control):** the organizer already programs
 the Stream Deck with Companion for vMix. Each action (Hold, Switch now, Start day, End day) is a
 simple web link on stream-manager. A Companion button triggers it with Companion's built-in
-"Generic HTTP" connection, so no new software is needed on the Stream Deck side. To show live
-status on the buttons ("HOLD ON", "Rosters in 0:45", "Now: Game 14"), stream-manager can push
-values into Companion's custom variables through Companion's own remote-control interface.
-Companion version in use: **5.0.7**. Its exact remote-control interface is to be confirmed during building. The web page
-stays as a status view and backup for when the Stream Deck isn't available.
+"Generic HTTP" connection, so no new software is needed on the Stream Deck side.
+
+**Live status on the buttons.** Stream-manager pushes values into Companion's custom variables
+through Companion's own remote-control interface, so buttons can show them:
+
+- Hold on / off
+- Time until the rosters ("Rosters in 0:45"), or "Rosters on screen"
+- Now live ("Now: Game 14") and up next ("Next: Game 15")
+
+It sends a value only when it changes. The Companion address is a setting, and the feature is
+off while that setting is empty. A failure to reach Companion is shown on the operator page and
+never affects switching. Companion version in use: **5.0.7**. The exact remote-control interface
+is built against Companion's documentation and confirmed on the organizer's Stream Deck. The web
+page stays as a status view and backup for when the Stream Deck isn't available.
 
 **Building block:** the operator links and page use **axum**, a widely used Rust web-server
 component built on the networking pieces the project already includes. Adding `stream-manager`
@@ -149,9 +166,17 @@ There's a few seconds of overlap instead of a gap, and Game 15 is already live w
 ends, which gives YouTube's autoplay the best chance to pick it. During the overlap the upload
 uses about double the bandwidth for a few seconds.
 
-**Fallback if the overlap turns out not to work reliably:** a single connection per court, where
-the next video is started and the previous one ended back-to-back. That leaves a gap of a few
-seconds, which lands in the line-up before kickoff.
+**Single-connection mode (per-court setting).** Each court has a setting for its stream keys:
+
+- **Two keys, A and B** (default): the handoff above, with no gap.
+- **One key:** vMix streams to that one key all day. At each switch the previous video is ended
+  and the next one put live on the same stream. That leaves a gap of a few seconds, which lands in
+  the line-up before kickoff. vMix's output is started at Start day and stopped at End day, and
+  left running through every switch.
+
+One-key mode is for venues whose upload can't take the brief doubling, or if the overlap turns
+out not to work reliably. It is the same order already used when two games share a stream key.
+The setting can only change while no day is running on that court.
 
 #### vMix setup per court (GPU encoding confirmed working 2026-10-01)
 
@@ -209,6 +234,25 @@ at or over the default limit.** So:
   update) automatically when the allowance runs low. It **never** gives up the core switching.
 - Checking YouTube's status costs 1 unit per check, so the program checks sparingly.
 
+**How each court tracks its share.** The allowance belongs to the Google Cloud project, so all
+courts share it. Each court's Stream Manager runs on its own mini PC and can only count what it
+used itself. So:
+
+- **Per-court share (setting).** Each court gets a share of the daily limit: the whole limit
+  with one court, half each with two (the default). The daily limit is also a setting (10,000
+  by default), raised once Google grants more.
+- **Counted across restarts.** Units used are saved with the court's state, so a restart does
+  not reset the count. The count resets when Google's day resets (midnight US Pacific time).
+- **Shown as "remaining today".** The operator page shows this court's remaining share for
+  today, not a count since the program started.
+- **Extras stop first.** When the remaining share would no longer cover the rest of the day's
+  switches on this court (plus a small margin), the program stops the extras: the chat message,
+  the "Next game" link and the 10-minute title checks (§2). The page says so. The switches
+  themselves, and the title check just before each switch, are never dropped.
+
+The courts don't exchange counts with each other. That keeps each court independent of the
+other mini PC, at the cost that one court can run short while the other has units left over.
+
 ### 8. Connecting YouTube
 
 - The channel owner signs in once through Google's own sign-in page. The password is never typed
@@ -217,10 +261,13 @@ at or over the default limit.** So:
   client.
   - The streams go to the **Atlantis Sports channel, a Brand Account**. Google does not
     count Brand Accounts as part of the Workspace organisation, so "Internal" was blocked
-    (error 403 `org_internal`). Changed on 2026-10-01 to **External, In production**.
-  - In production, the sign-in does not expire after 7 days. Google shows a one-time
-    "unverified app" warning at sign-in, and the app is limited to 100 users, which is
-    irrelevant because only one sign-in is ever needed.
+    (error 403 `org_internal`). The app is set to **External**.
+  - **Publishing status to be confirmed by the channel owner before a tournament.** An earlier
+    version of this section said it was changed to "In production" on 2026-10-01, while the
+    open items said it couldn't be. It must be **In production**: in "Testing" the sign-in
+    expires every 7 days. In production, Google shows a one-time "unverified app" warning at
+    sign-in, and the app is limited to 100 users, which is irrelevant because only one sign-in
+    is ever needed.
   - No logo and no listed scopes. The program requests
     `https://www.googleapis.com/auth/youtube` at sign-in.
 - The downloaded client JSON file contains a secret. It must live **outside the project
@@ -232,18 +279,26 @@ at or over the default limit.** So:
 The rule: **a failure must never stop the vMix stream.** The worst outcome should be what
 happens today: the current video keeps running longer than it should.
 
-- **YouTube or internet unreachable:** keep the current video live, retry, show the error on the
-  operator page. The operator can press Switch now once it recovers.
+- **A switch fails (YouTube or internet unreachable, or YouTube refuses a step):** the current
+  video stays live, the court goes to Hold, and the error is shown on the operator page. There
+  are **no automatic retries**, so a failing step can't use up the daily allowance (§7). The
+  operator retries with Switch now once it recovers.
 - **Refbox connection lost:** automatic switching pauses; the operator uses Switch now.
-- **Program crashes or restarts:** on restart it asks YouTube which video is live and carries on
-  from there.
+- **Program crashes or restarts:** on start, each court asks YouTube which of its prepared videos
+  is live (one status check), and carries on from there. The page shows "Resumed: Game 14 is
+  live", and the operator does not press Start day again. If none is live, the court waits for
+  Start day as usual. The A/B key in use follows from the live video's stream.
 
 ### Scope
 
 **In scope (first version):** the new `stream-manager` program; the prepare step; automatic
 switching driven by the refbox countdown; Hold / Switch now / Start day / End day on the web
-page; vMix A/B handoff with single-connection fallback; the next-game chat message and
-description link; portal title sync; quota-aware behaviour.
+page; vMix A/B handoff with single-connection mode as a per-court setting; the next-game chat
+message and description link; portal title sync; quota-aware behaviour with a per-court share;
+restart recovery; live status on the Stream Deck through Companion.
+
+**Follow-up (separate PRs, after this one):** filling each game's watch link on the portal. See
+"Amendments, 2026-10-07".
 
 **Out of scope for now (possible later):**
 
@@ -314,9 +369,9 @@ Tested at a practice session using **unlisted** videos and a small test event on
 
 ### Open items to verify before or during building
 
-- **Google app is in "Testing" (2026-10-01).** The organizer couldn't select "In production"
-  (cause not yet known). Testing needs cadiguzel@atlantissports.org listed as a test user, and
-  the YouTube sign-in expires every 7 days. It **must be In production before a tournament.**
+- **Google app publishing status (§8): to be confirmed by the channel owner.** If it is still
+  "Testing", the organizer's account must be listed as a test user and the YouTube sign-in
+  expires every 7 days. It **must be In production before a tournament.**
 
 - Exact YouTube quota costs per action (§7).
 - Whether YouTube lets the A/B connections overlap cleanly, and how long "waiting until YouTube
@@ -372,10 +427,8 @@ Tested at a practice session using **unlisted** videos and a small test event on
   - vMix Web Controller address per court: destination 1 = stream key A, destination 2 = B.
   - The chat message is posted *before* the old video ends, because its chat closes when it
     ends.
-  - On a failed switch the old video stays live and the court goes to Hold (no automatic
-    retries, to protect the quota); the operator retries with Switch now. If both videos share
-    a stream key (e.g. a skipped game), the old one ends first and the new one starts on the
-    running stream, with a gap of a few seconds.
+  - If both videos share a stream key (e.g. a skipped game), the old one ends first and the new
+    one starts on the running stream, with a gap of a few seconds.
   - Verified so far: the failure path (no YouTube connection → nothing touched, clear error,
     court not started) and vMix reachability. **The real switch on YouTube/vMix is still to be
     tested by the organizer.**
@@ -384,9 +437,6 @@ Tested at a practice session using **unlisted** videos and a small test event on
   kickoff. The upcoming game is always `next_game_number` during a break. The earlier rule
   wrongly used `game_number` after the refbox reset, which caused "Game 0" on Start day and
   would have missed switches. Fixed, with a regression test.
-- **Open item:** after a restart, Stream Manager doesn't yet know which video is live (§9 says
-  it should ask YouTube). For now, restart only while the live game is being played, then
-  press Start day again.
 - **Ready-made downloads (2026-10-03):** `.github/workflows/streaming-tools.yml` builds the three
   Windows programs for the court mini PCs (overlay with `ndi,bridge`, overlay-bridge,
   stream-manager) into `streaming-tools-windows.zip`.
@@ -399,15 +449,42 @@ Tested at a practice session using **unlisted** videos and a small test event on
   - Approved by the organizer, who is responsible for the project and has read and accepted the
     NDI SDK License Agreement on its behalf (2026-10-03). The workflow installs the SDK on the
     project's behalf.
-- **Portal watch links (2026-10-05):** at the organizer's request, Stream Manager fills each game's
-  `watchUrl` on the portal with its YouTube link: automatically after every Prepare, and cleared
-  again when test videos are deleted.
-  - It uses the portal's existing admin endpoint `POST /api/admin/update-games-watch-urls` (one
-    request for all games), so no portal change is needed. It needs a portal account with the
-    **admin** role.
-  - The editable alternative (`PUT …/schedule/games/{n}`, open to event organisers) was rejected:
-    it replaces a game's whole definition and could overwrite schedule data.
-  - Portal access tokens only last about 15 minutes, so the admin email and password are saved in
-    `Documents\stream-manager\portal-login.json`. The password is encrypted with Windows DPAPI for
-    the current user (PowerShell `ConvertFrom-SecureString`, fed through stdin rather than the
-    command line), and can only be entered from the PC itself.
+- **Portal watch links (2026-10-05, withdrawn 2026-10-07):** a first version filled each game's
+  `watchUrl` on the portal through the admin endpoint `POST /api/admin/update-games-watch-urls`,
+  signing in with a saved portal admin email and password. It was taken out of this PR on
+  review. See "Amendments, 2026-10-07".
+
+## Amendments, 2026-10-07
+
+Made after a review of the PR against this ADR, and approved by Eric.
+
+1. **Restart recovery is built** (§9), so the old "restart only during a game" workaround is gone.
+2. **The daily allowance is tracked per court** (§7): a share setting, counted across restarts,
+   shown as "remaining today", with the extras dropped first when it runs low.
+3. **Portal title sync is built** (§2), and Prepare also updates a changed start time.
+4. **Single-connection mode is a per-court setting** (§5), not only the shared-key edge case.
+5. **Live status on the Stream Deck is built** (§4), through Companion's custom variables.
+6. **A failed switch goes to Hold with no automatic retries** (§9). This was already the
+   behaviour, and §9 now says so instead of "retry".
+7. **The Google app's publishing status is to be confirmed** (§8). The two earlier statements
+   contradicted each other.
+8. **The overlay and overlay-bridge changes made during this work move to their own PR**, which
+   merges first: the NDI engine installed automatically, the bridge moved off vMix's port 8099
+   to 8098, and a refbox on the same PC listed once in the bridge's scan. This PR then changes
+   no overlay or overlay-bridge code, as the Decision section says.
+9. **Portal watch links move to follow-up PRs, signed in the way the refbox signs in.** No
+   portal email or password is stored, ever.
+   - **How it works:** Stream Manager shows its own ID. An event organiser enters that ID on the
+     event's page in the portal and gets a short code. The operator types the code into Stream
+     Manager's Settings tab. Stream Manager swaps the code for a key that works only for that
+     event, and only for setting that event's watch links. It expires the day after the event and
+     the organiser can cancel it at any time. This mirrors the refbox's link
+     (`/api/events/{id}/access-keys/ref-box`), which issues a key for pushing scores only.
+   - **What it needs:** a uwhportal PR first. It adds a Stream Manager link with its own key
+     type, and lets the watch-link update accept that key. A follow-up Stream Manager PR then
+     adds the code entry and fills the links after Prepare, clearing them again when test videos
+     are deleted.
+   - **Why it was taken out:** none of this work is in use yet, so nothing depends on the links in
+     the meantime. Taking it out means this PR builds nothing that would later be thrown away:
+     no stored admin login, and no password encryption through PowerShell (whose test failed on
+     GitHub's Windows machines).

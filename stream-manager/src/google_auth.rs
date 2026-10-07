@@ -280,8 +280,8 @@ fn save_token(path: &Path, token: &StoredToken) -> Result<(), BoxError> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    fs::write(path, serde_json::to_string_pretty(token)?)?;
-    Ok(())
+    // Written atomically: a crash part-way must not leave a broken token file behind.
+    crate::prepare::write_atomically(path, &serde_json::to_string_pretty(token)?)
 }
 
 /// Hands out valid access tokens, refreshing them from the stored refresh token as needed.
@@ -330,5 +330,33 @@ impl GoogleAuth {
             save_token(&self.token_file, &self.token)?;
         }
         Ok(self.token.access_token.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_token_is_saved_whole_with_no_temporary_file_left() {
+        let dir = std::env::temp_dir().join(format!("stream-manager-token-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join("sub").join(crate::app::TOKEN_FILE);
+        let token = StoredToken {
+            refresh_token: "refresh".into(),
+            access_token: "access".into(),
+            expires_at: 42,
+        };
+        save_token(&path, &token).unwrap();
+        save_token(&path, &token).unwrap();
+        let saved: StoredToken = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(saved.refresh_token, "refresh");
+        assert_eq!(saved.expires_at, 42);
+        let files: Vec<_> = fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(files, [crate::app::TOKEN_FILE]);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

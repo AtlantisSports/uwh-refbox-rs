@@ -91,6 +91,11 @@ impl CourtSwitcher {
         }
     }
 
+    /// Changes the timing rules, keeping everything else (the day, Hold, the last snapshot).
+    pub fn set_rules(&mut self, rules: SwitchRules) {
+        self.rules = rules;
+    }
+
     pub fn status(&self) -> Status {
         let phase = self.last.as_ref().map_or(Phase::Unknown, phase_of);
         let (secs_until_switch, secs_until_rosters) = match &phase {
@@ -98,8 +103,10 @@ impl CourtSwitcher {
                 upcoming,
                 secs_left,
             } => {
-                let switch = (self.day_running && self.live.as_ref() != Some(upcoming))
-                    .then(|| secs_left.saturating_sub(self.rules.switch_lead_secs));
+                let switch = (self.day_running
+                    && !upcoming.is_empty()
+                    && self.live.as_ref() != Some(upcoming))
+                .then(|| secs_left.saturating_sub(self.rules.switch_lead_secs));
                 let rosters = (*secs_left > self.rules.roster_start_secs)
                     .then(|| secs_left - self.rules.roster_start_secs);
                 (switch, rosters)
@@ -208,7 +215,12 @@ impl CourtSwitcher {
             } => {
                 let in_rosters = (self.rules.roster_end_secs..=self.rules.roster_start_secs)
                     .contains(&secs_left);
-                (upcoming != *live && secs_left <= self.rules.switch_lead_secs && !in_rosters)
+                // After the court's last game the refbox sends a blank upcoming game: there is
+                // no next video, so the last one simply waits for End day (ADR 026).
+                (!upcoming.is_empty()
+                    && upcoming != *live
+                    && secs_left <= self.rules.switch_lead_secs
+                    && !in_rosters)
                     .then_some(upcoming)?
             }
         };
@@ -353,6 +365,24 @@ mod tests {
         // No repeat switching.
         assert_eq!(s.on_snapshot(&break_new("14", "15", 150)), None);
         assert_eq!(s.on_snapshot(&playing("15", "16")), None);
+    }
+
+    #[test]
+    fn after_the_last_game_the_video_waits_for_end_day() {
+        // Last game of the court's day: the refbox's break has a blank upcoming game.
+        let mut s = started(playing("20", ""));
+        for secs in [600, 195, 100, 10, 0] {
+            assert_eq!(
+                s.on_snapshot(&break_old("20", "", secs)),
+                None,
+                "at {secs}s"
+            );
+        }
+        let status = s.status();
+        assert_eq!(status.live.as_deref(), Some("20"));
+        assert!(!status.hold);
+        assert_eq!(status.secs_until_switch, None);
+        assert_eq!(status.next, None);
     }
 
     #[test]

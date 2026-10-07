@@ -195,6 +195,40 @@ fn stream_to_bind<'a>(
     (bound != Some(wanted.title.as_str())).then_some(wanted)
 }
 
+/// What Prepare does with a video's stream-key binding.
+#[derive(Debug, PartialEq)]
+enum Binding<'a> {
+    /// Already bound to the right key.
+    Unchanged,
+    /// (Re)bind it to this key.
+    Bind(&'a StreamInfo),
+    /// It belongs on another key, but its court's day is running: it stays on this one.
+    Kept(String),
+}
+
+/// Decides a video's binding. While the court's day is running, a video already bound to a key
+/// stays on it (a switch relies on it); only an unbound video is bound.
+fn binding<'a>(
+    court: &CourtConfig,
+    keys: &[&'a StreamInfo],
+    position: usize,
+    bound: Option<&str>,
+    day_running: bool,
+) -> Binding<'a> {
+    match (stream_to_bind(court, keys, position, bound), bound) {
+        (None, _) => Binding::Unchanged,
+        (Some(_), Some(current)) if day_running => Binding::Kept(current.to_string()),
+        (Some(stream), _) => Binding::Bind(stream),
+    }
+}
+
+fn kept_message(game: &str, stream: &str, court: &str) -> String {
+    format!(
+        "Kept Game {game} on stream key {stream} because Court {court}'s day is running; \
+         re-run Prepare after End day to rebind"
+    )
+}
+
 /// The public portal web address for the event (derived from the API address).
 fn portal_event_page(config: &Config) -> String {
     let web = config
@@ -388,13 +422,15 @@ pub async fn lookups(youtube: &mut YouTube) -> Result<Lookups, BoxError> {
     })
 }
 
-/// Works out what `run` would do, without changing anything.
+/// Works out what `run` would do, without changing anything. `day_running` says whether a
+/// court's day is running, as for `run`.
 pub fn preview(
     config: &Config,
     plan: &EventPlan,
     state: &EventState,
     lookups: &Lookups,
     selection: &Selection,
+    day_running: &(dyn Fn(&str) -> bool + Sync),
 ) -> Result<Work, BoxError> {
     let targets = select_targets(config, plan, selection)?;
     let mut work = Work {
@@ -403,6 +439,7 @@ pub fn preview(
     };
     for target in &targets {
         let pair = court_streams(target.court, &lookups.streams)?;
+        let day_running = day_running(&target.court.name);
         work.playlists
             .push((target.playlist_title.clone(), target.games.len()));
         if !state.playlists.contains_key(&target.playlist_title)
@@ -424,7 +461,14 @@ pub fn preview(
                     if needed_update(config, plan, game, v).is_some() {
                         work.videos_to_update += 1;
                     }
-                    if stream_to_bind(target.court, &pair, i, v.bound_stream.as_deref()).is_some() {
+                    let bind = binding(
+                        target.court,
+                        &pair,
+                        i,
+                        v.bound_stream.as_deref(),
+                        day_running,
+                    );
+                    if matches!(bind, Binding::Bind(_)) {
                         work.binds += 1;
                     }
                     if !v.in_playlist {
@@ -447,6 +491,11 @@ pub fn preview(
 /// Progress lines go to `log`. The YouTube connection is taken afresh for each playlist and each
 /// game, never for the whole run, so a court's switch (which needs the same connection) waits
 /// at most for one game's few calls even while Prepare runs during a day.
+///
+/// On a court whose day is running (asked of `day_running` for each game, just before its
+/// stream key is decided), videos keep the stream key they are bound to; titles, descriptions
+/// and start times are still updated.
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     config: &Config,
     plan: &EventPlan,
@@ -454,6 +503,7 @@ pub async fn run(
     state_file: &Path,
     lookups: &Lookups,
     selection: &Selection,
+    day_running: &(dyn Fn(&str) -> bool + Sync),
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<(), BoxError> {
     for target in select_targets(config, plan, selection)? {
@@ -537,20 +587,33 @@ pub async fn run(
                 }
             };
 
-            if let Some(stream) =
-                stream_to_bind(target.court, &pair, i, video.bound_stream.as_deref())
-            {
-                youtube
-                    .bind_broadcast(&video.broadcast_id, &stream.id)
-                    .await?;
-                log(format!(
-                    "Game {}: linked to stream key \"{}\"",
-                    game.number, stream.title
-                ));
-                if let Some(v) = state.videos.get_mut(&game.number) {
-                    v.bound_stream = Some(stream.title.clone());
+            // Asked now, not at the start of the job: the court may have started its day since.
+            // Start day needs the YouTube connection this game holds, so the answer stays true
+            // until the binding below is done.
+            match binding(
+                target.court,
+                &pair,
+                i,
+                video.bound_stream.as_deref(),
+                day_running(&target.court.name),
+            ) {
+                Binding::Unchanged => {}
+                Binding::Kept(stream) => {
+                    log(kept_message(&game.number, &stream, &target.court.name));
                 }
-                save_state(state_file, &state)?;
+                Binding::Bind(stream) => {
+                    youtube
+                        .bind_broadcast(&video.broadcast_id, &stream.id)
+                        .await?;
+                    log(format!(
+                        "Game {}: linked to stream key \"{}\"",
+                        game.number, stream.title
+                    ));
+                    if let Some(v) = state.videos.get_mut(&game.number) {
+                        v.bound_stream = Some(stream.title.clone());
+                    }
+                    save_state(state_file, &state)?;
+                }
             }
 
             if !video.in_playlist {
@@ -582,7 +645,9 @@ pub async fn run_cli(
 ) -> Result<(), BoxError> {
     let state = load_state(state_file, &config.event_slug)?;
     let lookups = lookups(youtube).await?;
-    let work = preview(config, plan, &state, &lookups, selection)?;
+    // Run from the terminal, with no court's day running in this program.
+    let no_day_running = |_: &str| false;
+    let work = preview(config, plan, &state, &lookups, selection, &no_day_running)?;
     println!("Event: {}  —  day {}", plan.event_name, selection.day);
     for (title, count) in &work.playlists {
         println!("  Playlist \"{title}\": {count} videos");
@@ -614,6 +679,7 @@ pub async fn run_cli(
         state_file,
         &lookups,
         selection,
+        &no_day_running,
         &mut |line| info!("{line}"),
     )
     .await
@@ -788,6 +854,37 @@ mod tests {
         assert_eq!(
             stream_to_bind(&court, &keys, 0, None).map(|s| s.title.as_str()),
             Some("Court 1 - A")
+        );
+    }
+
+    #[test]
+    fn while_the_courts_day_runs_prepare_keeps_each_videos_stream_key() {
+        let court = Config::default().courts.remove(0);
+        let both = [stream("Court 1 - A"), stream("Court 1 - B")];
+        let keys: Vec<&StreamInfo> = both.iter().collect();
+        // Game 2 (position 1) belongs on B but is bound to A, e.g. after the schedule changed.
+        assert_eq!(
+            binding(&court, &keys, 1, Some("Court 1 - A"), true),
+            Binding::Kept("Court 1 - A".to_string())
+        );
+        assert_eq!(
+            binding(&court, &keys, 1, Some("Court 1 - A"), false),
+            Binding::Bind(&both[1])
+        );
+        // Already on the right key: nothing to do either way.
+        assert_eq!(
+            binding(&court, &keys, 1, Some("Court 1 - B"), true),
+            Binding::Unchanged
+        );
+        // A new video has no key to keep, so it is bound even during the day.
+        assert_eq!(
+            binding(&court, &keys, 0, None, true),
+            Binding::Bind(&both[0])
+        );
+        assert_eq!(
+            kept_message("2", "Court 1 - A", "1"),
+            "Kept Game 2 on stream key Court 1 - A because Court 1's day is running; \
+             re-run Prepare after End day to rebind"
         );
     }
 

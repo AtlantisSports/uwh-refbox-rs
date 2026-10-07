@@ -23,7 +23,7 @@ const API: &str = "https://www.googleapis.com/youtube/v3";
 const LIST_COST: u32 = 1;
 const WRITE_COST: u32 = 50;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StreamInfo {
     pub id: String,
     pub title: String,

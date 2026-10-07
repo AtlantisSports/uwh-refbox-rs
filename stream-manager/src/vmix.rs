@@ -2,12 +2,18 @@
 //! (`http://<address>/api/?Function=StartStreaming&Value=<n>`, where n = destination − 1).
 
 use crate::BoxError;
-use std::time::Duration;
+use std::{sync::OnceLock, time::Duration};
 
-fn client() -> Result<reqwest::Client, BoxError> {
-    Ok(reqwest::Client::builder()
+/// The one HTTP client for every vMix call, built on first use (it keeps connections open).
+fn client() -> Result<&'static reqwest::Client, BoxError> {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    if let Some(client) = CLIENT.get() {
+        return Ok(client);
+    }
+    let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
-        .build()?)
+        .build()?;
+    Ok(CLIENT.get_or_init(|| client))
 }
 
 async fn call(address: &str, function: &str, destination: u8) -> Result<(), BoxError> {

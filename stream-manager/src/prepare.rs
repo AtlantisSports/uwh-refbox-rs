@@ -48,6 +48,10 @@ pub struct VideoState {
     /// Link to the following game's video, added to the description once that game goes live.
     #[serde(default)]
     pub next_game_link: Option<String>,
+    /// The portal's own start time for the game, before a past start is moved forward
+    /// (`PAST_START_OFFSET`). Changes are spotted by comparing this, not `scheduled_start`.
+    #[serde(default)]
+    pub portal_start: Option<String>,
 }
 
 /// The description as it should be on YouTube: the generated text plus, once known, the link
@@ -175,6 +179,64 @@ fn broadcast_spec(config: &Config, plan: &EventPlan, game: &PlannedGame) -> Broa
     }
 }
 
+/// The portal's own start time for a game, as recorded in [`VideoState::portal_start`].
+fn portal_start(game: &PlannedGame) -> String {
+    game.start.format(&Rfc3339).unwrap_or_default()
+}
+
+/// The update a recorded video needs to match the portal, if any: what to send to YouTube,
+/// and the portal start time to record. The description keeps its "Next game" link.
+fn needed_update(
+    config: &Config,
+    plan: &EventPlan,
+    game: &PlannedGame,
+    video: &VideoState,
+) -> Option<(BroadcastSpec, String)> {
+    let spec = broadcast_spec(config, plan, game);
+    let spec = BroadcastSpec {
+        description: with_next_link(&spec.description, video.next_game_link.as_deref()),
+        ..spec
+    };
+    // The start is compared using the portal's own time: the stored scheduled start of a past
+    // game was moved forward, and would differ on every check.
+    let start = portal_start(game);
+    let changed = video.title != spec.title
+        || video.description != spec.description
+        || video.portal_start.as_deref() != Some(start.as_str());
+    changed.then_some((spec, start))
+}
+
+/// Brings one game's recorded video in line with the portal: title, description and start
+/// time. Returns whether YouTube was updated. A game without a video is left alone (creating
+/// and linking videos is Prepare's job).
+pub async fn sync_video(
+    yt: &mut YouTube,
+    config: &Config,
+    plan: &EventPlan,
+    game: &PlannedGame,
+    state: &mut EventState,
+    state_file: &Path,
+    log: &mut (dyn FnMut(String) + Send),
+) -> Result<bool, BoxError> {
+    let Some(video) = state.videos.get(&game.number) else {
+        return Ok(false);
+    };
+    let Some((spec, start)) = needed_update(config, plan, game, video) else {
+        return Ok(false);
+    };
+    let broadcast_id = video.broadcast_id.clone();
+    yt.update_broadcast(&broadcast_id, &spec).await?;
+    log(format!("Updated video: {}", spec.title));
+    if let Some(v) = state.videos.get_mut(&game.number) {
+        v.title = spec.title;
+        v.description = spec.description;
+        v.scheduled_start = spec.scheduled_start;
+        v.portal_start = Some(start);
+    }
+    save_state(state_file, state)?;
+    Ok(true)
+}
+
 /// What the prepare step will do, worked out before anything is changed.
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct Work {
@@ -291,7 +353,6 @@ pub fn preview(
             work.playlists_to_create += 1;
         }
         for (i, game) in target.games.iter().enumerate() {
-            let spec = broadcast_spec(config, plan, game);
             match state.videos.get(&game.number) {
                 None => {
                     work.videos_to_create += 1;
@@ -299,9 +360,7 @@ pub fn preview(
                     work.playlist_adds += 1;
                 }
                 Some(v) => {
-                    let description =
-                        with_next_link(&spec.description, v.next_game_link.as_deref());
-                    if v.title != spec.title || v.description != description {
+                    if needed_update(config, plan, game, v).is_some() {
                         work.videos_to_update += 1;
                     }
                     if stream_to_bind(target.court, &pair, i, v.bound_stream.as_deref()).is_some() {
@@ -370,10 +429,9 @@ pub async fn run(
         };
 
         for (i, game) in target.games.iter().enumerate() {
-            let spec = broadcast_spec(config, plan, game);
-
             let video = match state.videos.get(&game.number).cloned() {
                 None => {
+                    let spec = broadcast_spec(config, plan, game);
                     let id = youtube.insert_broadcast(&spec).await?;
                     log(format!("Created video: {}", spec.title));
                     let v = VideoState {
@@ -384,26 +442,16 @@ pub async fn run(
                         bound_stream: None,
                         in_playlist: false,
                         next_game_link: None,
+                        portal_start: Some(portal_start(game)),
                     };
                     state.videos.insert(game.number.clone(), v.clone());
                     save_state(state_file, &state)?;
                     v
                 }
-                Some(mut v) => {
-                    let spec = BroadcastSpec {
-                        description: with_next_link(&spec.description, v.next_game_link.as_deref()),
-                        ..spec
-                    };
-                    if v.title != spec.title || v.description != spec.description {
-                        youtube.update_broadcast(&v.broadcast_id, &spec).await?;
-                        log(format!("Updated video: {}", spec.title));
-                        v.title = spec.title.clone();
-                        v.description = spec.description.clone();
-                        v.scheduled_start = spec.scheduled_start.clone();
-                        state.videos.insert(game.number.clone(), v.clone());
-                        save_state(state_file, &state)?;
-                    }
-                    v
+                Some(v) => {
+                    sync_video(youtube, config, plan, game, &mut state, state_file, log).await?;
+                    // `sync_video` changes the record but never removes it.
+                    state.videos.get(&game.number).cloned().unwrap_or(v)
                 }
             };
 
@@ -592,6 +640,86 @@ mod tests {
             stream_to_bind(&court, &keys, 0, None).map(|s| s.title.as_str()),
             Some("Court 1 - A")
         );
+    }
+
+    fn one_game_plan(start: &str) -> EventPlan {
+        parse_event_plan(&format!(
+            r#"{{ "event": {{ "name": "Test Cup" }}, "games": [ {{
+                "number": "1", "startsOn": "{start}", "court": "1",
+                "dark": {{ "assignment": null }}, "light": {{ "assignment": null }} }} ] }}"#
+        ))
+        .unwrap()
+    }
+
+    /// The record as it stands after an update from `needed_update`.
+    fn recorded(spec: &BroadcastSpec, start: String) -> VideoState {
+        VideoState {
+            broadcast_id: "v1".to_string(),
+            title: spec.title.clone(),
+            description: spec.description.clone(),
+            scheduled_start: spec.scheduled_start.clone(),
+            bound_stream: Some("Court 1 - A".to_string()),
+            in_playlist: true,
+            next_game_link: None,
+            portal_start: Some(start),
+        }
+    }
+
+    #[test]
+    fn a_past_game_with_an_unchanged_portal_start_is_not_updated_again() {
+        let config = Config::default();
+        let plan = one_game_plan("2020-08-01T09:30:00+10:00");
+        let game = &plan.games[0];
+        let mut video = recorded(&broadcast_spec(&config, &plan, game), String::new());
+        video.portal_start = None;
+        let (spec, start) = needed_update(&config, &plan, game, &video).unwrap();
+        let video = recorded(&spec, start);
+        // The stored start was moved 15 minutes ahead of "now"; a later compare works out a
+        // different moved start, but the portal's own time hasn't changed.
+        let mut later = video.clone();
+        later.scheduled_start = "2020-01-01T00:00:00Z".to_string();
+        assert!(needed_update(&config, &plan, game, &video).is_none());
+        assert!(needed_update(&config, &plan, game, &later).is_none());
+    }
+
+    #[test]
+    fn a_changed_portal_start_is_updated() {
+        let config = Config::default();
+        let plan = one_game_plan("2099-08-01T09:30:00+10:00");
+        let game = &plan.games[0];
+        let spec = broadcast_spec(&config, &plan, game);
+        let video = recorded(&spec, portal_start(game));
+        assert!(needed_update(&config, &plan, game, &video).is_none());
+
+        let moved = one_game_plan("2099-08-01T10:15:00+10:00");
+        let (spec, start) = needed_update(&config, &moved, &moved.games[0], &video).unwrap();
+        assert_eq!(start, "2099-08-01T10:15:00+10:00");
+        assert_eq!(spec.scheduled_start, "2099-08-01T10:15:00+10:00");
+    }
+
+    #[test]
+    fn an_update_keeps_the_next_game_link() {
+        let config = Config::default();
+        let plan = one_game_plan("2099-08-01T09:30:00+10:00");
+        let game = &plan.games[0];
+        let mut video = recorded(&broadcast_spec(&config, &plan, game), String::new());
+        video.next_game_link = Some("https://youtu.be/next".to_string());
+        let (spec, _) = needed_update(&config, &plan, game, &video).unwrap();
+        assert!(
+            spec.description
+                .ends_with("Next game: https://youtu.be/next\n")
+        );
+    }
+
+    #[test]
+    fn a_video_record_without_portal_start_still_loads() {
+        let video: VideoState = serde_json::from_str(
+            r#"{ "broadcast_id": "v1", "title": "t", "description": "d",
+                 "scheduled_start": "2026-08-01T09:30:00+10:00", "bound_stream": null,
+                 "in_playlist": true }"#,
+        )
+        .unwrap();
+        assert_eq!(video.portal_start, None);
     }
 
     #[test]

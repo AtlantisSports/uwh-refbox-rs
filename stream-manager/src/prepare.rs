@@ -7,7 +7,7 @@
 
 use crate::{
     BoxError,
-    config::{Config, CourtConfig},
+    config::{Config, CourtConfig, StreamMode},
     portal::{EventPlan, PlannedGame, playlist_title, video_title},
     youtube::{BroadcastSpec, Playlist, StreamInfo, YouTube},
 };
@@ -94,11 +94,11 @@ fn normalize(name: &str) -> String {
     name.trim().replace(['–', '—'], "-").to_lowercase()
 }
 
-/// Finds a court's two stream keys by name.
+/// Finds a court's stream keys by name: A and B, or only A in one-key mode.
 pub fn court_streams<'a>(
     court: &CourtConfig,
     streams: &'a [StreamInfo],
-) -> Result<[&'a StreamInfo; 2], String> {
+) -> Result<Vec<&'a StreamInfo>, String> {
     let names = court.stream_names();
     let find = |name: &String| {
         streams
@@ -112,7 +112,10 @@ pub fn court_streams<'a>(
                 )
             })
     };
-    Ok([find(&names[0])?, find(&names[1])?])
+    match court.stream_mode {
+        StreamMode::TwoKeys => Ok(vec![find(&names[0])?, find(&names[1])?]),
+        StreamMode::OneKey => Ok(vec![find(&names[0])?]),
+    }
 }
 
 /// The public portal web address for the event (derived from the API address).
@@ -275,7 +278,7 @@ pub fn preview(
         }
         for (i, game) in target.games.iter().enumerate() {
             let spec = broadcast_spec(config, plan, game);
-            let stream = &pair[i % 2].title;
+            let stream = &pair[target.court.stream_for_position(i)].title;
             match state.videos.get(&game.number) {
                 None => {
                     work.videos_to_create += 1;
@@ -355,7 +358,7 @@ pub async fn run(
 
         for (i, game) in target.games.iter().enumerate() {
             let spec = broadcast_spec(config, plan, game);
-            let stream = pair[i % 2];
+            let stream = pair[target.court.stream_for_position(i)];
 
             let video = match state.videos.get(&game.number).cloned() {
                 None => {
@@ -537,14 +540,24 @@ mod tests {
             stream("Court 1 — B"),
             stream("Other"),
         ];
-        let [a, b] = court_streams(&court, &streams).unwrap();
+        let keys = court_streams(&court, &streams).unwrap();
         assert_eq!(
-            (a.id.as_str(), b.id.as_str()),
+            (keys[0].id.as_str(), keys[1].id.as_str()),
             ("id-court 1 – a", "id-Court 1 — B")
         );
 
         let err = court_streams(&court, &streams[..1]).unwrap_err();
         assert!(err.contains("Court 1 - B"));
+    }
+
+    #[test]
+    fn one_key_mode_needs_only_stream_key_a() {
+        let mut court = Config::default().courts.remove(0);
+        court.stream_mode = StreamMode::OneKey;
+        let streams = [stream("Court 1 - A")];
+        let keys = court_streams(&court, &streams).unwrap();
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].title, "Court 1 - A");
     }
 
     #[test]

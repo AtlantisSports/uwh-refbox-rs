@@ -51,6 +51,16 @@ pub struct Config {
     pub courts: Vec<CourtConfig>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StreamMode {
+    /// Two stream keys taking turns: no gap at a switch (ADR 026 §5).
+    #[default]
+    TwoKeys,
+    /// One stream key all day: a few seconds' gap before kickoff.
+    OneKey,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CourtConfig {
     /// Court name exactly as the portal schedule uses it (e.g. `1`).
@@ -68,6 +78,9 @@ pub struct CourtConfig {
     /// destination 1 and stream key B is destination 2.
     #[serde(default = "default_vmix_address")]
     pub vmix_address: String,
+    /// Two stream keys taking turns (default), or one key all day (ADR 026, §5).
+    #[serde(default)]
+    pub stream_mode: StreamMode,
 }
 
 fn default_vmix_address() -> String {
@@ -80,6 +93,14 @@ pub fn vmix_destination(stream_index: usize) -> u8 {
 }
 
 impl CourtConfig {
+    /// Which stream key (0 = A, 1 = B) the court's game at `position` in the day's order uses.
+    pub fn stream_for_position(&self, position: usize) -> usize {
+        match self.stream_mode {
+            StreamMode::TwoKeys => position % 2,
+            StreamMode::OneKey => 0,
+        }
+    }
+
     pub fn stream_names(&self) -> [String; 2] {
         [
             self.stream_a
@@ -114,6 +135,7 @@ impl Default for Config {
                 stream_a: None,
                 stream_b: None,
                 vmix_address: default_vmix_address(),
+                stream_mode: StreamMode::TwoKeys,
             }],
         }
     }
@@ -183,6 +205,35 @@ mod tests {
         assert!(c.validate().is_err());
         c.pin = "1234".into();
         assert_eq!(c.validate(), Ok(()));
+    }
+
+    #[test]
+    fn court_without_stream_mode_loads_as_two_keys() {
+        let court: CourtConfig = serde_json::from_str(
+            r#"{ "name": "1", "refbox_ip": "127.0.0.1", "refbox_port": 8000 }"#,
+        )
+        .unwrap();
+        assert_eq!(court.stream_mode, StreamMode::TwoKeys);
+    }
+
+    #[test]
+    fn one_key_mode_round_trips() {
+        let mut court = Config::default().courts.remove(0);
+        court.stream_mode = StreamMode::OneKey;
+        let text = serde_json::to_string(&court).unwrap();
+        assert!(text.contains(r#""stream_mode":"one-key""#), "{text}");
+        let back: CourtConfig = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, court);
+    }
+
+    #[test]
+    fn one_key_mode_puts_every_game_on_stream_a() {
+        let mut court = Config::default().courts.remove(0);
+        let two_keys: Vec<usize> = (0..5).map(|i| court.stream_for_position(i)).collect();
+        assert_eq!(two_keys, [0, 1, 0, 1, 0]);
+        court.stream_mode = StreamMode::OneKey;
+        let one_key: Vec<usize> = (0..5).map(|i| court.stream_for_position(i)).collect();
+        assert_eq!(one_key, [0, 0, 0, 0, 0]);
     }
 
     #[test]

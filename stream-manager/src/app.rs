@@ -484,6 +484,21 @@ impl App {
             let mut inner = self.inner();
             courts_changed = inner.config.courts != new.courts;
             let day_running = inner.courts.iter().any(|c| c.switcher.status().day_running);
+            for running in inner
+                .courts
+                .iter()
+                .filter(|c| c.switcher.status().day_running)
+            {
+                let mode_changed = new.courts.iter().any(|c| {
+                    c.name == running.config.name && c.stream_mode != running.config.stream_mode
+                });
+                if mode_changed {
+                    return Err(format!(
+                        "End the day on Court {} before changing its stream keys setting",
+                        running.config.name
+                    ));
+                }
+            }
             let risky = courts_changed
                 || rules_of(&inner.config) != rules_of(&new)
                 || inner.config.event_slug != new.event_slug

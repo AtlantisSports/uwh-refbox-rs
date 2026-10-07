@@ -202,9 +202,11 @@
       <div class="card" style="margin-top:16px">
         <h2>Courts</h2>
         <p class="muted">Court names must match the portal (e.g. <code>1</code>). Refbox address and port are the same
-          ones the overlay uses. Leave the stream key names empty to use "Court &lt;name&gt; - A" and "- B".</p>
+          ones the overlay uses. Leave the stream key names empty to use "Court &lt;name&gt; - A" and "- B".
+          With one stream key there is a gap of a few seconds before each kickoff; the stream keys setting
+          can only be changed while that court's day isn't running.</p>
         <table>
-          <thead><tr><th>Court</th><th>Refbox IP address</th><th>Port</th><th>vMix address</th><th>Stream key A (vMix destination 1)</th><th>Stream key B (vMix destination 2)</th><th></th></tr></thead>
+          <thead><tr><th>Court</th><th>Refbox IP address</th><th>Port</th><th>vMix address</th><th>Stream keys</th><th>Stream key A (vMix destination 1)</th><th>Stream key B (vMix destination 2)</th><th></th></tr></thead>
           <tbody id="s-courts"></tbody>
         </table>
         <div class="row"><button class="small" onclick="addCourt()">+ Add court</button></div>
@@ -566,8 +568,11 @@ function renderCourtRows(courts) {
     <td><input class="c-ip" value="${esc(c.refbox_ip)}"></td>
     <td><input class="c-port" type="number" value="${esc(c.refbox_port)}" style="width:90px"></td>
     <td><input class="c-vmix" value="${esc(c.vmix_address || '127.0.0.1:8088')}" style="width:150px"></td>
+    <td><select class="c-mode" onchange="showStreamB(this)">
+      <option value="two-keys" ${c.stream_mode === 'one-key' ? '' : 'selected'}>Two (A/B, no gap)</option>
+      <option value="one-key" ${c.stream_mode === 'one-key' ? 'selected' : ''}>One (short gap)</option></select></td>
     <td><input class="c-a" value="${esc(c.stream_a || '')}" placeholder="Court ${esc(c.name)} - A"></td>
-    <td><input class="c-b" value="${esc(c.stream_b || '')}" placeholder="Court ${esc(c.name)} - B"></td>
+    <td><input class="c-b ${c.stream_mode === 'one-key' ? 'hidden' : ''}" value="${esc(c.stream_b || '')}" placeholder="Court ${esc(c.name)} - B"></td>
     <td><button class="small" onclick="this.closest('tr').remove()">Remove</button></td></tr>`).join('');
 }
 function readCourtRows() {
@@ -578,7 +583,11 @@ function readCourtRows() {
     vmix_address: tr.querySelector('.c-vmix').value.trim(),
     stream_a: tr.querySelector('.c-a').value.trim() || null,
     stream_b: tr.querySelector('.c-b').value.trim() || null,
+    stream_mode: tr.querySelector('.c-mode').value,
   }));
+}
+function showStreamB(select) {
+  select.closest('tr').querySelector('.c-b').classList.toggle('hidden', select.value === 'one-key');
 }
 function addCourt() {
   const courts = readCourtRows();

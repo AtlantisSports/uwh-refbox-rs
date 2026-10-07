@@ -52,6 +52,12 @@ pub struct VideoState {
     /// (`PAST_START_OFFSET`). Changes are spotted by comparing this, not `scheduled_start`.
     #[serde(default)]
     pub portal_start: Option<String>,
+    /// The game's court and schedule day, so a game later removed from the portal can still be
+    /// placed. Older records get them on their next update.
+    #[serde(default)]
+    pub court: Option<String>,
+    #[serde(default)]
+    pub day: Option<usize>,
 }
 
 /// The description as it should be on YouTube: the generated text plus, once known, the link
@@ -232,6 +238,8 @@ pub async fn sync_video(
         v.description = spec.description;
         v.scheduled_start = spec.scheduled_start;
         v.portal_start = Some(start);
+        v.court = Some(game.court.clone());
+        v.day = Some(game.day);
     }
     save_state(state_file, state)?;
     Ok(true)
@@ -443,6 +451,8 @@ pub async fn run(
                         in_playlist: false,
                         next_game_link: None,
                         portal_start: Some(portal_start(game)),
+                        court: Some(game.court.clone()),
+                        day: Some(game.day),
                     };
                     state.videos.insert(game.number.clone(), v.clone());
                     save_state(state_file, &state)?;
@@ -662,6 +672,8 @@ mod tests {
             in_playlist: true,
             next_game_link: None,
             portal_start: Some(start),
+            court: None,
+            day: None,
         }
     }
 
@@ -720,6 +732,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(video.portal_start, None);
+        assert_eq!((video.court, video.day), (None, None));
     }
 
     #[test]

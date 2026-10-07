@@ -9,11 +9,14 @@
 //!
 //! If anything before step 2 completes fails, A's video stays live and the caller puts the
 //! court on Hold. Problems after that are reported as warnings: B is live either way.
+//!
+//! In one-key mode vMix sends on stream key A all day: it starts at Start day and stops at End
+//! day. Each switch ends A's video first and then puts B's live on the running stream.
 
 use crate::{
     BoxError,
     app::App,
-    config::{CourtConfig, vmix_destination},
+    config::{CourtConfig, StreamMode, vmix_destination},
     portal::EventPlan,
     prepare::{self, VideoState, with_next_link},
     switcher::{Action, GameNumber},
@@ -72,6 +75,46 @@ fn stream_index(court: &CourtConfig, game: &str, video: &VideoState) -> Result<u
                 court.name
             )
         })
+}
+
+/// In one-key mode, checks that every one of `games` that has a video is linked to stream key
+/// A. Videos linked to B would never receive anything, because vMix only sends on A.
+fn one_key_ready(
+    court: &CourtConfig,
+    state: &prepare::EventState,
+    games: &[&str],
+) -> Result<(), String> {
+    if court.stream_mode != StreamMode::OneKey {
+        return Ok(());
+    }
+    let [key_a, _] = court.stream_names();
+    let on_other_key = games.iter().any(|game| {
+        state
+            .videos
+            .get(*game)
+            .and_then(|v| v.bound_stream.as_deref())
+            .is_some_and(|bound| normalize(bound) != normalize(&key_a))
+    });
+    if on_other_key {
+        return Err("Re-run Prepare: some of today's videos use stream key B".to_string());
+    }
+    Ok(())
+}
+
+/// The court's games on the same day as `game`, from the schedule (just `game` without one).
+fn todays_games<'a>(
+    plan: Option<&'a EventPlan>,
+    court: &CourtConfig,
+    game: &'a str,
+) -> Vec<&'a str> {
+    let Some((plan, day)) = plan.and_then(|p| p.game(game).map(|g| (p, g.day))) else {
+        return vec![game];
+    };
+    plan.games
+        .iter()
+        .filter(|g| g.court == court.name && g.day == day)
+        .map(|g| g.number.as_str())
+        .collect()
 }
 
 async fn stream_id(yt: &mut YouTube, title: &str) -> Result<String, BoxError> {
@@ -196,6 +239,7 @@ async fn start(
     log: &mut (dyn FnMut(String) + Send),
 ) -> Outcome {
     let result: Result<(), BoxError> = async {
+        one_key_ready(court, state, &todays_games(plan, court, game))?;
         let video = video_of(state, plan, game)?;
         let index = stream_index(court, game, &video)?;
         let names = court.stream_names();
@@ -262,9 +306,10 @@ async fn switch(
     let names = court.stream_names();
     let mut warnings = Vec::new();
 
-    if from_index == Some(to_index) {
-        // Both videos use the same stream key (e.g. a game was skipped), so they can't overlap:
-        // end the old one first, then start the new one on the stream that's already running.
+    if court.stream_mode == StreamMode::OneKey || from_index == Some(to_index) {
+        // Both videos use the same stream key (one-key mode, or a game was skipped), so they
+        // can't overlap: end the old one first, then start the new one on the stream that's
+        // already running. vMix is left as it is.
         if let Some(v) = &from_video {
             if let Err(e) = yt.transition(&v.broadcast_id, "complete").await {
                 return failed(format!("Couldn't end Game {from}'s video: {e}"));
@@ -412,5 +457,77 @@ async fn end(
         Outcome::Done
     } else {
         Outcome::Warnings(warnings)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        config::{Config, StreamMode},
+        portal::parse_event_plan,
+    };
+
+    fn video(bound: Option<&str>) -> VideoState {
+        VideoState {
+            broadcast_id: "id".to_string(),
+            title: String::new(),
+            description: String::new(),
+            scheduled_start: String::new(),
+            bound_stream: bound.map(str::to_string),
+            in_playlist: true,
+            next_game_link: None,
+        }
+    }
+
+    fn state(videos: &[(&str, Option<&str>)]) -> prepare::EventState {
+        prepare::EventState {
+            videos: videos
+                .iter()
+                .map(|(game, bound)| (game.to_string(), video(*bound)))
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn one_key_start_refuses_a_video_on_stream_b() {
+        let mut court = Config::default().courts.remove(0);
+        let mixed = state(&[("1", Some("Court 1 - A")), ("2", Some("court 1 – b"))]);
+
+        // Two keys: videos on B are expected.
+        assert_eq!(one_key_ready(&court, &mixed, &["1", "2"]), Ok(()));
+
+        court.stream_mode = StreamMode::OneKey;
+        assert_eq!(
+            one_key_ready(&court, &mixed, &["1", "2"]),
+            Err("Re-run Prepare: some of today's videos use stream key B".to_string())
+        );
+        // Only the listed (today's) games are checked.
+        assert_eq!(one_key_ready(&court, &mixed, &["1"]), Ok(()));
+
+        let all_a = state(&[("1", Some("Court 1 - A")), ("2", Some("court 1 – a"))]);
+        assert_eq!(one_key_ready(&court, &all_a, &["1", "2"]), Ok(()));
+    }
+
+    #[test]
+    fn todays_games_are_this_courts_games_on_the_starting_games_day() {
+        let game = |number: &str, start: &str, court: &str| {
+            format!(
+                r#"{{ "number": "{number}", "startsOn": "{start}", "court": "{court}",
+                    "dark": {{ "assignment": null }}, "light": {{ "assignment": null }} }}"#
+            )
+        };
+        let plan = parse_event_plan(&format!(
+            r#"{{ "event": {{ "name": "Test Cup" }}, "games": [ {}, {}, {}, {} ] }}"#,
+            game("1", "2026-08-01T09:00:00+10:00", "1"),
+            game("2", "2026-08-01T09:00:00+10:00", "2"),
+            game("3", "2026-08-01T10:00:00+10:00", "1"),
+            game("4", "2026-08-02T09:00:00+10:00", "1"),
+        ))
+        .unwrap();
+        let court = Config::default().courts.remove(0);
+        assert_eq!(todays_games(Some(&plan), &court, "3"), ["1", "3"]);
+        assert_eq!(todays_games(None, &court, "3"), ["3"]);
     }
 }

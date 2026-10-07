@@ -119,6 +119,7 @@
           <b>GET</b> request. Each link carries the button key (Settings → Stream Deck button key).
           <span id="companion-key-note"></span></p>
         <div id="companion-links"></div>
+        <p class="muted" id="companion-elsewhere"></p>
       </details>
     </section>
 
@@ -493,14 +494,24 @@ function renderCourts() {
     b('hold').textContent = c.hold ? 'Release hold' : 'Hold';
     setHTML(f('log'), c.log.map(l => `<div>${esc(l)}</div>`).join('') || '<div class="muted">Nothing yet</div>');
   });
-  const base = lanUrl || location.origin;
+  const base = companionLinksBase();
   const key = isLocal && buttonKey ? buttonKey : KEY_ELSEWHERE;
   $('companion-key-note').textContent = isLocal ? '' : 'The key is shown only on the mini PC itself.';
+  $('companion-elsewhere').textContent = isLocal && lanUrl
+    ? `Companion on another computer: use ${lanUrl} instead, and add that computer under Allow other devices.`
+    : '';
   setHTML($('companion-links'), status.courts.map(c => {
     const n = encodeURIComponent(c.name);
     return `<p><b>Court ${esc(c.name)}</b><br>` + [['Start day','start'],['Hold on/off','hold-toggle'],['Switch now','next'],['End day','end']]
       .map(([label, a]) => `${label}: <code>${esc(`${base}/api/court/${n}/${a}?key=${key}`)}</code>`).join('<br>') + '</p>';
   }).join(''));
+}
+
+// Where the Stream Deck links point. On the mini PC, Companion runs there too, so always
+// 127.0.0.1, which counts as this PC (its network address would count as another device).
+function companionLinksBase() {
+  if (isLocal) return 'http://127.0.0.1' + (location.port ? ':' + location.port : '');
+  return lanUrl || location.origin;
 }
 
 async function courtAction(court, action) {

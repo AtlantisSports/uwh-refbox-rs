@@ -93,8 +93,6 @@ pub struct Status {
     pub youtube_channel: Option<String>,
     pub youtube_units: u32,
     pub sign_in: String,
-    /// Email of the saved portal sign-in used for watch links, if any.
-    pub portal_login: Option<String>,
     pub job: JobStatus,
     pub courts: Vec<CourtStatus>,
 }
@@ -694,7 +692,6 @@ impl App {
             youtube_channel: inner.youtube_channel.clone(),
             youtube_units: inner.youtube_units,
             sign_in: inner.sign_in.clone(),
-            portal_login: crate::portal_links::saved_email(&self.config_dir),
             job: inner.job.clone(),
             courts,
         }

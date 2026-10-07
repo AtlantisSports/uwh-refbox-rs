@@ -54,9 +54,10 @@ pub const APP_NAME: &str = "overlay-bridge";
 pub const DEFAULT_REFBOX_HOST: &str = "127.0.0.1";
 pub const DEFAULT_REFBOX_PORT: u16 = 8000;
 pub const DEFAULT_PORT: u16 = 8098;
-/// The old default HTTP port, which always collides with vMix (see [`DEFAULT_PORT`]). A *saved*
-/// 8099 is from a run before the change, not a deliberate choice, so it's moved to the new default.
-/// Typing `--port 8099` explicitly still works.
+/// The old default HTTP port, which always collides with vMix (see [`DEFAULT_PORT`]). A saved 8099
+/// written before the move is from a run before the change, not a deliberate choice, so it goes
+/// to 8098 once (recorded in [`Settings::port_moved_from_8099`]). After that, a saved 8099 is the
+/// operator's own choice and is respected. Typing `--port 8099` explicitly always works.
 const OLD_DEFAULT_PORT: u16 = 8099;
 
 /// Where team and player names come from: the Portal (the existing, default behaviour), or two
@@ -103,6 +104,9 @@ pub struct Settings {
     /// Path to the local roster CSV (team, cap number, player name). Only consulted when
     /// `roster_source` is [`RosterSource::Local`].
     pub roster_csv_path: Option<String>,
+    /// Set once the old default port 8099 has been moved to 8098. From then on a saved 8099
+    /// is the operator's own choice and is kept (see [`OLD_DEFAULT_PORT`]).
+    pub port_moved_from_8099: Option<bool>,
 }
 
 /// Resolves one setting under the bridge's standing precedence rule (see the module doc): an
@@ -188,6 +192,7 @@ impl Resolved {
             roster_source: Some(self.roster_source),
             schedule_csv_path: self.schedule_csv_path.clone(),
             roster_csv_path: self.roster_csv_path.clone(),
+            port_moved_from_8099: Some(true),
         }
     }
 }
@@ -219,7 +224,9 @@ pub fn resolve_all(
         ),
         port: resolve(
             overrides.port,
-            stored.port.filter(|port| *port != OLD_DEFAULT_PORT),
+            stored.port.filter(|port| {
+                *port != OLD_DEFAULT_PORT || stored.port_moved_from_8099 == Some(true)
+            }),
             defaults.port,
         ),
         settings_path,
@@ -407,25 +414,28 @@ mod tests {
     }
 
     #[test]
-    fn a_saved_8099_moves_to_the_new_default_but_a_typed_one_is_kept() {
-        // 8099 is vMix's hard-coded TCP API port, so a bridge that saved it (the old default)
-        // could never start next to vMix again. A deliberately typed `--port 8099` is respected.
-        let stored = Settings {
+    fn a_saved_8099_moves_once_and_a_later_choice_of_8099_is_kept() {
+        // A settings file from before the move: 8099 was the old default, so it moves.
+        let before = Settings {
             port: Some(8099),
             ..Settings::default()
         };
-        assert_eq!(
-            resolve_all(Overrides::default(), stored.clone(), None).port,
-            DEFAULT_PORT
-        );
+        let first = resolve_all(Overrides::default(), before, None);
+        assert_eq!(first.port, DEFAULT_PORT);
         assert_eq!(DEFAULT_PORT, 8098);
+        // What gets saved records that the move has happened.
+        assert_eq!(first.to_settings().port_moved_from_8099, Some(true));
 
+        // Later the operator deliberately types --port 8099; it is saved, and kept on the next start.
         let typed = Overrides {
             port: Some(8099),
             ..Overrides::default()
         };
-        assert_eq!(resolve_all(typed, stored, None).port, 8099);
+        let chosen = resolve_all(typed, first.to_settings(), None).to_settings();
+        assert_eq!(chosen.port, Some(8099));
+        assert_eq!(resolve_all(Overrides::default(), chosen, None).port, 8099);
 
+        // Any other saved port is left alone.
         let other = Settings {
             port: Some(9000),
             ..Settings::default()

@@ -36,8 +36,25 @@ mod pages;
 use load_images::Texture;
 
 const APP_NAME: &str = "overlay";
-/// The overlay-bridge address used before the bridge's default port moved to 8098.
-const OLD_DEFAULT_BRIDGE_URL: &str = "http://127.0.0.1:8099";
+/// The old default port of the overlay-bridge; see `overlay-bridge`'s `config.rs`.
+const OLD_BRIDGE_PORT: u16 = 8099;
+const NEW_BRIDGE_PORT: u16 = 8098;
+
+/// `url` with its port moved from 8099 to 8098, or `None` if it isn't on 8099. The rest of the
+/// address is kept as written.
+fn moved_bridge_url(url: &str) -> Option<String> {
+    let parsed = reqwest::Url::parse(url).ok()?;
+    if parsed.port() != Some(OLD_BRIDGE_PORT) {
+        return None;
+    }
+    let mut moved = parsed.clone();
+    moved.set_port(Some(NEW_BRIDGE_PORT)).ok()?;
+    let mut text = moved.to_string();
+    if !url.ends_with('/') && moved.path() == "/" {
+        text.pop();
+    }
+    Some(text)
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct AppConfig {
@@ -48,6 +65,9 @@ pub struct AppConfig {
     /// the `bridge` feature. Harmless when that feature is off -- just an unused setting
     /// sitting in the config file.
     bridge_url: String,
+    /// Set once an old `:8099` bridge address has been moved to 8098; a later 8099 is kept.
+    #[serde(default)]
+    bridge_port_moved: bool,
 }
 
 impl Default for AppConfig {
@@ -57,6 +77,8 @@ impl Default for AppConfig {
             refbox_port: 8000,
             uwhportal_url: String::from("https://api.uwhportal.com"),
             bridge_url: String::from("http://127.0.0.1:8098"),
+            // A new settings file never held the old port, so there is nothing to move.
+            bridge_port_moved: true,
         }
     }
 }
@@ -255,14 +277,20 @@ async fn main() {
             config
         }
     };
-    // The bridge's default port moved from 8099 (vMix's hard-coded TCP API port, so the two
-    // collided on the streaming PC) to 8098. A settings file saved with the old local default is
-    // brought along; any other address is the operator's choice and is left alone.
-    if config.bridge_url.trim_end_matches('/') == OLD_DEFAULT_BRIDGE_URL {
-        config.bridge_url = AppConfig::default().bridge_url;
-        info!("Moved the overlay-bridge address to {}", config.bridge_url);
+    // The bridge's default port moved from 8099 (vMix's hard-coded TCP API port) to 8098. A
+    // settings file from before that is moved once, whatever host it names; after that, a
+    // bridge address on 8099 is the operator's own choice and is kept.
+    if !config.bridge_port_moved {
+        if let Some(moved) = moved_bridge_url(&config.bridge_url) {
+            info!(
+                "Moved the overlay-bridge address from {} to {moved}",
+                config.bridge_url
+            );
+            config.bridge_url = moved;
+        }
+        config.bridge_port_moved = true;
         if let Err(e) = confy::store(APP_NAME, None, &config) {
-            warn!("Couldn't save the updated overlay-bridge address: {e}");
+            warn!("Couldn't save the overlay-bridge address: {e}");
         }
     }
 
@@ -557,5 +585,46 @@ fn window_conf() -> Conf {
             ..Default::default()
         },
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn any_bridge_address_on_the_old_port_moves_to_8098() {
+        assert_eq!(
+            moved_bridge_url("http://127.0.0.1:8099").as_deref(),
+            Some("http://127.0.0.1:8098")
+        );
+        assert_eq!(
+            moved_bridge_url("http://127.0.0.1:8099/").as_deref(),
+            Some("http://127.0.0.1:8098/")
+        );
+        assert_eq!(
+            moved_bridge_url("http://localhost:8099").as_deref(),
+            Some("http://localhost:8098")
+        );
+        assert_eq!(
+            moved_bridge_url("http://192.168.1.20:8099").as_deref(),
+            Some("http://192.168.1.20:8098")
+        );
+        assert_eq!(moved_bridge_url("http://127.0.0.1:8098"), None);
+        assert_eq!(moved_bridge_url("http://127.0.0.1:9000"), None);
+        assert_eq!(moved_bridge_url("not a url"), None);
+    }
+
+    #[test]
+    fn an_old_settings_file_loads_and_is_marked_for_the_move() {
+        // Written before this change: no `bridge_port_moved` key. (`serde_json` rather than the
+        // TOML confy writes, because `toml` isn't a direct dependency of the overlay; the point
+        // is the same: a missing key loads as `false`.)
+        let old: AppConfig = serde_json::from_str(
+            r#"{"refbox_ip": "127.0.0.1", "refbox_port": 8000, "uwhportal_url": "https://api.uwhportal.com", "bridge_url": "http://127.0.0.1:8099"}"#,
+        )
+        .expect("an old settings file still loads");
+        assert!(!old.bridge_port_moved);
+        assert!(AppConfig::default().bridge_port_moved);
     }
 }

@@ -335,16 +335,19 @@ fn targets_for(subnet: Ipv4Addr) -> Vec<Ipv4Addr> {
 /// fails the scan, because on a real venue network the overwhelming majority of the 254 addresses
 /// are exactly that.
 pub async fn scan(subnet: Ipv4Addr, port: u16) -> Vec<Found> {
-    let targets: Vec<RefboxAddress> = targets_for(subnet)
+    scan_addresses(targets_for(subnet), port).await
+}
+
+/// Probes exactly `addresses` (see [`scan`]), and returns the refboxes in address order.
+async fn scan_addresses(addresses: Vec<Ipv4Addr>, port: u16) -> Vec<Found> {
+    let targets: Vec<RefboxAddress> = addresses
         .into_iter()
         .map(|ip| RefboxAddress::new(ip.to_string(), port))
         .collect();
-
     let mut found = probe_all(targets, |address| async move {
         probe(&address, PROBE_TIMEOUT).await.ok()
     })
     .await;
-
     // Address order, not the order they happened to answer in, so the list an operator is reading
     // does not reshuffle itself between one scan and the next.
     found.sort_by_key(|f| f.address.host.parse::<Ipv4Addr>().ok());
@@ -912,6 +915,32 @@ mod tests {
         );
         assert_eq!(found[0].address, address);
         assert_eq!(found[0].label, "Game 14 · Second Half · 3:47 · 2–1");
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "a scan of this computer should finish in a few seconds, took {elapsed:?}"
+        );
+
+        refbox.abort();
+    }
+
+    #[tokio::test]
+    async fn a_full_subnet_scan_finds_a_real_refbox_and_finishes_in_a_few_seconds() {
+        // A real refbox on 127.0.0.1, and 253 loopback addresses with nothing on them. Finding
+        // the planted refbox is what proves the scan actually probed rather than returning an
+        // empty list quickly -- a scan that did nothing at all would also be fast.
+        let (address, refbox) = fake_refbox(second_half_snapshot()).await;
+
+        let started = Instant::now();
+        let all_254 = scan_targets(Ipv4Addr::new(127, 0, 0, 1)).collect();
+        let found = scan_addresses(all_254, address.port).await;
+        let elapsed = started.elapsed();
+
+        assert_eq!(
+            found.len(),
+            1,
+            "exactly the planted refbox should have been found, got {found:?}"
+        );
+        assert_eq!(found[0].address, address);
         assert!(
             elapsed < Duration::from_secs(5),
             "a full 254-address scan should finish in a few seconds, took {elapsed:?}"

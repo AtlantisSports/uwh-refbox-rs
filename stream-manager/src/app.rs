@@ -871,7 +871,7 @@ impl App {
         {
             let mut inner = self.inner();
             let new = edit(&inner.config)?;
-            new.validate_for_save()?;
+            new.validate_for_save(&inner.config)?;
             courts_changed = inner.config.courts != new.courts;
             let day_running = inner.courts.iter().any(|c| c.switcher.status().day_running);
             for running in inner

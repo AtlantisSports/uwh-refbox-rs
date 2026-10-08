@@ -20,8 +20,8 @@ use crate::{
 use log::{info, warn};
 use serde::Serialize;
 use std::{
-    collections::VecDeque,
-    path::PathBuf,
+    collections::{HashMap, VecDeque},
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex, MutexGuard,
         atomic::{AtomicBool, Ordering},
@@ -31,7 +31,7 @@ use std::{
 use time::{OffsetDateTime, macros::format_description};
 use tokio::{
     sync::{
-        MappedMutexGuard, Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard,
+        Mutex as AsyncMutex, OwnedMutexGuard,
         mpsc::{self, UnboundedReceiver},
     },
     task::JoinHandle,
@@ -50,7 +50,11 @@ pub struct App {
     pub config_path: PathBuf,
     pub config_dir: PathBuf,
     inner: Mutex<Inner>,
-    youtube: AsyncMutex<Option<YouTube>>,
+    /// The YouTube connection, opened on first use. Each user gets its own handle on it.
+    youtube: Mutex<Option<YouTube>>,
+    /// One lock per court name, held by everything that works on that court's videos (see
+    /// [`App::court_lock`]).
+    court_locks: Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
     sessions: Mutex<Sessions>,
     /// Every PIN sign-in waits here for its turn.
     sign_ins: SignInLine,
@@ -252,7 +256,8 @@ impl App {
                 youtube_channel: None,
                 sign_in: String::new(),
             }),
-            youtube: AsyncMutex::new(None),
+            youtube: Mutex::new(None),
+            court_locks: Mutex::new(HashMap::new()),
             sessions: Mutex::new(Sessions::default()),
             sign_ins: SignInLine::default(),
             devices,
@@ -291,11 +296,11 @@ impl App {
         self.inner().plan.clone()
     }
 
-    /// Replaces the cached schedule with one just fetched for `event_slug`, as
-    /// [`App::refresh_plan`] does. Ignored if the event has changed meanwhile.
-    pub fn set_plan(&self, event_slug: &str, plan: EventPlan) {
+    /// Replaces the cached schedule with one just fetched for `event_slug` from `portal_url`, as
+    /// [`App::refresh_plan`] does. Ignored if the event or the portal has changed meanwhile.
+    pub fn set_plan(&self, portal_url: &str, event_slug: &str, plan: EventPlan) {
         let mut inner = self.inner();
-        if inner.config.event_slug == event_slug {
+        if fetched_from_current(&inner.config, portal_url, event_slug) {
             inner.plan = Some(plan);
             inner.plan_error = None;
         }
@@ -719,11 +724,13 @@ impl App {
                 continue;
             }
             // Not connected to YouTube: nothing to resume from (yet).
-            let Ok(mut youtube) = self.youtube().await else {
+            let Ok(mut youtube) = self.youtube() else {
                 return;
             };
+            // Asked while no switch, End day or Go live is under way on this court.
+            let court_lock = self.court_lock(&court.name).await;
             let found = recovery::find_live(&mut youtube, &videos).await;
-            drop(youtube);
+            drop(court_lock);
             match found {
                 Ok((Some(live), also_live)) => {
                     let mut resumed = false;
@@ -794,7 +801,7 @@ impl App {
                 let log_app = Arc::clone(self);
                 let mut log =
                     move |line: String| log_app.with_court(generation, i, |c| c.note(line));
-                // Giving up drops the check, which releases the YouTube connection for switches.
+                // Giving up drops the check, which releases the court's lock for its switches.
                 let check = title_sync::sync_court(self, &court, None, &mut log);
                 let problem = match tokio::time::timeout(TITLE_SYNC_WAIT, check).await {
                     Ok(Ok(_)) => None,
@@ -919,7 +926,7 @@ impl App {
                 )
                 .into());
             }
-            confy::store_path(&self.config_path, &new)
+            save_config(&self.config_path, &new)
                 .map_err(|e| format!("Couldn't save settings: {e}"))?;
             let event_changed = event_or_portal_changed;
             let rules_changed = rules_of(&inner.config) != rules_of(&new);
@@ -973,7 +980,7 @@ impl App {
         }
         let result = portal::fetch_event_plan(&url, &slug).await;
         let mut inner = self.inner();
-        if inner.config.event_slug != slug {
+        if !fetched_from_current(&inner.config, &url, &slug) {
             return false; // settings changed meanwhile
         }
         match result {
@@ -997,23 +1004,62 @@ impl App {
 
     // ----- YouTube -----
 
-    /// The YouTube connection, opened on first use. Only one holder at a time, so only one
-    /// YouTube operation runs at a time. A switch holds it for its whole run; longer jobs
-    /// (Prepare, the 10-minute title check) take it one game at a time through
-    /// [`YouTubeAccess`](crate::youtube::YouTubeAccess), so a switch never waits long.
-    pub async fn youtube(&self) -> Result<MappedMutexGuard<'_, YouTube>, BoxError> {
-        let mut guard = self.youtube.lock().await;
-        if guard.is_none() {
-            if !self.token_file().exists() {
-                return Err(
-                    "Not connected to YouTube yet: open Settings and press Connect YouTube".into(),
-                );
-            }
-            let auth = GoogleAuth::load(&self.client_file(), &self.token_file())?;
-            *guard = Some(YouTube::new(auth, Some(Arc::clone(&self.ledger)))?);
+    /// A handle on the YouTube connection, opened on first use. Handles share the sign-in and
+    /// the allowance count, so YouTube calls for different courts run at the same time. Keeping
+    /// one court's work apart is [`App::court_lock`]'s job.
+    pub fn youtube(&self) -> Result<YouTube, BoxError> {
+        let mut connection = self.youtube.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(youtube) = connection.as_ref() {
+            return Ok(youtube.handle());
         }
-        AsyncMutexGuard::try_map(guard, |yt| yt.as_mut())
-            .map_err(|_| "YouTube connection unavailable".into())
+        if !self.token_file().exists() {
+            return Err(
+                "Not connected to YouTube yet: open Settings and press Connect YouTube".into(),
+            );
+        }
+        let auth = GoogleAuth::load(&self.client_file(), &self.token_file())?;
+        let youtube = YouTube::new(auth, Some(Arc::clone(&self.ledger)))?;
+        let handle = youtube.handle();
+        *connection = Some(youtube);
+        Ok(handle)
+    }
+
+    /// The lock for one court's videos. A switch (with its title check), End day, Go live,
+    /// restart recovery, and each per-game step of Prepare and of the 10-minute title check
+    /// hold it, so no two of them work on the same court at once, while different courts'
+    /// switches run side by side.
+    ///
+    /// No deadlock: a holder never waits for another court's lock (only
+    /// [`App::lock_all_courts`] takes several, always in name order), and the other locks taken
+    /// while holding it (the sign-in, the record file, the allowance ledger, the shared state)
+    /// are only ever held briefly and never wait for a court.
+    pub async fn court_lock(&self, court_name: &str) -> OwnedMutexGuard<()> {
+        let lock = Arc::clone(
+            self.court_locks
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .entry(court_name.to_string())
+                .or_default(),
+        );
+        lock.lock_owned().await
+    }
+
+    /// Every configured court's lock, taken in name order, for a job that works on every
+    /// court's videos at once (deleting the test videos).
+    pub async fn lock_all_courts(&self) -> Vec<OwnedMutexGuard<()>> {
+        let mut names: Vec<String> = self
+            .config()
+            .courts
+            .iter()
+            .map(|c| c.name.clone())
+            .collect();
+        names.sort();
+        names.dedup();
+        let mut guards = Vec::with_capacity(names.len());
+        for name in &names {
+            guards.push(self.court_lock(name).await);
+        }
+        guards
     }
 
     /// Remembers the connected channel's name for the page.
@@ -1054,8 +1100,8 @@ impl App {
 
     /// Drops the YouTube connection (it is opened again on next use), e.g. after connecting
     /// afresh, and checks again whether the sign-in file exists.
-    pub async fn forget_youtube(&self) {
-        *self.youtube.lock().await = None;
+    pub fn forget_youtube(&self) {
+        *self.youtube.lock().unwrap_or_else(|e| e.into_inner()) = None;
         self.inner().youtube_channel = None;
         self.youtube_connected.store(
             google_auth::is_connected(&self.token_file()),
@@ -1314,6 +1360,29 @@ fn dispatch(
         Some(tx) if tx.send(action).is_ok() => court.busy = true,
         _ => court.note("✖ Internal error: no switching worker for this court".to_string()),
     }
+}
+
+/// Whether a schedule fetched for `event_slug` from `portal_url` still belongs to the settings.
+fn fetched_from_current(config: &Config, portal_url: &str, event_slug: &str) -> bool {
+    config.event_slug == event_slug && config.portal_url == portal_url
+}
+
+/// Saves the settings in the format confy reads (TOML), replacing the file whole: a crash
+/// part-way leaves the old file, never an empty one (which would load as the defaults, without
+/// the PIN).
+fn save_config(path: &Path, config: &Config) -> Result<(), BoxError> {
+    let name = path
+        .file_name()
+        .ok_or_else(|| format!("{} isn't a file name", path.display()))?
+        .to_string_lossy();
+    // confy writes its TOML to a scratch file, which is then read back and written over the
+    // settings file in one step.
+    let scratch = path.with_file_name(format!(".{name}.unsaved"));
+    let text = confy::store_path(&scratch, config)
+        .map_err(BoxError::from)
+        .and_then(|()| std::fs::read_to_string(&scratch).map_err(BoxError::from));
+    let _ = std::fs::remove_file(&scratch);
+    prepare::write_atomically(path, &text?)
 }
 
 #[cfg(test)]
@@ -1738,13 +1807,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn different_courts_can_be_worked_on_at_once_but_one_court_cannot() {
+        let app = temp_app("court-locks");
+        let wait = |ms| Duration::from_millis(ms);
+        let court_1 = app.court_lock("1").await;
+        // Another court's switch doesn't wait for court 1's.
+        let court_2 = tokio::time::timeout(wait(1_000), app.court_lock("2")).await;
+        assert!(court_2.is_ok(), "court 2 is free while court 1 is busy");
+        // Court 1's other work does.
+        let again = tokio::time::timeout(wait(100), app.court_lock("1")).await;
+        assert!(again.is_err(), "court 1 can't be worked on twice at once");
+        // Taking every court waits for the busy one.
+        let all = tokio::time::timeout(wait(100), app.lock_all_courts()).await;
+        assert!(all.is_err());
+        drop(court_1);
+        let again = tokio::time::timeout(wait(1_000), app.court_lock("1")).await;
+        assert!(again.is_ok(), "free again once court 1's work is done");
+        drop(again);
+        let all = tokio::time::timeout(wait(1_000), app.lock_all_courts()).await;
+        assert_eq!(all.map(|guards| guards.len()).ok(), Some(1));
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn a_schedule_fetched_before_the_portal_changed_is_thrown_away() {
+        let app = temp_app("stale-portal");
+        app.inner().config.event_slug = "test-cup".to_string();
+        let plan =
+            || parse_event_plan(r#"{ "event": { "name": "Test Cup" }, "games": [] }"#).unwrap();
+        app.set_plan("https://old-portal.example", "test-cup", plan());
+        assert!(app.plan().is_none(), "fetched from the portal used before");
+        app.set_plan(&app.config().portal_url, "other-cup", plan());
+        assert!(app.plan().is_none(), "fetched for the event chosen before");
+        app.set_plan(&app.config().portal_url, "test-cup", plan());
+        assert!(app.plan().is_some());
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn saved_settings_load_back_the_same_with_no_scratch_file_left() {
+        let app = temp_app("save-settings");
+        let config = Config {
+            event_slug: "test-cup".to_string(),
+            pin: "4321".to_string(),
+            ..Config::default()
+        };
+        // Replaces whatever was there, even a damaged file.
+        std::fs::write(&app.config_path, "half a sett").unwrap();
+        save_config(&app.config_path, &config).unwrap();
+        let loaded: Config = confy::load_path(&app.config_path).unwrap();
+        assert_eq!(
+            serde_json::to_value(&loaded).unwrap(),
+            serde_json::to_value(&config).unwrap()
+        );
+        let files: Vec<_> = std::fs::read_dir(&app.config_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(files, ["config.toml"]);
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[tokio::test]
     async fn the_youtube_sign_in_file_is_checked_on_connect_not_on_every_status() {
         let app = temp_app("token-cache");
         assert!(!app.status().youtube_connected);
         std::fs::write(app.token_file(), "{}").unwrap();
         assert!(!app.status().youtube_connected, "not read on every status");
         // Connecting drops the old connection, which checks the file again.
-        app.forget_youtube().await;
+        app.forget_youtube();
         assert!(app.status().youtube_connected);
         let _ = std::fs::remove_dir_all(&app.config_dir);
     }

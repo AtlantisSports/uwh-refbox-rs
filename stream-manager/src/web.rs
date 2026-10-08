@@ -723,11 +723,10 @@ async fn prepare_preview(
         .state_file()
         .and_then(|file| prepare::load_state(&file, &config.event_slug))
         .map_err(|e| bad(e.to_string()))?;
-    let mut yt = app.youtube().await.map_err(|e| bad(e.to_string()))?;
+    let mut yt = app.youtube().map_err(|e| bad(e.to_string()))?;
     let lookups = prepare::lookups(&mut yt)
         .await
         .map_err(|e| bad(e.to_string()))?;
-    drop(yt);
     let work = prepare::preview(
         &config,
         &plan,
@@ -758,12 +757,12 @@ async fn prepare_run(
         let mut log = move |line: String| log_app.job_log(line);
         let result = async {
             let state_file = app.state_file()?;
-            let lookups = prepare::lookups(&mut *app.youtube().await?).await?;
-            // Takes the YouTube connection one game at a time, so switches carry on meanwhile.
+            let lookups = prepare::lookups(&mut app.youtube()?).await?;
+            // Takes each court's lock one game at a time, so switches carry on meanwhile.
             prepare::run(
                 &config,
                 &plan,
-                &mut YouTubeAccess::Shared(&app),
+                &mut YouTubeAccess::shared(&app),
                 &state_file,
                 &lookups,
                 &selection,
@@ -837,7 +836,7 @@ async fn videos_refresh(State(app): State<AppState>, headers: HeaderMap) -> ApiR
         .collect();
     let mut found = Vec::new();
     {
-        let mut yt = app.youtube().await.map_err(|e| bad(e.to_string()))?;
+        let mut yt = app.youtube().map_err(|e| bad(e.to_string()))?;
         for chunk in ids.chunks(50) {
             found.extend(
                 yt.broadcast_statuses(chunk)
@@ -892,11 +891,10 @@ async fn youtube_connect(
         let app = job_app;
         match pending.finish(&app.token_file()).await {
             Ok(()) => {
-                app.forget_youtube().await;
-                let channel = match app.youtube().await {
+                app.forget_youtube();
+                let channel = match app.youtube() {
                     Ok(mut yt) => {
                         let title = yt.my_channel_title().await.ok();
-                        drop(yt);
                         app.record_youtube(title.clone());
                         title
                     }
@@ -921,13 +919,12 @@ async fn youtube_connect(
 async fn youtube_check(State(app): State<AppState>, headers: HeaderMap) -> ApiResult {
     authorize(&app, &headers)?;
     let config = app.config();
-    let mut yt = app.youtube().await.map_err(|e| bad(e.to_string()))?;
+    let mut yt = app.youtube().map_err(|e| bad(e.to_string()))?;
     let channel = yt
         .my_channel_title()
         .await
         .map_err(|e| bad(e.to_string()))?;
     let streams = yt.list_streams().await.map_err(|e| bad(e.to_string()))?;
-    drop(yt);
     app.record_youtube(Some(channel.clone()));
     let courts: Vec<Value> = config
         .courts
@@ -976,7 +973,9 @@ async fn cleanup(
         let mut log = move |line: String| log_app.job_log(line);
         let result = async {
             let state_file = app.state_file()?;
-            let mut yt = app.youtube().await?;
+            // Every court's videos are deleted, so no court may start its day meanwhile.
+            let _courts = app.lock_all_courts().await;
+            let mut yt = app.youtube()?;
             prepare::cleanup(&mut yt, &state_file, &slug, &mut log).await
         }
         .await;

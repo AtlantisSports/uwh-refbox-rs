@@ -109,6 +109,15 @@ async fn main() {
     }
 }
 
+/// Whether `command` works on one event, and so needs one chosen. Connecting and checking
+/// YouTube work on a fresh install.
+fn needs_event(command: &CliCommand) -> bool {
+    !matches!(
+        command,
+        CliCommand::Serve | CliCommand::Connect | CliCommand::CheckYoutube
+    )
+}
+
 async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Result<(), BoxError> {
     let config = load_config(config_path)?;
     if let CliCommand::Serve = command {
@@ -127,7 +136,7 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
         return web::serve(app, open_browser).await;
     }
 
-    if config.event_slug.is_empty() {
+    if needs_event(&command) && config.event_slug.is_empty() {
         return Err(format!(
             "Choose an event first (Settings tab, or `event_slug` in {})",
             config_path.display()
@@ -137,7 +146,8 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
     let config_dir = config_path.parent().unwrap_or(Path::new("."));
     let client_file = config_dir.join(&config.client_secret_file);
     let token_file = config_dir.join(app::TOKEN_FILE);
-    let state_file = prepare::state_path(config_dir, &config.event_slug)?;
+    // Only for the commands that work on one event (checked above).
+    let state_file = || prepare::state_path(config_dir, &config.event_slug);
     // The CLI uses the same allowance as the control page, so it counts in the same ledger.
     let ledger = std::sync::Arc::new(quota::LedgerFile::open(config_dir.join(quota::LEDGER_FILE)));
     let youtube = || -> Result<YouTube, BoxError> {
@@ -169,13 +179,13 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
                 courts: court.into_iter().collect(),
                 limit,
             };
-            prepare::run_cli(&config, &plan, &mut yt, &state_file, &selection).await
+            prepare::run_cli(&config, &plan, &mut yt, &state_file()?, &selection).await
         }
-        CliCommand::Videos => show_videos(&config, &mut youtube()?, &state_file).await,
+        CliCommand::Videos => show_videos(&config, &mut youtube()?, &state_file()?).await,
         CliCommand::Cleanup => {
             let mut yt = youtube()?;
             println!("YouTube channel: {}", yt.my_channel_title().await?);
-            prepare::cleanup_cli(&mut yt, &state_file, &config.event_slug).await
+            prepare::cleanup_cli(&mut yt, &state_file()?, &config.event_slug).await
         }
     }
 }
@@ -313,4 +323,23 @@ async fn show_plan(config: &Config) -> Result<(), BoxError> {
         println!();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connecting_and_checking_youtube_need_no_event() {
+        assert!(!needs_event(&CliCommand::Connect));
+        assert!(!needs_event(&CliCommand::CheckYoutube));
+        assert!(needs_event(&CliCommand::Plan));
+        assert!(needs_event(&CliCommand::Videos));
+        assert!(needs_event(&CliCommand::Cleanup));
+        assert!(needs_event(&CliCommand::Prepare {
+            day: 1,
+            court: None,
+            limit: None,
+        }));
+    }
 }

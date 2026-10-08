@@ -19,7 +19,7 @@ use crate::{
     app::App,
     config::{CourtConfig, StreamMode, vmix_destination},
     portal::EventPlan,
-    prepare::{self, VideoState, with_next_link},
+    prepare::{self, VideoState, normalize, with_next_link},
     switcher::{Action, GameNumber},
     title_sync::{self, SyncReport},
     vmix,
@@ -81,10 +81,6 @@ pub enum Outcome {
         actually_live: Option<GameNumber>,
         error: String,
     },
-}
-
-fn normalize(name: &str) -> String {
-    name.trim().replace(['–', '—'], "-").to_lowercase()
 }
 
 fn video_of(
@@ -377,10 +373,16 @@ async fn go_live(
         _ => {}
     }
     yt.transition(&video.broadcast_id, "live").await?;
+    // YouTube accepted the change, so from here on a failed status check only means "not live
+    // yet": it never turns a switch that worked into a failed one.
     let started = tokio::time::Instant::now();
     while started.elapsed() < LIVE_WAIT {
         tokio::time::sleep(POLL_EVERY).await;
-        if yt.broadcast_info(&video.broadcast_id).await?.life_cycle == "live" {
+        if yt
+            .broadcast_info(&video.broadcast_id)
+            .await
+            .is_ok_and(|info| info.life_cycle == "live")
+        {
             return Ok(());
         }
     }
@@ -415,7 +417,10 @@ pub async fn carry_out(
     action: &Action,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Outcome {
-    let mut yt = match app.youtube().await {
+    // Held for the whole action: no other work on this court's videos (Prepare, the title
+    // check, restart recovery) runs meanwhile. Other courts' switches carry on alongside.
+    let _court_lock = app.court_lock(&court.name).await;
+    let mut yt = match app.youtube() {
         Ok(yt) => yt,
         Err(e) => {
             return Outcome::Failed {
@@ -424,9 +429,9 @@ pub async fn carry_out(
             };
         }
     };
-    // Read only once the YouTube lock is held: nothing else can change the recorded videos
-    // from here on, so the old video's title and description sent back to YouTube with the
-    // "Next game" link are current.
+    // Read only once the court's lock is held: nothing else can change this court's recorded
+    // videos from here on, so the old video's title and description sent back to YouTube with
+    // the "Next game" link are current.
     let loaded = app.state_file().and_then(|file| {
         let state = prepare::load_state(&file, &app.config().event_slug)?;
         Ok((file, state))
@@ -582,14 +587,12 @@ async fn add_next_link(
     };
     match yt.update_broadcast(&from_video.broadcast_id, &spec).await {
         Ok(()) => {
-            let saved =
-                prepare::load_state(ctx.state_file, &ctx.state.event_slug).and_then(|mut s| {
-                    if let Some(v) = s.videos.get_mut(from) {
-                        v.description = spec.description.clone();
-                        v.next_game_link = Some(link.to_string());
-                    }
-                    prepare::save_state(ctx.state_file, &s)
-                });
+            let saved = prepare::update_state(ctx.state_file, &ctx.state.event_slug, |s| {
+                if let Some(v) = s.videos.get_mut(from) {
+                    v.description = spec.description.clone();
+                    v.next_game_link = Some(link.to_string());
+                }
+            });
             if let Err(e) = saved {
                 warnings.push(format!("Couldn't save the video list: {e}"));
             }
@@ -789,20 +792,23 @@ async fn two_key_switch(
             "Game {from}'s video may still be live; end it in YouTube Studio ({e})"
         )),
     }
-    if let Some(index) = videos.from_index {
-        match vmix::stop_destination(&court.vmix_address, vmix_destination(index)).await {
-            Ok(()) => {
-                app.note_stopped(&court.name, vmix_destination(index));
-                log(format!(
-                    "vMix: stopped destination {}",
+    match videos.from_index {
+        Some(index) => {
+            match vmix::stop_destination(&court.vmix_address, vmix_destination(index)).await {
+                Ok(()) => {
+                    app.note_stopped(&court.name, vmix_destination(index));
+                    log(format!(
+                        "vMix: stopped destination {}",
+                        vmix_destination(index)
+                    ));
+                }
+                Err(e) => warnings.push(format!(
+                    "Couldn't stop vMix destination {}: {e}",
                     vmix_destination(index)
-                ));
+                )),
             }
-            Err(e) => warnings.push(format!(
-                "Couldn't stop vMix destination {}: {e}",
-                vmix_destination(index)
-            )),
         }
+        None => warnings.push(unmatched_old_key_warning(from)),
     }
 
     // 5: "Next game" link in the old video's description, for replay viewers.
@@ -810,6 +816,12 @@ async fn two_key_switch(
         add_next_link(yt, ctx, from, from_video, &link, &mut warnings).await;
     }
     finished(warnings)
+}
+
+/// The warning when the old video's stream key matches neither of the court's keys, so its vMix
+/// output can't be stopped.
+fn unmatched_old_key_warning(from: &str) -> String {
+    format!("Couldn't tell which vMix destination Game {from} used; stop it in vMix")
 }
 
 async fn end(
@@ -877,6 +889,14 @@ mod tests {
                 .collect(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn an_unmatched_old_stream_key_is_reported() {
+        assert_eq!(
+            unmatched_old_key_warning("7"),
+            "Couldn't tell which vMix destination Game 7 used; stop it in vMix"
+        );
     }
 
     #[test]

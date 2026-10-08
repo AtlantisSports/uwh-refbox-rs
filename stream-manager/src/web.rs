@@ -891,7 +891,7 @@ async fn youtube_connect(
         let app = job_app;
         match pending.finish(&app.token_file()).await {
             Ok(()) => {
-                app.forget_youtube();
+                app.reconnect_youtube().await;
                 let channel = match app.youtube() {
                     Ok(mut yt) => {
                         let title = yt.my_channel_title().await.ok();

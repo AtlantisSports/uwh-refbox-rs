@@ -1098,6 +1098,23 @@ impl App {
             .recently(court_name, destination, Instant::now())
     }
 
+    /// After connecting afresh: the handles already handed out (a running switch, Prepare) move
+    /// to the new sign-in, then the connection is dropped as [`App::forget_youtube`] does.
+    pub async fn reconnect_youtube(&self) {
+        let current = self
+            .youtube
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        if let Some(youtube) = current {
+            match GoogleAuth::load(&self.client_file(), &self.token_file()) {
+                Ok(auth) => youtube.replace_auth(auth).await,
+                Err(e) => warn!("Couldn't read the new YouTube sign-in: {e}"),
+            }
+        }
+        self.forget_youtube();
+    }
+
     /// Drops the YouTube connection (it is opened again on next use), e.g. after connecting
     /// afresh, and checks again whether the sign-in file exists.
     pub fn forget_youtube(&self) {
@@ -1370,7 +1387,7 @@ fn fetched_from_current(config: &Config, portal_url: &str, event_slug: &str) -> 
 /// Saves the settings in the format confy reads (TOML), replacing the file whole: a crash
 /// part-way leaves the old file, never an empty one (which would load as the defaults, without
 /// the PIN).
-fn save_config(path: &Path, config: &Config) -> Result<(), BoxError> {
+pub(crate) fn save_config(path: &Path, config: &Config) -> Result<(), BoxError> {
     let name = path
         .file_name()
         .ok_or_else(|| format!("{} isn't a file name", path.display()))?

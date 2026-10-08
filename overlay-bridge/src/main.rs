@@ -27,9 +27,9 @@ struct Cli {
     #[clap(long)]
     refbox_port: Option<u16>,
 
-    /// Port the bridge's own HTTP server listens on, for vMix and any other poller. Not 8088 --
-    /// that is vMix's own web controller and would collide on the same PC. Overrides the saved
-    /// setting when passed; otherwise the last value used is remembered, falling back to 8099.
+    /// Port the bridge's own HTTP server listens on, for vMix and any other poller. Not 8088 or
+    /// 8099 -- vMix's web controller and TCP API, which would collide on the same PC. Overrides the
+    /// saved setting when passed; otherwise the last value used is remembered, falling back to 8098.
     #[clap(long)]
     port: Option<u16>,
 
@@ -149,10 +149,10 @@ mod tests {
     }
 
     #[test]
-    fn the_http_port_is_not_set_by_default_but_resolves_to_8099_never_8088() {
+    fn the_http_port_is_not_set_by_default_but_resolves_to_8098_never_a_vmix_port() {
         let cli = Cli::try_parse_from(["overlay-bridge"]).expect("no required args");
         assert_eq!(cli.port, None);
-        assert_eq!(config::resolve(cli.port, None, config::DEFAULT_PORT), 8099);
+        assert_eq!(config::resolve(cli.port, None, config::DEFAULT_PORT), 8098);
     }
 
     #[test]

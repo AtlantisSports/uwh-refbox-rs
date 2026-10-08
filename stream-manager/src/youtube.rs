@@ -125,6 +125,12 @@ impl<'a> YouTubeAccess<'a> {
     }
 }
 
+// Dropping a step releases its court's lock, so the compiler must treat the drop as a use: a
+// step still alive when the next one is taken would wait on the same court's lock for ever.
+impl Drop for YouTubeStep<'_> {
+    fn drop(&mut self) {}
+}
+
 impl Deref for YouTubeStep<'_> {
     type Target = YouTube;
 
@@ -147,6 +153,12 @@ impl YouTube {
             units_used: 0,
             ledger,
         })
+    }
+
+    /// Puts a new sign-in (after Connect YouTube) into every handle on this connection, so none
+    /// of them can save the old sign-in back over the new one when its token runs out.
+    pub async fn replace_auth(&self, auth: GoogleAuth) {
+        *self.auth.lock().await = auth;
     }
 
     /// Another handle on the same connection, with its own count of units starting at zero.

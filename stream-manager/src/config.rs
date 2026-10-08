@@ -194,17 +194,21 @@ pub fn check_event_slug(slug: &str) -> Result<(), String> {
 }
 
 impl Config {
-    /// `validate`, plus the checks that only apply to settings being saved: these never stop
-    /// an existing settings file from loading.
-    pub fn validate_for_save(&self) -> Result<(), String> {
+    /// `validate`, plus the checks that only apply to settings being saved over `current` (the
+    /// settings in use): these never stop an existing settings file from loading.
+    pub fn validate_for_save(&self, current: &Config) -> Result<(), String> {
         self.validate()?;
         // Only the two portals are offered; anything else could send the schedule requests (and
-        // the event's titles) somewhere unexpected.
+        // the event's titles) somewhere unexpected. Checked only when the portal changes, so a
+        // hand-edited settings file with another portal can still have its first PIN set.
         let portal = self
             .portal_url
             .strip_suffix('/')
             .unwrap_or(&self.portal_url);
-        if portal != LIVE_PORTAL_URL && portal != DEV_PORTAL_URL {
+        if self.portal_url != current.portal_url
+            && portal != LIVE_PORTAL_URL
+            && portal != DEV_PORTAL_URL
+        {
             return Err("Choose the live or dev portal".into());
         }
         // The event may still be unset; once chosen, it must be usable in a file name.
@@ -329,18 +333,18 @@ mod tests {
         c.courts.push(second);
         // A settings file like this still loads, and saves while Companion is off.
         assert_eq!(c.validate(), Ok(()));
-        assert_eq!(c.validate_for_save(), Ok(()));
+        assert_eq!(c.validate_for_save(&Config::default()), Ok(()));
 
         c.companion_address = "127.0.0.1:8000".into();
         assert_eq!(c.validate(), Ok(()), "loading must never fail on this");
-        let error = c.validate_for_save().unwrap_err();
+        let error = c.validate_for_save(&Config::default()).unwrap_err();
         assert!(
             error.contains("\"1\"") && error.contains("\"Court 1\""),
             "{error}"
         );
         assert!(error.contains("sm_court_1"), "{error}");
         c.courts[1].name = "2".into();
-        assert_eq!(c.validate_for_save(), Ok(()));
+        assert_eq!(c.validate_for_save(&Config::default()), Ok(()));
     }
 
     #[test]
@@ -393,14 +397,14 @@ mod tests {
     fn an_event_that_isnt_a_plain_portal_name_is_refused_on_save() {
         let mut c = Config::default();
         // Not chosen yet: fine.
-        assert_eq!(c.validate_for_save(), Ok(()));
+        assert_eq!(c.validate_for_save(&Config::default()), Ok(()));
         for good in ["au-2026-henks-kings-cup", "Event2"] {
             c.event_slug = good.into();
-            assert_eq!(c.validate_for_save(), Ok(()), "{good}");
+            assert_eq!(c.validate_for_save(&Config::default()), Ok(()), "{good}");
         }
         for bad in ["../evil", "a/b", "a\\b", "cup 2026", "cup.json", "café"] {
             c.event_slug = bad.into();
-            let error = c.validate_for_save().unwrap_err();
+            let error = c.validate_for_save(&Config::default()).unwrap_err();
             assert!(
                 error.contains("letters, digits and dashes"),
                 "{bad}: {error}"
@@ -419,7 +423,7 @@ mod tests {
             format!("{DEV_PORTAL_URL}/"),
         ] {
             c.portal_url = good.clone();
-            assert_eq!(c.validate_for_save(), Ok(()), "{good}");
+            assert_eq!(c.validate_for_save(&Config::default()), Ok(()), "{good}");
         }
         for bad in [
             "https://evil.example".to_string(),
@@ -431,11 +435,38 @@ mod tests {
         ] {
             c.portal_url = bad.clone();
             assert_eq!(
-                c.validate_for_save(),
+                c.validate_for_save(&Config::default()),
                 Err("Choose the live or dev portal".to_string()),
                 "{bad}"
             );
         }
+    }
+
+    #[test]
+    fn a_hand_edited_portal_is_kept_on_save_but_cannot_be_chosen() {
+        let current = Config {
+            portal_url: "http://localhost:5000".into(),
+            ..Default::default()
+        };
+        // Setting the first PIN saves everything else unchanged.
+        let with_pin = Config {
+            pin: "1234".into(),
+            ..current.clone()
+        };
+        assert_eq!(with_pin.validate_for_save(&current), Ok(()));
+        let other = Config {
+            portal_url: "https://evil.example".into(),
+            ..current.clone()
+        };
+        assert_eq!(
+            other.validate_for_save(&current),
+            Err("Choose the live or dev portal".to_string())
+        );
+        let live = Config {
+            portal_url: LIVE_PORTAL_URL.into(),
+            ..current.clone()
+        };
+        assert_eq!(live.validate_for_save(&current), Ok(()));
     }
 
     #[test]
@@ -444,9 +475,13 @@ mod tests {
             quota_daily_limit: 0,
             ..Default::default()
         };
-        assert!(c.validate_for_save().unwrap_err().contains("at least 1"));
+        assert!(
+            c.validate_for_save(&Config::default())
+                .unwrap_err()
+                .contains("at least 1")
+        );
         c.quota_daily_limit = 1;
-        assert_eq!(c.validate_for_save(), Ok(()));
+        assert_eq!(c.validate_for_save(&Config::default()), Ok(()));
     }
 
     #[test]

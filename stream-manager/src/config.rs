@@ -195,12 +195,13 @@ pub fn check_event_slug(slug: &str) -> Result<(), String> {
 
 impl Config {
     /// `validate`, plus the checks that only apply to settings being saved over `current` (the
-    /// settings in use): these never stop an existing settings file from loading.
+    /// settings in use): these never stop an existing settings file from loading. Each runs only
+    /// when the settings it covers change, so a hand-edited settings file that breaks one can
+    /// still have its first PIN set or a new button key made (nothing else works until then).
     pub fn validate_for_save(&self, current: &Config) -> Result<(), String> {
         self.validate()?;
         // Only the two portals are offered; anything else could send the schedule requests (and
-        // the event's titles) somewhere unexpected. Checked only when the portal changes, so a
-        // hand-edited settings file with another portal can still have its first PIN set.
+        // the event's titles) somewhere unexpected.
         let portal = self
             .portal_url
             .strip_suffix('/')
@@ -212,15 +213,17 @@ impl Config {
             return Err("Choose the live or dev portal".into());
         }
         // The event may still be unset; once chosen, it must be usable in a file name.
-        if !self.event_slug.is_empty() {
+        if self.event_slug != current.event_slug && !self.event_slug.is_empty() {
             check_event_slug(&self.event_slug)?;
         }
-        if self.quota_daily_limit == 0 {
+        if self.quota_daily_limit != current.quota_daily_limit && self.quota_daily_limit == 0 {
             return Err("YouTube's daily allowance must be at least 1 unit".into());
         }
         // Two courts sharing Companion variables would overwrite each other's buttons; this only
         // matters while the Companion address is set.
-        if !self.companion_address.trim().is_empty() {
+        let companion_changed =
+            self.courts != current.courts || self.companion_address != current.companion_address;
+        if companion_changed && !self.companion_address.trim().is_empty() {
             for (i, court) in self.courts.iter().enumerate() {
                 let prefix = crate::companion::variable_prefix(&court.name);
                 if let Some(other) = self.courts[..i]
@@ -443,11 +446,17 @@ mod tests {
     }
 
     #[test]
-    fn a_hand_edited_portal_is_kept_on_save_but_cannot_be_chosen() {
-        let current = Config {
+    fn a_hand_edited_file_can_still_set_its_first_pin() {
+        let mut current = Config {
             portal_url: "http://localhost:5000".into(),
+            event_slug: "cup 2026".into(),
+            quota_daily_limit: 0,
+            companion_address: "127.0.0.1:8000".into(),
             ..Default::default()
         };
+        let mut second = current.courts[0].clone();
+        second.name = "Court 1".into();
+        current.courts.push(second);
         // Setting the first PIN saves everything else unchanged.
         let with_pin = Config {
             pin: "1234".into(),
@@ -467,6 +476,19 @@ mod tests {
             ..current.clone()
         };
         assert_eq!(live.validate_for_save(&current), Ok(()));
+        // Changing another broken setting runs its check again.
+        let other_event = Config {
+            event_slug: "cup 2027".into(),
+            ..current.clone()
+        };
+        let error = other_event.validate_for_save(&current).unwrap_err();
+        assert!(error.contains("letters, digits and dashes"), "{error}");
+        let other_companion = Config {
+            companion_address: "127.0.0.1:8001".into(),
+            ..current.clone()
+        };
+        let error = other_companion.validate_for_save(&current).unwrap_err();
+        assert!(error.contains("sm_court_1"), "{error}");
     }
 
     #[test]

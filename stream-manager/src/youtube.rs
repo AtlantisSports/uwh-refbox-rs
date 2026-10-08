@@ -17,7 +17,7 @@ use std::{
     sync::Arc,
 };
 use time::OffsetDateTime;
-use tokio::sync::MappedMutexGuard;
+use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 const API: &str = "https://www.googleapis.com/youtube/v3";
 const LIST_COST: u32 = 1;
@@ -52,36 +52,75 @@ pub struct BroadcastSpec {
     pub privacy: String,
 }
 
+/// A handle on the YouTube connection. Cloning it is cheap, and every clone shares the Google
+/// sign-in (refreshed by one caller at a time) and the allowance ledger, so courts' switches
+/// can call YouTube at the same time.
+#[derive(Clone)]
 pub struct YouTube {
-    auth: GoogleAuth,
+    /// Held only while an access token is handed out or refreshed, so a refresh happens once
+    /// and the new token is saved once.
+    auth: Arc<AsyncMutex<GoogleAuth>>,
     http: reqwest::Client,
-    /// Units used through this connection since it was opened.
+    /// Units used through this handle since it was handed out.
     pub units_used: u32,
     /// The allowance ledger every call is added to (`None` counts nowhere else).
     ledger: Option<Arc<quota::LedgerFile>>,
 }
 
 /// Hands out the YouTube connection for one step of a longer job (one game of Prepare or of a
-/// title check). Taking it per step instead of for the whole job lets a court's switch, which
-/// needs the same connection, go ahead between two steps.
+/// title check), together with the lock of the court that step works on. Taking the lock per
+/// step instead of for the whole job lets that court's switch go ahead between two steps.
 pub enum YouTubeAccess<'a> {
-    /// The caller already holds the connection (a switch, or the terminal) and keeps it.
+    /// The caller already holds the court's lock (a switch), or works with no courts running
+    /// (the terminal), and keeps it.
     Held(&'a mut YouTube),
-    /// Taken from the program afresh for each step.
-    Shared(&'a App),
+    /// Each step takes the lock of its court from the program afresh.
+    Shared {
+        app: &'a App,
+        /// Opened on the first step and kept, so its units add up over the whole job.
+        youtube: Option<YouTube>,
+    },
 }
 
-/// The connection for one step; released when dropped.
-pub enum YouTubeStep<'a> {
-    Held(&'a mut YouTube),
-    Shared(MappedMutexGuard<'a, YouTube>),
+/// The connection for one step; the court's lock (if taken) is released when dropped.
+pub struct YouTubeStep<'a> {
+    youtube: &'a mut YouTube,
+    _court: Option<OwnedMutexGuard<()>>,
 }
 
-impl YouTubeAccess<'_> {
-    pub async fn youtube(&mut self) -> Result<YouTubeStep<'_>, BoxError> {
+impl<'a> YouTubeAccess<'a> {
+    pub fn shared(app: &'a App) -> Self {
+        YouTubeAccess::Shared { app, youtube: None }
+    }
+
+    /// The connection for one step on `court`'s games.
+    pub async fn step(&mut self, court: &str) -> Result<YouTubeStep<'_>, BoxError> {
         match self {
-            YouTubeAccess::Held(yt) => Ok(YouTubeStep::Held(yt)),
-            YouTubeAccess::Shared(app) => Ok(YouTubeStep::Shared(app.youtube().await?)),
+            YouTubeAccess::Held(yt) => Ok(YouTubeStep {
+                youtube: yt,
+                _court: None,
+            }),
+            YouTubeAccess::Shared { app, youtube } => {
+                // The court's lock first, then the connection: nothing that holds the
+                // connection's sign-in ever waits for a court (see `App::court_lock`).
+                let court = app.court_lock(court).await;
+                let youtube = match youtube {
+                    Some(yt) => yt,
+                    None => youtube.insert(app.youtube()?),
+                };
+                Ok(YouTubeStep {
+                    youtube,
+                    _court: Some(court),
+                })
+            }
+        }
+    }
+
+    /// Units used through this access so far.
+    pub fn units_used(&self) -> u32 {
+        match self {
+            YouTubeAccess::Held(yt) => yt.units_used,
+            YouTubeAccess::Shared { youtube, .. } => youtube.as_ref().map_or(0, |yt| yt.units_used),
         }
     }
 }
@@ -90,30 +129,32 @@ impl Deref for YouTubeStep<'_> {
     type Target = YouTube;
 
     fn deref(&self) -> &YouTube {
-        match self {
-            YouTubeStep::Held(yt) => yt,
-            YouTubeStep::Shared(guard) => guard,
-        }
+        self.youtube
     }
 }
 
 impl DerefMut for YouTubeStep<'_> {
     fn deref_mut(&mut self) -> &mut YouTube {
-        match self {
-            YouTubeStep::Held(yt) => yt,
-            YouTubeStep::Shared(guard) => guard,
-        }
+        self.youtube
     }
 }
 
 impl YouTube {
     pub fn new(auth: GoogleAuth, ledger: Option<Arc<quota::LedgerFile>>) -> Result<Self, BoxError> {
         Ok(Self {
-            auth,
+            auth: Arc::new(AsyncMutex::new(auth)),
             http: crate::http_client()?,
             units_used: 0,
             ledger,
         })
+    }
+
+    /// Another handle on the same connection, with its own count of units starting at zero.
+    pub fn handle(&self) -> Self {
+        Self {
+            units_used: 0,
+            ..self.clone()
+        }
     }
 
     async fn call(
@@ -124,7 +165,7 @@ impl YouTube {
         body: Option<Value>,
         cost: u32,
     ) -> Result<Value, BoxError> {
-        let token = self.auth.access_token().await?;
+        let token = self.auth.lock().await.access_token().await?;
         let method_has_body = method == Method::POST || method == Method::PUT;
         let mut request = self
             .http

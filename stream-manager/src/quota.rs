@@ -55,10 +55,14 @@ pub fn pacific_date(now: OffsetDateTime) -> Date {
 impl Ledger {
     /// Missing or unreadable file → an empty ledger.
     pub fn load(path: &Path) -> Ledger {
+        Self::read(path).unwrap_or_default()
+    }
+
+    /// The file's ledger, or `None` if it is missing, unreadable or damaged.
+    fn read(path: &Path) -> Option<Ledger> {
         fs::read_to_string(path)
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> Result<(), BoxError> {
@@ -103,10 +107,12 @@ impl LedgerFile {
 
     /// Adds units used at `now` to the file (load, add, save) and to the total in memory. The
     /// file is read again first, so units another program (the command line) added are kept.
+    /// If it can't be read (missing, unreadable or damaged), the count carries on from the
+    /// total in memory instead of starting again from zero.
     pub fn record(&self, units: u32, now: OffsetDateTime) -> Result<(), BoxError> {
         // A panic while holding the lock leaves nothing half-done in memory; keep going.
         let mut in_memory = self.ledger.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ledger = Ledger::load(&self.path);
+        let mut ledger = Ledger::read(&self.path).unwrap_or_else(|| in_memory.clone());
         ledger.record(units, now);
         *in_memory = ledger;
         in_memory.save(&self.path)
@@ -284,6 +290,37 @@ mod tests {
 
         fs::write(&path, "not json").unwrap();
         assert_eq!(Ledger::load(&path), Ledger::default());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_damaged_or_missing_ledger_file_carries_on_from_the_total_in_memory() {
+        let dir = std::env::temp_dir().join(format!(
+            "stream-manager-quota-damaged-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(LEDGER_FILE);
+        let today = datetime!(2026-01-15 09:00 UTC);
+        Ledger {
+            day: Some(date!(2026 - 01 - 15)),
+            used: 300,
+        }
+        .save(&path)
+        .unwrap();
+        let file = LedgerFile::open(path.clone());
+
+        // Damaged: today's 300 are kept, not replaced by this call's units.
+        fs::write(&path, "{ half a ledg").unwrap();
+        file.record(50, today).unwrap();
+        assert_eq!(file.used_today(today), 350);
+        assert_eq!(Ledger::load(&path).used, 350, "and that is what is saved");
+
+        // Missing: the same.
+        fs::remove_file(&path).unwrap();
+        file.record(1, today).unwrap();
+        assert_eq!(file.used_today(today), 351);
+        assert_eq!(Ledger::load(&path).used, 351);
         let _ = fs::remove_dir_all(&dir);
     }
 

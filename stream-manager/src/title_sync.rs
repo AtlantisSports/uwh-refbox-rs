@@ -92,7 +92,7 @@ pub async fn begin(
 ) -> Result<Check, BoxError> {
     let config = app.config();
     let plan = portal::fetch_event_plan(&config.portal_url, &config.event_slug).await?;
-    app.set_plan(&config.event_slug, plan.clone());
+    app.set_plan(&config.portal_url, &config.event_slug, plan.clone());
     let live = app.live_game(&court.name);
     let day = sync_day(
         &plan,
@@ -118,7 +118,7 @@ pub async fn begin(
 }
 
 /// Updates the checked games' videos where the portal has changed. Returns how many changed.
-/// The YouTube connection is taken one game at a time, so a switch can go ahead in between.
+/// The court's lock is taken one game at a time, so a switch can go ahead in between.
 async fn update(
     app: &App,
     youtube: &mut YouTubeAccess<'_>,
@@ -128,8 +128,8 @@ async fn update(
     let state_file = app.state_file()?;
     let mut updated = 0;
     for game in check.games.iter().filter_map(|g| check.plan.game(g)) {
-        let mut yt = youtube.youtube().await?;
-        // Read afresh: a switch may have changed the record while the connection was free.
+        let mut yt = youtube.step(&game.court).await?;
+        // Read afresh: a switch may have changed the record while the court's lock was free.
         let mut state = prepare::load_state(&state_file, &check.config.event_slug)?;
         let changed = prepare::sync_video(
             &mut yt,
@@ -183,12 +183,12 @@ pub async fn sync_court(
     let updated = if check.games.is_empty() {
         0
     } else {
-        update(app, &mut YouTubeAccess::Shared(app), &check, log).await?
+        update(app, &mut YouTubeAccess::shared(app), &check, log).await?
     };
     finish(app, court, &check, updated, log)
 }
 
-/// [`sync_court`] for a caller that already holds the YouTube connection (a switch).
+/// [`sync_court`] for a caller that already holds the court's lock (a switch).
 pub async fn sync_court_with(
     app: &App,
     yt: &mut YouTube,

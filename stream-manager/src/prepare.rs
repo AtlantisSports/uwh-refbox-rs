@@ -18,7 +18,10 @@ use std::{
     fs,
     io::{self, BufRead, Write},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering as AtomicOrdering},
+    sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering as AtomicOrdering},
+    },
 };
 use time::{
     Duration, OffsetDateTime, format_description::well_known::Rfc3339, macros::format_description,
@@ -95,6 +98,26 @@ pub fn save_state(path: &Path, state: &EventState) -> Result<(), BoxError> {
     write_atomically(path, &serde_json::to_string_pretty(state)?)
 }
 
+/// Held for each read-change-save of the record, so jobs on different courts (which run at the
+/// same time) can't save over each other's changes.
+static RECORD_LOCK: Mutex<()> = Mutex::new(());
+
+/// Reads the record afresh, applies `change` and saves it, all while no other part of this
+/// program is changing the record. Returns the record as saved.
+pub fn update_state(
+    path: &Path,
+    event_slug: &str,
+    change: impl FnOnce(&mut EventState),
+) -> Result<EventState, BoxError> {
+    // A panic while holding the lock leaves nothing half-saved (the file is replaced whole);
+    // keep going.
+    let _record = RECORD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut state = load_state(path, event_slug)?;
+    change(&mut state);
+    save_state(path, &state)?;
+    Ok(state)
+}
+
 /// How many more times a failed rename in [`write_atomically`] is tried, and how long apart.
 /// On Windows, antivirus or OneDrive can hold the file for a moment, which makes it fail.
 const RENAME_RETRIES: u32 = 5;
@@ -153,7 +176,8 @@ pub fn confirm(question: &str) -> bool {
     io::stdin().lock().read_line(&mut answer).is_ok() && answer.trim().eq_ignore_ascii_case("yes")
 }
 
-fn normalize(name: &str) -> String {
+/// A stream key's name as compared: dashes made plain, case and outer spaces ignored.
+pub(crate) fn normalize(name: &str) -> String {
     name.trim().replace(['–', '—'], "-").to_lowercase()
 }
 
@@ -320,15 +344,16 @@ pub async fn sync_video(
     let broadcast_id = video.broadcast_id.clone();
     yt.update_broadcast(&broadcast_id, &spec).await?;
     log(format!("Updated video: {}", spec.title));
-    if let Some(v) = state.videos.get_mut(&game.number) {
-        v.title = spec.title;
-        v.description = spec.description;
-        v.scheduled_start = spec.scheduled_start;
-        v.portal_start = Some(start);
-        v.court = Some(game.court.clone());
-        v.day = Some(game.day);
-    }
-    save_state(state_file, state)?;
+    *state = update_state(state_file, &config.event_slug, |state| {
+        if let Some(v) = state.videos.get_mut(&game.number) {
+            v.title = spec.title;
+            v.description = spec.description;
+            v.scheduled_start = spec.scheduled_start;
+            v.portal_start = Some(start);
+            v.court = Some(game.court.clone());
+            v.day = Some(game.day);
+        }
+    })?;
     Ok(true)
 }
 
@@ -488,9 +513,9 @@ pub fn preview(
 }
 
 /// Creates/updates everything the selection needs, saving the record after every call.
-/// Progress lines go to `log`. The YouTube connection is taken afresh for each playlist and each
-/// game, never for the whole run, so a court's switch (which needs the same connection) waits
-/// at most for one game's few calls even while Prepare runs during a day.
+/// Progress lines go to `log`. The court's lock is taken afresh for each playlist and each
+/// game, never for the whole run, so a court's switch waits at most for one game's few calls
+/// even while Prepare runs during a day.
 ///
 /// On a court whose day is running (asked of `day_running` for each game, just before its
 /// stream key is decided), videos keep the stream key they are bound to; titles, descriptions
@@ -509,10 +534,10 @@ pub async fn run(
     for target in select_targets(config, plan, selection)? {
         let title = &target.playlist_title;
         let pair = court_streams(target.court, &lookups.streams)?;
-        // Each step holds the YouTube connection and reads the record afresh: a switch may have
-        // changed it (e.g. a "Next game" link) while the connection was free.
-        let mut step = youtube.youtube().await?;
-        let mut state = load_state(state_file, &config.event_slug)?;
+        // Each step holds the court's lock and reads the record afresh: a switch may have
+        // changed it (e.g. a "Next game" link) while the lock was free.
+        let mut step = youtube.step(&target.court.name).await?;
+        let state = load_state(state_file, &config.event_slug)?;
         let playlist_id = match state.playlists.get(title) {
             Some(id) => id.clone(),
             None => {
@@ -538,8 +563,9 @@ pub async fn run(
                         id
                     }
                 };
-                state.playlists.insert(title.clone(), id.clone());
-                save_state(state_file, &state)?;
+                update_state(state_file, &config.event_slug, |state| {
+                    state.playlists.insert(title.clone(), id.clone());
+                })?;
                 id
             }
         };
@@ -548,7 +574,7 @@ pub async fn run(
 
         for (i, game) in target.games.iter().enumerate() {
             // Held for this game only; released before the next one.
-            let mut youtube = youtube.youtube().await?;
+            let mut youtube = youtube.step(&target.court.name).await?;
             let mut state = load_state(state_file, &config.event_slug)?;
             let video = match state.videos.get(&game.number).cloned() {
                 None => {
@@ -567,8 +593,9 @@ pub async fn run(
                         court: Some(game.court.clone()),
                         day: Some(game.day),
                     };
-                    state.videos.insert(game.number.clone(), v.clone());
-                    save_state(state_file, &state)?;
+                    update_state(state_file, &config.event_slug, |state| {
+                        state.videos.insert(game.number.clone(), v.clone());
+                    })?;
                     v
                 }
                 Some(v) => {
@@ -588,7 +615,7 @@ pub async fn run(
             };
 
             // Asked now, not at the start of the job: the court may have started its day since.
-            // Start day needs the YouTube connection this game holds, so the answer stays true
+            // Start day needs the court's lock this game holds, so the answer stays true
             // until the binding below is done.
             match binding(
                 target.court,
@@ -609,10 +636,11 @@ pub async fn run(
                         "Game {}: linked to stream key \"{}\"",
                         game.number, stream.title
                     ));
-                    if let Some(v) = state.videos.get_mut(&game.number) {
-                        v.bound_stream = Some(stream.title.clone());
-                    }
-                    save_state(state_file, &state)?;
+                    update_state(state_file, &config.event_slug, |state| {
+                        if let Some(v) = state.videos.get_mut(&game.number) {
+                            v.bound_stream = Some(stream.title.clone());
+                        }
+                    })?;
                 }
             }
 
@@ -621,17 +649,15 @@ pub async fn run(
                     .add_to_playlist(&playlist_id, &video.broadcast_id)
                     .await?;
                 log(format!("Game {}: added to \"{title}\"", game.number));
-                if let Some(v) = state.videos.get_mut(&game.number) {
-                    v.in_playlist = true;
-                }
-                save_state(state_file, &state)?;
+                update_state(state_file, &config.event_slug, |state| {
+                    if let Some(v) = state.videos.get_mut(&game.number) {
+                        v.in_playlist = true;
+                    }
+                })?;
             }
         }
     }
-    log(format!(
-        "Done. Used {} units so far.",
-        youtube.youtube().await?.units_used
-    ));
+    log(format!("Done. Used {} units so far.", youtube.units_used()));
     Ok(())
 }
 
@@ -696,12 +722,16 @@ pub async fn cleanup(
     while let Some((game, video)) = state.videos.pop_first() {
         youtube.delete_broadcast(&video.broadcast_id).await?;
         log(format!("Deleted video for game {game}"));
-        save_state(state_file, &state)?;
+        update_state(state_file, event_slug, |state| {
+            state.videos.remove(&game);
+        })?;
     }
     while let Some((title, id)) = state.playlists.pop_first() {
         youtube.delete_playlist(&id).await?;
         log(format!("Deleted playlist \"{title}\""));
-        save_state(state_file, &state)?;
+        update_state(state_file, event_slug, |state| {
+            state.playlists.remove(&title);
+        })?;
     }
     log(format!("Done. Used {} units so far.", youtube.units_used));
     Ok(())
@@ -736,6 +766,39 @@ pub async fn cleanup_cli(
 mod tests {
     use super::*;
     use crate::portal::parse_event_plan;
+
+    #[test]
+    fn changes_to_the_record_made_at_the_same_time_are_all_kept() {
+        let dir = std::env::temp_dir().join(format!(
+            "stream-manager-record-together-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state-cup.json");
+        // Two courts' jobs, each recording its own playlists at the same time.
+        let writers: Vec<_> = ["1", "2"]
+            .into_iter()
+            .map(|court| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    for n in 0..25 {
+                        update_state(&path, "cup", |state| {
+                            state
+                                .playlists
+                                .insert(format!("Court {court} #{n}"), String::new());
+                        })
+                        .unwrap();
+                    }
+                })
+            })
+            .collect();
+        for writer in writers {
+            writer.join().unwrap();
+        }
+        assert_eq!(load_state(&path, "cup").unwrap().playlists.len(), 50);
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_failed_rename_is_tried_again_up_to_five_more_times() {

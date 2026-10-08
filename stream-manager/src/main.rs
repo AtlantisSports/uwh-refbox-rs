@@ -292,7 +292,7 @@ fn load_config(path: &Path) -> Result<Config, BoxError> {
     if config.button_key.is_empty() {
         config.button_key = access::new_button_key()
             .map_err(|e| format!("Couldn't create the Stream Deck button key: {e}"))?;
-        confy::store_path(path, &config)?;
+        app::save_config(path, &config)?;
         info!("Created the Stream Deck button key");
     }
     Ok(config)

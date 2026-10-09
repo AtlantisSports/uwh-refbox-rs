@@ -8,9 +8,10 @@ use crate::{
     app::App,
     config::{Config, DEV_PORTAL_URL, LIVE_PORTAL_URL},
     google_auth,
-    portal::EventPlan,
+    portal::{self, EventPlan},
     prepare::{self, Selection},
     switcher::Command,
+    watch_links::{self, Purpose},
     youtube::YouTubeAccess,
 };
 use axum::{
@@ -772,6 +773,18 @@ async fn prepare_run(
             .await
         }
         .await;
+        // Also after a failure: the videos made before it still get their links.
+        match app
+            .state_file()
+            .and_then(|file| prepare::load_state(&file, &config.event_slug))
+        {
+            Ok(state) => {
+                let links = watch_links::links_after_prepare(&plan, &state);
+                watch_links::publish(&app.link_file(), &config, &links, Purpose::Set, &mut log)
+                    .await;
+            }
+            Err(e) => log(format!("Portal: watch links weren't set: {e}")),
+        }
         app.end_job(result.err().map(|e| e.to_string()));
     });
     Ok(Json(json!({ "started": true })))
@@ -968,20 +981,51 @@ async fn cleanup(
     let job_app = Arc::clone(&app);
     tokio::spawn(async move {
         let app = job_app;
-        let slug = app.config().event_slug;
+        let config = app.config();
+        let slug = config.event_slug.clone();
         let log_app = Arc::clone(&app);
         let mut log = move |line: String| log_app.job_log(line);
+        let mut deleted = Vec::new();
         let result = async {
             let state_file = app.state_file()?;
-            // Every court's videos are deleted, so no court may start its day meanwhile.
+            // Every court's videos are deleted, so no court may start its day meanwhile. The
+            // lock is released at the end of this block, before the portal is told.
             let _courts = app.lock_all_courts().await;
             let mut yt = app.youtube()?;
-            prepare::cleanup(&mut yt, &state_file, &slug, &mut log).await
+            prepare::cleanup(&mut yt, &state_file, &slug, &mut deleted, &mut log).await
         }
         .await;
+        // Also after a failure: the videos deleted before it still get their links cleared.
+        clear_links(&app, &config, &deleted, &mut log).await;
         app.end_job(result.err().map(|e| e.to_string()));
     });
     Ok(Json(json!({ "started": true })))
+}
+
+/// Clears the portal's watch links for the `deleted` games of `config`'s event, with the
+/// schedule as loaded or, if it isn't, fetched now.
+async fn clear_links(
+    app: &App,
+    config: &Config,
+    deleted: &[String],
+    log: &mut (dyn FnMut(String) + Send),
+) {
+    if deleted.is_empty() {
+        return;
+    }
+    let plan = match app.plan() {
+        Some(plan) => Ok(plan),
+        None => portal::fetch_event_plan(&config.portal_url, &config.event_slug).await,
+    };
+    match plan {
+        Ok(plan) => {
+            let links = watch_links::links_after_cleanup(&plan, deleted);
+            watch_links::publish(&app.link_file(), config, &links, Purpose::Clear, log).await;
+        }
+        Err(e) => log(format!(
+            "Portal: watch links weren't cleared: the schedule couldn't be loaded ({e})"
+        )),
+    }
 }
 
 #[cfg(test)]

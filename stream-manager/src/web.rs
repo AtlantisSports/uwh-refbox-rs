@@ -11,7 +11,7 @@ use crate::{
     portal::{self, EventPlan},
     prepare::{self, Selection},
     switcher::Command,
-    watch_links::{self, Purpose},
+    watch_links::{self, LinkError, PortalLink, Purpose},
     youtube::YouTubeAccess,
 };
 use axum::{
@@ -246,6 +246,7 @@ fn router(app: Arc<App>) -> Router {
         .route("/api/youtube/connect", post(youtube_connect))
         .route("/api/youtube/check", post(youtube_check))
         .route("/api/cleanup", post(cleanup))
+        .route("/api/portal-link", post(link_portal).delete(unlink_portal))
         // Only the API: the page itself opens before a PIN is set, so it can set one.
         .route_layer(middleware::from_fn_with_state(
             Arc::clone(&app),
@@ -511,7 +512,10 @@ async fn get_settings(
 ) -> ApiResult {
     authorize(&app, &headers)?;
     let local = from_this_pc(addr);
-    let mut settings = json!(app.config());
+    let config = app.config();
+    let portal_linked =
+        watch_links::link_for(&app.link_file(), &config.portal_url, &config.event_slug).is_some();
+    let mut settings = json!(config);
     if let Some(settings) = settings.as_object_mut() {
         settings.remove("pin");
         if !local {
@@ -527,6 +531,7 @@ async fn get_settings(
             { "name": "Dev portal (testing)", "url": DEV_PORTAL_URL },
         ],
         "is_local": local,
+        "portal_linked": portal_linked,
         "restart_needed": local && app.devices_need_restart(),
         "this_pc_address": lan_ip().filter(|_| local),
     })))
@@ -608,6 +613,65 @@ async fn make_new_button_key(
     })?;
     info!("Made a new Stream Deck button key");
     Ok(Json(json!({ "button_key": key })))
+}
+
+#[derive(Deserialize)]
+struct LinkBody {
+    code: String,
+}
+
+/// Links this Stream Manager to the portal event in use: swaps the code the portal shows for
+/// a key and saves it. Any signed-in device may do it; the code is what makes it safe.
+async fn link_portal(
+    State(app): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<LinkBody>,
+) -> ApiResult {
+    authorize(&app, &headers)?;
+    let code = body.code.trim();
+    if code.len() != 6 || !code.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(bad("Enter the 6-digit code the portal showed"));
+    }
+    let config = app.config();
+    if config.event_slug.is_empty() {
+        return Err(bad("Choose and save an event first"));
+    }
+    let access_key = watch_links::exchange_code(
+        &config.portal_url,
+        &config.event_slug,
+        &config.stream_manager_id,
+        code,
+    )
+    .await
+    .map_err(|e| match e {
+        LinkError::NoPendingLink => bad(format!(
+            "The portal isn't expecting this Stream Manager. On the event's Manage Event → \
+             Stream management tab, add Stream Manager ID {}, then type the code it shows.",
+            config.stream_manager_id
+        )),
+        LinkError::InvalidCode => bad(
+            "That code isn't right, or it has expired. Codes last 15 minutes; add the Stream \
+             Manager again on the portal for a new one.",
+        ),
+        LinkError::Other(e) => bad(format!("Couldn't link: {e}")),
+    })?;
+    // The exact settings in use, as `link_for` compares them.
+    let link = PortalLink {
+        portal_url: config.portal_url,
+        event_slug: config.event_slug,
+        access_key,
+    };
+    watch_links::save(&app.link_file(), &link).map_err(|e| bad(format!("Couldn't link: {e}")))?;
+    info!("Linked to the portal for {}", link.event_slug);
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// Forgets the key. The portal isn't told: the organiser removes the Stream Manager there.
+async fn unlink_portal(State(app): State<AppState>, headers: HeaderMap) -> ApiResult {
+    authorize(&app, &headers)?;
+    watch_links::forget(&app.link_file()).map_err(|e| bad(format!("Couldn't unlink: {e}")))?;
+    info!("Unlinked from the portal");
+    Ok(Json(json!({ "ok": true })))
 }
 
 #[derive(Deserialize)]
@@ -1032,6 +1096,7 @@ async fn clear_links(
 mod tests {
     use super::*;
     use crate::config::Config;
+    use crate::watch_links::test_portal::MockPortal;
 
     #[test]
     fn requests_from_other_web_pages_are_recognised() {
@@ -1145,10 +1210,6 @@ mod tests {
         from: Option<[u8; 4]>,
         pin: &str,
     ) -> (String, std::path::PathBuf) {
-        let dir =
-            std::env::temp_dir().join(format!("stream-manager-web-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
         let config = Config {
             pin: pin.into(),
             button_key: KEY.into(),
@@ -1156,6 +1217,19 @@ mod tests {
             allowed_devices: vec![IpAddr::from(LISTED)],
             ..Config::default()
         };
+        test_server_with_config(name, from, config).await
+    }
+
+    /// A server with the settings `config` in a fresh folder; returns its address and the folder.
+    async fn test_server_with_config(
+        name: &str,
+        from: Option<[u8; 4]>,
+        config: Config,
+    ) -> (String, std::path::PathBuf) {
+        let dir =
+            std::env::temp_dir().join(format!("stream-manager-web-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
         let app = App::new(dir.join("config.toml"), config);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
@@ -1650,5 +1724,227 @@ mod tests {
                 .unwrap_err()
                 .contains("isn't a device address")
         );
+    }
+
+    // ----- Portal watch links -----
+
+    const PORTAL_KEY: &str = "secret-portal-key";
+    const EXCHANGE_PATH: &str = "/api/events/cup-2026/access-keys/stream-manager";
+
+    /// A server on this PC whose portal is `portal`, with `event_slug` saved and Stream Manager
+    /// ID 482917; returns its address, its folder, a client and the sign-in cookie.
+    async fn linking_server(
+        name: &str,
+        portal: &MockPortal,
+        event_slug: &str,
+    ) -> (String, std::path::PathBuf, reqwest::Client, String) {
+        let config = Config {
+            pin: "1234".into(),
+            portal_url: portal.base_url().to_string(),
+            event_slug: event_slug.into(),
+            stream_manager_id: "482917".into(),
+            ..Config::default()
+        };
+        let (base, dir) = test_server_with_config(name, None, config).await;
+        let client = reqwest::Client::new();
+        let cookie = sign_in(&client, &base).await;
+        (base, dir, client, cookie)
+    }
+
+    async fn get_settings_text(client: &reqwest::Client, base: &str, cookie: &str) -> String {
+        let response = client
+            .get(format!("{base}/api/settings"))
+            .header(header::COOKIE, cookie)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        response.text().await.unwrap()
+    }
+
+    async fn portal_linked(client: &reqwest::Client, base: &str, cookie: &str) -> Value {
+        let text = get_settings_text(client, base, cookie).await;
+        serde_json::from_str::<Value>(&text).unwrap()["portal_linked"].clone()
+    }
+
+    /// Sends `code` to link; returns the status and the reply.
+    async fn link(
+        client: &reqwest::Client,
+        base: &str,
+        cookie: &str,
+        code: &str,
+    ) -> (StatusCode, Value) {
+        let response = client
+            .post(format!("{base}/api/portal-link"))
+            .header(header::COOKIE, cookie)
+            .json(&json!({ "code": code }))
+            .send()
+            .await
+            .unwrap();
+        (response.status(), response.json().await.unwrap())
+    }
+
+    fn save_link(dir: &std::path::Path, portal: &MockPortal, event_slug: &str) {
+        watch_links::save(
+            &dir.join(watch_links::LINK_FILE),
+            &watch_links::PortalLink {
+                portal_url: portal.base_url().to_string(),
+                event_slug: event_slug.into(),
+                access_key: PORTAL_KEY.into(),
+            },
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn settings_show_the_stream_manager_id_and_not_linked_and_no_key() {
+        let portal = MockPortal::start(200, "{}").await;
+        let (base, dir, client, cookie) = linking_server("pl-settings", &portal, "cup-2026").await;
+        let text = get_settings_text(&client, &base, &cookie).await;
+        let body: Value = serde_json::from_str(&text).unwrap();
+        let id = body["settings"]["stream_manager_id"].as_str().unwrap();
+        assert_eq!(id, "482917");
+        assert!(id.len() == 6 && id.bytes().all(|b| b.is_ascii_digit()));
+        assert_eq!(body["portal_linked"], false);
+        assert!(!text.contains("access_key"), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn linking_with_a_good_code_saves_the_key_but_never_shows_it() {
+        let portal = MockPortal::start(200, &json!({ "accessKey": PORTAL_KEY }).to_string()).await;
+        let (base, dir, client, cookie) = linking_server("pl-link", &portal, "cup-2026").await;
+        let (status, reply) = link(&client, &base, &cookie, " 482197 ").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(reply, json!({ "ok": true }));
+        let requests = portal.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].path, EXCHANGE_PATH);
+        assert_eq!(
+            requests[0].body,
+            json!({ "streamManagerId": "482917", "code": "482197" })
+        );
+        let saved = watch_links::link_for(
+            &dir.join(watch_links::LINK_FILE),
+            portal.base_url(),
+            "cup-2026",
+        )
+        .unwrap();
+        assert_eq!(saved.access_key, PORTAL_KEY);
+
+        let text = get_settings_text(&client, &base, &cookie).await;
+        let body: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(body["portal_linked"], true);
+        assert!(!text.contains(PORTAL_KEY), "{text}");
+        assert!(!text.contains("access_key"), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn the_portals_refusals_say_what_to_do() {
+        let portal = MockPortal::start(400, r#"{"reason":"InvalidCode"}"#).await;
+        let (base, dir, client, cookie) = linking_server("pl-refused", &portal, "cup-2026").await;
+        let (status, reply) = link(&client, &base, &cookie, "482197").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            reply["error"],
+            "That code isn't right, or it has expired. Codes last 15 minutes; add the Stream \
+             Manager again on the portal for a new one."
+        );
+
+        portal.reply_on(EXCHANGE_PATH, 400, r#"{"reason":"NoPendingLink"}"#);
+        let (status, reply) = link(&client, &base, &cookie, "482197").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            reply["error"],
+            "The portal isn't expecting this Stream Manager. On the event's Manage Event → \
+             Stream management tab, add Stream Manager ID 482917, then type the code it shows."
+        );
+
+        portal.reply_on(EXCHANGE_PATH, 500, "boom");
+        let (status, reply) = link(&client, &base, &cookie, "482197").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let error = reply["error"].as_str().unwrap();
+        assert!(
+            error.starts_with("Couldn't link: The portal said 500"),
+            "{error}"
+        );
+
+        assert!(!dir.join(watch_links::LINK_FILE).exists());
+        assert_eq!(portal_linked(&client, &base, &cookie).await, false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_code_that_isnt_6_digits_or_no_event_is_refused_without_asking_the_portal() {
+        let portal = MockPortal::start(200, &json!({ "accessKey": PORTAL_KEY }).to_string()).await;
+        let (base, dir, client, cookie) = linking_server("pl-bad-code", &portal, "cup-2026").await;
+        for code in ["12ab", "12345", "1234567", ""] {
+            let (status, reply) = link(&client, &base, &cookie, code).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{code}");
+            assert_eq!(reply["error"], "Enter the 6-digit code the portal showed");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let (base, dir, client, cookie) = linking_server("pl-no-event", &portal, "").await;
+        let (status, reply) = link(&client, &base, &cookie, "482197").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(reply["error"], "Choose and save an event first");
+        assert!(portal.requests().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn unlinking_forgets_the_key_without_asking_the_portal() {
+        let portal = MockPortal::start(200, "{}").await;
+        let (base, dir, client, cookie) = linking_server("pl-unlink", &portal, "cup-2026").await;
+        save_link(&dir, &portal, "cup-2026");
+        assert_eq!(portal_linked(&client, &base, &cookie).await, true);
+        let response = client
+            .delete(format!("{base}/api/portal-link"))
+            .header(header::COOKIE, &cookie)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.json::<Value>().await.unwrap(),
+            json!({ "ok": true })
+        );
+        assert_eq!(portal_linked(&client, &base, &cookie).await, false);
+        assert!(!dir.join(watch_links::LINK_FILE).exists());
+        assert!(portal.requests().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn changing_the_event_forgets_the_key_but_other_changes_keep_it() {
+        let portal = MockPortal::start(404, "").await;
+        let (base, dir, client, cookie) = linking_server("pl-event", &portal, "cup-2026").await;
+        save_link(&dir, &portal, "cup-2026");
+        let save = |settings: Value| {
+            client
+                .post(format!("{base}/api/settings"))
+                .header(header::COOKIE, &cookie)
+                .json(&settings)
+                .send()
+        };
+        let text = get_settings_text(&client, &base, &cookie).await;
+        let mut settings = serde_json::from_str::<Value>(&text).unwrap()["settings"].clone();
+        assert_ne!(settings["privacy"], "private");
+
+        settings["privacy"] = json!("private");
+        assert_eq!(
+            save(settings.clone()).await.unwrap().status(),
+            StatusCode::OK
+        );
+        assert!(dir.join(watch_links::LINK_FILE).exists());
+        assert_eq!(portal_linked(&client, &base, &cookie).await, true);
+
+        settings["event_slug"] = json!("other-cup");
+        assert_eq!(save(settings).await.unwrap().status(), StatusCode::OK);
+        assert!(!dir.join(watch_links::LINK_FILE).exists());
+        assert_eq!(portal_linked(&client, &base, &cookie).await, false);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

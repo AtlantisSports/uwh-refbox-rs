@@ -56,6 +56,10 @@ pub struct Config {
     /// start. Never logged, and only shown on this mini PC itself.
     #[serde(default)]
     pub button_key: String,
+    /// This Stream Manager's ID for linking to a portal event (6 digits), made on first start.
+    /// Not a secret: the code the portal shows for it is.
+    #[serde(default)]
+    pub stream_manager_id: String,
     /// While on, the Live tab only shows what it would do; nothing is sent to YouTube or vMix.
     /// On by default so a fresh install can never touch a live channel by accident.
     pub practice_mode: bool,
@@ -161,6 +165,7 @@ impl Default for Config {
             allow_other_devices: false,
             allowed_devices: Vec::new(),
             button_key: String::new(),
+            stream_manager_id: String::new(),
             practice_mode: true,
             quota_daily_limit: default_quota_daily_limit(),
             quota_share_percent: default_quota_share_percent(),
@@ -512,5 +517,11 @@ mod tests {
         assert!(!config.allow_other_devices);
         assert!(config.allowed_devices.is_empty());
         assert_eq!(config.button_key, "");
+    }
+
+    #[test]
+    fn config_without_a_stream_manager_id_loads_with_it_empty() {
+        let config: Config = serde_json::from_str(r#"{ "event_slug": "cup" }"#).unwrap();
+        assert_eq!(config.stream_manager_id, "");
     }
 }

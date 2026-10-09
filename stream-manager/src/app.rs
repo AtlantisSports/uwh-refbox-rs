@@ -289,8 +289,6 @@ impl App {
     }
 
     /// The file holding the access key for the linked portal event.
-    // Prepare, cleanup and the settings card use it once they put links on the portal.
-    #[allow(dead_code)]
     pub fn link_file(&self) -> PathBuf {
         self.config_dir.join(watch_links::LINK_FILE)
     }

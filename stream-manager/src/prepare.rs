@@ -10,7 +10,6 @@ use crate::{
     config::{Config, CourtConfig, StreamMode},
     portal::{EventPlan, PlannedGame, TeamArt, playlist_title, video_title},
     thumbnail::{self, DESIGN_VERSION, Painter},
-    watch_links::{self, Purpose},
     youtube::{BroadcastSpec, Playlist, StreamInfo, YouTube, YouTubeAccess},
 };
 use image::DynamicImage;
@@ -868,6 +867,15 @@ pub async fn run(
     Ok(())
 }
 
+/// Whether the person running [`run_cli`] went ahead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CliRun {
+    /// It ran, or there was nothing to do.
+    WentAhead,
+    /// The person answered no at "Go ahead?"; nothing was changed.
+    Cancelled,
+}
+
 /// Terminal version: preview, ask for `yes`, run.
 pub async fn run_cli(
     config: &Config,
@@ -875,7 +883,7 @@ pub async fn run_cli(
     youtube: &mut YouTube,
     state_file: &Path,
     selection: &Selection,
-) -> Result<(), BoxError> {
+) -> Result<CliRun, BoxError> {
     let state = load_state(state_file, &config.event_slug)?;
     let lookups = lookups(youtube).await?;
     // Run from the terminal, with no court's day running in this program.
@@ -887,7 +895,7 @@ pub async fn run_cli(
     }
     if work.is_empty() {
         println!("Everything is already up to date on YouTube. Nothing to do.");
-        return Ok(());
+        return Ok(CliRun::WentAhead);
     }
     println!(
         "\nThis will create {} playlist(s) and {} video(s), update {} video(s),\n\
@@ -904,7 +912,7 @@ pub async fn run_cli(
     );
     if !confirm("Go ahead?") {
         println!("Cancelled. Nothing was changed.");
-        return Ok(());
+        return Ok(CliRun::Cancelled);
     }
     run(
         config,
@@ -916,7 +924,8 @@ pub async fn run_cli(
         &no_day_running,
         &mut |line| info!("{line}"),
     )
-    .await
+    .await?;
+    Ok(CliRun::WentAhead)
 }
 
 /// Deletes every video and playlist this event's record lists (for cleaning up after tests).
@@ -961,15 +970,14 @@ fn note_deleted(
     Ok(())
 }
 
-/// Terminal version of `cleanup`, with a warning and a `yes` confirmation. Afterwards, the
-/// deleted games' watch links are cleared on the portal.
+/// Terminal version of `cleanup`, with a warning and a `yes` confirmation. `deleted` gets each
+/// deleted game's number, as in `cleanup`.
 pub async fn cleanup_cli(
     youtube: &mut YouTube,
     state_file: &Path,
-    config: &Config,
-    link_file: &Path,
+    event_slug: &str,
+    deleted: &mut Vec<String>,
 ) -> Result<(), BoxError> {
-    let event_slug = config.event_slug.as_str();
     let state = load_state(state_file, event_slug)?;
     if state.videos.is_empty() && state.playlists.is_empty() {
         println!("Nothing recorded for {event_slug}; nothing to delete.");
@@ -986,21 +994,10 @@ pub async fn cleanup_cli(
         println!("Cancelled. Nothing was deleted.");
         return Ok(());
     }
-    let mut log = |line: String| info!("{line}");
-    let mut deleted = Vec::new();
-    let result = cleanup(youtube, state_file, event_slug, &mut deleted, &mut log).await;
-    if !deleted.is_empty() {
-        match crate::portal::fetch_event_plan(&config.portal_url, event_slug).await {
-            Ok(plan) => {
-                let links = watch_links::links_after_cleanup(&plan, &deleted);
-                watch_links::publish(link_file, config, &links, Purpose::Clear, &mut log).await;
-            }
-            Err(e) => log(format!(
-                "Portal: watch links weren't cleared: the schedule couldn't be loaded ({e})"
-            )),
-        }
-    }
-    result
+    cleanup(youtube, state_file, event_slug, deleted, &mut |line| {
+        info!("{line}")
+    })
+    .await
 }
 
 #[cfg(test)]

@@ -703,21 +703,41 @@ function renderPortalLink(s, linked) {
     <div class="row" style="align-items:flex-end">
       <label class="field">Code
         <input id="pl-code" inputmode="numeric" autocomplete="off" style="width:110px"></label>
-      <button class="small" onclick="linkPortal()" ${noEvent ? 'disabled' : ''}>Link</button>
+      <button class="small" id="pl-link" onclick="linkPortal()" ${noEvent ? 'disabled' : ''}>Link</button>
     </div>`;
 }
+// Only the card is redrawn, so unsaved changes elsewhere on the Settings tab survive.
+async function refreshPortalLink() {
+  const r = await api('/api/settings');
+  settings = r.settings;
+  renderPortalLink(r.settings, r.portal_linked);
+}
+function portalLinkError(message) {
+  $('pl-msg').innerHTML = `<span class="bad-text">${esc(message)}</span>`;
+}
 async function linkPortal() {
+  // The link is made for the saved event and portal, not the ones chosen on the page. A saved
+  // portal that isn't one of the choices (a hand-edited settings file) leaves the list blank.
+  const portalChoice = $('s-portal').value;
+  if ($('s-event').value !== settings.event_slug || (portalChoice && portalChoice !== settings.portal_url)) {
+    portalLinkError("Save settings first: the event or portal on this page isn't saved yet.");
+    return;
+  }
+  $('pl-link').disabled = true;
   try {
     await api('/api/portal-link', { method: 'POST', body: { code: $('pl-code').value } });
-    await loadSettings();
-  } catch (e) { $('pl-msg').innerHTML = `<span class="bad-text">${esc(e.message)}</span>`; }
+    await refreshPortalLink();
+  } catch (e) {
+    $('pl-link').disabled = false;
+    portalLinkError(e.message);
+  }
 }
 async function unlinkPortal() {
   if (!confirm('Unlink from the portal? Watch links stop being set until you link again.')) return;
   try {
     await api('/api/portal-link', { method: 'DELETE' });
-    await loadSettings();
-  } catch (e) { $('pl-msg').innerHTML = `<span class="bad-text">${esc(e.message)}</span>`; }
+    await refreshPortalLink();
+  } catch (e) { portalLinkError(e.message); }
 }
 function renderCourtRows(courts) {
   $('s-courts').innerHTML = courts.map(c => `<tr>

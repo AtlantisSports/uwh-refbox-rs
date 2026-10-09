@@ -8,10 +8,10 @@ use crate::{
     app::App,
     config::{Config, DEV_PORTAL_URL, LIVE_PORTAL_URL},
     google_auth,
-    portal::{self, EventPlan},
+    portal::EventPlan,
     prepare::{self, Selection, Thumbnails},
     switcher::Command,
-    watch_links::{self, LinkError, PortalLink, Purpose},
+    watch_links::{self, LinkError, PortalLink},
     youtube::YouTubeAccess,
 };
 use axum::{
@@ -661,6 +661,13 @@ async fn link_portal(
         ),
         LinkError::Other(e) => bad(format!("Couldn't link: {e}")),
     })?;
+    // The key is for the event and portal the code was swapped for; never save it for others.
+    let now = app.config();
+    if now.portal_url != config.portal_url || now.event_slug != config.event_slug {
+        return Err(bad(
+            "The event or portal changed while linking. Link again.",
+        ));
+    }
     // The exact settings in use, as `link_for` compares them.
     let link = PortalLink {
         portal_url: config.portal_url,
@@ -865,8 +872,16 @@ async fn prepare_run(
         let config = app.config();
         let log_app = Arc::clone(&app);
         let mut log = move |line: String| log_app.job_log(line);
+        // Worked out once, so the links go out for this job's event even if the settings
+        // change meanwhile.
+        let state_file = match app.state_file() {
+            Ok(state_file) => state_file,
+            Err(e) => {
+                app.end_job(Some(e.to_string()));
+                return;
+            }
+        };
         let result = async {
-            let state_file = app.state_file()?;
             let lookups = prepare::lookups(&mut app.youtube()?).await?;
             // Takes each court's lock one game at a time, so switches carry on meanwhile.
             prepare::run(
@@ -883,17 +898,8 @@ async fn prepare_run(
         }
         .await;
         // Also after a failure: the videos made before it still get their links.
-        match app
-            .state_file()
-            .and_then(|file| prepare::load_state(&file, &config.event_slug))
-        {
-            Ok(state) => {
-                let links = watch_links::links_after_prepare(&plan, &state);
-                watch_links::publish(&app.link_file(), &config, &links, Purpose::Set, &mut log)
-                    .await;
-            }
-            Err(e) => log(format!("Portal: watch links weren't set: {e}")),
-        }
+        watch_links::publish_after_prepare(&app.link_file(), &config, &plan, &state_file, &mut log)
+            .await;
         app.end_job(result.err().map(|e| e.to_string()));
     });
     Ok(Json(json!({ "started": true })))
@@ -1095,8 +1101,15 @@ async fn cleanup(
         let log_app = Arc::clone(&app);
         let mut log = move |line: String| log_app.job_log(line);
         let mut deleted = Vec::new();
+        // Worked out once, so the job keeps to its own event even if the settings change.
+        let state_file = match app.state_file() {
+            Ok(state_file) => state_file,
+            Err(e) => {
+                app.end_job(Some(e.to_string()));
+                return;
+            }
+        };
         let result = async {
-            let state_file = app.state_file()?;
             // Every court's videos are deleted, so no court may start its day meanwhile. The
             // lock is released at the end of this block, before the portal is told.
             let _courts = app.lock_all_courts().await;
@@ -1105,36 +1118,25 @@ async fn cleanup(
         }
         .await;
         // Also after a failure: the videos deleted before it still get their links cleared.
-        clear_links(&app, &config, &deleted, &mut log).await;
+        // The loaded schedule is used only while it is still this job's event and portal.
+        let current = app.config();
+        let loaded_plan =
+            if current.event_slug == config.event_slug && current.portal_url == config.portal_url {
+                app.plan()
+            } else {
+                None
+            };
+        watch_links::publish_after_cleanup(
+            &app.link_file(),
+            &config,
+            loaded_plan,
+            &deleted,
+            &mut log,
+        )
+        .await;
         app.end_job(result.err().map(|e| e.to_string()));
     });
     Ok(Json(json!({ "started": true })))
-}
-
-/// Clears the portal's watch links for the `deleted` games of `config`'s event, with the
-/// schedule as loaded or, if it isn't, fetched now.
-async fn clear_links(
-    app: &App,
-    config: &Config,
-    deleted: &[String],
-    log: &mut (dyn FnMut(String) + Send),
-) {
-    if deleted.is_empty() {
-        return;
-    }
-    let plan = match app.plan() {
-        Some(plan) => Ok(plan),
-        None => portal::fetch_event_plan(&config.portal_url, &config.event_slug).await,
-    };
-    match plan {
-        Ok(plan) => {
-            let links = watch_links::links_after_cleanup(&plan, deleted);
-            watch_links::publish(&app.link_file(), config, &links, Purpose::Clear, log).await;
-        }
-        Err(e) => log(format!(
-            "Portal: watch links weren't cleared: the schedule couldn't be loaded ({e})"
-        )),
-    }
 }
 
 #[cfg(test)]
@@ -1936,6 +1938,42 @@ mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(reply["error"], "Choose and save an event first");
         assert!(portal.requests().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_key_is_not_saved_when_the_event_changed_while_linking() {
+        let portal = MockPortal::start(200, &json!({ "accessKey": PORTAL_KEY }).to_string()).await;
+        // The portal takes its time over the code, while someone saves another event.
+        portal.delay_replies(std::time::Duration::from_millis(500));
+        let (base, dir, client, cookie) = linking_server("pl-changed", &portal, "cup-2026").await;
+        let linking = {
+            let (client, base, cookie) = (client.clone(), base.clone(), cookie.clone());
+            tokio::spawn(async move { link(&client, &base, &cookie, "482197").await })
+        };
+        while portal.requests().is_empty() {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let text = get_settings_text(&client, &base, &cookie).await;
+        let mut settings = serde_json::from_str::<Value>(&text).unwrap()["settings"].clone();
+        settings["event_slug"] = json!("other-cup");
+        let response = client
+            .post(format!("{base}/api/settings"))
+            .header(header::COOKIE, &cookie)
+            .json(&settings)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let (status, reply) = linking.await.unwrap();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            reply["error"],
+            "The event or portal changed while linking. Link again."
+        );
+        assert!(!dir.join(watch_links::LINK_FILE).exists());
+        assert_eq!(portal_linked(&client, &base, &cookie).await, false);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

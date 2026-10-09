@@ -45,6 +45,14 @@ pub fn new_button_key() -> Result<String, getrandom::Error> {
     random_hex(BUTTON_KEY_BYTES)
 }
 
+/// A new Stream Manager ID: 6 random digits, 100000–999999.
+pub fn new_stream_manager_id() -> Result<String, getrandom::Error> {
+    let mut bytes = [0u8; 4];
+    getrandom::fill(&mut bytes)?;
+    // The tiny bias from the remainder doesn't matter for an ID.
+    Ok((100_000 + u32::from_le_bytes(bytes) % 900_000).to_string())
+}
+
 /// A new sign-in token for the session cookie.
 pub fn new_session_token() -> Result<String, getrandom::Error> {
     random_hex(SESSION_TOKEN_BYTES)
@@ -378,6 +386,20 @@ mod tests {
         devices.allow_others = false;
         assert!(!devices.allows(listed));
         assert!(devices.allows("127.0.0.1".parse().unwrap()));
+    }
+
+    #[test]
+    fn a_stream_manager_id_is_always_six_digits() {
+        for _ in 0..1_000 {
+            let id = new_stream_manager_id().unwrap();
+            assert_eq!(id.len(), 6, "{id}");
+            let number: u32 = id.parse().unwrap();
+            assert!((100_000..=999_999).contains(&number), "{id}");
+        }
+        assert_ne!(
+            new_stream_manager_id().unwrap(),
+            new_stream_manager_id().unwrap()
+        );
     }
 
     #[test]

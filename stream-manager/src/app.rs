@@ -14,7 +14,7 @@ use crate::{
     recovery,
     refbox::{self, RefboxEvent},
     switcher::{Action, Command, CourtSwitcher, Phase, Status as SwitchStatus, SwitchRules},
-    title_sync, vmix,
+    title_sync, vmix, watch_links,
     youtube::YouTube,
 };
 use log::{info, warn};
@@ -286,6 +286,13 @@ impl App {
     pub fn client_file(&self) -> PathBuf {
         self.config_dir
             .join(&self.inner().config.client_secret_file)
+    }
+
+    /// The file holding the access key for the linked portal event.
+    // Prepare, cleanup and the settings card use it once they put links on the portal.
+    #[allow(dead_code)]
+    pub fn link_file(&self) -> PathBuf {
+        self.config_dir.join(watch_links::LINK_FILE)
     }
 
     pub fn state_file(&self) -> Result<PathBuf, BoxError> {

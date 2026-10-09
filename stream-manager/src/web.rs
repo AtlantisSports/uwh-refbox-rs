@@ -1572,6 +1572,7 @@ mod tests {
         let current = Config {
             button_key: KEY.into(),
             pin: "1234".into(),
+            stream_manager_id: "123456".into(),
             ..Config::default()
         };
         for local in [true, false] {
@@ -1579,6 +1580,7 @@ mod tests {
             let saved = settings_from(body, &current, local).ok().unwrap();
             assert_eq!(saved.button_key, KEY);
             assert_eq!(saved.pin, "1234");
+            assert_eq!(saved.stream_manager_id, "123456");
         }
     }
 

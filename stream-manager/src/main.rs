@@ -21,8 +21,6 @@ mod refbox;
 mod switcher;
 mod title_sync;
 mod vmix;
-// Prepare, cleanup and the settings card use it once they put links on the portal.
-#[cfg_attr(not(test), allow(dead_code))]
 mod watch_links;
 mod web;
 mod youtube;

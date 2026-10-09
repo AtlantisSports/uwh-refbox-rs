@@ -4,7 +4,12 @@
 //! The key is a secret. It is kept only in its own file (never in the settings), and is never
 //! put in a log line or an error message.
 
-use crate::{BoxError, prepare};
+use crate::{
+    BoxError,
+    config::Config,
+    portal::EventPlan,
+    prepare::{self, EventState},
+};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -141,6 +146,78 @@ pub async fn send_watch_urls(
 /// The watch link for a YouTube video.
 pub fn watch_url(broadcast_id: &str) -> String {
     format!("https://youtu.be/{broadcast_id}")
+}
+
+/// What to send after Prepare: every recorded video whose game is on `plan`, as its link.
+/// Games no longer on the schedule are left out (the portal would refuse the whole update).
+pub fn links_after_prepare(
+    plan: &EventPlan,
+    state: &EventState,
+) -> BTreeMap<String, Option<String>> {
+    plan.games
+        .iter()
+        .filter_map(|game| {
+            let video = state.videos.get(&game.number)?;
+            Some((game.number.clone(), Some(watch_url(&video.broadcast_id))))
+        })
+        .collect()
+}
+
+/// What to send after deleting videos: `None` for each deleted game that is on `plan`.
+pub fn links_after_cleanup(
+    plan: &EventPlan,
+    deleted: &[String],
+) -> BTreeMap<String, Option<String>> {
+    plan.games
+        .iter()
+        .filter(|game| deleted.contains(&game.number))
+        .map(|game| (game.number.clone(), None))
+        .collect()
+}
+
+/// Whether the links being sent set or clear them; only changes the log line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Purpose {
+    Set,
+    Clear,
+}
+
+/// Sends `links` with the saved key for `config`'s portal and event, and logs one line (none
+/// when there is nothing to send). Never fails: a portal problem is only that log line. A key
+/// the portal refuses is forgotten, so the next run doesn't try it again.
+pub async fn publish(
+    link_file: &Path,
+    config: &Config,
+    links: &BTreeMap<String, Option<String>>,
+    purpose: Purpose,
+    log: &mut (dyn FnMut(String) + Send),
+) {
+    if links.is_empty() {
+        return;
+    }
+    let Some(link) = link_for(link_file, &config.portal_url, &config.event_slug) else {
+        log("Portal watch links: this Stream Manager isn't linked to the event, so none were set (Settings → Portal watch links)".to_string());
+        return;
+    };
+    let result = send_watch_urls(&link.portal_url, &link.event_slug, &link.access_key, links).await;
+    match (result, purpose) {
+        (Ok(()), Purpose::Set) => log(format!("Portal: watch links set for {} games", links.len())),
+        (Ok(()), Purpose::Clear) => log(format!(
+            "Portal: watch links cleared for {} games",
+            links.len()
+        )),
+        (Err(SendError::KeyRefused), _) => {
+            // If the file can't be removed, the next run is refused again and says so again.
+            let _ = forget(link_file);
+            log("Portal: the event refused this Stream Manager's key (it was removed on the portal, or the event is over). Link it again in Settings to set watch links.".to_string());
+        }
+        (Err(SendError::Other(error)), Purpose::Set) => log(format!(
+            "Portal: watch links weren't set: {error}. Run Prepare again to send them."
+        )),
+        (Err(SendError::Other(error)), Purpose::Clear) => {
+            log(format!("Portal: watch links weren't cleared: {error}"))
+        }
+    }
 }
 
 fn unreachable_text(error: impl std::fmt::Display) -> String {
@@ -450,6 +527,234 @@ mod tests {
             );
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn plan(numbers: &[&str]) -> EventPlan {
+        EventPlan {
+            event_name: "Cup".into(),
+            games: numbers
+                .iter()
+                .map(|number| crate::portal::PlannedGame {
+                    number: number.to_string(),
+                    court: "Court 1".into(),
+                    day: 1,
+                    start: time::OffsetDateTime::UNIX_EPOCH,
+                    dark: "A".into(),
+                    light: "B".into(),
+                    description: None,
+                })
+                .collect(),
+        }
+    }
+
+    fn recorded(games: &[(&str, &str)]) -> EventState {
+        let mut state = EventState {
+            event_slug: "cup-2026".into(),
+            ..Default::default()
+        };
+        for (number, broadcast_id) in games {
+            state.videos.insert(
+                number.to_string(),
+                prepare::VideoState {
+                    broadcast_id: broadcast_id.to_string(),
+                    title: String::new(),
+                    description: String::new(),
+                    scheduled_start: String::new(),
+                    bound_stream: None,
+                    in_playlist: true,
+                    next_game_link: None,
+                    portal_start: None,
+                    court: None,
+                    day: None,
+                },
+            );
+        }
+        state
+    }
+
+    #[test]
+    fn after_prepare_each_recorded_game_on_the_schedule_gets_its_link() {
+        let links = links_after_prepare(
+            &plan(&["14", "15", "16"]),
+            &recorded(&[("14", "aaa"), ("15", "bbb")]),
+        );
+        assert_eq!(
+            links,
+            BTreeMap::from([
+                ("14".to_string(), Some("https://youtu.be/aaa".to_string())),
+                ("15".to_string(), Some("https://youtu.be/bbb".to_string())),
+            ])
+        );
+    }
+
+    #[test]
+    fn after_prepare_a_recorded_game_no_longer_on_the_schedule_is_left_out() {
+        let links = links_after_prepare(&plan(&["14"]), &recorded(&[("14", "aaa"), ("99", "zzz")]));
+        assert_eq!(
+            links,
+            BTreeMap::from([("14".to_string(), Some("https://youtu.be/aaa".to_string()))])
+        );
+    }
+
+    #[test]
+    fn after_cleanup_only_deleted_games_on_the_schedule_are_cleared() {
+        let deleted = ["14".to_string(), "99".to_string()];
+        let links = links_after_cleanup(&plan(&["14", "15"]), &deleted);
+        assert_eq!(links, BTreeMap::from([("14".to_string(), None)]));
+    }
+
+    /// A config for `portal`, the link file holding a key for `linked_event` (none if `None`),
+    /// and the log lines `publish` wrote.
+    struct Publishing {
+        dir: std::path::PathBuf,
+        link_file: std::path::PathBuf,
+        config: Config,
+        lines: Vec<String>,
+    }
+
+    impl Publishing {
+        fn new(name: &str, portal: &MockPortal, linked_event: Option<&str>) -> Self {
+            let dir = temp_dir(name);
+            let link_file = dir.join(LINK_FILE);
+            if let Some(event_slug) = linked_event {
+                save(
+                    &link_file,
+                    &PortalLink {
+                        portal_url: portal.base_url().to_string(),
+                        event_slug: event_slug.to_string(),
+                        access_key: KEY.into(),
+                    },
+                )
+                .unwrap();
+            }
+            let config = Config {
+                portal_url: portal.base_url().to_string(),
+                event_slug: "cup-2026".into(),
+                ..Config::default()
+            };
+            Self {
+                dir,
+                link_file,
+                config,
+                lines: Vec::new(),
+            }
+        }
+
+        async fn publish(&mut self, links: &BTreeMap<String, Option<String>>, purpose: Purpose) {
+            let mut lines = Vec::new();
+            publish(&self.link_file, &self.config, links, purpose, &mut |line| {
+                lines.push(line)
+            })
+            .await;
+            self.lines.extend(lines);
+        }
+    }
+
+    impl Drop for Publishing {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    const NOT_LINKED: &str = "Portal watch links: this Stream Manager isn't linked to the event, so none were set (Settings → Portal watch links)";
+
+    #[tokio::test]
+    async fn publishing_when_linked_sends_the_links_and_says_how_many() {
+        let portal = MockPortal::start(204, "").await;
+        let mut publishing = Publishing::new("publish-ok", &portal, Some("cup-2026"));
+        let two = BTreeMap::from([
+            ("14".to_string(), Some(watch_url("aaa"))),
+            ("15".to_string(), Some(watch_url("bbb"))),
+        ]);
+        publishing.publish(&two, Purpose::Set).await;
+        let requests = portal.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].path, SEND_PATH);
+        assert_eq!(
+            requests[0].body,
+            json!({ "watchUrlsByGameNumber": {
+                "14": "https://youtu.be/aaa",
+                "15": "https://youtu.be/bbb",
+            } })
+        );
+        assert_eq!(publishing.lines, ["Portal: watch links set for 2 games"]);
+
+        publishing.publish(&links(), Purpose::Clear).await;
+        assert_eq!(
+            publishing.lines[1],
+            "Portal: watch links cleared for 2 games"
+        );
+    }
+
+    #[tokio::test]
+    async fn publishing_when_not_linked_sends_nothing_and_says_so() {
+        let portal = MockPortal::start(204, "").await;
+        let mut publishing = Publishing::new("publish-unlinked", &portal, None);
+        publishing.publish(&links(), Purpose::Set).await;
+        assert!(portal.requests().is_empty());
+        assert_eq!(publishing.lines, [NOT_LINKED]);
+    }
+
+    #[tokio::test]
+    async fn a_key_for_another_event_is_not_sent_and_is_kept() {
+        let portal = MockPortal::start(204, "").await;
+        let mut publishing = Publishing::new("publish-other-event", &portal, Some("other-cup"));
+        publishing.publish(&links(), Purpose::Set).await;
+        assert!(portal.requests().is_empty());
+        assert_eq!(publishing.lines, [NOT_LINKED]);
+        assert!(publishing.link_file.exists());
+    }
+
+    #[tokio::test]
+    async fn a_refused_key_is_forgotten_and_not_tried_again() {
+        let portal = MockPortal::start(401, "").await;
+        let mut publishing = Publishing::new("publish-refused", &portal, Some("cup-2026"));
+        publishing.publish(&links(), Purpose::Set).await;
+        assert!(!publishing.link_file.exists());
+        assert_eq!(
+            publishing.lines,
+            [
+                "Portal: the event refused this Stream Manager's key (it was removed on the portal, or the event is over). Link it again in Settings to set watch links."
+            ]
+        );
+        publishing.publish(&links(), Purpose::Set).await;
+        assert_eq!(portal.requests().len(), 1);
+        assert_eq!(publishing.lines[1], NOT_LINKED);
+    }
+
+    #[tokio::test]
+    async fn another_portal_error_keeps_the_key_and_says_to_run_prepare_again() {
+        let portal = MockPortal::start(500, "boom").await;
+        let mut publishing = Publishing::new("publish-error", &portal, Some("cup-2026"));
+        publishing.publish(&links(), Purpose::Set).await;
+        assert!(publishing.link_file.exists());
+        assert_eq!(publishing.lines.len(), 1);
+        let line = &publishing.lines[0];
+        assert!(
+            line.starts_with("Portal: watch links weren't set: The portal said 500"),
+            "{line}"
+        );
+        assert!(
+            line.ends_with(". Run Prepare again to send them."),
+            "{line}"
+        );
+        assert!(!line.contains(KEY), "{line}");
+
+        publishing.publish(&links(), Purpose::Clear).await;
+        let line = &publishing.lines[1];
+        assert!(
+            line.starts_with("Portal: watch links weren't cleared: The portal said 500"),
+            "{line}"
+        );
+    }
+
+    #[tokio::test]
+    async fn publishing_no_links_sends_nothing_and_logs_nothing() {
+        let portal = MockPortal::start(204, "").await;
+        let mut publishing = Publishing::new("publish-empty", &portal, Some("cup-2026"));
+        publishing.publish(&BTreeMap::new(), Purpose::Set).await;
+        assert!(portal.requests().is_empty());
+        assert!(publishing.lines.is_empty());
     }
 
     #[test]

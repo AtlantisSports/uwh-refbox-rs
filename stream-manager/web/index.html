@@ -177,24 +177,31 @@
           <div id="yt-sign-in" class="muted"></div>
           <div id="yt-check"></div>
         </div>
-        <div class="card">
-          <h2>Event</h2>
-          <label class="field">Portal
-            <select id="s-portal" onchange="loadEvents()"></select>
-          </label>
-          <div class="row">
-            <label class="field" style="flex:1">Event
-              <select id="s-event" style="width:100%"></select>
+        <div>
+          <div class="card">
+            <h2>Event</h2>
+            <label class="field">Portal
+              <select id="s-portal" onchange="loadEvents()"></select>
             </label>
+            <div class="row">
+              <label class="field" style="flex:1">Event
+                <select id="s-event" style="width:100%"></select>
+              </label>
+            </div>
+            <label class="field">Video and playlist privacy
+              <select id="s-privacy" onchange="privacyWarning()">
+                <option value="unlisted">Unlisted (only people with the link)</option>
+                <option value="private">Private (only you)</option>
+                <option value="public">Public (everyone)</option>
+              </select>
+            </label>
+            <p class="warn-text hidden" id="s-public-warning">⚠ New videos and playlists will be visible to everyone.</p>
           </div>
-          <label class="field">Video and playlist privacy
-            <select id="s-privacy" onchange="privacyWarning()">
-              <option value="unlisted">Unlisted (only people with the link)</option>
-              <option value="private">Private (only you)</option>
-              <option value="public">Public (everyone)</option>
-            </select>
-          </label>
-          <p class="warn-text hidden" id="s-public-warning">⚠ New videos and playlists will be visible to everyone.</p>
+          <div class="card" style="margin-top:16px" id="card-portal-link">
+            <h2>Portal watch links</h2>
+            <div id="pl-body"></div>
+            <p id="pl-msg"></p>
+          </div>
         </div>
       </div>
       <div class="card" style="margin-top:16px">
@@ -635,6 +642,7 @@ async function loadSettings() {
       $('s-restart').classList.toggle('hidden', !r.restart_needed);
       $('s-key').textContent = buttonKey || '';
     }
+    renderPortalLink(settings, r.portal_linked);
     renderCourtRows(settings.courts);
     privacyWarning();
     loadEvents();
@@ -657,6 +665,35 @@ async function loadEvents() {
       sel.value = settings.event_slug;
     }
   } catch (e) { sel.innerHTML = `<option value="${esc(settings?.event_slug || '')}">Couldn't load events: ${esc(e.message)}</option>`; }
+}
+function renderPortalLink(s, linked) {
+  $('pl-msg').textContent = '';
+  if (linked) {
+    $('pl-body').innerHTML = `<div class="row"><span><span class="ok-text">Linked ✓</span> — each game's link goes on
+      the portal after Prepare.</span> <button class="small" onclick="unlinkPortal()">Unlink</button></div>`;
+    return;
+  }
+  const noEvent = !s.event_slug;
+  $('pl-body').innerHTML = `<div class="row">Stream Manager ID: <b>${esc(s.stream_manager_id)}</b></div>
+    ${noEvent ? '<p class="muted">Choose and save an event first.</p>' : ''}
+    <div class="row" style="align-items:flex-end">
+      <label class="field">Code
+        <input id="pl-code" inputmode="numeric" autocomplete="off" style="width:110px"></label>
+      <button class="small" onclick="linkPortal()" ${noEvent ? 'disabled' : ''}>Link</button>
+    </div>`;
+}
+async function linkPortal() {
+  try {
+    await api('/api/portal-link', { method: 'POST', body: { code: $('pl-code').value } });
+    await loadSettings();
+  } catch (e) { $('pl-msg').innerHTML = `<span class="bad-text">${esc(e.message)}</span>`; }
+}
+async function unlinkPortal() {
+  if (!confirm('Unlink from the portal? Watch links stop being set until you link again.')) return;
+  try {
+    await api('/api/portal-link', { method: 'DELETE' });
+    await loadSettings();
+  } catch (e) { $('pl-msg').innerHTML = `<span class="bad-text">${esc(e.message)}</span>`; }
 }
 function renderCourtRows(courts) {
   $('s-courts').innerHTML = courts.map(c => `<tr>

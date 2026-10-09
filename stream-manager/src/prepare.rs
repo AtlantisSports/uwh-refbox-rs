@@ -9,6 +9,7 @@ use crate::{
     BoxError,
     config::{Config, CourtConfig, StreamMode},
     portal::{EventPlan, PlannedGame, playlist_title, video_title},
+    watch_links::{self, Purpose},
     youtube::{BroadcastSpec, Playlist, StreamInfo, YouTube, YouTubeAccess},
 };
 use log::info;
@@ -712,19 +713,20 @@ pub async fn run_cli(
 }
 
 /// Deletes every video and playlist this event's record lists (for cleaning up after tests).
+/// `deleted` gets each game number as its video is deleted, so a caller still knows them when
+/// cleanup stops on an error.
 pub async fn cleanup(
     youtube: &mut YouTube,
     state_file: &Path,
     event_slug: &str,
+    deleted: &mut Vec<String>,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<(), BoxError> {
     let mut state = load_state(state_file, event_slug)?;
     while let Some((game, video)) = state.videos.pop_first() {
         youtube.delete_broadcast(&video.broadcast_id).await?;
         log(format!("Deleted video for game {game}"));
-        update_state(state_file, event_slug, |state| {
-            state.videos.remove(&game);
-        })?;
+        note_deleted(state_file, event_slug, &game, deleted)?;
     }
     while let Some((title, id)) = state.playlists.pop_first() {
         youtube.delete_playlist(&id).await?;
@@ -737,12 +739,30 @@ pub async fn cleanup(
     Ok(())
 }
 
-/// Terminal version of `cleanup`, with a warning and a `yes` confirmation.
+/// Notes that `game`'s video was deleted: in `deleted` first, so the caller knows even if
+/// removing it from the record then fails.
+fn note_deleted(
+    state_file: &Path,
+    event_slug: &str,
+    game: &str,
+    deleted: &mut Vec<String>,
+) -> Result<(), BoxError> {
+    deleted.push(game.to_string());
+    update_state(state_file, event_slug, |state| {
+        state.videos.remove(game);
+    })?;
+    Ok(())
+}
+
+/// Terminal version of `cleanup`, with a warning and a `yes` confirmation. Afterwards, the
+/// deleted games' watch links are cleared on the portal.
 pub async fn cleanup_cli(
     youtube: &mut YouTube,
     state_file: &Path,
-    event_slug: &str,
+    config: &Config,
+    link_file: &Path,
 ) -> Result<(), BoxError> {
+    let event_slug = config.event_slug.as_str();
     let state = load_state(state_file, event_slug)?;
     if state.videos.is_empty() && state.playlists.is_empty() {
         println!("Nothing recorded for {event_slug}; nothing to delete.");
@@ -759,7 +779,21 @@ pub async fn cleanup_cli(
         println!("Cancelled. Nothing was deleted.");
         return Ok(());
     }
-    cleanup(youtube, state_file, event_slug, &mut |line| info!("{line}")).await
+    let mut log = |line: String| info!("{line}");
+    let mut deleted = Vec::new();
+    let result = cleanup(youtube, state_file, event_slug, &mut deleted, &mut log).await;
+    if !deleted.is_empty() {
+        match crate::portal::fetch_event_plan(&config.portal_url, event_slug).await {
+            Ok(plan) => {
+                let links = watch_links::links_after_cleanup(&plan, &deleted);
+                watch_links::publish(link_file, config, &links, Purpose::Clear, &mut log).await;
+            }
+            Err(e) => log(format!(
+                "Portal: watch links weren't cleared: the schedule couldn't be loaded ({e})"
+            )),
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -798,6 +832,46 @@ mod tests {
         }
         assert_eq!(load_state(&path, "cup").unwrap().playlists.len(), 50);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_deleted_game_is_noted_even_when_the_record_cant_be_saved() {
+        let dir = std::env::temp_dir().join(format!(
+            "stream-manager-note-deleted-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let mut deleted = Vec::new();
+        // Saved normally: noted, and gone from the record.
+        let path = dir.join("state-cup.json");
+        update_state(&path, "cup", |state| {
+            state.videos.insert("14".into(), test_video());
+            state.videos.insert("15".into(), test_video());
+        })
+        .unwrap();
+        note_deleted(&path, "cup", "14", &mut deleted).unwrap();
+        assert!(!load_state(&path, "cup").unwrap().videos.contains_key("14"));
+        // The record can't be saved (cleanup stops here): the game is still noted.
+        let unsaveable = dir.join("missing").join("state-cup.json");
+        assert!(note_deleted(&unsaveable, "cup", "15", &mut deleted).is_err());
+        assert_eq!(deleted, ["14", "15"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn test_video() -> VideoState {
+        VideoState {
+            broadcast_id: "b".into(),
+            title: String::new(),
+            description: String::new(),
+            scheduled_start: String::new(),
+            bound_stream: None,
+            in_playlist: false,
+            next_game_link: None,
+            portal_start: None,
+            court: None,
+            day: None,
+        }
     }
 
     #[test]

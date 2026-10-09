@@ -149,6 +149,7 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
     let config_dir = config_path.parent().unwrap_or(Path::new("."));
     let client_file = config_dir.join(&config.client_secret_file);
     let token_file = config_dir.join(app::TOKEN_FILE);
+    let link_file = config_dir.join(watch_links::LINK_FILE);
     // Only for the commands that work on one event (checked above).
     let state_file = || prepare::state_path(config_dir, &config.event_slug);
     // The CLI uses the same allowance as the control page, so it counts in the same ledger.
@@ -182,13 +183,28 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
                 courts: court.into_iter().collect(),
                 limit,
             };
-            prepare::run_cli(&config, &plan, &mut yt, &state_file()?, &selection).await
+            prepare::run_cli(&config, &plan, &mut yt, &state_file()?, &selection).await?;
+            match prepare::load_state(&state_file()?, &config.event_slug) {
+                Ok(state) => {
+                    let links = watch_links::links_after_prepare(&plan, &state);
+                    watch_links::publish(
+                        &link_file,
+                        &config,
+                        &links,
+                        watch_links::Purpose::Set,
+                        &mut |line| info!("{line}"),
+                    )
+                    .await;
+                }
+                Err(e) => info!("Portal: watch links weren't set: {e}"),
+            }
+            Ok(())
         }
         CliCommand::Videos => show_videos(&config, &mut youtube()?, &state_file()?).await,
         CliCommand::Cleanup => {
             let mut yt = youtube()?;
             println!("YouTube channel: {}", yt.my_channel_title().await?);
-            prepare::cleanup_cli(&mut yt, &state_file()?, &config.event_slug).await
+            prepare::cleanup_cli(&mut yt, &state_file()?, &config, &link_file).await
         }
     }
 }

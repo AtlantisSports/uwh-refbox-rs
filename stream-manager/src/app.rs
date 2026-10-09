@@ -938,6 +938,11 @@ impl App {
             if event_changed {
                 inner.plan = None;
                 inner.plan_error = None;
+                // A key for the old event or portal must never be sent for the new one.
+                // `link_for` refuses it anyway, so failing to delete it is only a warning.
+                if let Err(e) = watch_links::forget(&self.link_file()) {
+                    warn!("Couldn't delete the portal watch links key: {e}");
+                }
             }
             let rules = rules_of(&new);
             if courts_changed {

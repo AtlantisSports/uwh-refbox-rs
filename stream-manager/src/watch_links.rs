@@ -7,7 +7,7 @@
 use crate::{
     BoxError,
     config::Config,
-    portal::EventPlan,
+    portal::{self, EventPlan},
     prepare::{self, EventState},
 };
 use reqwest::StatusCode;
@@ -139,7 +139,10 @@ pub async fn send_watch_urls(
     if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
         return Err(SendError::KeyRefused);
     }
-    let text = response.text().await.unwrap_or_default();
+    let text = response
+        .text()
+        .await
+        .map_err(|e| SendError::Other(unreachable_text(e)))?;
     Err(SendError::Other(portal_said(status, &text)))
 }
 
@@ -196,7 +199,10 @@ pub async fn publish(
         return;
     }
     let Some(link) = link_for(link_file, &config.portal_url, &config.event_slug) else {
-        log("Portal watch links: this Stream Manager isn't linked to the event, so none were set (Settings → Portal watch links)".to_string());
+        log(match purpose {
+            Purpose::Set => "Portal watch links: this Stream Manager isn't linked to the event, so none were set (Settings → Portal watch links)",
+            Purpose::Clear => "Portal watch links: this Stream Manager isn't linked to the event, so the deleted games' links weren't cleared (Settings → Portal watch links)",
+        }.to_string());
         return;
     };
     let result = send_watch_urls(&link.portal_url, &link.event_slug, &link.access_key, links).await;
@@ -207,8 +213,7 @@ pub async fn publish(
             links.len()
         )),
         (Err(SendError::KeyRefused), _) => {
-            // If the file can't be removed, the next run is refused again and says so again.
-            let _ = forget(link_file);
+            forget_refused(link_file, &link);
             log("Portal: the event refused this Stream Manager's key (it was removed on the portal, or the event is over). Link it again in Settings to set watch links.".to_string());
         }
         (Err(SendError::Other(error)), Purpose::Set) => log(format!(
@@ -217,6 +222,64 @@ pub async fn publish(
         (Err(SendError::Other(error)), Purpose::Clear) => {
             log(format!("Portal: watch links weren't cleared: {error}"))
         }
+    }
+}
+
+/// Forgets `refused` after the portal refused it, but only if it is still the saved key: a key
+/// saved by linking again meanwhile must survive.
+fn forget_refused(link_file: &Path, refused: &PortalLink) {
+    let still_saved = link_for(link_file, &refused.portal_url, &refused.event_slug)
+        .is_some_and(|saved| saved.access_key == refused.access_key);
+    if still_saved {
+        // If the file can't be removed, the next run is refused again and says so again.
+        let _ = forget(link_file);
+    }
+}
+
+/// After Prepare (whether it worked or failed): reloads the event's record from `state_file`
+/// and sends a link for each recorded game on `plan`. Never fails; see [`publish`].
+pub async fn publish_after_prepare(
+    link_file: &Path,
+    config: &Config,
+    plan: &EventPlan,
+    state_file: &Path,
+    log: &mut (dyn FnMut(String) + Send),
+) {
+    match prepare::load_state(state_file, &config.event_slug) {
+        Ok(state) => {
+            let links = links_after_prepare(plan, &state);
+            publish(link_file, config, &links, Purpose::Set, log).await;
+        }
+        Err(e) => log(format!("Portal: watch links weren't set: {e}")),
+    }
+}
+
+/// After deleting videos (whether it finished or stopped half-way): clears the links of the
+/// `deleted` games. Uses `loaded_plan` (the schedule of `config`'s event, if it is loaded),
+/// otherwise fetches the schedule from the portal. Does nothing when nothing was deleted.
+/// Never fails; see [`publish`].
+pub async fn publish_after_cleanup(
+    link_file: &Path,
+    config: &Config,
+    loaded_plan: Option<EventPlan>,
+    deleted: &[String],
+    log: &mut (dyn FnMut(String) + Send),
+) {
+    if deleted.is_empty() {
+        return;
+    }
+    let plan = match loaded_plan {
+        Some(plan) => Ok(plan),
+        None => portal::fetch_event_plan(&config.portal_url, &config.event_slug).await,
+    };
+    match plan {
+        Ok(plan) => {
+            let links = links_after_cleanup(&plan, deleted);
+            publish(link_file, config, &links, Purpose::Clear, log).await;
+        }
+        Err(e) => log(format!(
+            "Portal: watch links weren't cleared: the schedule couldn't be loaded ({e})"
+        )),
     }
 }
 
@@ -244,6 +307,7 @@ pub(crate) mod test_portal {
     use std::{
         collections::HashMap,
         sync::{Arc, Mutex},
+        time::Duration,
     };
 
     /// One request the stand-in portal was sent.
@@ -262,6 +326,8 @@ pub(crate) mod test_portal {
         default_reply: (u16, String),
         replies_by_path: HashMap<String, (u16, String)>,
         requests: Vec<Request>,
+        /// How long to wait before each reply.
+        delay: Duration,
     }
 
     pub(crate) struct MockPortal {
@@ -300,6 +366,11 @@ pub(crate) mod test_portal {
                 .insert(path.to_string(), (status, body.to_string()));
         }
 
+        /// From now on, waits `delay` before each reply (the request is recorded at once).
+        pub(crate) fn delay_replies(&self, delay: Duration) {
+            self.shared.lock().unwrap().delay = delay;
+        }
+
         /// Every request so far, oldest first.
         pub(crate) fn requests(&self) -> Vec<Request> {
             self.shared.lock().unwrap().requests.clone()
@@ -313,21 +384,25 @@ pub(crate) mod test_portal {
         headers: HeaderMap,
         body: Bytes,
     ) -> Response {
-        let mut shared = shared.lock().unwrap();
-        shared.requests.push(Request {
-            method: method.to_string(),
-            path: uri.path().to_string(),
-            authorization: headers
-                .get(header::AUTHORIZATION)
-                .and_then(|v| v.to_str().ok())
-                .map(str::to_string),
-            body: serde_json::from_slice(&body).unwrap_or(Value::Null),
-        });
-        let (status, reply) = shared
-            .replies_by_path
-            .get(uri.path())
-            .unwrap_or(&shared.default_reply)
-            .clone();
+        let (status, reply, delay) = {
+            let mut shared = shared.lock().unwrap();
+            shared.requests.push(Request {
+                method: method.to_string(),
+                path: uri.path().to_string(),
+                authorization: headers
+                    .get(header::AUTHORIZATION)
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_string),
+                body: serde_json::from_slice(&body).unwrap_or(Value::Null),
+            });
+            let (status, reply) = shared
+                .replies_by_path
+                .get(uri.path())
+                .unwrap_or(&shared.default_reply)
+                .clone();
+            (status, reply, shared.delay)
+        };
+        tokio::time::sleep(delay).await;
         let status = StatusCode::from_u16(status).unwrap();
         (status, [(header::CONTENT_TYPE, "application/json")], reply).into_response()
     }
@@ -755,6 +830,181 @@ mod tests {
         publishing.publish(&BTreeMap::new(), Purpose::Set).await;
         assert!(portal.requests().is_empty());
         assert!(publishing.lines.is_empty());
+    }
+
+    const NOT_LINKED_CLEAR: &str = "Portal watch links: this Stream Manager isn't linked to the event, so the deleted games' links weren't cleared (Settings → Portal watch links)";
+
+    #[tokio::test]
+    async fn clearing_when_not_linked_says_the_deleted_games_links_werent_cleared() {
+        let portal = MockPortal::start(204, "").await;
+        let mut publishing = Publishing::new("publish-unlinked-clear", &portal, None);
+        publishing.publish(&links(), Purpose::Clear).await;
+        assert!(portal.requests().is_empty());
+        assert_eq!(publishing.lines, [NOT_LINKED_CLEAR]);
+    }
+
+    #[test]
+    fn a_refused_key_is_kept_when_another_key_was_saved_meanwhile() {
+        let dir = temp_dir("refused-relinked");
+        let path = dir.join(LINK_FILE);
+        let refused = PortalLink {
+            portal_url: "https://portal.example".into(),
+            event_slug: "cup-2026".into(),
+            access_key: KEY.into(),
+        };
+        let relinked = PortalLink {
+            access_key: "a-newer-key".into(),
+            ..refused.clone()
+        };
+        save(&path, &relinked).unwrap();
+        forget_refused(&path, &refused);
+        assert_eq!(
+            link_for(&path, "https://portal.example", "cup-2026"),
+            Some(relinked)
+        );
+
+        save(&path, &refused).unwrap();
+        forget_refused(&path, &refused);
+        assert!(!path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_reply_that_cant_be_read_says_the_portal_couldnt_be_reached() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        // A portal that promises a longer reply than it sends, then hangs up.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 4096];
+            let _ = socket.read(&mut request).await;
+            let _ = socket
+                .write_all(
+                    b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 100\r\n\r\nshort",
+                )
+                .await;
+        });
+        match send_watch_urls(&format!("http://{address}"), "cup-2026", KEY, &links()).await {
+            Err(SendError::Other(text)) => {
+                assert!(text.starts_with("Couldn't reach the portal: "), "{text}");
+                assert!(!text.contains(KEY), "{text}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn after_prepare_the_record_is_reloaded_and_its_links_sent() {
+        let portal = MockPortal::start(204, "").await;
+        let publishing = Publishing::new("after-prepare", &portal, Some("cup-2026"));
+        let state_file = publishing.dir.join("state-cup-2026.json");
+        prepare::update_state(&state_file, "cup-2026", |state| {
+            *state = recorded(&[("14", "aaa"), ("99", "zzz")]);
+        })
+        .unwrap();
+        let mut lines = Vec::new();
+        publish_after_prepare(
+            &publishing.link_file,
+            &publishing.config,
+            &plan(&["14", "15"]),
+            &state_file,
+            &mut |line| lines.push(line),
+        )
+        .await;
+        let requests = portal.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0].body,
+            json!({ "watchUrlsByGameNumber": { "14": "https://youtu.be/aaa" } })
+        );
+        assert_eq!(lines, ["Portal: watch links set for 1 games"]);
+    }
+
+    #[tokio::test]
+    async fn after_prepare_a_record_that_cant_be_read_is_one_log_line() {
+        let portal = MockPortal::start(204, "").await;
+        let publishing = Publishing::new("after-prepare-broken", &portal, Some("cup-2026"));
+        let state_file = publishing.dir.join("state-cup-2026.json");
+        std::fs::write(&state_file, "not json").unwrap();
+        let mut lines = Vec::new();
+        publish_after_prepare(
+            &publishing.link_file,
+            &publishing.config,
+            &plan(&["14"]),
+            &state_file,
+            &mut |line| lines.push(line),
+        )
+        .await;
+        assert!(portal.requests().is_empty());
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].starts_with("Portal: watch links weren't set: "),
+            "{}",
+            lines[0]
+        );
+    }
+
+    #[tokio::test]
+    async fn after_cleanup_the_loaded_schedule_is_used_and_nothing_deleted_sends_nothing() {
+        let portal = MockPortal::start(500, "not the schedule").await;
+        portal.reply_on(SEND_PATH, 204, "");
+        let publishing = Publishing::new("after-cleanup", &portal, Some("cup-2026"));
+        let mut lines = Vec::new();
+        let mut log = |line: String| lines.push(line);
+        publish_after_cleanup(
+            &publishing.link_file,
+            &publishing.config,
+            Some(plan(&["14", "15"])),
+            &[],
+            &mut log,
+        )
+        .await;
+        assert!(portal.requests().is_empty());
+
+        let deleted = ["14".to_string(), "99".to_string()];
+        publish_after_cleanup(
+            &publishing.link_file,
+            &publishing.config,
+            Some(plan(&["14", "15"])),
+            &deleted,
+            &mut log,
+        )
+        .await;
+        let requests = portal.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].path, SEND_PATH);
+        assert_eq!(
+            requests[0].body,
+            json!({ "watchUrlsByGameNumber": { "14": null } })
+        );
+        assert_eq!(lines, ["Portal: watch links cleared for 1 games"]);
+    }
+
+    #[tokio::test]
+    async fn after_cleanup_with_no_schedule_loaded_it_is_fetched_and_a_failure_is_one_line() {
+        let portal = MockPortal::start(500, "boom").await;
+        let publishing = Publishing::new("after-cleanup-no-plan", &portal, Some("cup-2026"));
+        let mut lines = Vec::new();
+        publish_after_cleanup(
+            &publishing.link_file,
+            &publishing.config,
+            None,
+            &["14".to_string()],
+            &mut |line| lines.push(line),
+        )
+        .await;
+        let requests = portal.requests();
+        assert!(!requests.is_empty());
+        assert!(requests.iter().all(|request| request.method == "GET"));
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].starts_with(
+                "Portal: watch links weren't cleared: the schedule couldn't be loaded ("
+            ),
+            "{}",
+            lines[0]
+        );
     }
 
     #[test]

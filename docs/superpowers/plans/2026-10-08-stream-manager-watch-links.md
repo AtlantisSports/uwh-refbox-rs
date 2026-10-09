@@ -370,4 +370,38 @@ address, set directly in `Config` because `App::new` doesn't run `validate_for_s
 
 ## Deviations
 
-(none yet)
+- **Lint scope.** Clippy ran as `cargo clippy -p stream-manager --all-targets --all-features`, plus
+  `just check`. The workspace-wide `--all-targets` form fails on errors already in the `refbox`
+  crate that no gate runs. Added: `cargo check -p stream-manager --all-targets --target
+  x86_64-pc-windows-gnu`, clean.
+- **Task 1.** The mock portal is `watch_links::test_portal` (`#[cfg(test)] pub(crate)`), so the
+  `web.rs` tests in Task 3 can use it.
+- **Task 2, cleanup wording.** When clearing fails, the log says `Portal: watch links weren't
+  cleared: {error}` with no "Run Prepare again".
+- **Task 2, half-way cleanup (Review Focus 2).** There is no fake YouTube, so this uses the
+  plan's fallback: a `note_deleted` test and a `links_after_cleanup` test. A YouTube error
+  half-way is checked by reading the code only.
+- **Task 3.** Three messages the plan didn't give:
+  - `Couldn't link: {e}` when the key can't be saved;
+  - `Couldn't unlink: {e}`;
+  - the log line `Unlinked from the portal`.
+
+  The plan's open-the-page-by-hand check moved to the human walkthrough.
+- **Final code review (10 findings, all fixed):**
+  - Prepare and Delete test videos on the command line share one publishing path with the
+    page. The command-line Prepare now sends links after a failure too.
+  - A cancelled command-line Prepare sends nothing. The plan had called sending after a cancel
+    harmless; that is reversed.
+  - Page jobs use the state file and schedule of the job's own event.
+  - A refused key is deleted only if it is still the saved one.
+  - A key whose exchange outlived an event or portal change isn't saved. The reply is `The
+    event or portal changed while linking. Link again.`
+  - Link refuses while the event or portal on the page isn't saved. The message is `Save
+    settings first: the event or portal on this page isn't saved yet.` The portal is compared
+    only when the dropdown shows one.
+  - Link and Unlink redraw only their own box. The plan had said to reload the whole Settings
+    form.
+  - The Link button is disabled while its request runs.
+  - Clearing while not linked has its own log line: `…so the deleted games' links weren't
+    cleared (Settings → Portal watch links)`.
+  - A reply body that can't be read is reported as `Couldn't reach the portal`.

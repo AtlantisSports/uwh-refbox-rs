@@ -19,6 +19,7 @@ mod quota;
 mod recovery;
 mod refbox;
 mod switcher;
+mod thumbnail;
 mod title_sync;
 mod vmix;
 mod watch_links;
@@ -84,6 +85,15 @@ enum CliCommand {
         /// Only the first N games of each playlist (handy for testing)
         #[clap(long)]
         limit: Option<usize>,
+    },
+    /// Save the thumbnails Prepare would upload as picture files (doesn't touch YouTube)
+    Thumbnails {
+        /// Folder to save them in
+        #[clap(long, default_value = "thumbnails")]
+        out: PathBuf,
+        /// Only this tournament day (default: every day)
+        #[clap(long)]
+        day: Option<usize>,
     },
     /// Show what YouTube reports for the videos created for this event (read-only)
     Videos,
@@ -209,6 +219,7 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
             }
             result.map(|_| ())
         }
+        CliCommand::Thumbnails { out, day } => save_thumbnails(&config, &out, day).await,
         CliCommand::Videos => show_videos(&config, &mut youtube()?, &state_file()?).await,
         CliCommand::Cleanup => {
             let mut yt = youtube()?;
@@ -340,6 +351,28 @@ fn load_config(path: &Path) -> Result<Config, BoxError> {
         info!("Created the Stream Manager ID {id}");
     }
     Ok(config)
+}
+
+async fn save_thumbnails(config: &Config, out: &Path, day: Option<usize>) -> Result<(), BoxError> {
+    let plan = portal::fetch_event_plan(&config.portal_url, &config.event_slug).await?;
+    std::fs::create_dir_all(out)?;
+    let mut thumbnails = prepare::Thumbnails::default();
+    let mut count = 0;
+    for game in plan.games.iter().filter(|g| day.is_none_or(|d| g.day == d)) {
+        let (jpeg, _) = thumbnails
+            .draw(&plan, game, &mut |line| info!("{line}"))
+            .await?;
+        let number: String = game
+            .number
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '-')
+            .collect();
+        let name = format!("day{}-court{}-game{number}.jpg", game.day, game.court);
+        std::fs::write(out.join(name), jpeg)?;
+        count += 1;
+    }
+    println!("Saved {count} thumbnail(s) in {}", out.display());
+    Ok(())
 }
 
 async fn show_plan(config: &Config) -> Result<(), BoxError> {

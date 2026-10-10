@@ -8,13 +8,15 @@
 use crate::{
     BoxError,
     config::{Config, CourtConfig, StreamMode},
-    portal::{EventPlan, PlannedGame, playlist_title, video_title},
+    portal::{EventPlan, PlannedGame, TeamArt, playlist_title, video_title},
+    thumbnail::{self, DESIGN_VERSION, Painter},
     youtube::{BroadcastSpec, Playlist, StreamInfo, YouTube, YouTubeAccess},
 };
+use image::DynamicImage;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     fs,
     io::{self, BufRead, Write},
     path::{Path, PathBuf},
@@ -62,6 +64,9 @@ pub struct VideoState {
     pub court: Option<String>,
     #[serde(default)]
     pub day: Option<usize>,
+    /// What the uploaded thumbnail shows (see `thumbnail_key`), once one is uploaded.
+    #[serde(default)]
+    pub thumbnail: Option<String>,
 }
 
 /// The description as it should be on YouTube: the generated text plus, once known, the link
@@ -357,6 +362,148 @@ pub async fn sync_video(
     Ok(true)
 }
 
+/// e.g. "Wed 5 Aug, 14:00", in the game's own time zone.
+fn when_text(game: &PlannedGame) -> String {
+    game.start
+        .format(format_description!(
+            "[weekday repr:short] [day padding:none] [month repr:short], [hour]:[minute]"
+        ))
+        .unwrap_or_default()
+}
+
+/// Everything a game's thumbnail shows. When this changes (a team becomes known, a logo or
+/// the banner changes, or the design is updated), Prepare uploads the thumbnail again.
+fn thumbnail_key(plan: &EventPlan, game: &PlannedGame) -> String {
+    let team = |name: &str, art: &Option<TeamArt>| match art {
+        Some(art) => format!("{name} ({})", art.logo_url.as_deref().unwrap_or("no logo")),
+        None => format!("{name} (placeholder)"),
+    };
+    format!(
+        "design {DESIGN_VERSION} | {} | banner {} | game {} | court {} | {} | {} | {}",
+        plan.event_name,
+        plan.banner_url.as_deref().unwrap_or("none"),
+        game.number,
+        game.court,
+        when_text(game),
+        team(&game.dark, &game.dark_team),
+        team(&game.light, &game.light_team),
+    )
+}
+
+/// Added to the key when a banner or logo could not be downloaded, so the next Prepare tries
+/// again.
+const INCOMPLETE: &str = " | incomplete";
+
+/// A picture that takes longer than this to download is left out (logo → initials).
+const PICTURE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+type Pictures = HashMap<String, Option<DynamicImage>>;
+
+/// Downloads the event's pictures (once each) and draws the thumbnails.
+pub struct Thumbnails {
+    painter: Option<Painter>,
+    banner_ok: bool,
+    pictures: Pictures,
+    http: reqwest::Client,
+    /// Turned off after an upload fails, so a refused upload isn't repeated for every video.
+    enabled: bool,
+}
+
+impl Default for Thumbnails {
+    fn default() -> Self {
+        Self {
+            painter: None,
+            banner_ok: true,
+            pictures: HashMap::new(),
+            http: reqwest::Client::builder()
+                .timeout(PICTURE_TIMEOUT)
+                .build()
+                .unwrap_or_default(),
+            enabled: true,
+        }
+    }
+}
+
+impl Thumbnails {
+    /// Downloads a picture unless already tried; false if it couldn't be fetched or read.
+    async fn fetch(&mut self, url: &str, log: &mut (dyn FnMut(String) + Send)) -> bool {
+        if !self.pictures.contains_key(url) {
+            let picture = match download_picture(&self.http, url).await {
+                Ok(picture) => Some(picture),
+                Err(e) => {
+                    log(format!("Could not download picture {url}: {e}"));
+                    None
+                }
+            };
+            self.pictures.insert(url.to_string(), picture);
+        }
+        self.pictures.get(url).is_some_and(Option::is_some)
+    }
+
+    /// The game's thumbnail as a JPEG, and whether every picture it needed was available.
+    pub async fn draw(
+        &mut self,
+        plan: &EventPlan,
+        game: &PlannedGame,
+        log: &mut (dyn FnMut(String) + Send),
+    ) -> Result<(Vec<u8>, bool), BoxError> {
+        if self.painter.is_none() {
+            if let Some(url) = &plan.banner_url {
+                self.banner_ok = self.fetch(url, log).await;
+            }
+            let banner = plan
+                .banner_url
+                .as_ref()
+                .and_then(|url| self.pictures.get(url))
+                .and_then(Option::as_ref);
+            self.painter = Some(Painter::new(&plan.event_name, banner)?);
+        }
+        let mut complete = self.banner_ok;
+        for art in [&game.dark_team, &game.light_team].into_iter().flatten() {
+            if let Some(url) = &art.logo_url {
+                complete &= self.fetch(url, log).await;
+            }
+        }
+        let when = when_text(game);
+        let thumbnail = thumbnail::Game {
+            number: &game.number,
+            court: &game.court,
+            when: &when,
+            dark: team_picture(&game.dark, &game.dark_team, &self.pictures),
+            light: team_picture(&game.light, &game.light_team, &self.pictures),
+        };
+        let painter = self.painter.as_ref().ok_or("thumbnail painter missing")?;
+        Ok((painter.render(&thumbnail)?, complete))
+    }
+}
+
+fn team_picture<'a>(
+    name: &'a str,
+    art: &'a Option<TeamArt>,
+    pictures: &'a Pictures,
+) -> thumbnail::Team<'a> {
+    thumbnail::Team {
+        name,
+        known: art.is_some(),
+        logo: art
+            .as_ref()
+            .and_then(|a| a.logo_url.as_ref())
+            .and_then(|url| pictures.get(url))
+            .and_then(Option::as_ref),
+    }
+}
+
+async fn download_picture(http: &reqwest::Client, url: &str) -> Result<DynamicImage, BoxError> {
+    let bytes = http
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
+    Ok(image::load_from_memory(&bytes)?)
+}
+
 /// What the prepare step will do, worked out before anything is changed.
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct Work {
@@ -367,6 +514,7 @@ pub struct Work {
     pub videos_to_update: usize,
     pub binds: usize,
     pub playlist_adds: usize,
+    pub thumbnails: usize,
     pub units: usize,
     pub privacy: String,
 }
@@ -378,6 +526,7 @@ impl Work {
             + self.videos_to_update
             + self.binds
             + self.playlist_adds
+            + self.thumbnails
             == 0
     }
 }
@@ -481,6 +630,7 @@ pub fn preview(
                     work.videos_to_create += 1;
                     work.binds += 1;
                     work.playlist_adds += 1;
+                    work.thumbnails += 1;
                 }
                 Some(v) => {
                     if needed_update(config, plan, game, v).is_some() {
@@ -499,6 +649,9 @@ pub fn preview(
                     if !v.in_playlist {
                         work.playlist_adds += 1;
                     }
+                    if v.thumbnail.as_deref() != Some(thumbnail_key(plan, game).as_str()) {
+                        work.thumbnails += 1;
+                    }
                 }
             }
         }
@@ -508,7 +661,8 @@ pub fn preview(
             + work.videos_to_create
             + work.videos_to_update
             + work.binds
-            + work.playlist_adds);
+            + work.playlist_adds
+            + work.thumbnails);
     Ok(work)
 }
 
@@ -531,6 +685,7 @@ pub async fn run(
     day_running: &(dyn Fn(&str) -> bool + Sync),
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<(), BoxError> {
+    let mut thumbnails = Thumbnails::default();
     for target in select_targets(config, plan, selection)? {
         let title = &target.playlist_title;
         let pair = court_streams(target.court, &lookups.streams)?;
@@ -573,6 +728,30 @@ pub async fn run(
         drop(step);
 
         for (i, game) in target.games.iter().enumerate() {
+            // The thumbnail is drawn (and its pictures downloaded) before taking the court's
+            // lock, so a slow picture download never holds up a switch on that court.
+            let thumbnail_key = thumbnail_key(plan, game);
+            let needs_thumbnail = thumbnails.enabled
+                && load_state(state_file, &config.event_slug)?
+                    .videos
+                    .get(&game.number)
+                    .is_none_or(|v| v.thumbnail.as_deref() != Some(thumbnail_key.as_str()));
+            let drawn = if needs_thumbnail {
+                match thumbnails.draw(plan, game, log).await {
+                    Ok(drawn) => Some(drawn),
+                    Err(e) => {
+                        log(format!(
+                            "Thumbnails skipped for the rest of this run. Game {}: {e}",
+                            game.number
+                        ));
+                        thumbnails.enabled = false;
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
             // Held for this game only; released before the next one.
             let mut youtube = youtube.step(&target.court.name).await?;
             let mut state = load_state(state_file, &config.event_slug)?;
@@ -592,6 +771,7 @@ pub async fn run(
                         portal_start: Some(portal_start(game)),
                         court: Some(game.court.clone()),
                         day: Some(game.day),
+                        thumbnail: None,
                     };
                     update_state(state_file, &config.event_slug, |state| {
                         state.videos.insert(game.number.clone(), v.clone());
@@ -655,6 +835,32 @@ pub async fn run(
                     }
                 })?;
             }
+
+            if let Some((jpeg, complete)) = drawn {
+                match youtube.set_thumbnail(&video.broadcast_id, jpeg).await {
+                    Ok(()) => {
+                        log(format!("Game {}: thumbnail set", game.number));
+                        let key = if complete {
+                            thumbnail_key
+                        } else {
+                            thumbnail_key + INCOMPLETE
+                        };
+                        update_state(state_file, &config.event_slug, |state| {
+                            if let Some(v) = state.videos.get_mut(&game.number) {
+                                v.thumbnail = Some(key);
+                            }
+                        })?;
+                    }
+                    // The videos matter more than their thumbnails: carry on without them.
+                    Err(e) => {
+                        log(format!(
+                            "Thumbnails skipped for the rest of this run. Game {}: {e}",
+                            game.number
+                        ));
+                        thumbnails.enabled = false;
+                    }
+                }
+            }
         }
     }
     log(format!("Done. Used {} units so far.", youtube.units_used()));
@@ -684,13 +890,14 @@ pub async fn run_cli(
     }
     println!(
         "\nThis will create {} playlist(s) and {} video(s), update {} video(s),\n\
-         link {} video(s) to stream keys and add {} to playlists.\n\
+         link {} video(s) to stream keys, add {} to playlists and set {} thumbnail(s).\n\
          Privacy: {}. Estimated cost: about {} of the 10,000 daily units.",
         work.playlists_to_create,
         work.videos_to_create,
         work.videos_to_update,
         work.binds,
         work.playlist_adds,
+        work.thumbnails,
         work.privacy,
         work.units + 2,
     );
@@ -973,6 +1180,7 @@ mod tests {
             portal_start: Some(start),
             court: None,
             day: None,
+            thumbnail: None,
         }
     }
 

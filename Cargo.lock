@@ -6396,6 +6396,7 @@ dependencies = [
  "confy",
  "directories",
  "getrandom 0.3.3",
+ "image 0.25.8",
  "log",
  "log-panics",
  "log4rs",
@@ -6403,7 +6404,9 @@ dependencies = [
  "serde",
  "serde_json",
  "time",
+ "tiny-skia",
  "tokio",
+ "ttf-parser 0.25.1",
  "uwh-common",
 ]
 

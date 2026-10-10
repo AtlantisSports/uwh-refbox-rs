@@ -304,7 +304,9 @@ Also set:
      tab, clicks **(+)** and enters this Stream Manager's ID, shown in the **Portal watch links**
      box. The portal then shows a 6-digit code. Type that code into the box's **Code** field and
      click **Link** (a code lasts 15 minutes). **Check:** the box says "Linked ✓". Changing the
-     event or the portal later unlinks it, so link it again after such a change.
+     event or the portal later unlinks it, so link it again after such a change. Prepare's
+     **1. Preview** checks the link with the portal and warns before anything is created if
+     the portal refuses it.
 5. ⛔ **STOP — a human must do this.** Click **Connect YouTube**. In the browser, sign in with the
    Google account that manages the channel, choose the **Atlantis Sports** channel, and click
    through "Google hasn't verified this app" (Advanced → Go to Stream-Manager) → Allow.
@@ -536,7 +538,7 @@ once this Stream Manager is linked, B5 step 4).
 | End day pressed, but vMix still streaming | Older versions stopped only one destination. Update Stream Manager; End day now stops both (in one-key mode only destination 1, so anything else on destination 2 keeps running). |
 | Start day: "Re-run Prepare: some of today's videos use a stream key other than A" | The court was switched to one-key mode after Prepare. Run **Prepare** again for that day and court; it moves the videos to key A. |
 | Log: "Allowance low: skipped the chat message and Next game link" | This PC's share of YouTube's daily allowance is nearly used. Switching carries on. If Google has granted a higher limit, raise **Daily allowance (units)** in Settings; otherwise nothing to do until midnight US Pacific time. |
-| Log: "Portal: the event refused this Stream Manager's key …" | The organiser removed this Stream Manager on the portal, or the event is over. Link it again (B5 step 4, **Portal watch links**), then run **Prepare** again to send the links. |
+| Log: "Portal: the event refused this Stream Manager's key …", or the same warning in Prepare's preview | The organiser removed this Stream Manager on the portal, or the event is over. Link it again (B5 step 4, **Portal watch links**), then run **Prepare** again to send the links. |
 | Watch links weren't set on the portal (log: "Portal: watch links weren't set …" or "… isn't linked to the event, so none were set") | Run **Prepare** again; it sends the links again. If the log says it isn't linked, link it first (B5 step 4). |
 | Log: "⚠ The portal or YouTube didn't answer in time; titles weren't checked" | The internet or the portal was slow. Nothing to do: titles are checked again in 10 minutes and just before each switch. |
 

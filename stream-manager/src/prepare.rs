@@ -883,6 +883,7 @@ pub async fn run_cli(
     youtube: &mut YouTube,
     state_file: &Path,
     selection: &Selection,
+    portal_notice: Option<String>,
 ) -> Result<CliRun, BoxError> {
     let state = load_state(state_file, &config.event_slug)?;
     let lookups = lookups(youtube).await?;
@@ -892,6 +893,9 @@ pub async fn run_cli(
     println!("Event: {}  —  day {}", plan.event_name, selection.day);
     for (title, count) in &work.playlists {
         println!("  Playlist \"{title}\": {count} videos");
+    }
+    if let Some(notice) = portal_notice {
+        println!("\n{notice}");
     }
     if work.is_empty() {
         println!("Everything is already up to date on YouTube. Nothing to do.");

@@ -27,6 +27,8 @@ mod flag;
 mod load_images;
 #[cfg(feature = "ndi")]
 mod ndi_output;
+#[cfg(any(feature = "ndi", test))]
+mod ndi_runtime;
 mod network;
 use network::{BLACK_TEAM_NAME, WHITE_TEAM_NAME};
 mod pages;
@@ -34,6 +36,56 @@ mod pages;
 use load_images::Texture;
 
 const APP_NAME: &str = "overlay";
+/// The old default port of the overlay-bridge; see `overlay-bridge`'s `config.rs`.
+const OLD_BRIDGE_PORT: u16 = 8099;
+const NEW_BRIDGE_PORT: u16 = 8098;
+
+/// `url` (trimmed) with its port moved from 8099 to 8098, or `None` if it isn't on 8099. Where
+/// the port is written as `:8099`, only the port is changed in the text as written, so the rest of
+/// the address stays exactly as it was; otherwise (say, `:08099`) the address is rewritten in its
+/// standard form.
+fn moved_bridge_url(url: &str) -> Option<String> {
+    let url = url.trim();
+    let mut parsed = reqwest::Url::parse(url).ok()?;
+    if parsed.port() != Some(OLD_BRIDGE_PORT) {
+        return None;
+    }
+    let as_written = || {
+        let start = url.find("://")? + 3;
+        let end = url[start..]
+            .find(['/', '?', '#'])
+            .map_or(url.len(), |index| start + index);
+        let host = url[start..end].strip_suffix(&format!(":{OLD_BRIDGE_PORT}"))?;
+        Some(format!(
+            "{}{host}:{NEW_BRIDGE_PORT}{}",
+            &url[..start],
+            &url[end..]
+        ))
+    };
+    as_written().or_else(|| {
+        parsed.set_port(Some(NEW_BRIDGE_PORT)).ok()?;
+        Some(parsed.to_string())
+    })
+}
+
+/// Moves a bridge address on the old port 8099 to 8098, once: a settings file from before the
+/// move is moved whatever host it names, and marked, so that a bridge address on 8099 chosen
+/// afterwards is the operator's own choice and is kept. Returns whether `config` changed and
+/// needs saving.
+fn migrate_bridge_address(config: &mut AppConfig) -> bool {
+    if config.bridge_port_moved {
+        return false;
+    }
+    if let Some(moved) = moved_bridge_url(&config.bridge_url) {
+        info!(
+            "Moved the overlay-bridge address from {} to {moved}",
+            config.bridge_url
+        );
+        config.bridge_url = moved;
+    }
+    config.bridge_port_moved = true;
+    true
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct AppConfig {
@@ -44,6 +96,9 @@ pub struct AppConfig {
     /// the `bridge` feature. Harmless when that feature is off -- just an unused setting
     /// sitting in the config file.
     bridge_url: String,
+    /// Set once an old `:8099` bridge address has been moved to 8098; a later 8099 is kept.
+    #[serde(default)]
+    bridge_port_moved: bool,
 }
 
 impl Default for AppConfig {
@@ -52,7 +107,9 @@ impl Default for AppConfig {
             refbox_ip: IpAddr::from_str("127.0.0.1").unwrap(),
             refbox_port: 8000,
             uwhportal_url: String::from("https://api.uwhportal.com"),
-            bridge_url: String::from("http://127.0.0.1:8099"),
+            bridge_url: String::from("http://127.0.0.1:8098"),
+            // A new settings file never held the old port, so there is nothing to move.
+            bridge_port_moved: true,
         }
     }
 }
@@ -242,7 +299,7 @@ struct Cli {
 async fn main() {
     init_logging();
 
-    let config: AppConfig = match confy::load(APP_NAME, None) {
+    let mut config: AppConfig = match confy::load(APP_NAME, None) {
         Ok(config) => config,
         Err(e) => {
             warn!("Failed to read config file, overwriting with default. Error: {e}");
@@ -251,6 +308,12 @@ async fn main() {
             config
         }
     };
+    // The bridge's default port moved from 8099 (vMix's hard-coded TCP API port) to 8098.
+    if migrate_bridge_address(&mut config) {
+        if let Err(e) = confy::store(APP_NAME, None, &config) {
+            warn!("Couldn't save the overlay-bridge address: {e}");
+        }
+    }
 
     let (tx, rx) = bounded::<StateUpdate>(3);
 
@@ -295,14 +358,22 @@ async fn main() {
     let mut flag_renderer = flag::Renderer::new();
     macroquad::window::miniquad::window::show_mouse(false);
 
+    // NDI output starts as soon as NDI's engine is loaded. On a PC without it, the preview offers
+    // an Install NDI button and nothing is installed until the operator clicks it (see
+    // `ndi_runtime.rs`); the overlay runs normally meanwhile.
     #[cfg(feature = "ndi")]
-    let mut ndi_output = match ndi_output::NdiOutput::new("UWH Overlay") {
-        Ok(output) => Some(output),
-        Err(e) => {
-            warn!("Failed to start NDI output, continuing without it: {e}");
-            None
-        }
-    };
+    let ndi_engine = ndi_runtime::EngineWatch::start();
+    #[cfg(feature = "ndi")]
+    let mut ndi_output: Option<(ndi_output::NdiOutput, ndi_output::KeyCombiner)> = None;
+    #[cfg(feature = "ndi")]
+    let mut ndi_started = false;
+    #[cfg(feature = "ndi")]
+    let mut mouse_shown = false;
+    // The preview's note, worked out again only when the engine's status changes.
+    #[cfg(feature = "ndi")]
+    let mut last_status: Option<ndi_runtime::EngineStatus> = None;
+    #[cfg(feature = "ndi")]
+    let mut note = String::new();
 
     // Every page draws assuming a fixed 3840x1080 canvas (see `pages::mod`'s
     // `draw_texture_both!` family, which hardcodes a 1920 split). The *window* `window_conf()`
@@ -316,7 +387,10 @@ async fn main() {
     // own size ends up being.
     let canvas = render_target(3840, 1080);
     canvas.texture.set_filter(FilterMode::Nearest);
-    let mut canvas_camera = Camera2D::from_display_rect(Rect::new(0., 0., 3840., 1080.));
+    // `from_display_rect` flips y for drawing to the screen; a render target needs the
+    // opposite, or the canvas comes out upside down (in both the local preview and NDI). The
+    // negative height keeps the pages' top-left (0, 0) coordinates and undoes that flip.
+    let mut canvas_camera = Camera2D::from_display_rect(Rect::new(0., 1080., 3840., -1080.));
     canvas_camera.render_target = Some(canvas.clone());
 
     loop {
@@ -382,14 +456,28 @@ async fn main() {
         // `get_screen_data()` (the visible window), which may be smaller than that on this
         // machine (see `canvas`'s doc above).
         #[cfg(feature = "ndi")]
-        if let Some(ndi_output) = ndi_output.as_mut() {
-            // Without this, `get_texture_data` below can read the canvas before this frame's
-            // batched draw calls have actually been submitted to the GPU -- the same reason
-            // macroquad's own `get_screen_data()` flushes before its own read.
-            unsafe {
-                macroquad::window::get_internal_gl().flush();
-            }
-            ndi_output.send_frame(&canvas.texture.get_texture_data());
+        if !ndi_started && ndi_engine.is_ready() {
+            ndi_started = true;
+            ndi_output = match ndi_output::NdiOutput::new("UWH Overlay") {
+                Ok(output) => match ndi_output::KeyCombiner::new() {
+                    Ok(combiner) => {
+                        info!("NDI output started");
+                        Some((output, combiner))
+                    }
+                    Err(e) => {
+                        warn!("Failed to prepare the NDI picture, continuing without NDI: {e}");
+                        None
+                    }
+                },
+                Err(e) => {
+                    warn!("Failed to start NDI output, continuing without it: {e}");
+                    None
+                }
+            };
+        }
+        #[cfg(feature = "ndi")]
+        if let Some((ndi_output, combiner)) = ndi_output.as_mut() {
+            ndi_output.send_frame(&combiner.combine(&canvas.texture));
         }
 
         // A scaled-down local preview in the actual window, so there is still something to
@@ -407,6 +495,35 @@ async fn main() {
                 ..Default::default()
             },
         );
+        // Only on the local preview, never in the NDI picture: why NDI isn't running, and the button
+        // that installs it. The mouse pointer shows only while the button does.
+        #[cfg(feature = "ndi")]
+        {
+            let status = ndi_engine.status();
+            let want_mouse = ndi_output.is_none() && ndi_runtime::install_allowed(&status);
+            if want_mouse != mouse_shown {
+                macroquad::window::miniquad::window::show_mouse(want_mouse);
+                mouse_shown = want_mouse;
+            }
+            if ndi_output.is_none() {
+                if last_status.as_ref() != Some(&status) {
+                    note = ndi_runtime::preview_note(&status);
+                    last_status = Some(status);
+                }
+                draw_text(&note, 10., 30., 24., YELLOW);
+            }
+            if want_mouse {
+                let button = Rect::new(10., 44., 220., 40.);
+                draw_rectangle(button.x, button.y, button.w, button.h, DARKGRAY);
+                draw_rectangle_lines(button.x, button.y, button.w, button.h, 2., YELLOW);
+                draw_text("Install NDI", button.x + 16., button.y + 28., 28., WHITE);
+                if is_mouse_button_pressed(MouseButton::Left)
+                    && button.contains(mouse_position().into())
+                {
+                    ndi_engine.install();
+                }
+            }
+        }
 
         next_frame().await;
     }
@@ -498,5 +615,91 @@ fn window_conf() -> Conf {
             ..Default::default()
         },
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn any_bridge_address_on_the_old_port_moves_to_8098() {
+        assert_eq!(
+            moved_bridge_url("http://127.0.0.1:8099").as_deref(),
+            Some("http://127.0.0.1:8098")
+        );
+        assert_eq!(
+            moved_bridge_url("http://127.0.0.1:8099/").as_deref(),
+            Some("http://127.0.0.1:8098/")
+        );
+        assert_eq!(
+            moved_bridge_url("http://localhost:8099").as_deref(),
+            Some("http://localhost:8098")
+        );
+        assert_eq!(
+            moved_bridge_url("http://192.168.1.20:8099").as_deref(),
+            Some("http://192.168.1.20:8098")
+        );
+        assert_eq!(
+            moved_bridge_url("http://127.0.0.1:8099?x=1").as_deref(),
+            Some("http://127.0.0.1:8098?x=1")
+        );
+        assert_eq!(
+            moved_bridge_url("http://127.0.0.1:8099/feed?x=1#top").as_deref(),
+            Some("http://127.0.0.1:8098/feed?x=1#top")
+        );
+        // Spaces around a typed address don't stop the move.
+        assert_eq!(
+            moved_bridge_url("  http://127.0.0.1:8099  ").as_deref(),
+            Some("http://127.0.0.1:8098")
+        );
+        // Written another way that still means 8099: moved, in the address's standard form.
+        let unusual = moved_bridge_url("http://127.0.0.1:08099").expect("an address on 8099 moves");
+        assert_eq!(
+            reqwest::Url::parse(&unusual).unwrap().port(),
+            Some(NEW_BRIDGE_PORT)
+        );
+        assert_eq!(moved_bridge_url("http://127.0.0.1:8098"), None);
+        assert_eq!(moved_bridge_url("http://127.0.0.1:9000"), None);
+        assert_eq!(moved_bridge_url("not a url"), None);
+    }
+
+    #[test]
+    fn an_old_settings_file_loads_and_is_marked_for_the_move() {
+        // Written before this change: no `bridge_port_moved` key. (`serde_json` rather than the
+        // TOML confy writes, because `toml` isn't a direct dependency of the overlay; the point
+        // is the same: a missing key loads as `false`.)
+        let old: AppConfig = serde_json::from_str(
+            r#"{"refbox_ip": "127.0.0.1", "refbox_port": 8000, "uwhportal_url": "https://api.uwhportal.com", "bridge_url": "http://127.0.0.1:8099"}"#,
+        )
+        .expect("an old settings file still loads");
+        assert!(!old.bridge_port_moved);
+        assert!(AppConfig::default().bridge_port_moved);
+    }
+
+    #[test]
+    fn the_bridge_address_moves_once_and_a_later_8099_is_kept() {
+        let config = |url: &str, moved: bool| AppConfig {
+            bridge_url: url.to_string(),
+            bridge_port_moved: moved,
+            ..AppConfig::default()
+        };
+
+        // From before the move: moved, marked, and saved.
+        let mut old = config("http://localhost:8099", false);
+        assert!(migrate_bridge_address(&mut old));
+        assert_eq!(old.bridge_url, "http://localhost:8098");
+        assert!(old.bridge_port_moved);
+
+        // From before the move but on another port: left alone, but still marked and saved.
+        let mut other = config("http://127.0.0.1:9000", false);
+        assert!(migrate_bridge_address(&mut other));
+        assert_eq!(other.bridge_url, "http://127.0.0.1:9000");
+        assert!(other.bridge_port_moved);
+
+        // 8099 chosen after the move: kept, nothing to save.
+        let mut chosen = config("http://127.0.0.1:8099", true);
+        assert!(!migrate_bridge_address(&mut chosen));
+        assert_eq!(chosen.bridge_url, "http://127.0.0.1:8099");
     }
 }

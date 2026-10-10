@@ -45,12 +45,20 @@ pub const APP_NAME: &str = "overlay-bridge";
 
 /// Built-in defaults, used only once neither an explicit CLI argument nor a stored setting
 /// supplies a value. Match the values `main.rs`'s CLI flags used before this task added
-/// persistence (`--refbox-host` `127.0.0.1`, `--refbox-port` `8000`, `--port` `8099`), so a
-/// first-ever run with no flags and no settings file behaves exactly as every run before this
-/// task did.
+/// persistence (`--refbox-host` `127.0.0.1`, `--refbox-port` `8000`), so a first-ever run with
+/// no flags and no settings file behaves the same as before.
+///
+/// The HTTP port is **8098**. It used to be 8099, but vMix's TCP API permanently listens on 8099
+/// (hard-coded, not configurable), so on a streaming PC running vMix the bridge couldn't start.
+/// 8088 is vMix's web controller and 8090 is stream-manager's control page, so neither of those.
 pub const DEFAULT_REFBOX_HOST: &str = "127.0.0.1";
 pub const DEFAULT_REFBOX_PORT: u16 = 8000;
-pub const DEFAULT_PORT: u16 = 8099;
+pub const DEFAULT_PORT: u16 = 8098;
+/// The old default HTTP port, which always collides with vMix (see [`DEFAULT_PORT`]). A saved 8099
+/// written before the move is from a run before the change, not a deliberate choice, so it goes
+/// to 8098 once (recorded in [`Settings::port_moved_from_8099`]). After that, a saved 8099 is the
+/// operator's own choice and is respected. Typing `--port 8099` explicitly always works.
+const OLD_DEFAULT_PORT: u16 = 8099;
 
 /// Where team and player names come from: the Portal (the existing, default behaviour), or two
 /// local CSV files, for an event with no Portal access at all -- see `local_roster`'s module doc.
@@ -96,6 +104,9 @@ pub struct Settings {
     /// Path to the local roster CSV (team, cap number, player name). Only consulted when
     /// `roster_source` is [`RosterSource::Local`].
     pub roster_csv_path: Option<String>,
+    /// Set once the old default port 8099 has been moved to 8098. From then on a saved 8099
+    /// is the operator's own choice and is kept (see [`OLD_DEFAULT_PORT`]).
+    pub port_moved_from_8099: Option<bool>,
 }
 
 /// Resolves one setting under the bridge's standing precedence rule (see the module doc): an
@@ -130,7 +141,7 @@ pub struct Overrides {
 /// with no optional fields makes that impossible: a setting can be wrong, but it can no longer be
 /// *absent*, and [`resolve_all`] is the single place any of them is decided.
 ///
-/// [`Default`] is the bridge's built-in configuration (`127.0.0.1:8000`, HTTP on 8099, nothing
+/// [`Default`] is the bridge's built-in configuration (`127.0.0.1:8000`, HTTP on 8098, nothing
 /// remembered anywhere) -- genuinely what a first-ever run with no
 /// flags and no settings file uses, which is also what makes it the honest starting point for a
 /// test that cares about only one field.
@@ -181,6 +192,7 @@ impl Resolved {
             roster_source: Some(self.roster_source),
             schedule_csv_path: self.schedule_csv_path.clone(),
             roster_csv_path: self.roster_csv_path.clone(),
+            port_moved_from_8099: Some(true),
         }
     }
 }
@@ -197,6 +209,7 @@ pub fn resolve_all(
     settings_path: Option<PathBuf>,
 ) -> Resolved {
     let defaults = Resolved::default();
+    let keep_stored_port = !is_unmoved_old_port(&stored);
     Resolved {
         refbox: RefboxAddress::new(
             resolve(
@@ -210,7 +223,11 @@ pub fn resolve_all(
                 defaults.refbox.port,
             ),
         ),
-        port: resolve(overrides.port, stored.port, defaults.port),
+        port: resolve(
+            overrides.port,
+            stored.port.filter(|_| keep_stored_port),
+            defaults.port,
+        ),
         settings_path,
         roster_source: resolve(
             overrides.roster_source,
@@ -221,6 +238,21 @@ pub fn resolve_all(
         roster_csv_path: overrides.roster_csv_path.or(stored.roster_csv_path),
     }
 }
+
+/// Whether `stored` holds the old default port 8099 saved before the move to 8098 (not yet marked
+/// as moved), which [`resolve_all`] replaces with the default.
+fn is_unmoved_old_port(stored: &Settings) -> bool {
+    stored.port == Some(OLD_DEFAULT_PORT) && stored.port_moved_from_8099 != Some(true)
+}
+
+/// Whether this run moves a saved 8099 to 8098: one saved before the move, with no `--port` typed
+/// over it.
+fn port_moves_from_8099(overrides: &Overrides, stored: &Settings) -> bool {
+    overrides.port.is_none() && is_unmoved_old_port(stored)
+}
+
+/// Told to the operator once, on the start-up that moves a saved 8099.
+const PORT_MOVED_NOTICE: &str = "The bridge's port moved from 8099 to 8098 (vMix uses 8099). Point anything that reads the bridge at port 8098.";
 
 /// Where the bridge's settings file lives -- the OS-standard per-user config directory for
 /// [`APP_NAME`], resolved by `confy` (via its own `directories` dependency).
@@ -271,19 +303,26 @@ pub fn load_resolve_and_store(overrides: Overrides) -> Resolved {
             None
         }
     };
-    resolve_and_store_at(overrides, path)
+    let (resolved, port_moved) = resolve_and_store_at(overrides, path);
+    if port_moved {
+        println!("{PORT_MOVED_NOTICE}");
+    }
+    resolved
 }
 
 /// The whole of [`load_resolve_and_store`] except working out where the settings file lives, so
 /// a test can point it at a throwaway file instead of a real user's config directory. `None`
 /// means there is nowhere to load from or save to: the run still gets a complete [`Resolved`].
-fn resolve_and_store_at(overrides: Overrides, path: Option<PathBuf>) -> Resolved {
+/// Also returns whether a saved 8099 was moved to 8098 this run (see [`port_moves_from_8099`]),
+/// so the caller can say so.
+fn resolve_and_store_at(overrides: Overrides, path: Option<PathBuf>) -> (Resolved, bool) {
     let stored = path.as_deref().map(load_from).unwrap_or_default();
+    let port_moved = port_moves_from_8099(&overrides, &stored);
     let resolved = resolve_all(overrides, stored, path);
     if let Some(path) = &resolved.settings_path {
         store_at(path, &resolved.to_settings());
     }
-    resolved
+    (resolved, port_moved)
 }
 
 /// Saves `settings` to `path`. Never fails loudly: a save failure (a read-only filesystem, a
@@ -393,6 +432,81 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_file(&self.0);
         }
+    }
+
+    #[test]
+    fn a_saved_8099_moves_once_and_a_later_choice_of_8099_is_kept() {
+        // A settings file from before the move: 8099 was the old default, so it moves.
+        let before = Settings {
+            port: Some(8099),
+            ..Settings::default()
+        };
+        let first = resolve_all(Overrides::default(), before, None);
+        assert_eq!(first.port, DEFAULT_PORT);
+        assert_eq!(DEFAULT_PORT, 8098);
+        // What gets saved records that the move has happened.
+        assert_eq!(first.to_settings().port_moved_from_8099, Some(true));
+
+        // Later the operator deliberately types --port 8099; it is saved, and kept on the next start.
+        let typed = Overrides {
+            port: Some(8099),
+            ..Overrides::default()
+        };
+        let chosen = resolve_all(typed, first.to_settings(), None).to_settings();
+        assert_eq!(chosen.port, Some(8099));
+        assert_eq!(resolve_all(Overrides::default(), chosen, None).port, 8099);
+
+        // Any other saved port is left alone.
+        let other = Settings {
+            port: Some(9000),
+            ..Settings::default()
+        };
+        assert_eq!(resolve_all(Overrides::default(), other, None).port, 9000);
+    }
+
+    #[test]
+    fn the_port_move_is_reported_only_on_the_start_up_that_moves_a_saved_8099() {
+        let file = TempSettingsFile::new();
+        let saved = |port: u16, moved: Option<bool>| {
+            store_at(
+                &file.0,
+                &Settings {
+                    port: Some(port),
+                    port_moved_from_8099: moved,
+                    ..Settings::default()
+                },
+            );
+        };
+
+        // An unmarked saved 8099: moved, and reported.
+        saved(8099, None);
+        let (first, moved) = resolve_and_store_at(Overrides::default(), Some(file.0.clone()));
+        assert!(moved);
+        assert_eq!(first.port, 8098);
+        // The next start-up has nothing to report.
+        let (_, moved) = resolve_and_store_at(Overrides::default(), Some(file.0.clone()));
+        assert!(!moved);
+
+        // A saved 8099 chosen after the move is kept, not reported.
+        saved(8099, Some(true));
+        let (kept, moved) = resolve_and_store_at(Overrides::default(), Some(file.0.clone()));
+        assert!(!moved);
+        assert_eq!(kept.port, 8099);
+
+        // Any other saved port isn't reported.
+        saved(9000, None);
+        assert!(!resolve_and_store_at(Overrides::default(), Some(file.0.clone())).1);
+
+        // `--port` typed over an unmarked saved 8099: that port is used, so nothing moved.
+        saved(8099, None);
+        let typed = Overrides {
+            port: Some(8099),
+            ..Overrides::default()
+        };
+        assert!(!resolve_and_store_at(typed, Some(file.0.clone())).1);
+
+        // Nothing saved at all: nothing to report.
+        assert!(!resolve_and_store_at(Overrides::default(), None).1);
     }
 
     #[test]

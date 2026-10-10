@@ -878,6 +878,7 @@ mod tests {
             portal_start: None,
             court: None,
             day: None,
+            thumbnail: None,
         }
     }
 

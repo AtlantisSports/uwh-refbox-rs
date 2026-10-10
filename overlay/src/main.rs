@@ -364,7 +364,7 @@ async fn main() {
     #[cfg(feature = "ndi")]
     let ndi_engine = ndi_runtime::EngineWatch::start();
     #[cfg(feature = "ndi")]
-    let mut ndi_output: Option<ndi_output::NdiOutput> = None;
+    let mut ndi_output: Option<(ndi_output::NdiOutput, ndi_output::KeyCombiner)> = None;
     #[cfg(feature = "ndi")]
     let mut ndi_started = false;
     #[cfg(feature = "ndi")]
@@ -459,10 +459,16 @@ async fn main() {
         if !ndi_started && ndi_engine.is_ready() {
             ndi_started = true;
             ndi_output = match ndi_output::NdiOutput::new("UWH Overlay") {
-                Ok(output) => {
-                    info!("NDI output started");
-                    Some(output)
-                }
+                Ok(output) => match ndi_output::KeyCombiner::new() {
+                    Ok(combiner) => {
+                        info!("NDI output started");
+                        Some((output, combiner))
+                    }
+                    Err(e) => {
+                        warn!("Failed to prepare the NDI picture, continuing without NDI: {e}");
+                        None
+                    }
+                },
                 Err(e) => {
                     warn!("Failed to start NDI output, continuing without it: {e}");
                     None
@@ -470,14 +476,8 @@ async fn main() {
             };
         }
         #[cfg(feature = "ndi")]
-        if let Some(ndi_output) = ndi_output.as_mut() {
-            // Without this, `get_texture_data` below can read the canvas before this frame's
-            // batched draw calls have actually been submitted to the GPU -- the same reason
-            // macroquad's own `get_screen_data()` flushes before its own read.
-            unsafe {
-                macroquad::window::get_internal_gl().flush();
-            }
-            ndi_output.send_frame(&canvas.texture.get_texture_data());
+        if let Some((ndi_output, combiner)) = ndi_output.as_mut() {
+            ndi_output.send_frame(&combiner.combine(&canvas.texture));
         }
 
         // A scaled-down local preview in the actual window, so there is still something to

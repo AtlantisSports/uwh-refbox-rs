@@ -178,6 +178,7 @@ mod tests {
             portal_start: None,
             court: None,
             day: None,
+            thumbnail: None,
         };
         let mut state = EventState::default();
         // Game 3 has no video yet.

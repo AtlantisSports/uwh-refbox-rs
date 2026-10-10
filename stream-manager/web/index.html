@@ -183,24 +183,31 @@
           <div id="yt-sign-in" class="muted"></div>
           <div id="yt-check"></div>
         </div>
-        <div class="card">
-          <h2>Event</h2>
-          <label class="field">Portal
-            <select id="s-portal" onchange="loadEvents()"></select>
-          </label>
-          <div class="row">
-            <label class="field" style="flex:1">Event
-              <select id="s-event" style="width:100%"></select>
+        <div>
+          <div class="card">
+            <h2>Event</h2>
+            <label class="field">Portal
+              <select id="s-portal" onchange="loadEvents()"></select>
             </label>
+            <div class="row">
+              <label class="field" style="flex:1">Event
+                <select id="s-event" style="width:100%"></select>
+              </label>
+            </div>
+            <label class="field">Video and playlist privacy
+              <select id="s-privacy" onchange="privacyWarning()">
+                <option value="unlisted">Unlisted (only people with the link)</option>
+                <option value="private">Private (only you)</option>
+                <option value="public">Public (everyone)</option>
+              </select>
+            </label>
+            <p class="warn-text hidden" id="s-public-warning">⚠ New videos and playlists will be visible to everyone.</p>
           </div>
-          <label class="field">Video and playlist privacy
-            <select id="s-privacy" onchange="privacyWarning()">
-              <option value="unlisted">Unlisted (only people with the link)</option>
-              <option value="private">Private (only you)</option>
-              <option value="public">Public (everyone)</option>
-            </select>
-          </label>
-          <p class="warn-text hidden" id="s-public-warning">⚠ New videos and playlists will be visible to everyone.</p>
+          <div class="card" style="margin-top:16px" id="card-portal-link">
+            <h2>Portal watch links</h2>
+            <div id="pl-body"></div>
+            <p id="pl-msg"></p>
+          </div>
         </div>
       </div>
       <div class="card" style="margin-top:16px">
@@ -596,13 +603,18 @@ async function previewPrepare() {
     const r = await api('/api/prepare/preview', { method: 'POST', body: sel });
     const w = r.work;
     const lists = w.playlists.map(([t, n]) => `<li>Playlist "${esc(t)}": ${n} videos</li>`).join('');
+    const portal = r.portal_links
+      ? (r.portal_links.warning
+        ? `<div class="banner">${esc(r.portal_links.text)}</div>`
+        : `<p class="muted">${esc(r.portal_links.text)}</p>`)
+      : '';
     if (r.empty) {
       previewed = null;
-      $('prep-preview').innerHTML = `<div class="summary-box"><ul>${lists}</ul><b class="ok-text">Everything is already up to date on YouTube.</b></div>`;
+      $('prep-preview').innerHTML = `${portal}<div class="summary-box"><ul>${lists}</ul><b class="ok-text">Everything is already up to date on YouTube.</b></div>`;
       return;
     }
     previewed = sel;
-    $('prep-preview').innerHTML = `<div class="summary-box"><ul>${lists}</ul>
+    $('prep-preview').innerHTML = `${portal}<div class="summary-box"><ul>${lists}</ul>
       This will create <b>${w.playlists_to_create}</b> playlist(s) and <b>${w.videos_to_create}</b> video(s),
       update <b>${w.videos_to_update}</b>, link <b>${w.binds}</b> to stream keys, add <b>${w.playlist_adds}</b> to playlists
       and set <b>${w.thumbnails}</b> thumbnails.<br>
@@ -659,6 +671,7 @@ async function loadSettings() {
       $('s-restart').classList.toggle('hidden', !r.restart_needed);
       $('s-key').textContent = buttonKey || '';
     }
+    renderPortalLink(settings, r.portal_linked);
     renderCourtRows(settings.courts);
     privacyWarning();
     loadEvents();
@@ -681,6 +694,55 @@ async function loadEvents() {
       sel.value = settings.event_slug;
     }
   } catch (e) { sel.innerHTML = `<option value="${esc(settings?.event_slug || '')}">Couldn't load events: ${esc(e.message)}</option>`; }
+}
+function renderPortalLink(s, linked) {
+  $('pl-msg').textContent = '';
+  if (linked) {
+    $('pl-body').innerHTML = `<div class="row"><span><span class="ok-text">Linked ✓</span> — each game's link goes on
+      the portal after Prepare.</span> <button class="small" onclick="unlinkPortal()">Unlink</button></div>`;
+    return;
+  }
+  const noEvent = !s.event_slug;
+  $('pl-body').innerHTML = `<div class="row">Stream Manager ID: <b>${esc(s.stream_manager_id)}</b></div>
+    ${noEvent ? '<p class="muted">Choose and save an event first.</p>' : ''}
+    <div class="row" style="align-items:flex-end">
+      <label class="field">Code
+        <input id="pl-code" inputmode="numeric" autocomplete="off" style="width:110px"></label>
+      <button class="small" id="pl-link" onclick="linkPortal()" ${noEvent ? 'disabled' : ''}>Link</button>
+    </div>`;
+}
+// Only the card is redrawn, so unsaved changes elsewhere on the Settings tab survive.
+async function refreshPortalLink() {
+  const r = await api('/api/settings');
+  settings = r.settings;
+  renderPortalLink(r.settings, r.portal_linked);
+}
+function portalLinkError(message) {
+  $('pl-msg').innerHTML = `<span class="bad-text">${esc(message)}</span>`;
+}
+async function linkPortal() {
+  // The link is made for the saved event and portal, not the ones chosen on the page. A saved
+  // portal that isn't one of the choices (a hand-edited settings file) leaves the list blank.
+  const portalChoice = $('s-portal').value;
+  if ($('s-event').value !== settings.event_slug || (portalChoice && portalChoice !== settings.portal_url)) {
+    portalLinkError("Save settings first: the event or portal on this page isn't saved yet.");
+    return;
+  }
+  $('pl-link').disabled = true;
+  try {
+    await api('/api/portal-link', { method: 'POST', body: { code: $('pl-code').value } });
+    await refreshPortalLink();
+  } catch (e) {
+    $('pl-link').disabled = false;
+    portalLinkError(e.message);
+  }
+}
+async function unlinkPortal() {
+  if (!confirm('Unlink from the portal? Watch links stop being set until you link again.')) return;
+  try {
+    await api('/api/portal-link', { method: 'DELETE' });
+    await refreshPortalLink();
+  } catch (e) { portalLinkError(e.message); }
 }
 function renderCourtRows(courts) {
   $('s-courts').innerHTML = courts.map(c => `<tr>

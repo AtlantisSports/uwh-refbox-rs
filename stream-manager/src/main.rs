@@ -22,6 +22,7 @@ mod switcher;
 mod thumbnail;
 mod title_sync;
 mod vmix;
+mod watch_links;
 mod web;
 mod youtube;
 
@@ -156,6 +157,7 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
     let config_dir = config_path.parent().unwrap_or(Path::new("."));
     let client_file = config_dir.join(&config.client_secret_file);
     let token_file = config_dir.join(app::TOKEN_FILE);
+    let link_file = config_dir.join(watch_links::LINK_FILE);
     // Only for the commands that work on one event (checked above).
     let state_file = || prepare::state_path(config_dir, &config.event_slug);
     // The CLI uses the same allowance as the control page, so it counts in the same ledger.
@@ -189,14 +191,49 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
                 courts: court.into_iter().collect(),
                 limit,
             };
-            prepare::run_cli(&config, &plan, &mut yt, &state_file()?, &selection).await
+            let state_file = state_file()?;
+            let portal_notice = watch_links::check_key(&link_file, &config)
+                .await
+                .notice()
+                .map(|(_, text)| text);
+            let result = prepare::run_cli(
+                &config,
+                &plan,
+                &mut yt,
+                &state_file,
+                &selection,
+                portal_notice,
+            )
+            .await;
+            // Also after a failure: the videos made before it still get their links. A
+            // cancelled run changed nothing, so nothing goes to the portal.
+            if !matches!(result, Ok(prepare::CliRun::Cancelled)) {
+                watch_links::publish_after_prepare(
+                    &link_file,
+                    &config,
+                    &plan,
+                    &state_file,
+                    &mut |line| info!("{line}"),
+                )
+                .await;
+            }
+            result.map(|_| ())
         }
         CliCommand::Thumbnails { out, day } => save_thumbnails(&config, &out, day).await,
         CliCommand::Videos => show_videos(&config, &mut youtube()?, &state_file()?).await,
         CliCommand::Cleanup => {
             let mut yt = youtube()?;
             println!("YouTube channel: {}", yt.my_channel_title().await?);
-            prepare::cleanup_cli(&mut yt, &state_file()?, &config.event_slug).await
+            let mut deleted = Vec::new();
+            let result =
+                prepare::cleanup_cli(&mut yt, &state_file()?, &config.event_slug, &mut deleted)
+                    .await;
+            // Also after a failure: the videos deleted before it still get their links cleared.
+            watch_links::publish_after_cleanup(&link_file, &config, None, &deleted, &mut |line| {
+                info!("{line}")
+            })
+            .await;
+            result
         }
     }
 }
@@ -306,6 +343,13 @@ fn load_config(path: &Path) -> Result<Config, BoxError> {
         app::save_config(path, &config)?;
         info!("Created the Stream Deck button key");
     }
+    if config.stream_manager_id.is_empty() {
+        let id = access::new_stream_manager_id()
+            .map_err(|e| format!("Couldn't create the Stream Manager ID: {e}"))?;
+        config.stream_manager_id = id.clone();
+        app::save_config(path, &config)?;
+        info!("Created the Stream Manager ID {id}");
+    }
     Ok(config)
 }
 
@@ -374,5 +418,21 @@ mod tests {
             court: None,
             limit: None,
         }));
+    }
+
+    #[test]
+    fn the_first_start_saves_a_stream_manager_id_that_then_stays() {
+        let dir =
+            std::env::temp_dir().join(format!("stream-manager-main-id-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let first = load_config(&path).unwrap().stream_manager_id;
+        assert_eq!(first.len(), 6, "{first}");
+        assert!(first.chars().all(|c| c.is_ascii_digit()), "{first}");
+        let saved: Config = confy::load_path(&path).unwrap();
+        assert_eq!(saved.stream_manager_id, first);
+        assert_eq!(load_config(&path).unwrap().stream_manager_id, first);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

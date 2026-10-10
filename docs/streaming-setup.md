@@ -298,6 +298,15 @@ Also set:
    - **Allow other devices:** leave it **off** unless another device needs the control page (see
      below). Off, only this mini PC can open it.
    - Click **Save settings**. **Check:** "Saved ✓".
+   - **Portal watch links** (puts each game's YouTube link on the portal's schedule, after
+     Prepare). The event must be chosen and saved first. ⛔ **STOP — ask a human:** an event
+     organiser, signed in to the portal, opens the event's **Manage Event → Stream management**
+     tab, clicks **(+)** and enters this Stream Manager's ID, shown in the **Portal watch links**
+     box. The portal then shows a 6-digit code. Type that code into the box's **Code** field and
+     click **Link** (a code lasts 15 minutes). **Check:** the box says "Linked ✓". Changing the
+     event or the portal later unlinks it, so link it again after such a change. Prepare's
+     **1. Preview** checks the link with the portal and warns before anything is created if
+     the portal refuses it.
 5. ⛔ **STOP — a human must do this.** Click **Connect YouTube**. In the browser, sign in with the
    Google account that manages the channel, choose the **Atlantis Sports** channel, and click
    through "Google hasn't verified this app" (Advanced → Go to Stream-Manager) → Allow.
@@ -340,6 +349,7 @@ Settings and secrets live in `Documents\stream-manager\`:
 | `youtube-token.json` | the saved YouTube connection (secret) |
 | `state-<event>.json` | the videos and playlists it created |
 | `youtube-allowance.json` | how much of YouTube's daily allowance this PC has used today |
+| `portal-watch-links.json` | the portal key for setting watch links (secret) |
 
 **Never put this folder in the code repository.**
 
@@ -439,6 +449,9 @@ stream key A or B, alternating (all to A in one-key mode). Prepare is safe to ru
 the existing videos, and after switching a court to one-key mode it moves that day's videos to
 key A.
 
+**Check:** on the portal, the event's schedule shows the watch link for each prepared game (only
+once this Stream Manager is linked, B5 step 4).
+
 ### C2. Dry run (strongly recommended)
 
 1. With Practice mode **ON**, set the refbox to the event, court and first game. Press **Start
@@ -525,6 +538,8 @@ key A.
 | End day pressed, but vMix still streaming | Older versions stopped only one destination. Update Stream Manager; End day now stops both (in one-key mode only destination 1, so anything else on destination 2 keeps running). |
 | Start day: "Re-run Prepare: some of today's videos use a stream key other than A" | The court was switched to one-key mode after Prepare. Run **Prepare** again for that day and court; it moves the videos to key A. |
 | Log: "Allowance low: skipped the chat message and Next game link" | This PC's share of YouTube's daily allowance is nearly used. Switching carries on. If Google has granted a higher limit, raise **Daily allowance (units)** in Settings; otherwise nothing to do until midnight US Pacific time. |
+| Log: "Portal: the event refused this Stream Manager's key …", or the same warning in Prepare's preview | The organiser removed this Stream Manager on the portal, or the event is over. Link it again (B5 step 4, **Portal watch links**), then run **Prepare** again to send the links. |
+| Watch links weren't set on the portal (log: "Portal: watch links weren't set …" or "… isn't linked to the event, so none were set") | Run **Prepare** again; it sends the links again. If the log says it isn't linked, link it first (B5 step 4). |
 | Log: "⚠ The portal or YouTube didn't answer in time; titles weren't checked" | The internet or the portal was slow. Nothing to do: titles are checked again in 10 minutes and just before each switch. |
 
 ---

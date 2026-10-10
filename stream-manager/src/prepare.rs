@@ -867,6 +867,15 @@ pub async fn run(
     Ok(())
 }
 
+/// Whether the person running [`run_cli`] went ahead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CliRun {
+    /// It ran, or there was nothing to do.
+    WentAhead,
+    /// The person answered no at "Go ahead?"; nothing was changed.
+    Cancelled,
+}
+
 /// Terminal version: preview, ask for `yes`, run.
 pub async fn run_cli(
     config: &Config,
@@ -874,7 +883,8 @@ pub async fn run_cli(
     youtube: &mut YouTube,
     state_file: &Path,
     selection: &Selection,
-) -> Result<(), BoxError> {
+    portal_notice: Option<String>,
+) -> Result<CliRun, BoxError> {
     let state = load_state(state_file, &config.event_slug)?;
     let lookups = lookups(youtube).await?;
     // Run from the terminal, with no court's day running in this program.
@@ -884,9 +894,12 @@ pub async fn run_cli(
     for (title, count) in &work.playlists {
         println!("  Playlist \"{title}\": {count} videos");
     }
+    if let Some(notice) = portal_notice {
+        println!("\n{notice}");
+    }
     if work.is_empty() {
         println!("Everything is already up to date on YouTube. Nothing to do.");
-        return Ok(());
+        return Ok(CliRun::WentAhead);
     }
     println!(
         "\nThis will create {} playlist(s) and {} video(s), update {} video(s),\n\
@@ -903,7 +916,7 @@ pub async fn run_cli(
     );
     if !confirm("Go ahead?") {
         println!("Cancelled. Nothing was changed.");
-        return Ok(());
+        return Ok(CliRun::Cancelled);
     }
     run(
         config,
@@ -915,23 +928,25 @@ pub async fn run_cli(
         &no_day_running,
         &mut |line| info!("{line}"),
     )
-    .await
+    .await?;
+    Ok(CliRun::WentAhead)
 }
 
 /// Deletes every video and playlist this event's record lists (for cleaning up after tests).
+/// `deleted` gets each game number as its video is deleted, so a caller still knows them when
+/// cleanup stops on an error.
 pub async fn cleanup(
     youtube: &mut YouTube,
     state_file: &Path,
     event_slug: &str,
+    deleted: &mut Vec<String>,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<(), BoxError> {
     let mut state = load_state(state_file, event_slug)?;
     while let Some((game, video)) = state.videos.pop_first() {
         youtube.delete_broadcast(&video.broadcast_id).await?;
         log(format!("Deleted video for game {game}"));
-        update_state(state_file, event_slug, |state| {
-            state.videos.remove(&game);
-        })?;
+        note_deleted(state_file, event_slug, &game, deleted)?;
     }
     while let Some((title, id)) = state.playlists.pop_first() {
         youtube.delete_playlist(&id).await?;
@@ -944,11 +959,28 @@ pub async fn cleanup(
     Ok(())
 }
 
-/// Terminal version of `cleanup`, with a warning and a `yes` confirmation.
+/// Notes that `game`'s video was deleted: in `deleted` first, so the caller knows even if
+/// removing it from the record then fails.
+fn note_deleted(
+    state_file: &Path,
+    event_slug: &str,
+    game: &str,
+    deleted: &mut Vec<String>,
+) -> Result<(), BoxError> {
+    deleted.push(game.to_string());
+    update_state(state_file, event_slug, |state| {
+        state.videos.remove(game);
+    })?;
+    Ok(())
+}
+
+/// Terminal version of `cleanup`, with a warning and a `yes` confirmation. `deleted` gets each
+/// deleted game's number, as in `cleanup`.
 pub async fn cleanup_cli(
     youtube: &mut YouTube,
     state_file: &Path,
     event_slug: &str,
+    deleted: &mut Vec<String>,
 ) -> Result<(), BoxError> {
     let state = load_state(state_file, event_slug)?;
     if state.videos.is_empty() && state.playlists.is_empty() {
@@ -966,7 +998,10 @@ pub async fn cleanup_cli(
         println!("Cancelled. Nothing was deleted.");
         return Ok(());
     }
-    cleanup(youtube, state_file, event_slug, &mut |line| info!("{line}")).await
+    cleanup(youtube, state_file, event_slug, deleted, &mut |line| {
+        info!("{line}")
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -1005,6 +1040,47 @@ mod tests {
         }
         assert_eq!(load_state(&path, "cup").unwrap().playlists.len(), 50);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_deleted_game_is_noted_even_when_the_record_cant_be_saved() {
+        let dir = std::env::temp_dir().join(format!(
+            "stream-manager-note-deleted-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let mut deleted = Vec::new();
+        // Saved normally: noted, and gone from the record.
+        let path = dir.join("state-cup.json");
+        update_state(&path, "cup", |state| {
+            state.videos.insert("14".into(), test_video());
+            state.videos.insert("15".into(), test_video());
+        })
+        .unwrap();
+        note_deleted(&path, "cup", "14", &mut deleted).unwrap();
+        assert!(!load_state(&path, "cup").unwrap().videos.contains_key("14"));
+        // The record can't be saved (cleanup stops here): the game is still noted.
+        let unsaveable = dir.join("missing").join("state-cup.json");
+        assert!(note_deleted(&unsaveable, "cup", "15", &mut deleted).is_err());
+        assert_eq!(deleted, ["14", "15"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn test_video() -> VideoState {
+        VideoState {
+            broadcast_id: "b".into(),
+            title: String::new(),
+            description: String::new(),
+            scheduled_start: String::new(),
+            bound_stream: None,
+            in_playlist: false,
+            next_game_link: None,
+            portal_start: None,
+            court: None,
+            day: None,
+            thumbnail: None,
+        }
     }
 
     #[test]

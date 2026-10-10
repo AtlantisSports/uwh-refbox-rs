@@ -19,12 +19,23 @@ pub struct PlannedGame {
     pub start: OffsetDateTime,
     pub dark: String,
     pub light: String,
+    /// The portal team behind each side, once it is known (not for "Winner G52" and the like).
+    pub dark_team: Option<TeamArt>,
+    pub light_team: Option<TeamArt>,
     pub description: Option<String>,
+}
+
+/// What the thumbnail needs to know about a team.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeamArt {
+    pub logo_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EventPlan {
     pub event_name: String,
+    /// The event's banner picture on the portal, if it has one.
+    pub banner_url: Option<String>,
     /// Games sorted by start time, then game number.
     pub games: Vec<PlannedGame>,
 }
@@ -122,6 +133,8 @@ pub fn parse_event_plan(json: &str) -> Result<EventPlan, BoxError> {
             start,
             dark: team_label(&game.dark, &raw.teams),
             light: team_label(&game.light, &raw.teams),
+            dark_team: team_art(&game.dark, &raw.teams),
+            light_team: team_art(&game.light, &raw.teams),
             description: game.description.clone(),
         })
         .collect();
@@ -133,6 +146,7 @@ pub fn parse_event_plan(json: &str) -> Result<EventPlan, BoxError> {
 
     Ok(EventPlan {
         event_name: raw.event.name,
+        banner_url: raw.event.banner.and_then(|b| b.url),
         games: planned,
     })
 }
@@ -172,6 +186,20 @@ fn team_label(side: &RawSide, teams: &HashMap<String, RawTeam>) -> String {
     "TBD".to_string()
 }
 
+/// The team on one side, if it is a real team rather than a placeholder.
+fn team_art(side: &RawSide, teams: &HashMap<String, RawTeam>) -> Option<TeamArt> {
+    let a = side.assignment.as_ref()?;
+    if let Some(team) = a.team_id.as_ref().and_then(|id| teams.get(id)) {
+        return Some(TeamArt {
+            logo_url: team.logo.as_ref().and_then(|l| l.url.clone()),
+        });
+    }
+    a.pending_assignment_name
+        .as_ref()
+        .filter(|n| !n.is_empty())
+        .map(|_| TeamArt { logo_url: None })
+}
+
 #[derive(Deserialize)]
 struct RawSchedule {
     event: RawEvent,
@@ -183,11 +211,18 @@ struct RawSchedule {
 #[derive(Deserialize)]
 struct RawEvent {
     name: String,
+    banner: Option<RawPicture>,
 }
 
 #[derive(Deserialize)]
 struct RawTeam {
     name: String,
+    logo: Option<RawPicture>,
+}
+
+#[derive(Deserialize)]
+struct RawPicture {
+    url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -242,9 +277,9 @@ mod tests {
     use super::*;
 
     const SAMPLE: &str = r#"{
-        "event": { "id": "events/1-B", "name": "Test Cup" },
+        "event": { "id": "events/1-B", "name": "Test Cup", "banner": { "url": "https://x/banner.jpeg" } },
         "teams": {
-            "teams/1-B": { "name": "Sydney Kings A" },
+            "teams/1-B": { "name": "Sydney Kings A", "logo": { "url": "https://x/kings.jpeg" } },
             "teams/2-B": { "name": "Brisbane Barracudas" }
         },
         "games": [
@@ -271,6 +306,7 @@ mod tests {
     fn parses_games_in_order_with_days_and_team_names() {
         let plan = parse_event_plan(SAMPLE).unwrap();
         assert_eq!(plan.event_name, "Test Cup");
+        assert_eq!(plan.banner_url.as_deref(), Some("https://x/banner.jpeg"));
         let numbers: Vec<_> = plan.games.iter().map(|g| g.number.as_str()).collect();
         assert_eq!(numbers, ["1", "2", "10"]);
 
@@ -279,6 +315,12 @@ mod tests {
         assert_eq!(g1.dark, "Sydney Kings A");
         // Unknown team id falls back to the pending name.
         assert_eq!(g1.light, "Gold Coast");
+        let logo = |t: &Option<TeamArt>| t.as_ref().map(|t| t.logo_url.clone());
+        assert_eq!(
+            logo(&g1.dark_team),
+            Some(Some("https://x/kings.jpeg".into()))
+        );
+        assert_eq!(logo(&g1.light_team), Some(None));
 
         let g2 = plan.game("2").unwrap();
         assert_eq!(g2.light, "Women RR #4");
@@ -289,6 +331,7 @@ mod tests {
             (g10.dark.as_str(), g10.light.as_str()),
             ("Winner G3", "Loser G2")
         );
+        assert_eq!((&g10.dark_team, &g10.light_team), (&None, &None));
     }
 
     #[test]

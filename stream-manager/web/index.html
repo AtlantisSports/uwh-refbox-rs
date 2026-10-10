@@ -74,6 +74,10 @@
   details summary { cursor: pointer; color: var(--muted); margin-top: 14px; }
   code { background: #0b0f13; padding: 1px 6px; border-radius: 5px; font-size: 13px; word-break: break-all; }
   .summary-box { background: var(--panel2); border-radius: 8px; padding: 12px 14px; margin: 10px 0; }
+  .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 10px 0; }
+  .thumbs figure { margin: 0; }
+  .thumbs img { width: 100%; aspect-ratio: 16 / 9; display: block; border-radius: 6px; background: var(--panel2); }
+  .thumbs figcaption { font-size: 13px; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -145,8 +149,10 @@
           <div class="row">
             <button class="small primary" onclick="previewPrepare()">1. Preview</button>
             <button class="small primary" id="prep-run" onclick="runPrepare()" disabled>2. Create on YouTube</button>
+            <button class="small" onclick="previewThumbnails()">Preview thumbnails</button>
           </div>
           <div id="prep-preview"></div>
+          <div id="prep-thumbs"></div>
         </div>
         <div id="job" class="hidden">
           <h3 id="job-title"></h3>
@@ -564,7 +570,24 @@ function selection() {
   const limit = $('prep-limit').value ? Number($('prep-limit').value) : null;
   return { day: Number($('prep-day').value), courts, limit };
 }
-function clearPreview() { previewed = null; $('prep-preview').innerHTML = ''; $('prep-run').disabled = true; }
+function clearPreview() {
+  previewed = null; $('prep-preview').innerHTML = ''; $('prep-thumbs').innerHTML = ''; $('prep-run').disabled = true;
+}
+function previewThumbnails() {
+  const sel = selection();
+  if (!sel.courts.length) { alert('Choose at least one court'); return; }
+  const stamp = Date.now();
+  const lists = schedule.playlists.filter(p => p.day === sel.day && sel.courts.includes(p.court));
+  $('prep-thumbs').innerHTML = `<p class="muted">The thumbnails Prepare will put on each video. Nothing is sent to
+      YouTube and no units are used. Click one to see it full size. The first one can take a few seconds
+      while the banner and logos download.</p>` +
+    lists.map(p => `<h3>Court ${esc(p.court)}</h3><div class="thumbs">` +
+      p.games.slice(0, sel.limit || undefined).map(g => {
+        const src = `/api/thumbnail/${encodeURIComponent(g.number)}?t=${stamp}`;
+        return `<figure><a href="${src}" target="_blank"><img src="${src}" loading="lazy" alt="Game ${esc(g.number)}"></a>
+          <figcaption>Game ${esc(g.number)} · ${esc(g.start)}</figcaption></figure>`;
+      }).join('') + '</div>').join('');
+}
 async function previewPrepare() {
   const sel = selection();
   if (!sel.courts.length) { alert('Choose at least one court'); return; }
@@ -581,7 +604,8 @@ async function previewPrepare() {
     previewed = sel;
     $('prep-preview').innerHTML = `<div class="summary-box"><ul>${lists}</ul>
       This will create <b>${w.playlists_to_create}</b> playlist(s) and <b>${w.videos_to_create}</b> video(s),
-      update <b>${w.videos_to_update}</b>, link <b>${w.binds}</b> to stream keys and add <b>${w.playlist_adds}</b> to playlists.<br>
+      update <b>${w.videos_to_update}</b>, link <b>${w.binds}</b> to stream keys, add <b>${w.playlist_adds}</b> to playlists
+      and set <b>${w.thumbnails}</b> thumbnails.<br>
       Privacy: <b class="${w.privacy === 'public' ? 'warn-text' : ''}">${esc(w.privacy)}</b>.
       Estimated cost: about <b>${w.units}</b> of the 10,000 daily units.</div>`;
     $('prep-run').disabled = false;

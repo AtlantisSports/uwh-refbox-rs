@@ -302,6 +302,7 @@ mod tests {
             portal_start: Some("2026-08-01T12:00:00+10:00".to_string()),
             court: court_and_day.map(|(court, _)| court.to_string()),
             day: court_and_day.map(|(_, day)| day),
+            thumbnail: None,
         }
     }
 

@@ -9,7 +9,7 @@ use crate::{
     config::{Config, DEV_PORTAL_URL, LIVE_PORTAL_URL},
     google_auth,
     portal::EventPlan,
-    prepare::{self, Selection},
+    prepare::{self, Selection, Thumbnails},
     switcher::Command,
     youtube::YouTubeAccess,
 };
@@ -45,6 +45,11 @@ const BUTTON_KEY_LOCAL_ONLY: &str =
     "The button key can only be seen or changed on the mini PC itself.";
 const PIN_LOCAL_ONLY: &str = "The PIN can only be changed on the mini PC itself.";
 const PIN_NOT_SET: &str = "Set a PIN on the mini PC first";
+
+/// Thumbnail previews for the current event, keeping its downloaded banner and logos between
+/// requests. The key is the event name and banner, so a different event starts afresh.
+static THUMBNAIL_PREVIEWS: tokio::sync::Mutex<Option<(String, Thumbnails)>> =
+    tokio::sync::Mutex::const_new(None);
 
 type AppState = Arc<App>;
 type ApiResult = Result<Json<Value>, ApiError>;
@@ -241,6 +246,7 @@ fn router(app: Arc<App>) -> Router {
         .route("/api/schedule/refresh", post(refresh_schedule))
         .route("/api/prepare/preview", post(prepare_preview))
         .route("/api/prepare/run", post(prepare_run))
+        .route("/api/thumbnail/{game}", get(thumbnail_preview))
         .route("/api/videos", get(videos).post(videos_refresh))
         .route("/api/youtube/connect", post(youtube_connect))
         .route("/api/youtube/check", post(youtube_check))
@@ -737,6 +743,45 @@ async fn prepare_preview(
     )
     .map_err(|e| bad(e.to_string()))?;
     Ok(Json(json!({ "work": work, "empty": work.is_empty() })))
+}
+
+/// One game's thumbnail exactly as Prepare would upload it. Nothing is sent to YouTube.
+async fn thumbnail_preview(
+    State(app): State<AppState>,
+    headers: HeaderMap,
+    Path(game): Path<String>,
+) -> Result<Response, ApiError> {
+    authorize(&app, &headers)?;
+    let plan = app
+        .plan()
+        .ok_or_else(|| bad("The schedule isn't loaded yet"))?;
+    let planned = plan
+        .game(&game)
+        .ok_or_else(|| bad(format!("Game {game} isn't in the schedule")))?;
+    let key = format!(
+        "{} | {}",
+        plan.event_name,
+        plan.banner_url.as_deref().unwrap_or("")
+    );
+    let mut previews = THUMBNAIL_PREVIEWS.lock().await;
+    if !matches!(&*previews, Some((k, _)) if *k == key) {
+        *previews = Some((key, Thumbnails::default()));
+    }
+    let Some((_, thumbnails)) = previews.as_mut() else {
+        return Err(bad("Couldn't prepare the thumbnail preview"));
+    };
+    let (jpeg, _) = thumbnails
+        .draw(&plan, planned, &mut |line| warn!("{line}"))
+        .await
+        .map_err(|e| bad(e.to_string()))?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/jpeg"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        jpeg,
+    )
+        .into_response())
 }
 
 async fn prepare_run(

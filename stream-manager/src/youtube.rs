@@ -8,7 +8,7 @@
 use crate::{BoxError, app::App, google_auth::GoogleAuth, quota};
 use log::warn;
 use reqwest::{
-    Method,
+    Method, RequestBuilder,
     header::{CONTENT_LENGTH, CONTENT_TYPE},
 };
 use serde_json::{Value, json};
@@ -20,6 +20,8 @@ use time::OffsetDateTime;
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 const API: &str = "https://www.googleapis.com/youtube/v3";
+/// Picture uploads (thumbnails) go to a separate address.
+const UPLOAD_API: &str = "https://www.googleapis.com/upload/youtube/v3";
 const LIST_COST: u32 = 1;
 const WRITE_COST: u32 = 50;
 
@@ -192,6 +194,16 @@ impl YouTube {
             // Google rejects a POST/PUT that doesn't state its (empty) length.
             request = request.header(CONTENT_LENGTH, "0").body(Vec::new());
         }
+        self.send(request, path, cost).await
+    }
+
+    /// Sends a prepared request and reads YouTube's answer.
+    async fn send(
+        &mut self,
+        request: RequestBuilder,
+        path: &str,
+        cost: u32,
+    ) -> Result<Value, BoxError> {
         // Google charges for the call whether or not it succeeds. It is counted as it is sent,
         // so a call given up while waiting for its answer (which YouTube may still carry out)
         // is counted too.
@@ -542,6 +554,20 @@ impl YouTube {
             WRITE_COST,
         )
         .await?;
+        Ok(())
+    }
+
+    /// Sets a video's thumbnail picture (a JPEG, 1280×720, at most 2 MB).
+    pub async fn set_thumbnail(&mut self, video_id: &str, jpeg: Vec<u8>) -> Result<(), BoxError> {
+        let token = self.auth.lock().await.access_token().await?;
+        let request = self
+            .http
+            .post(format!("{UPLOAD_API}/thumbnails/set"))
+            .bearer_auth(token)
+            .query(&[("videoId", video_id), ("uploadType", "media")])
+            .header(CONTENT_TYPE, "image/jpeg")
+            .body(jpeg);
+        self.send(request, "thumbnails/set", WRITE_COST).await?;
         Ok(())
     }
 

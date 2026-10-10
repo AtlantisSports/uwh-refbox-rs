@@ -1,15 +1,29 @@
 use grafton_ndi::{Error, NDI, PixelFormat, Sender, SenderOptions, VideoFrame};
 use log::warn;
-use macroquad::texture::Image;
+use macroquad::{
+    camera::{Camera2D, set_camera},
+    color::WHITE,
+    material::{Material, MaterialParams, gl_use_default_material, gl_use_material, load_material},
+    math::{Rect, vec2},
+    miniquad::ShaderSource,
+    texture::{
+        DrawTextureParams, FilterMode, Image, RenderTarget, Texture2D, draw_texture_ex,
+        render_target,
+    },
+    window::get_internal_gl,
+};
+
+/// Size of the picture sent over NDI: one half of the 3840x1080 canvas.
+const OUT_WIDTH: u32 = 1920;
+const OUT_HEIGHT: u32 = 1080;
 
 /// Sends the overlay's rendered picture out as an NDI stream with real per-pixel
 /// transparency, so vMix (or any other NDI-aware software) can use it as a clean
 /// overlay layer instead of screen-capturing the window.
 ///
-/// The rendered window is the existing left(color)/right(grayscale key) pair described
-/// in `pages::mod`'s `draw_texture_both!` macro. This combines that pair into one true
-/// RGBA image rather than changing how anything is drawn, so the existing rendering and
-/// asset pipeline (`load_images.rs`, `alphagen`) is untouched.
+/// The picture it sends is made by [`KeyCombiner`] from the existing left(color)/right(grayscale
+/// key) canvas described in `pages::mod`'s `draw_texture_both!` macro, so the existing rendering
+/// and asset pipeline (`load_images.rs`, `alphagen`) is untouched.
 pub struct NdiOutput {
     _ndi: NDI,
     sender: Sender,
@@ -25,43 +39,13 @@ impl NdiOutput {
         Ok(Self { _ndi: ndi, sender })
     }
 
-    /// `screen` must be the full rendered window (color graphics in the left half, the
-    /// matching grayscale alpha key in the right half, side by side, per
-    /// `window_conf()`'s 3840x1080 size). Only the combined, half-width picture is sent.
-    pub fn send_frame(&mut self, screen: &Image) {
-        let width = screen.width as usize;
-        let height = screen.height as usize;
-
-        // Every draw call in `pages::mod` (the `draw_texture_both!`/`draw_text_both!` family)
-        // puts the key half at a *fixed* logical x-offset of 1920 -- that is not the same
-        // number as `width / 2` unless the window actually rendered at exactly the 3840 it
-        // asked for in `window_conf()`. On a machine where the OS clamps the window to a
-        // narrower size (a display that doesn't have 3840 pixels available), `width / 2` is
-        // smaller than 1920, and reading the key half at that wrong split silently samples
-        // alpha from the wrong pixels -- shifted left by however far short of 3840 the window
-        // actually is, so a transparent gap ends up borrowing the opacity of whatever
-        // neighbouring graphic happens to sit at the miscalculated offset instead. That is
-        // the bug behind a decorative shape's negative space rendering as solid black in vMix
-        // instead of see-through, even though the source assets' own alpha is correct.
-        const KEY_OFFSET: usize = 1920;
-        if width < KEY_OFFSET * 2 {
-            warn!(
-                "the overlay window rendered at {width}x{height}, narrower than the {} it needs \
-                 for a correct color+key split -- the NDI picture is missing its rightmost {} \
-                 pixels of key data this frame",
-                KEY_OFFSET * 2,
-                KEY_OFFSET * 2 - width
-            );
-        }
-        // Never more than 1920 (the canvas width every page's layout assumes), and never more
-        // than what the window actually captured on the key side -- reading past `width` would
-        // be an out-of-bounds panic, and there is no key data at all for a column the window
-        // was too narrow to render.
-        let half_width = KEY_OFFSET.min(width.saturating_sub(KEY_OFFSET));
+    /// `picture` must be the finished RGBA picture from [`KeyCombiner::combine`].
+    pub fn send_frame(&mut self, picture: &Image) {
+        let (width, height) = (usize::from(picture.width), usize::from(picture.height));
 
         let mut frame = match VideoFrame::builder()
-            .resolution(half_width as i32, height as i32)
-            .pixel_format(PixelFormat::BGRA)
+            .resolution(width as i32, height as i32)
+            .pixel_format(PixelFormat::RGBA)
             .frame_rate(60, 1)
             .build()
         {
@@ -72,29 +56,116 @@ impl NdiOutput {
             }
         };
 
-        let src = &screen.bytes;
         let dst = frame.data_mut();
-
-        for y in 0..height {
-            for x in 0..half_width {
-                let color_i = (y * width + x) * 4;
-                let key_i = (y * width + x + KEY_OFFSET) * 4;
-                let out_i = (y * half_width + x) * 4;
-
-                let r = src[color_i];
-                let g = src[color_i + 1];
-                let b = src[color_i + 2];
-                // The key half is white-on-black per pixel alpha (see `alphagen`), so
-                // its rendered lightness already equals the original alpha value.
-                let alpha = src[key_i];
-
-                dst[out_i] = b;
-                dst[out_i + 1] = g;
-                dst[out_i + 2] = r;
-                dst[out_i + 3] = alpha;
-            }
-        }
+        let Some(src) = picture.bytes.get(..dst.len()) else {
+            warn!(
+                "NDI picture is {} bytes, expected {}; frame skipped",
+                picture.bytes.len(),
+                dst.len()
+            );
+            return;
+        };
+        dst.copy_from_slice(src);
 
         self.sender.send_video(&frame);
     }
 }
+
+/// Turns the 3840x1080 canvas (color graphics in the left half, the matching grayscale alpha
+/// key in the right half) into one 1920x1080 RGBA picture with real transparency, on the
+/// graphics card.
+///
+/// Doing this per pixel on the processor, after copying the whole canvas back from the
+/// graphics card, kept a CPU core almost fully busy at 60 frames a second. On the graphics
+/// card it costs next to nothing, and only the finished picture (half the size) is copied back.
+pub struct KeyCombiner {
+    target: RenderTarget,
+    camera: Camera2D,
+    material: Material,
+}
+
+impl KeyCombiner {
+    pub fn new() -> Result<Self, macroquad::Error> {
+        let material = load_material(
+            ShaderSource::Glsl {
+                vertex: VERTEX_SHADER,
+                fragment: FRAGMENT_SHADER,
+            },
+            // The default pipeline doesn't blend, so the alpha written is exactly the key's
+            // value instead of being mixed with what was in the target before.
+            MaterialParams::default(),
+        )?;
+        let target = render_target(OUT_WIDTH, OUT_HEIGHT);
+        target.texture.set_filter(FilterMode::Nearest);
+        // The same y-flip as the canvas camera in `main.rs`, for the same reason.
+        let mut camera = Camera2D::from_display_rect(Rect::new(
+            0.,
+            OUT_HEIGHT as f32,
+            OUT_WIDTH as f32,
+            -(OUT_HEIGHT as f32),
+        ));
+        camera.render_target = Some(target.clone());
+        Ok(Self {
+            target,
+            camera,
+            material,
+        })
+    }
+
+    /// The finished picture for NDI. Leaves the camera and material changed; the caller sets
+    /// its own camera afterwards.
+    pub fn combine(&self, canvas: &Texture2D) -> Image {
+        set_camera(&self.camera);
+        gl_use_material(&self.material);
+        draw_texture_ex(
+            canvas,
+            0.,
+            0.,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(vec2(OUT_WIDTH as f32, OUT_HEIGHT as f32)),
+                ..Default::default()
+            },
+        );
+        gl_use_default_material();
+        // Without this, `get_texture_data` below can read the target before this frame's
+        // batched draw calls have actually been submitted to the GPU -- the same reason
+        // macroquad's own `get_screen_data()` flushes before its own read.
+        unsafe {
+            get_internal_gl().flush();
+        }
+        self.target.texture.get_texture_data()
+    }
+}
+
+/// macroquad's standard vertex shader, with full-precision texture coordinates: the canvas is
+/// 3840 pixels wide, more than low precision can address exactly.
+const VERTEX_SHADER: &str = r#"#version 100
+attribute vec3 position;
+attribute vec2 texcoord;
+attribute vec4 color0;
+attribute vec4 normal;
+
+varying highp vec2 uv;
+
+uniform mat4 Model;
+uniform mat4 Projection;
+
+void main() {
+    gl_Position = Projection * Model * vec4(position, 1);
+    uv = texcoord;
+}"#;
+
+/// Color from the left half of the canvas, alpha from the same spot in the right half. The key
+/// half is white-on-black per pixel alpha (see `alphagen`), so its red value is the alpha.
+const FRAGMENT_SHADER: &str = r#"#version 100
+precision highp float;
+varying highp vec2 uv;
+
+uniform sampler2D Texture;
+
+void main() {
+    vec3 color = texture2D(Texture, vec2(uv.x * 0.5, uv.y)).rgb;
+    float alpha = texture2D(Texture, vec2(uv.x * 0.5 + 0.5, uv.y)).r;
+    gl_FragColor = vec4(color, alpha);
+}"#;

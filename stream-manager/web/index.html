@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stream Manager</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a2129; --panel2: #222b35; --line: #2f3b47;
+    --text: #e8edf2; --muted: #93a1b0; --accent: #3b8eea; --green: #2fb36d;
+    --amber: #e0a526; --red: #e05252; --purple: #9b6ce0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+           padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0; }
+  header .event { color: var(--muted); }
+  header .spacer { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
+          border-radius: 999px; background: var(--panel2); font-size: 13px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--green); } .dot.warn { background: var(--amber); } .dot.bad { background: var(--red); }
+  nav { display: flex; gap: 4px; padding: 8px 16px 0; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; }
+  nav button { background: none; border: none; color: var(--muted); padding: 10px 14px; font-size: 15px;
+               border-bottom: 3px solid transparent; cursor: pointer; white-space: nowrap; }
+  nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+  main { padding: 16px; max-width: 1200px; margin: 0 auto; }
+  .banner { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; background: #3a2f10; color: #f5d68a; }
+  .banner.info { background: #12324f; color: #b9dbff; }
+  .banner.error { background: #4a1c1c; color: #ffc4c4; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .card h2 { margin: 0 0 10px; font-size: 20px; display: flex; align-items: center; gap: 10px; }
+  .card h3 { margin: 18px 0 8px; font-size: 16px; }
+  .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .big { font-size: 17px; font-weight: 600; margin: 2px 0 10px; }
+  .countdowns { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 12px; }
+  .count { background: var(--panel2); border-radius: 8px; padding: 6px 12px; }
+  .count b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .count.rosters { background: #3a2a55; }
+  .hold-badge { background: var(--amber); color: #201600; font-weight: 700; padding: 2px 10px; border-radius: 6px; font-size: 14px; }
+  .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  button.act { padding: 16px 10px; font-size: 17px; font-weight: 600; border: none; border-radius: 10px;
+               cursor: pointer; color: white; background: var(--accent); }
+  button.act:disabled { opacity: .35; cursor: not-allowed; }
+  button.start { background: var(--green); } button.hold { background: var(--amber); color: #201600; }
+  button.hold.on { background: #ffd36b; outline: 3px solid white; }
+  button.next { background: var(--purple); } button.end { background: #59636e; }
+  button.danger { background: var(--red); }
+  button.small, .small-btn { padding: 8px 14px; font-size: 14px; border: 1px solid var(--line); border-radius: 8px;
+                 background: var(--panel2); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  button.small:disabled { opacity: .4; cursor: not-allowed; }
+  .log { margin: 12px 0 0; padding: 8px 10px; background: #0b0f13; border-radius: 8px; max-height: 190px;
+         overflow-y: auto; font: 12.5px/1.5 ui-monospace, Consolas, monospace; color: #c5d0db; }
+  .log div { white-space: pre-wrap; }
+  .muted { color: var(--muted); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+  input, select, textarea { background: #0b0f13; color: var(--text); border: 1px solid var(--line); border-radius: 7px;
+                  padding: 8px 10px; font-size: 15px; }
+  input[type=checkbox] { width: 18px; height: 18px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; }
+  td input { width: 100%; }
+  a { color: #7db8ff; }
+  .login { max-width: 360px; margin: 12vh auto; text-align: center; }
+  .login input { font-size: 28px; text-align: center; letter-spacing: .3em; width: 100%; margin: 14px 0; }
+  .ok-text { color: var(--green); } .bad-text { color: var(--red); } .warn-text { color: var(--amber); }
+  .hidden { display: none !important; }
+  details summary { cursor: pointer; color: var(--muted); margin-top: 14px; }
+  code { background: #0b0f13; padding: 1px 6px; border-radius: 5px; font-size: 13px; word-break: break-all; }
+  .summary-box { background: var(--panel2); border-radius: 8px; padding: 12px 14px; margin: 10px 0; }
+  .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 10px 0; }
+  .thumbs figure { margin: 0; }
+  .thumbs img { width: 100%; aspect-ratio: 16 / 9; display: block; border-radius: 6px; background: var(--panel2); }
+  .thumbs figcaption { font-size: 13px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div id="login" class="login hidden">
+  <h1>Stream Manager</h1>
+  <div id="login-body"></div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>Stream Manager</h1>
+    <span class="event" id="h-event"></span>
+    <span class="spacer"></span>
+    <span class="pill"><span class="dot" id="h-yt-dot"></span><span id="h-yt">YouTube</span></span>
+    <button class="small" onclick="logout()">Lock</button>
+  </header>
+  <nav>
+    <button data-tab="live" class="active">Live</button>
+    <button data-tab="prepare">Prepare</button>
+    <button data-tab="settings">Settings</button>
+    <button data-tab="tools">Test tools</button>
+  </nav>
+  <main>
+    <!-- LIVE -->
+    <section id="tab-live">
+      <div class="banner" id="practice-banner">
+        <b>Practice mode:</b> the buttons and automatic switching work, but nothing is sent to YouTube or vMix.
+        The log shows what <i>would</i> happen. Turn it off in <b>Settings</b> to go live for real.
+      </div>
+      <div class="banner info hidden" id="real-banner">
+        <b>LIVE MODE:</b> buttons and automatic switches control YouTube and vMix for real.
+        Videos are <b id="real-privacy"></b>.
+      </div>
+      <div class="banner error hidden" id="schedule-error"></div>
+      <p class="muted" title="This program's share of YouTube's daily allowance. It resets at midnight US Pacific time.">
+        YouTube allowance left today: <b id="quota-left">0</b> of <span id="quota-share">0</span>
+        <b class="warn-text hidden" id="quota-low">Low: extras paused</b></p>
+      <div class="grid" id="courts"></div>
+      <details>
+        <summary>Companion / Stream Deck links</summary>
+        <p class="muted">In Companion, add a <b>Generic HTTP</b> connection and use these addresses with a
+          <b>GET</b> request. Each link carries the button key (Settings → Stream Deck button key).
+          <span id="companion-key-note"></span></p>
+        <div id="companion-links"></div>
+        <p class="muted" id="companion-elsewhere"></p>
+      </details>
+    </section>
+
+    <!-- PREPARE -->
+    <section id="tab-prepare" class="hidden">
+      <div class="card">
+        <h2>Create the videos for a day</h2>
+        <div id="prep-noevent" class="banner hidden">Choose an event in <b>Settings</b> first.</div>
+        <div id="prep-form">
+          <div class="row">
+            <span class="big" id="prep-event"></span>
+            <button class="small" onclick="refreshSchedule()">Reload schedule from portal</button>
+          </div>
+          <div class="row">
+            <label class="field">Day
+              <select id="prep-day" onchange="renderPrepareCourts(); clearPreview()"></select>
+            </label>
+            <label class="field">Only the first … games per court (for testing; leave empty for all)
+              <input id="prep-limit" type="number" min="1" placeholder="all" style="width:140px" oninput="clearPreview()">
+            </label>
+          </div>
+          <div class="row" id="prep-courts"></div>
+          <div class="row">
+            <button class="small primary" onclick="previewPrepare()">1. Preview</button>
+            <button class="small primary" id="prep-run" onclick="runPrepare()" disabled>2. Create on YouTube</button>
+            <button class="small" onclick="previewThumbnails()">Preview thumbnails</button>
+          </div>
+          <div id="prep-preview"></div>
+          <div id="prep-thumbs"></div>
+        </div>
+        <div id="job" class="hidden">
+          <h3 id="job-title"></h3>
+          <div class="log" id="job-log"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>Videos for this event</h2>
+        <div class="row">
+          <button class="small" onclick="loadVideos(true)">Check status on YouTube</button>
+          <span class="muted">(uses about 1 unit)</span>
+        </div>
+        <div id="videos"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="hidden">
+      <div class="grid">
+        <div class="card">
+          <h2>YouTube</h2>
+          <div id="yt-state" class="big"></div>
+          <div class="row">
+            <button class="small primary" id="yt-connect" onclick="connectYouTube()">Connect YouTube</button>
+            <button class="small" onclick="checkYouTube()">Check stream keys</button>
+          </div>
+          <p class="muted" id="yt-local-note"></p>
+          <div id="yt-sign-in" class="muted"></div>
+          <div id="yt-check"></div>
+        </div>
+        <div class="card">
+          <h2>Event</h2>
+          <label class="field">Portal
+            <select id="s-portal" onchange="loadEvents()"></select>
+          </label>
+          <div class="row">
+            <label class="field" style="flex:1">Event
+              <select id="s-event" style="width:100%"></select>
+            </label>
+          </div>
+          <label class="field">Video and playlist privacy
+            <select id="s-privacy" onchange="privacyWarning()">
+              <option value="unlisted">Unlisted (only people with the link)</option>
+              <option value="private">Private (only you)</option>
+              <option value="public">Public (everyone)</option>
+            </select>
+          </label>
+          <p class="warn-text hidden" id="s-public-warning">⚠ New videos and playlists will be visible to everyone.</p>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>Practice mode</h2>
+        <label class="row" style="font-size:16px"><input type="checkbox" id="s-practice">
+          Practice mode — show what would happen, but don't touch YouTube or vMix</label>
+        <p class="muted">Turn this off to switch videos for real. It can only be changed while no court's day is running.</p>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>YouTube allowance</h2>
+        <div class="row">
+          <label class="field">Daily allowance (units)
+            <input id="s-quota-limit" type="number" min="1"></label>
+          <label class="field">This program's share (%)
+            <input id="s-quota-share" type="number" min="1" max="100"></label>
+        </div>
+        <p class="muted">Google gives the YouTube app 10,000 units a day, shared by every court's Stream Manager.
+          Raise the daily allowance here once Google grants more. Give each program a share: 100% with one court,
+          50% each with two. If one Stream Manager runs more than one court, its share covers all of them.
+          When the share left today won't cover the rest of the day's switches, the chat message and Next game
+          link are skipped; switching itself never stops. Saved with the button below.</p>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>Stream Deck live status (Companion)</h2>
+        <label class="field">Companion address
+          <input id="s-companion" placeholder="127.0.0.1:8000" style="width:200px"></label>
+        <p class="muted">Shows Hold, the rosters countdown, the game live now and the next game on Stream Deck
+          buttons. Enter Companion's address and port; leave it empty to turn this off. Each court needs four
+          custom variables in Companion (see the setup guide), e.g. <code>sm_court_1_hold</code>,
+          <code>sm_court_1_rosters</code>, <code>sm_court_1_now</code> and <code>sm_court_1_next</code>.
+          Saved with the button below.</p>
+      </div>
+      <div class="card hidden" style="margin-top:16px" id="card-devices">
+        <h2>Allow other devices</h2>
+        <label class="row" style="font-size:16px"><input type="checkbox" id="s-allow-devices">
+          Allow other devices on the network to open the control page</label>
+        <label class="field">Their addresses, one per line (e.g. 192.168.1.50)
+          <textarea id="s-devices" rows="3" style="width:260px"></textarea></label>
+        <p class="muted">Off: only this mini PC can open the control page. On: the devices listed here can too,
+          once signed in with the PIN; any other device is refused. This mini PC's own address on the network:
+          <code id="s-this-pc"></code>. Changes apply after Stream Manager restarts. Saved with the button below.</p>
+        <p class="warn-text hidden" id="s-restart">Restart Stream Manager to apply the new device settings.</p>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>Courts</h2>
+        <p class="muted">Court names must match the portal (e.g. <code>1</code>). Refbox address and port are the same
+          ones the overlay uses. Leave the stream key names empty to use "Court &lt;name&gt; - A" and "- B".
+          With one stream key there is a gap of a few seconds before each kickoff; the stream keys setting
+          can only be changed while that court's day isn't running.</p>
+        <table>
+          <thead><tr><th>Court</th><th>Refbox IP address</th><th>Port</th><th>vMix address</th><th>Stream keys</th><th>Stream key A (vMix destination 1)</th><th id="s-b-header">Stream key B (vMix destination 2)</th><th></th></tr></thead>
+          <tbody id="s-courts"></tbody>
+        </table>
+        <div class="row"><button class="small" onclick="addCourt()">+ Add court</button></div>
+        <details>
+          <summary>Advanced: switch timing</summary>
+          <div class="row">
+            <label class="field">Switch when countdown reaches (seconds)
+              <input id="s-lead" type="number" min="1"></label>
+            <label class="field">Rosters shown from (seconds)
+              <input id="s-rstart" type="number" min="1"></label>
+            <label class="field">… until (seconds)
+              <input id="s-rend" type="number" min="0"></label>
+          </div>
+          <p class="muted">Defaults: 195 (3:15), 181 and 30. The roster values must match the overlay.</p>
+        </details>
+        <div class="row">
+          <button class="small primary" onclick="saveSettings()">Save settings</button>
+          <span id="s-saved"></span>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>PIN</h2>
+        <div class="row" id="s-pin-row">
+          <input id="s-pin" type="password" inputmode="numeric" placeholder="New PIN (4+ digits)">
+          <button class="small" onclick="changePin()">Change PIN</button>
+          <span id="s-pin-msg"></span>
+        </div>
+        <p class="muted" id="s-lan"></p>
+      </div>
+      <div class="card hidden" style="margin-top:16px" id="card-key">
+        <h2>Stream Deck button key</h2>
+        <p class="muted">The Stream Deck links on the Live tab carry this key instead of the PIN. Keep it secret.</p>
+        <div class="row"><code id="s-key"></code></div>
+        <div class="row">
+          <button class="small" onclick="copyKey()">Copy</button>
+          <button class="small" onclick="newKey()">Make a new key</button>
+          <span id="s-key-msg"></span>
+        </div>
+      </div>
+      <p class="muted hidden" id="s-local-only">The device settings, the Stream Deck button key and Change PIN are shown
+        only on the mini PC itself.</p>
+    </section>
+
+    <!-- TOOLS -->
+    <section id="tab-tools" class="hidden">
+      <div class="card">
+        <h2>Delete test videos</h2>
+        <p>Permanently deletes <b>every video and playlist Stream Manager created for the current event</b>.
+          This cannot be undone. Use it only to clean up after testing.</p>
+        <p id="tools-count" class="muted"></p>
+        <div class="row">
+          <input id="tools-confirm" placeholder="Type DELETE">
+          <button class="small danger" style="background:var(--red);color:white" onclick="runCleanup()">Delete</button>
+          <span id="tools-msg"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const mmss = (s) => s == null ? '' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+let tab = 'live', status = null, settings = null, schedule = null, previewed = null, lanUrl = null;
+// The button key is only ever sent to the page on the mini PC itself.
+let isLocal = false, buttonKey = null;
+const KEY_ELSEWHERE = '<button key — copy it on the mini PC>';
+
+async function api(path, options = {}) {
+  const opts = { ...options, headers: { 'Content-Type': 'application/json' } };
+  if (opts.body && typeof opts.body !== 'string') opts.body = JSON.stringify(opts.body);
+  const res = await fetch(path, opts);
+  let data = {};
+  try { data = await res.json(); } catch (_) {}
+  if (res.status === 401) { showLogin(); throw new Error(data.error || 'PIN required'); }
+  if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+  return data;
+}
+
+// ---------- Login ----------
+async function start() {
+  const s = await (await fetch('/api/session')).json();
+  lanUrl = s.lan_url;
+  isLocal = s.is_local;
+  if (s.authed && s.pin_set) return showApp();
+  if (!s.pin_set && s.is_local) {
+    $('login-body').innerHTML = `<p>Choose a PIN to protect the control page.</p>
+      <input id="pin" type="password" inputmode="numeric" placeholder="4+ digits" autofocus>
+      <button class="act" style="width:100%" onclick="createPin()">Save PIN</button><p id="login-msg" class="bad-text"></p>`;
+  } else if (!s.pin_set) {
+    $('login-body').innerHTML = `<p>Set a PIN on the mini PC running Stream Manager first, then reload this page.</p>`;
+  } else {
+    $('login-body').innerHTML = `<p>Enter the PIN</p>
+      <input id="pin" type="password" inputmode="numeric" autofocus>
+      <button class="act" style="width:100%" onclick="login()">Unlock</button><p id="login-msg" class="bad-text"></p>`;
+  }
+  $('login').classList.remove('hidden'); $('app').classList.add('hidden');
+  const pin = $('pin');
+  if (pin) pin.addEventListener('keydown', e => { if (e.key === 'Enter') (s.pin_set ? login() : createPin()); });
+}
+function showLogin() { if (!$('login').classList.contains('hidden')) return; start(); }
+async function login() {
+  try { await api('/api/login', { method: 'POST', body: { pin: $('pin').value } }); showApp(); }
+  catch (e) { $('login-msg').textContent = e.message; }
+}
+async function createPin() {
+  try { await api('/api/pin', { method: 'POST', body: { pin: $('pin').value } }); showApp(); }
+  catch (e) { $('login-msg').textContent = e.message; }
+}
+async function logout() { await fetch('/api/logout', { method: 'POST' }); start(); }
+function showApp() {
+  $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+  poll(); loadSettings();
+}
+
+// ---------- Tabs ----------
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
+  ['live', 'prepare', 'settings', 'tools'].forEach(t => $('tab-' + t).classList.toggle('hidden', t !== tab));
+  if (tab === 'prepare') { loadSchedule(); loadVideos(false); }
+  if (tab === 'settings') loadSettings();
+  if (tab === 'tools') loadToolsCount();
+});
+
+// ---------- Status polling ----------
+let pollTimer = null;
+async function poll() {
+  clearTimeout(pollTimer);
+  try { status = await api('/api/status'); renderStatus(); } catch (_) {}
+  pollTimer = setTimeout(poll, 1000);
+}
+
+function renderStatus() {
+  const s = status;
+  $('h-event').textContent = s.event_name || (s.event_slug ? s.event_slug : 'No event chosen');
+  $('h-yt-dot').className = 'dot ' + (s.youtube_connected ? 'ok' : 'bad');
+  $('h-yt').textContent = s.youtube_connected ? (s.youtube_channel || 'YouTube connected') : 'YouTube not connected';
+  $('quota-left').textContent = s.quota_remaining.toLocaleString();
+  $('quota-share').textContent = s.quota_share.toLocaleString();
+  $('quota-low').classList.toggle('hidden', !s.extras_paused);
+  $('practice-banner').classList.toggle('hidden', !s.practice_mode);
+  $('real-banner').classList.toggle('hidden', s.practice_mode);
+  $('real-privacy').textContent = s.privacy;
+  $('schedule-error').classList.toggle('hidden', !s.schedule_error);
+  $('schedule-error').textContent = s.schedule_error || '';
+  renderCourts();
+  renderJob();
+  $('yt-sign-in').textContent = s.sign_in || '';
+  $('yt-state').innerHTML = s.youtube_connected
+    ? `<span class="ok-text">● Connected</span> ${esc(s.youtube_channel || '')}`
+    : `<span class="bad-text">● Not connected</span>`;
+}
+
+// The court panels are built once; every second only their text and button states change, so
+// a click is never lost to a redraw.
+function setHTML(el, html) { if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; } }
+
+function courtCard(name) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<h2>Court ${esc(name)} <span class="hold-badge hidden" data-f="hold">HOLD ON</span></h2>
+    <div class="row"><span class="pill"><span class="dot" data-f="refdot"></span><span data-f="reftext"></span></span>
+      <span class="pill"><span class="dot" data-f="vmixdot"></span><span data-f="vmixtext"></span></span></div>
+    <div class="banner error hidden" data-f="error"></div>
+    <div class="banner hidden" data-f="removed"></div>
+    <div class="banner hidden" data-f="companion"></div>
+    <div class="banner info hidden" data-f="busy">Switching on YouTube… this can take up to a minute.</div>
+    <div class="label">Live now</div><div class="big" data-f="live"></div>
+    <div class="label">Court</div><div class="big" data-f="phase"></div>
+    <div class="countdowns" data-f="counts"></div>
+    <div class="buttons">
+      <button class="act start" data-b="start">Start day</button>
+      <button class="act hold" data-b="hold">Hold</button>
+      <button class="act next" data-b="next">Switch now</button>
+      <button class="act end" data-b="end">End day</button>
+    </div>
+    <div class="log" data-f="log"></div>`;
+  const b = (k) => card.querySelector(`[data-b="${k}"]`);
+  const court = encodeURIComponent(name);
+  b('start').onclick = () => {
+    if (status && !status.practice_mode &&
+        !confirm(`Start the day on Court ${name}? This puts the current game's video live on YouTube.`)) return;
+    courtAction(court, 'start');
+  };
+  b('hold').onclick = () => courtAction(court, b('hold').classList.contains('on') ? 'release' : 'hold');
+  b('next').onclick = () => courtAction(court, 'next');
+  b('end').onclick = () => endDay(court);
+  return card;
+}
+
+function renderCourts() {
+  const box = $('courts');
+  const names = status.courts.map(c => c.name).join('\n');
+  if (box.dataset.names !== names) {
+    box.innerHTML = '';
+    status.courts.forEach(c => box.appendChild(courtCard(c.name)));
+    box.dataset.names = names;
+  }
+  status.courts.forEach((c, i) => {
+    const card = box.children[i];
+    const f = (k) => card.querySelector(`[data-f="${k}"]`);
+    const b = (k) => card.querySelector(`[data-b="${k}"]`);
+    f('hold').classList.toggle('hidden', !c.hold);
+    f('refdot').className = 'dot ' + (c.refbox === 'ok' ? 'ok' : c.refbox === 'waiting' ? 'warn' : 'bad');
+    f('reftext').textContent = {
+      ok: 'Refbox connected',
+      waiting: 'Refbox connected, waiting for its first update',
+      unreadable: "Refbox data can't be read: check the refbox port is 8000",
+      not_responding: 'Refbox not responding: no countdown for 10 s, automatic switching paused',
+      disconnected: 'Refbox not connected',
+    }[c.refbox] || c.refbox;
+    f('reftext').title = c.refbox_address;
+    f('vmixdot').className = 'dot ' + (c.vmix === 'ok' ? 'ok' : c.vmix === 'checking' ? 'warn' : 'bad');
+    f('vmixtext').textContent = c.vmix === 'ok' ? 'vMix connected' : c.vmix === 'checking' ? 'vMix: checking' : 'vMix not reachable';
+    f('vmixtext').title = c.vmix_address;
+    f('error').classList.toggle('hidden', !c.error);
+    f('error').textContent = c.error ? '✖ ' + c.error : '';
+    const removed = c.removed_games || [];
+    f('removed').classList.toggle('hidden', removed.length === 0);
+    f('removed').textContent = removed.length
+      ? 'No longer on the portal: ' + removed.map(g => 'Game ' + g).join(', ') + ' (videos kept)'
+      : '';
+    f('companion').classList.toggle('hidden', !c.companion_error);
+    f('companion').textContent = c.companion_error ? '⚠ Stream Deck status not updated: ' + c.companion_error : '';
+    f('busy').classList.toggle('hidden', !c.busy);
+    setHTML(f('live'), c.day_running ? esc(c.live_title) : '<span class="muted">Day not started</span>');
+    let phase = '<span class="muted">Waiting for refbox…</span>';
+    if (c.phase === 'playing') phase = `In play: ${esc(c.game_title)}`;
+    if (c.phase === 'break') phase = `Next: ${esc(c.game_title)} <span class="muted">in ${mmss(c.secs_left)}</span>`;
+    if (c.phase === 'finished') phase = 'No more games on this court';
+    setHTML(f('phase'), phase);
+    const counts = [];
+    if (c.secs_until_switch != null) {
+      if (c.hold) counts.push(`<div class="count"><b>Switch paused (Hold)</b></div>`);
+      else if (c.secs_until_switch === 0 && c.in_rosters) counts.push(`<div class="count"><b>Switch after the rosters</b></div>`);
+      else counts.push(`<div class="count">Switch in <b>${mmss(c.secs_until_switch)}</b></div>`);
+    }
+    if (c.in_rosters) counts.push(`<div class="count rosters"><b>Rosters on screen</b></div>`);
+    else if (c.secs_until_rosters != null) counts.push(`<div class="count rosters">Rosters in <b>${mmss(c.secs_until_rosters)}</b></div>`);
+    setHTML(f('counts'), counts.join(''));
+    b('start').disabled = c.day_running || c.busy;
+    b('hold').disabled = !c.day_running;
+    b('next').disabled = b('end').disabled = !c.day_running || c.busy;
+    b('hold').classList.toggle('on', c.hold);
+    b('hold').textContent = c.hold ? 'Release hold' : 'Hold';
+    setHTML(f('log'), c.log.map(l => `<div>${esc(l)}</div>`).join('') || '<div class="muted">Nothing yet</div>');
+  });
+  const base = companionLinksBase();
+  const key = isLocal && buttonKey ? buttonKey : KEY_ELSEWHERE;
+  $('companion-key-note').textContent = isLocal ? '' : 'The key is shown only on the mini PC itself.';
+  $('companion-elsewhere').textContent = isLocal && lanUrl
+    ? `Companion on another computer: use ${lanUrl} instead, and add that computer under Allow other devices.`
+    : '';
+  setHTML($('companion-links'), status.courts.map(c => {
+    const n = encodeURIComponent(c.name);
+    return `<p><b>Court ${esc(c.name)}</b><br>` + [['Start day','start'],['Hold on/off','hold-toggle'],['Switch now','next'],['End day','end']]
+      .map(([label, a]) => `${label}: <code>${esc(`${base}/api/court/${n}/${a}?key=${key}`)}</code>`).join('<br>') + '</p>';
+  }).join(''));
+}
+
+// Where the Stream Deck links point. On the mini PC, Companion runs there too, so always
+// 127.0.0.1, which counts as this PC (its network address would count as another device).
+function companionLinksBase() {
+  if (isLocal) return 'http://127.0.0.1' + (location.port ? ':' + location.port : '');
+  return lanUrl || location.origin;
+}
+
+async function courtAction(court, action) {
+  try { await api(`/api/court/${court}/${action}`, { method: 'POST' }); poll(); }
+  catch (e) { alert(e.message); }
+}
+function endDay(court) {
+  if (confirm(`End the day on Court ${decodeURIComponent(court)}? The live video will end.`)) courtAction(court, 'end');
+}
+
+function renderJob() {
+  const j = status.job;
+  if (!j.name) { $('job').classList.add('hidden'); return; }
+  $('job').classList.remove('hidden');
+  $('job-title').innerHTML = esc(j.name) + (j.running ? ' — working…' : j.error ? ' — <span class="bad-text">stopped</span>' : ' — <span class="ok-text">finished</span>');
+  const lines = j.log.map(l => `<div>${esc(l)}</div>`);
+  if (j.error) lines.push(`<div class="bad-text">${esc(j.error)}</div>`);
+  const html = lines.join('');
+  const log = $('job-log');
+  if (log.dataset.html !== html) { log.innerHTML = html; log.dataset.html = html; log.scrollTop = log.scrollHeight; }
+  $('prep-run').disabled = j.running || !previewed;
+  if (!j.running && j.name === 'Create videos' && log.dataset.done !== '1') { log.dataset.done = '1'; loadVideos(false); loadSchedule(); }
+  if (j.running) log.dataset.done = '0';
+}
+
+// ---------- Prepare ----------
+async function loadSchedule() {
+  schedule = await api('/api/schedule');
+  const has = schedule.loaded;
+  $('prep-noevent').classList.toggle('hidden', has);
+  $('prep-form').classList.toggle('hidden', !has);
+  if (!has) return;
+  $('prep-event').textContent = schedule.event_name;
+  const days = [...new Map(schedule.playlists.map(p => [p.day, p.date])).entries()];
+  const sel = $('prep-day'), current = sel.value;
+  sel.innerHTML = days.map(([d, date]) => `<option value="${d}">Day ${d} (${esc(date)})</option>`).join('');
+  if (current && days.some(([d]) => String(d) === current)) sel.value = current;
+  renderPrepareCourts();
+}
+function renderPrepareCourts() {
+  const day = Number($('prep-day').value);
+  const lists = schedule.playlists.filter(p => p.day === day);
+  $('prep-courts').innerHTML = lists.map(p => `<label class="pill" style="padding:8px 12px">
+      <input type="checkbox" class="prep-court" value="${esc(p.court)}" ${p.configured ? 'checked' : 'disabled'} onchange="clearPreview()">
+      Court ${esc(p.court)} — ${p.games.length} games ${p.configured ? '' : '<span class="muted">(not in Settings)</span>'}</label>`).join('');
+}
+function selection() {
+  const courts = [...document.querySelectorAll('.prep-court:checked')].map(c => c.value);
+  const limit = $('prep-limit').value ? Number($('prep-limit').value) : null;
+  return { day: Number($('prep-day').value), courts, limit };
+}
+function clearPreview() {
+  previewed = null; $('prep-preview').innerHTML = ''; $('prep-thumbs').innerHTML = ''; $('prep-run').disabled = true;
+}
+function previewThumbnails() {
+  const sel = selection();
+  if (!sel.courts.length) { alert('Choose at least one court'); return; }
+  const stamp = Date.now();
+  const lists = schedule.playlists.filter(p => p.day === sel.day && sel.courts.includes(p.court));
+  $('prep-thumbs').innerHTML = `<p class="muted">The thumbnails Prepare will put on each video. Nothing is sent to
+      YouTube and no units are used. Click one to see it full size. The first one can take a few seconds
+      while the banner and logos download.</p>` +
+    lists.map(p => `<h3>Court ${esc(p.court)}</h3><div class="thumbs">` +
+      p.games.slice(0, sel.limit || undefined).map(g => {
+        const src = `/api/thumbnail/${encodeURIComponent(g.number)}?t=${stamp}`;
+        return `<figure><a href="${src}" target="_blank"><img src="${src}" loading="lazy" alt="Game ${esc(g.number)}"></a>
+          <figcaption>Game ${esc(g.number)} · ${esc(g.start)}</figcaption></figure>`;
+      }).join('') + '</div>').join('');
+}
+async function previewPrepare() {
+  const sel = selection();
+  if (!sel.courts.length) { alert('Choose at least one court'); return; }
+  $('prep-preview').innerHTML = '<p class="muted">Checking YouTube…</p>';
+  try {
+    const r = await api('/api/prepare/preview', { method: 'POST', body: sel });
+    const w = r.work;
+    const lists = w.playlists.map(([t, n]) => `<li>Playlist "${esc(t)}": ${n} videos</li>`).join('');
+    if (r.empty) {
+      previewed = null;
+      $('prep-preview').innerHTML = `<div class="summary-box"><ul>${lists}</ul><b class="ok-text">Everything is already up to date on YouTube.</b></div>`;
+      return;
+    }
+    previewed = sel;
+    $('prep-preview').innerHTML = `<div class="summary-box"><ul>${lists}</ul>
+      This will create <b>${w.playlists_to_create}</b> playlist(s) and <b>${w.videos_to_create}</b> video(s),
+      update <b>${w.videos_to_update}</b>, link <b>${w.binds}</b> to stream keys, add <b>${w.playlist_adds}</b> to playlists
+      and set <b>${w.thumbnails}</b> thumbnails.<br>
+      Privacy: <b class="${w.privacy === 'public' ? 'warn-text' : ''}">${esc(w.privacy)}</b>.
+      Estimated cost: about <b>${w.units}</b> of the 10,000 daily units.</div>`;
+    $('prep-run').disabled = false;
+  } catch (e) { $('prep-preview').innerHTML = `<div class="banner error">${esc(e.message)}</div>`; }
+}
+async function runPrepare() {
+  if (!previewed) return;
+  try { await api('/api/prepare/run', { method: 'POST', body: previewed }); clearPreview(); poll(); }
+  catch (e) { alert(e.message); }
+}
+async function refreshSchedule() {
+  try { await api('/api/schedule/refresh', { method: 'POST' }); await loadSchedule(); } catch (e) { alert(e.message); }
+}
+async function loadVideos(fromYouTube) {
+  try {
+    const r = fromYouTube ? await api('/api/videos', { method: 'POST' }) : await api('/api/videos');
+    if (!r.videos.length) { $('videos').innerHTML = '<p class="muted">No videos created yet for this event.</p>'; return; }
+    const rows = r.videos.map(v => `<tr><td>${esc(v.game)}</td><td>${esc(v.title)}</td>
+      <td>${v.status ? esc(v.status) + (v.privacy ? ', ' + esc(v.privacy) : '') : '<span class="muted">—</span>'}</td>
+      <td>${esc(v.stream || 'not linked')}</td><td><a href="https://youtu.be/${esc(v.id)}" target="_blank">open</a></td></tr>`).join('');
+    const pls = Object.entries(r.playlists).map(([t, id]) => `<a href="https://www.youtube.com/playlist?list=${esc(id)}" target="_blank">${esc(t)}</a>`).join(' · ');
+    $('videos').innerHTML = `<p>Playlists: ${pls || '—'}</p><table><thead><tr><th>Game</th><th>Title</th><th>Status</th><th>Stream key</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  } catch (e) { $('videos').innerHTML = `<div class="banner error">${esc(e.message)}</div>`; }
+}
+
+// ---------- Settings ----------
+async function loadSettings() {
+  try {
+    const r = await api('/api/settings');
+    settings = r.settings;
+    $('s-portal').innerHTML = r.portals.map(p => `<option value="${esc(p.url)}">${esc(p.name)}</option>`).join('');
+    $('s-portal').value = settings.portal_url;
+    $('s-privacy').value = settings.privacy;
+    $('s-practice').checked = settings.practice_mode;
+    $('s-lead').value = settings.switch_lead_secs;
+    $('s-rstart').value = settings.roster_start_secs;
+    $('s-rend').value = settings.roster_end_secs;
+    $('s-quota-limit').value = settings.quota_daily_limit;
+    $('s-quota-share').value = settings.quota_share_percent;
+    $('s-companion').value = settings.companion_address || '';
+    isLocal = r.is_local;
+    buttonKey = isLocal ? (settings.button_key || null) : null;
+    $('card-devices').classList.toggle('hidden', !isLocal);
+    $('card-key').classList.toggle('hidden', !isLocal);
+    $('s-pin-row').classList.toggle('hidden', !isLocal);
+    $('s-local-only').classList.toggle('hidden', isLocal);
+    if (isLocal) {
+      $('s-allow-devices').checked = settings.allow_other_devices;
+      $('s-devices').value = (settings.allowed_devices || []).join('\n');
+      $('s-this-pc').textContent = r.this_pc_address || 'unknown';
+      $('s-restart').classList.toggle('hidden', !r.restart_needed);
+      $('s-key').textContent = buttonKey || '';
+    }
+    renderCourtRows(settings.courts);
+    privacyWarning();
+    loadEvents();
+    const local = ['127.0.0.1', 'localhost'].includes(location.hostname);
+    $('yt-connect').disabled = !local;
+    $('yt-local-note').textContent = local ? '' : 'Connect YouTube from the mini PC running Stream Manager.';
+    $('s-lan').innerHTML = lanUrl ? `Allowed devices can open <code>${esc(lanUrl)}</code>` : '';
+  } catch (_) {}
+}
+async function loadEvents() {
+  const sel = $('s-event');
+  sel.innerHTML = '<option>Loading events…</option>';
+  try {
+    const r = await api('/api/events?portal_url=' + encodeURIComponent($('s-portal').value));
+    const opts = r.events.map(e => `<option value="${esc(e.slug)}">${esc(e.name)} — ${esc((e.starts || '').slice(0, 10))}${e.upcoming ? ' (upcoming)' : ''}</option>`);
+    sel.innerHTML = '<option value="">— choose an event —</option>' + opts.join('');
+    if (settings && settings.event_slug) {
+      if (![...sel.options].some(o => o.value === settings.event_slug))
+        sel.insertAdjacentHTML('beforeend', `<option value="${esc(settings.event_slug)}">${esc(settings.event_slug)}</option>`);
+      sel.value = settings.event_slug;
+    }
+  } catch (e) { sel.innerHTML = `<option value="${esc(settings?.event_slug || '')}">Couldn't load events: ${esc(e.message)}</option>`; }
+}
+function renderCourtRows(courts) {
+  $('s-courts').innerHTML = courts.map(c => `<tr>
+    <td><input class="c-name" value="${esc(c.name)}" style="width:70px"></td>
+    <td><input class="c-ip" value="${esc(c.refbox_ip)}"></td>
+    <td><input class="c-port" type="number" value="${esc(c.refbox_port)}" style="width:90px"></td>
+    <td><input class="c-vmix" value="${esc(c.vmix_address || '127.0.0.1:8088')}" style="width:150px"></td>
+    <td><select class="c-mode" onchange="showStreamB(this)">
+      <option value="two-keys" ${c.stream_mode === 'one-key' ? '' : 'selected'}>Two (A/B, no gap)</option>
+      <option value="one-key" ${c.stream_mode === 'one-key' ? 'selected' : ''}>One (short gap)</option></select></td>
+    <td><input class="c-a" value="${esc(c.stream_a || '')}" placeholder="Court ${esc(c.name)} - A"></td>
+    <td><input class="c-b ${c.stream_mode === 'one-key' ? 'hidden' : ''}" value="${esc(c.stream_b || '')}" placeholder="Court ${esc(c.name)} - B"></td>
+    <td><button class="small" onclick="this.closest('tr').remove(); showStreamBHeader()">Remove</button></td></tr>`).join('');
+  showStreamBHeader();
+}
+function readCourtRows() {
+  return [...$('s-courts').querySelectorAll('tr')].map(tr => ({
+    name: tr.querySelector('.c-name').value.trim(),
+    refbox_ip: tr.querySelector('.c-ip').value.trim(),
+    refbox_port: Number(tr.querySelector('.c-port').value),
+    vmix_address: tr.querySelector('.c-vmix').value.trim(),
+    stream_a: tr.querySelector('.c-a').value.trim() || null,
+    stream_b: tr.querySelector('.c-b').value.trim() || null,
+    stream_mode: tr.querySelector('.c-mode').value,
+  }));
+}
+function showStreamB(select) {
+  select.closest('tr').querySelector('.c-b').classList.toggle('hidden', select.value === 'one-key');
+  showStreamBHeader();
+}
+// The B column's heading is shared by every court, so it shows while any court uses two keys.
+function showStreamBHeader() {
+  const modes = [...document.querySelectorAll('#s-courts .c-mode')].map(m => m.value);
+  $('s-b-header').classList.toggle('hidden', modes.length > 0 && modes.every(m => m === 'one-key'));
+}
+function addCourt() {
+  const courts = readCourtRows();
+  courts.push({ name: String(courts.length + 1), refbox_ip: '127.0.0.1', refbox_port: 8000, vmix_address: '127.0.0.1:8088' });
+  renderCourtRows(courts);
+}
+function privacyWarning() { $('s-public-warning').classList.toggle('hidden', $('s-privacy').value !== 'public'); }
+async function saveSettings() {
+  const body = {
+    portal_url: $('s-portal').value, event_slug: $('s-event').value, privacy: $('s-privacy').value,
+    switch_lead_secs: Number($('s-lead').value), roster_start_secs: Number($('s-rstart').value),
+    roster_end_secs: Number($('s-rend').value), courts: readCourtRows(),
+    practice_mode: $('s-practice').checked,
+    quota_daily_limit: Number($('s-quota-limit').value),
+    quota_share_percent: Number($('s-quota-share').value),
+    companion_address: $('s-companion').value.trim(),
+  };
+  if (isLocal) {
+    body.allow_other_devices = $('s-allow-devices').checked;
+    body.allowed_devices = $('s-devices').value.split(/[\s,]+/).filter(a => a);
+  }
+  if (settings.practice_mode && !body.practice_mode &&
+      !confirm('Turn practice mode OFF? From now on, Start day / Switch now / End day and automatic switches will control YouTube and vMix for real.')) return;
+  if (body.privacy === 'public' && settings.privacy !== 'public' &&
+      !confirm('Make NEW videos and playlists PUBLIC? (Existing ones keep their current privacy.)')) return;
+  try {
+    const r = await api('/api/settings', { method: 'POST', body });
+    $('s-saved').innerHTML = '<span class="ok-text">Saved ✓</span>';
+    if (r.restart_needed) $('s-restart').classList.remove('hidden');
+    setTimeout(() => $('s-saved').textContent = '', 3000);
+    await loadSettings();
+  } catch (e) { $('s-saved').innerHTML = `<span class="bad-text">${esc(e.message)}</span>`; }
+}
+async function changePin() {
+  try { await api('/api/pin', { method: 'POST', body: { pin: $('s-pin').value } });
+        $('s-pin').value = ''; $('s-pin-msg').innerHTML = '<span class="ok-text">PIN changed ✓</span>'; }
+  catch (e) { $('s-pin-msg').innerHTML = `<span class="bad-text">${esc(e.message)}</span>`; }
+}
+async function copyKey() {
+  try { await navigator.clipboard.writeText(buttonKey || ''); $('s-key-msg').innerHTML = '<span class="ok-text">Copied ✓</span>'; }
+  catch (_) { $('s-key-msg').innerHTML = '<span class="bad-text">Couldn\'t copy; select the key and copy it by hand.</span>'; }
+}
+async function newKey() {
+  if (!confirm('Stream Deck links using the old key will stop working.')) return;
+  try {
+    const r = await api('/api/button-key', { method: 'POST' });
+    buttonKey = r.button_key; $('s-key').textContent = buttonKey;
+    $('s-key-msg').innerHTML = '<span class="ok-text">New key made ✓ Copy the Live tab links into Companion again.</span>';
+  } catch (e) { $('s-key-msg').innerHTML = `<span class="bad-text">${esc(e.message)}</span>`; }
+}
+async function connectYouTube() {
+  try { const r = await api('/api/youtube/connect', { method: 'POST' }); window.open(r.url, '_blank'); }
+  catch (e) { alert(e.message); }
+}
+async function checkYouTube() {
+  $('yt-check').innerHTML = '<p class="muted">Checking…</p>';
+  try {
+    const r = await api('/api/youtube/check', { method: 'POST' });
+    const rows = r.courts.map(c => c.ok
+      ? `<li class="ok-text">Court ${esc(c.court)}: ${c.streams.map(s => `"${esc(s.name)}" ${s.sending ? '(vMix sending)' : '(idle)'}`).join(', ')}</li>`
+      : `<li class="bad-text">${esc(c.error)}</li>`).join('');
+    const missing = r.courts.some(c => !c.ok) ? `<p class="muted">Stream keys on this channel: ${r.all_streams.map(esc).join(', ')}</p>` : '';
+    $('yt-check').innerHTML = `<p>Channel: <b>${esc(r.channel)}</b></p><ul>${rows}</ul>${missing}`;
+  } catch (e) { $('yt-check').innerHTML = `<div class="banner error">${esc(e.message)}</div>`; }
+}
+
+// ---------- Tools ----------
+async function loadToolsCount() {
+  try { const r = await api('/api/videos');
+        $('tools-count').textContent = `Recorded for this event: ${r.videos.length} video(s), ${Object.keys(r.playlists).length} playlist(s).`; }
+  catch (_) {}
+}
+async function runCleanup() {
+  try {
+    await api('/api/cleanup', { method: 'POST', body: { confirm: $('tools-confirm').value.trim() } });
+    $('tools-confirm').value = '';
+    $('tools-msg').innerHTML = '<span class="muted">Deleting… progress is shown on the Prepare tab.</span>';
+  } catch (e) { $('tools-msg').innerHTML = `<span class="bad-text">${esc(e.message)}</span>`; }
+}
+
+start();
+</script>
+</body>
+</html>

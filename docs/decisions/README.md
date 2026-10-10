@@ -77,3 +77,4 @@ What constraints does this create for future work?
 | [016](016-uwr-mode-portal-routing.md) | UWR mode portal routing | 2026-04-23 | proposed |
 | [017](017-portal-data-lifecycle.md) | Portal data lifecycle (lazy fetch and refresh) | 2026-05-12 | proposed — behavior definition required |
 | [018](018-event-picker-sort-order.md) | Event picker sort order | 2026-05-12 | proposed — behavior definition required |
+| [026](026-per-game-youtube-streams.md) | Per-game YouTube live streams | 2026-09-29 | accepted |

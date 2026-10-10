@@ -138,6 +138,13 @@ holding stale values.
 
 ---
 
+### `stream-manager`
+
+**What it is:** Per-game YouTube live videos driven by the refbox; runs on each court's streaming
+PC.
+
+---
+
 ## Utility Crates
 
 These crates are smaller and more self-contained. Changes here are usually narrow in scope.
@@ -185,6 +192,7 @@ refbox ──────────────────────┐
 schedule-processor ──────────┤──► uwh-common
 overlay ─────────────────────┤
 overlay-bridge ──────────────┤
+stream-manager ──────────────┤
 led-panel-sim ───────────────┤
 matrix-drawing ──────────────┘
 wireless-remote ──────────────► wireless-modes, uwh-common (partially)

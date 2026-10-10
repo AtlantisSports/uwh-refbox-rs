@@ -230,15 +230,26 @@ In vMix → Streaming settings, set up **Destination 1** and **Destination 2**:
 | Stream key | Destination 1 = `Court N - A`, Destination 2 = `Court N - B` |
 | Application | **FFMPEG6** |
 | Use Hardware Encoder | **ticked** |
-| Quality (gear icon) | 1920×1080, **12000** kbps, audio 128, Profile **High** (or Main), Level **4.2** (or Auto), Preset **P5** (not a Low Latency preset), keyframes **2 s**, **Strict CBR on, NAL CBR on** |
+| Quality (gear icon) | Format **AV1** (fallback: **HEVC**, see below), 1920×1080, **12000** kbps, audio 128, Profile and Level at their defaults, Preset **P5** (not a Low Latency preset), keyframes **2 s**, **Strict CBR on, NAL CBR on** |
+
+**Format: AV1.** In tests (2026-10) both AV1 and HEVC looked much sharper on YouTube than H.264 at
+the same 12 Mbps. AV1 is the most efficient and is the format YouTube itself prefers. Viewers aren't
+affected by this choice, because YouTube re-compresses every stream for them.
+- AV1 encoding needs a newer graphics card (NVIDIA RTX 40-series or later). If a mini PC can't do
+  AV1, or AV1 misbehaves, use **HEVC** instead.
+- **Use the same format on both destinations and on both courts' mini PCs.**
+- **Check before relying on it:** stream for 1–2 hours without disconnects or warnings under
+  YouTube Studio → Live Control Room → Stream health, and do a real Stream Manager switch A → B → A.
 
 Also set:
-- **Frame rate** (Settings → General): 50 Hz countries use 50 or 25; 60 Hz countries use 59.94
-  or 29.97. Lower frame rates give sharper graphics on YouTube at the same bitrate (being tested
-  2026-10).
+- **Frame rate** (Settings → General): the **same as the cameras**. In 50 Hz countries that's 50
+  (or 25); in 60 Hz countries 59.94 (or 29.97). A mismatch makes motion stutter.
 - **Web Controller:** Settings → Web Controller → **enabled**, port **8088**. Stream Manager uses
   it to start and stop the destinations.
-- **Recording:** enabled to the local disk, as a backup.
+- **Recording:** enabled to the local disk, as a backup. Record in **H.264 or HEVC**, not AV1:
+  many editing programs and older computers can't play AV1 files.
+- **YouTube latency:** "Normal latency" (Live Control Room) gives the best picture. Low and
+  ultra-low latency make the player drop quality more often.
 
 **Don't press Stream yourself.** Stream Manager starts and stops the destinations.
 

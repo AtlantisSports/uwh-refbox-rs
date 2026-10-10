@@ -13,13 +13,17 @@ use crate::{
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, path::Path};
+use std::{collections::BTreeMap, path::Path, time::Duration};
 
 /// The file, next to the settings, holding the access key for the linked portal event.
 pub const LINK_FILE: &str = "portal-watch-links.json";
 
 /// How much of a portal reply goes into an error message.
 const REPLY_CHARS: usize = 200;
+
+/// How long Prepare's preview waits for the key check. It only decides whether to warn, so a
+/// slow portal mustn't hold up the preview.
+const KEY_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// This Stream Manager's link to one portal event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +124,16 @@ pub async fn send_watch_urls(
     if links.is_empty() {
         return Ok(());
     }
+    put_watch_urls(portal_url, event_slug, access_key, links).await
+}
+
+/// The PUT itself. An empty `links` changes nothing but still runs the portal's key check.
+async fn put_watch_urls(
+    portal_url: &str,
+    event_slug: &str,
+    access_key: &str,
+    links: &BTreeMap<String, Option<String>>,
+) -> Result<(), SendError> {
     let url = format!(
         "{}/api/events/{event_slug}/schedule/watch-urls",
         portal_url.trim_end_matches('/')
@@ -222,6 +236,76 @@ pub async fn publish(
         (Err(SendError::Other(error)), Purpose::Clear) => {
             log(format!("Portal: watch links weren't cleared: {error}"))
         }
+    }
+}
+
+/// What Prepare's preview says about setting watch links, checked before anything is created
+/// so a refused key is known before any YouTube units are spent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeyCheck {
+    /// The portal accepts the saved key.
+    Accepted,
+    /// No key is saved for this portal and event.
+    NotLinked,
+    /// The portal refused the saved key; it has been forgotten.
+    Refused,
+    /// The portal couldn't be asked, as text a person can read.
+    Unknown(String),
+}
+
+impl KeyCheck {
+    /// What to tell the operator, if anything, and whether it is a warning.
+    pub fn notice(&self) -> Option<(bool, String)> {
+        match self {
+            KeyCheck::Accepted => None,
+            KeyCheck::NotLinked => Some((
+                false,
+                "Portal watch links: this Stream Manager isn't linked to the event, so none will \
+                 be set (Settings → Portal watch links)."
+                    .to_string(),
+            )),
+            KeyCheck::Refused => Some((
+                true,
+                "Portal watch links: the event refused this Stream Manager's key (it was removed \
+                 on the portal, or the event is over), so watch links won't be set. Link it again \
+                 in Settings first, or go ahead without watch links."
+                    .to_string(),
+            )),
+            KeyCheck::Unknown(error) => Some((
+                false,
+                format!(
+                    "Portal watch links: couldn't check the link ({error}). Prepare will still \
+                     try to set them."
+                ),
+            )),
+        }
+    }
+}
+
+/// Asks the portal whether it still accepts the saved key, by sending an update with no
+/// links: the portal runs the same key check as for a real update and changes nothing. A
+/// refused key is forgotten, as after a refused update.
+pub async fn check_key(link_file: &Path, config: &Config) -> KeyCheck {
+    check_key_within(link_file, config, KEY_CHECK_TIMEOUT).await
+}
+
+async fn check_key_within(link_file: &Path, config: &Config, timeout: Duration) -> KeyCheck {
+    let Some(link) = link_for(link_file, &config.portal_url, &config.event_slug) else {
+        return KeyCheck::NotLinked;
+    };
+    let empty = BTreeMap::new();
+    let request = put_watch_urls(&link.portal_url, &link.event_slug, &link.access_key, &empty);
+    match tokio::time::timeout(timeout, request).await {
+        Err(_) => KeyCheck::Unknown(format!(
+            "the portal didn't answer within {} seconds",
+            timeout.as_secs()
+        )),
+        Ok(Ok(())) => KeyCheck::Accepted,
+        Ok(Err(SendError::KeyRefused)) => {
+            forget_refused(link_file, &link);
+            KeyCheck::Refused
+        }
+        Ok(Err(SendError::Other(error))) => KeyCheck::Unknown(error),
     }
 }
 
@@ -777,6 +861,77 @@ mod tests {
         publishing.publish(&links(), Purpose::Set).await;
         assert!(portal.requests().is_empty());
         assert_eq!(publishing.lines, [NOT_LINKED]);
+        assert!(publishing.link_file.exists());
+    }
+
+    #[tokio::test]
+    async fn the_key_check_sends_an_empty_update_with_the_key() {
+        let portal = MockPortal::start(204, "").await;
+        let publishing = Publishing::new("check-accepted", &portal, Some("cup-2026"));
+        let check = check_key(&publishing.link_file, &publishing.config).await;
+        assert_eq!(check, KeyCheck::Accepted);
+        assert_eq!(check.notice(), None);
+        let requests = portal.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].method, "PUT");
+        assert_eq!(requests[0].path, SEND_PATH);
+        assert_eq!(requests[0].authorization, Some(format!("Bearer {KEY}")));
+        assert_eq!(requests[0].body, json!({ "watchUrlsByGameNumber": {} }));
+        assert!(publishing.link_file.exists());
+    }
+
+    #[tokio::test]
+    async fn the_key_check_warns_about_and_forgets_a_refused_key() {
+        for status in [401, 403] {
+            let portal = MockPortal::start(status, "").await;
+            let publishing = Publishing::new("check-refused", &portal, Some("cup-2026"));
+            let check = check_key(&publishing.link_file, &publishing.config).await;
+            assert_eq!(check, KeyCheck::Refused, "{status}");
+            let (warning, text) = check.notice().unwrap();
+            assert!(warning);
+            assert!(text.contains("Link it again in Settings first"), "{text}");
+            assert!(!publishing.link_file.exists(), "{status}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_key_check_without_a_link_asks_nothing() {
+        let portal = MockPortal::start(204, "").await;
+        let publishing = Publishing::new("check-not-linked", &portal, None);
+        let check = check_key(&publishing.link_file, &publishing.config).await;
+        assert_eq!(check, KeyCheck::NotLinked);
+        assert!(!check.notice().unwrap().0);
+        assert!(portal.requests().is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_key_check_gives_up_on_a_slow_portal_and_keeps_the_key() {
+        let portal = MockPortal::start(204, "").await;
+        portal.delay_replies(Duration::from_secs(2));
+        let publishing = Publishing::new("check-slow", &portal, Some("cup-2026"));
+        let check = check_key_within(
+            &publishing.link_file,
+            &publishing.config,
+            Duration::from_millis(200),
+        )
+        .await;
+        match &check {
+            KeyCheck::Unknown(text) => assert!(text.contains("didn't answer"), "{text}"),
+            other => panic!("{other:?}"),
+        }
+        assert!(publishing.link_file.exists());
+    }
+
+    #[tokio::test]
+    async fn the_key_check_keeps_the_key_when_the_portal_fails_otherwise() {
+        let portal = MockPortal::start(500, "boom").await;
+        let publishing = Publishing::new("check-unknown", &portal, Some("cup-2026"));
+        let check = check_key(&publishing.link_file, &publishing.config).await;
+        match &check {
+            KeyCheck::Unknown(text) => assert!(text.starts_with("The portal said"), "{text}"),
+            other => panic!("{other:?}"),
+        }
+        assert!(!check.notice().unwrap().0);
         assert!(publishing.link_file.exists());
     }
 

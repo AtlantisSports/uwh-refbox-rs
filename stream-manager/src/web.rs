@@ -796,9 +796,13 @@ async fn prepare_preview(
         .and_then(|file| prepare::load_state(&file, &config.event_slug))
         .map_err(|e| bad(e.to_string()))?;
     let mut yt = app.youtube().map_err(|e| bad(e.to_string()))?;
-    let lookups = prepare::lookups(&mut yt)
-        .await
-        .map_err(|e| bad(e.to_string()))?;
+    // The portal key check runs alongside the YouTube lookups, so it adds no wait.
+    let link_file = app.link_file();
+    let (lookups, key_check) = tokio::join!(
+        prepare::lookups(&mut yt),
+        watch_links::check_key(&link_file, &config)
+    );
+    let lookups = lookups.map_err(|e| bad(e.to_string()))?;
     let work = prepare::preview(
         &config,
         &plan,
@@ -808,7 +812,14 @@ async fn prepare_preview(
         &|court: &str| app.day_running(court),
     )
     .map_err(|e| bad(e.to_string()))?;
-    Ok(Json(json!({ "work": work, "empty": work.is_empty() })))
+    let portal_links = key_check
+        .notice()
+        .map(|(warning, text)| json!({ "warning": warning, "text": text }));
+    Ok(Json(json!({
+        "work": work,
+        "empty": work.is_empty(),
+        "portal_links": portal_links,
+    })))
 }
 
 async fn prepare_run(

@@ -691,6 +691,7 @@ mod tests {
     fn plan(numbers: &[&str]) -> EventPlan {
         EventPlan {
             event_name: "Cup".into(),
+            banner_url: None,
             games: numbers
                 .iter()
                 .map(|number| crate::portal::PlannedGame {
@@ -700,6 +701,8 @@ mod tests {
                     start: time::OffsetDateTime::UNIX_EPOCH,
                     dark: "A".into(),
                     light: "B".into(),
+                    dark_team: None,
+                    light_team: None,
                     description: None,
                 })
                 .collect(),
@@ -725,6 +728,7 @@ mod tests {
                     portal_start: None,
                     court: None,
                     day: None,
+                    thumbnail: None,
                 },
             );
         }

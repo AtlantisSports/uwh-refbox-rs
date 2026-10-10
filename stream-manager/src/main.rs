@@ -182,7 +182,19 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
                 limit,
             };
             let state_file = state_file()?;
-            let result = prepare::run_cli(&config, &plan, &mut yt, &state_file, &selection).await;
+            let portal_notice = watch_links::check_key(&link_file, &config)
+                .await
+                .notice()
+                .map(|(_, text)| text);
+            let result = prepare::run_cli(
+                &config,
+                &plan,
+                &mut yt,
+                &state_file,
+                &selection,
+                portal_notice,
+            )
+            .await;
             // Also after a failure: the videos made before it still get their links. A
             // cancelled run changed nothing, so nothing goes to the portal.
             if !matches!(result, Ok(prepare::CliRun::Cancelled)) {

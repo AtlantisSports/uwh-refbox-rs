@@ -580,13 +580,18 @@ async function previewPrepare() {
     const r = await api('/api/prepare/preview', { method: 'POST', body: sel });
     const w = r.work;
     const lists = w.playlists.map(([t, n]) => `<li>Playlist "${esc(t)}": ${n} videos</li>`).join('');
+    const portal = r.portal_links
+      ? (r.portal_links.warning
+        ? `<div class="banner">${esc(r.portal_links.text)}</div>`
+        : `<p class="muted">${esc(r.portal_links.text)}</p>`)
+      : '';
     if (r.empty) {
       previewed = null;
-      $('prep-preview').innerHTML = `<div class="summary-box"><ul>${lists}</ul><b class="ok-text">Everything is already up to date on YouTube.</b></div>`;
+      $('prep-preview').innerHTML = `${portal}<div class="summary-box"><ul>${lists}</ul><b class="ok-text">Everything is already up to date on YouTube.</b></div>`;
       return;
     }
     previewed = sel;
-    $('prep-preview').innerHTML = `<div class="summary-box"><ul>${lists}</ul>
+    $('prep-preview').innerHTML = `${portal}<div class="summary-box"><ul>${lists}</ul>
       This will create <b>${w.playlists_to_create}</b> playlist(s) and <b>${w.videos_to_create}</b> video(s),
       update <b>${w.videos_to_update}</b>, link <b>${w.binds}</b> to stream keys and add <b>${w.playlist_adds}</b> to playlists.<br>
       Privacy: <b class="${w.privacy === 'public' ? 'warn-text' : ''}">${esc(w.privacy)}</b>.

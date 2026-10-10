@@ -188,17 +188,21 @@ The setting can only change while no day is running on that court.
   ("Cannot get the preset configuration: unsupported param").
 - **Use Hardware Encoder:** ticked (NVIDIA eGPU). Check it in Task Manager → GPU → "Video
   Encode".
-- **Quality (same on both destinations, confirmed 2026-10-01):** 1920×1080, 12000 kbps video,
-  128 kbps AAC audio, Format H264, Profile High (or Main), Level 4.2 or Auto, **Preset P5** (not
-  a Low Latency preset), keyframe frequency 2 s, stream delay 0, **Strict CBR and NAL CBR on**.
+- **Quality (same on both destinations, confirmed 2026-10-01; format updated 2026-10-05):**
+  1920×1080, 12000 kbps video, 128 kbps AAC audio, **Format AV1** (fallback HEVC), **Preset P5**
+  (not a Low Latency preset), keyframe frequency 2 s, stream delay 0, **Strict CBR and NAL CBR on**.
+  - 2026-10-05 real-camera test: vMix's preview was perfect, but YouTube looked soft with H.264.
+    Both HEVC and AV1 looked much better at the same bitrate. AV1 was chosen (most efficient,
+    YouTube's preferred format); HEVC is the fallback for mini PCs whose GPU can't encode AV1
+    (needs RTX 40-series or later). Local recordings stay H.264/HEVC for compatibility.
   - Without CBR the encoder dropped to about 0.3 Mbps on a still picture. New overlay graphics
     then arrived blocky and sharpened over several seconds, and YouTube warned about low
     bitrate. With both CBR options vMix sends a steady 12.1 Mbps and the problem is gone.
   - vMix 26 had no FFMPEG6 option; its old FFMPEG fails with current NVIDIA drivers. Use vMix
     29 (or newer) with FFMPEG6.
 - **YouTube latency:** Normal latency gives the best picture.
-- **Frame rate** (Settings → General → Video Frame Rate): 50 in 50 Hz countries, 59.94 in 60 Hz
-  countries, to avoid pool-light flicker.
+- **Frame rate** (Settings → General → Video Frame Rate): the same as the cameras (50 in 50 Hz
+  countries, 59.94 in 60 Hz countries), to avoid stutter and pool-light flicker.
 - **Web Controller** enabled (port 8088), so stream-manager can start and stop each
   destination.
 - **Local recording** enabled as a backup.

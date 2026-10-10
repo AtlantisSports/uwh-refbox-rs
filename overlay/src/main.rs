@@ -387,7 +387,10 @@ async fn main() {
     // own size ends up being.
     let canvas = render_target(3840, 1080);
     canvas.texture.set_filter(FilterMode::Nearest);
-    let mut canvas_camera = Camera2D::from_display_rect(Rect::new(0., 0., 3840., 1080.));
+    // `from_display_rect` flips y for drawing to the screen; a render target needs the
+    // opposite, or the canvas comes out upside down (in both the local preview and NDI). The
+    // negative height keeps the pages' top-left (0, 0) coordinates and undoes that flip.
+    let mut canvas_camera = Camera2D::from_display_rect(Rect::new(0., 1080., 3840., -1080.));
     canvas_camera.render_target = Some(canvas.clone());
 
     loop {

@@ -262,6 +262,21 @@ fn portal_event_page(config: &Config) -> String {
     format!("{web}/events/{}", config.event_slug)
 }
 
+/// The channel playlist Prepare made for this event under `title`, if there is one. Another
+/// event can have a playlist with the same title (e.g. a yearly event's name), so the title
+/// alone isn't enough: Prepare puts the event's portal page in every playlist it creates.
+fn own_playlist<'p>(
+    existing: &'p [Playlist],
+    title: &str,
+    event_page: &str,
+) -> Option<&'p Playlist> {
+    existing.iter().find(|p| {
+        // The page on a line of its own: one event's page can be the start of another's
+        // (".../events/cup" and ".../events/cup-2027").
+        p.title == title && p.description.lines().any(|line| line.trim() == event_page)
+    })
+}
+
 fn broadcast_spec(config: &Config, plan: &EventPlan, game: &PlannedGame) -> BroadcastSpec {
     let start_text = game
         .start
@@ -458,6 +473,7 @@ pub fn preview(
     day_running: &(dyn Fn(&str) -> bool + Sync),
 ) -> Result<Work, BoxError> {
     let targets = select_targets(config, plan, selection)?;
+    let event_page = portal_event_page(config);
     let mut work = Work {
         privacy: config.privacy.clone(),
         ..Default::default()
@@ -468,10 +484,12 @@ pub fn preview(
         work.playlists
             .push((target.playlist_title.clone(), target.games.len()));
         if !state.playlists.contains_key(&target.playlist_title)
-            && !lookups
-                .existing_playlists
-                .iter()
-                .any(|p| p.title == target.playlist_title)
+            && own_playlist(
+                &lookups.existing_playlists,
+                &target.playlist_title,
+                &event_page,
+            )
+            .is_none()
         {
             work.playlists_to_create += 1;
         }
@@ -541,23 +559,19 @@ pub async fn run(
         let playlist_id = match state.playlists.get(title) {
             Some(id) => id.clone(),
             None => {
-                let id = match lookups
-                    .existing_playlists
-                    .iter()
-                    .find(|p| &p.title == title)
-                {
+                let id = match own_playlist(
+                    &lookups.existing_playlists,
+                    title,
+                    &portal_event_page(config),
+                ) {
                     Some(p) => {
                         log(format!("Using existing playlist \"{title}\""));
                         p.id.clone()
                     }
                     None => {
                         // YouTube does not allow angle brackets in descriptions either.
-                        let description = format!(
-                            "{} — {title}\n{}",
-                            plan.event_name,
-                            portal_event_page(config)
-                        )
-                        .replace(['<', '>'], "");
+                        let description = format!("{title}\n{}", portal_event_page(config))
+                            .replace(['<', '>'], "");
                         let id = step
                             .create_playlist(title, &description, &config.privacy)
                             .await?;
@@ -768,6 +782,34 @@ pub async fn cleanup_cli(
 mod tests {
     use super::*;
     use crate::portal::parse_event_plan;
+
+    #[test]
+    fn only_a_playlist_made_for_this_event_is_used() {
+        let playlist = |title: &str, description: &str| Playlist {
+            id: format!("{title}|{description}"),
+            title: title.into(),
+            description: description.into(),
+        };
+        let here = "https://portal.example/events/state-titles-2026";
+        let title = "State Titles · Day 1 · Court 1";
+        // Same title, another event's page (last year's): not ours.
+        let other = [playlist(
+            title,
+            "State Titles · Day 1 · Court 1\nhttps://portal.example/events/state-titles-2025",
+        )];
+        assert!(own_playlist(&other, title, here).is_none());
+        // Same title, this event's page.
+        let ours = [playlist(title, &format!("{title}\n{here}"))];
+        assert_eq!(
+            own_playlist(&ours, title, here).map(|p| p.id.as_str()),
+            Some(ours[0].id.as_str())
+        );
+        // An event whose page starts with this event's page.
+        let longer = [playlist(title, &format!("{title}\n{here}-final"))];
+        assert!(own_playlist(&longer, title, here).is_none());
+        // This event's page, another title.
+        assert!(own_playlist(&ours, "State Titles · Day 2 · Court 1", here).is_none());
+    }
 
     #[test]
     fn changes_to_the_record_made_at_the_same_time_are_all_kept() {

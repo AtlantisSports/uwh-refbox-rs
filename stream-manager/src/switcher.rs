@@ -151,7 +151,7 @@ impl CourtSwitcher {
             // after it (none after the court's last game).
             _ => snapshot.next_game_number()?.clone(),
         };
-        (target != *live).then_some(target)
+        (target != *live && !self.left_behind.contains(&target)).then_some(target)
     }
 
     /// Feed every snapshot the refbox sends. Returns an action when it's time to switch.
@@ -542,6 +542,17 @@ mod tests {
         assert_eq!(s.on_command(Command::SwitchNow), switch("15", "16"));
         s.on_snapshot(&break_old("14", "15", 500));
         assert_eq!(s.status().secs_until_switch, None);
+    }
+
+    #[test]
+    fn switch_now_never_targets_a_game_switched_away_from() {
+        // Switch now during Game 15, then the refbox goes back to the break before Game 15:
+        // the game after the break is Game 15 again, whose video has ended.
+        let mut s = started(playing("15", "16"));
+        assert_eq!(s.on_command(Command::SwitchNow), switch("15", "16"));
+        s.on_snapshot(&break_old("14", "15", 500));
+        assert_eq!(s.status().next, None);
+        assert_eq!(s.on_command(Command::SwitchNow), None);
     }
 
     #[test]

@@ -250,6 +250,33 @@ impl LocalRoster {
     }
 }
 
+/// Checks a schedule CSV on its own, by the same rules [`LocalRoster::load`] applies to it as half
+/// of a pair: the same failures, the same skipped rows, the same conflicting duplicates. For a
+/// file uploaded before its partner, so a bad one is refused at once rather than only when the
+/// other file arrives. The report's roster fields are all zero -- there is no roster to report on.
+pub fn check_schedule(path: &Path) -> Result<LoadReport, LoadError> {
+    let schedule = read_rows::<ScheduleRow>(path, SCHEDULE_COLUMNS).map_err(LoadError::Schedule)?;
+    let (schedule_map, duplicate_games) = build_schedule(schedule.rows);
+    Ok(LoadReport {
+        games: schedule_map.len(),
+        schedule_rows_skipped: schedule.skipped,
+        duplicate_games,
+        ..LoadReport::default()
+    })
+}
+
+/// [`check_schedule`]'s counterpart for a roster CSV. The report's schedule fields are all zero.
+pub fn check_roster(path: &Path) -> Result<LoadReport, LoadError> {
+    let rosters = read_rows::<RosterRow>(path, ROSTER_COLUMNS).map_err(LoadError::Roster)?;
+    let (rosters_map, duplicate_caps) = build_rosters(rosters.rows);
+    Ok(LoadReport {
+        players: rosters_map.values().map(HashMap::len).sum(),
+        roster_rows_skipped: rosters.skipped,
+        duplicate_caps,
+        ..LoadReport::default()
+    })
+}
+
 /// Every readable row of one CSV file, and how many rows were not readable.
 struct Rows<T> {
     rows: Vec<T>,
@@ -641,5 +668,30 @@ mod tests {
         let schedule = temp_csv(SCHEDULE_CSV);
         let result = LocalRoster::load(schedule.path(), Path::new("/does/not/exist.csv"));
         assert!(matches!(result, Err(LoadError::Roster(_))));
+    }
+
+    #[test]
+    fn one_file_is_checked_on_its_own_by_the_same_rules_as_a_pair() {
+        let schedule = temp_csv(
+            "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n2,A,B\n2,C,D\nnot-a-number,E,F\n",
+        );
+        let report = check_schedule(schedule.path()).expect("a usable schedule should pass");
+        assert_eq!(report.games, 1);
+        assert_eq!(report.schedule_rows_skipped, 1);
+        assert_eq!(report.duplicate_games, vec![2]);
+        assert_eq!(report.players, 0);
+
+        let roster = temp_csv("team,capNumber,rosterName\nChengdu,2,Li Wei\nChengdu,x,Bad\n");
+        let report = check_roster(roster.path()).expect("a usable roster should pass");
+        assert_eq!(report.players, 1);
+        assert_eq!(report.roster_rows_skipped, 1);
+        assert_eq!(report.games, 0);
+
+        let misspelled = temp_csv("team,capNumber,name\nChengdu,2,Li Wei\n");
+        let error = check_roster(misspelled.path()).expect_err("a missing column should fail");
+        assert!(
+            error.to_string().contains("rosterName"),
+            "the error should name the missing column, got: {error}"
+        );
     }
 }

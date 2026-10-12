@@ -284,8 +284,8 @@ pub fn render_page(data: &PageData) -> String {
     let scan_hint = escape_html(&format!(
         "Searching checks every address on that network and takes a few seconds. It only reports \
          something as a refbox if it answers with a game, so anything else listening on the same \
-         port is ignored. Searching looks on port {}. A refbox older than this version serves its \
-         feed on 8000 and will not be found — type its address instead, with :8000 on the end. \
+         port is ignored. The port box is the refbox's game-feed port: {}, or 8000 for a refbox \
+         older than this version — not its binary port, which answers nothing here. \
          The first search may raise a firewall prompt on Windows; if searching is blocked here, \
          type the refbox's address instead.",
         crate::config::DEFAULT_REFBOX_PORT
@@ -1276,11 +1276,11 @@ mod tests {
 
     #[test]
     fn the_search_tooltip_names_both_ports_an_operator_might_need() {
-        // The gap this closes: an operator who searches instead of typing an address never met
-        // the fact that an older refbox serves 8000, so an empty result read as the firewall
-        // sentence sitting beside it. Scoped to the Search tooltip on purpose -- the *settings*
-        // tooltip has said 8000 since `3dd9f3cd`, so a page-wide `contains("8000")` passes with
-        // this sentence deleted and proves nothing at all.
+        // The gap this closes: nothing told the operator which number belongs in the Search
+        // form's port box, so searching the refbox's *binary* port returned nothing and read as
+        // the firewall sentence sitting beside it. Scoped to the Search tooltip on purpose -- the
+        // *settings* tooltip has said 8000 since `3dd9f3cd`, so a page-wide `contains("8000")`
+        // passes with this sentence deleted and proves nothing at all.
         let html = render_page(&base_data());
         let after_search = html
             .split_once("<button type=\"submit\">Search</button>")
@@ -1294,16 +1294,24 @@ mod tests {
             .expect("the tooltip attribute must be closed")
             .0;
 
+        // Escaped: this lives in a `data-tip=` attribute, so the apostrophe in "refbox's" is
+        // served as `&#39;`. Asserting the escaped form is the point -- an apostrophe reaching an
+        // attribute raw ends it early and turns the rest of the sentence into markup.
         assert!(
             tip.contains(&format!(
-                "Searching looks on port {}",
+                "the refbox&#39;s game-feed port: {}",
                 crate::config::DEFAULT_REFBOX_PORT
             )),
-            "the Search tooltip must name the port it actually scans, got:\n{tip}"
+            "the Search tooltip must say which port belongs in the box, got:\n{tip}"
         );
         assert!(
-            tip.contains("serves its feed on 8000 and will not be found"),
-            "and must say an older refbox will not be found by searching, got:\n{tip}"
+            tip.contains("8000 for a refbox older than this version"),
+            "and must give the older refbox's port, got:\n{tip}"
+        );
+        assert!(
+            tip.contains("not its binary port"),
+            "and must steer off the binary port, which is the mistake it exists to prevent, \
+             got:\n{tip}"
         );
     }
 

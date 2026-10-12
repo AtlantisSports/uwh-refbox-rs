@@ -119,7 +119,7 @@ use crate::{
     config, discovery,
     feed::{Connection, ConnectionState, ConnectionStatus, FeedMessage, FeedTarget, RefboxAddress},
     game_feed,
-    local_roster::LocalRoster,
+    local_roster::{LoadReport, LocalRoster},
     portal::{Directory, TeamNames},
     state::{Display, LiveState},
     status::{self, Notice, ScanOutcome},
@@ -700,39 +700,115 @@ fn csv_upload_dir(state: &AppState) -> PathBuf {
     dir
 }
 
-/// Saves one uploaded CSV's bytes to `dir/filename`, overwriting whatever was there before --
-/// see [`csv_upload_dir`] for why there is deliberately only ever one file kept per role.
-fn save_uploaded_csv(dir: &std::path::Path, filename: &str, bytes: &[u8]) {
-    if let Err(e) = std::fs::write(dir.join(filename), bytes) {
-        eprintln!("could not save the uploaded {filename}: {e}");
+/// One uploaded CSV, written to a temporary file next to the file it is meant to replace and not
+/// yet moved over it -- see [`choose_roster_with_upload`].
+struct StagedCsv {
+    /// `dir/schedule.csv.new` (or `roster.csv.new`): loaded from, then renamed or deleted.
+    temp: PathBuf,
+    /// `dir/schedule.csv` (or `roster.csv`): only ever replaced by a file that loaded.
+    destination: PathBuf,
+}
+
+/// Writes one uploaded CSV's bytes to `dir/filename.new`, leaving `dir/filename` -- whatever
+/// was saved before -- untouched. See [`csv_upload_dir`] for why there is deliberately only ever
+/// one file kept per role. The error is a plain-English clause for the operator's notice.
+fn stage_uploaded_csv(
+    dir: &std::path::Path,
+    filename: &str,
+    bytes: &[u8],
+) -> Result<StagedCsv, String> {
+    let staged = StagedCsv {
+        temp: dir.join(format!("{filename}.new")),
+        destination: dir.join(filename),
+    };
+    std::fs::write(&staged.temp, bytes).map_err(|e| {
+        // A failed write can still have left a partial file behind.
+        let _ = std::fs::remove_file(&staged.temp);
+        format!("the uploaded {filename} could not be saved ({e})")
+    })?;
+    Ok(staged)
+}
+
+/// Deletes every staged temporary file, after an upload that is not being used.
+fn discard_staged(staged: &[&StagedCsv]) {
+    for file in staged {
+        if let Err(e) = std::fs::remove_file(&file.temp) {
+            eprintln!("could not delete {}: {e}", file.temp.display());
+        }
     }
 }
 
-/// Applies the operator's roster-source submission: parses `source`, saves whichever file(s) were
-/// actually uploaded this time, loads the local files when `Local` is what was chosen (reporting
-/// a plain-English failure rather than silently leaving names blank), updates the running state,
-/// and remembers the choice for next time the same way [`choose_refbox`] remembers an address.
+/// The notice for a local roster that has just been put into use. A plain success only when every
+/// row was read and nothing was duplicated: otherwise a problem, even though the names are now
+/// on air, because the operator has to notice and fix the file.
+fn local_roster_notice(report: &LoadReport) -> Notice {
+    let loaded = format!(
+        "Team and player names now come from the uploaded CSV files: {}, {}.",
+        plural(report.games, "game", "games"),
+        plural(report.players, "player", "players"),
+    );
+    let mut warnings = Vec::new();
+    if report.rows_skipped() > 0 {
+        warnings.push(format!(
+            "{} could not be read and {} skipped ({} in the schedule CSV, {} in the roster CSV).",
+            plural(report.rows_skipped(), "row", "rows"),
+            if report.rows_skipped() == 1 {
+                "was"
+            } else {
+                "were"
+            },
+            report.schedule_rows_skipped,
+            report.roster_rows_skipped,
+        ));
+    }
+    let duplicates = report.duplicates();
+    if !duplicates.is_empty() {
+        const SHOWN: usize = 10;
+        let mut listed = duplicates
+            .iter()
+            .take(SHOWN)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+        if duplicates.len() > SHOWN {
+            listed.push_str(&format!(" and {} more", duplicates.len() - SHOWN));
+        }
+        warnings.push(format!(
+            "These appear on more than one row, so they will show no names: {listed}."
+        ));
+    }
+    if warnings.is_empty() {
+        Notice::done(loaded)
+    } else {
+        Notice::problem(format!(
+            "{loaded} But {} Fix the file and upload it again.",
+            warnings.join(" ")
+        ))
+    }
+}
+
+/// `count` with the right one of `one`/`many` after it: "1 game", "24 games".
+fn plural(count: usize, one: &str, many: &str) -> String {
+    format!("{count} {}", if count == 1 { one } else { many })
+}
+
+/// Applies the operator's roster-source submission: parses `source`, takes in whichever file(s)
+/// were actually uploaded this time (see [`choose_roster_with_upload`]), loads the local files
+/// when `Local` is what was chosen (reporting a plain-English failure rather than silently
+/// leaving names blank), updates the running state, and remembers the choice for next time the
+/// same way [`choose_refbox`] remembers an address.
 async fn choose_roster_source(state: &AppState, upload: RosterSourceUpload) -> Notice {
     let source = match upload.source.as_str() {
         "local" => config::RosterSource::Local,
         _ => config::RosterSource::Portal,
     };
 
-    // Only touch the stored path when a file was actually uploaded this submission -- leaving a
-    // file input untouched (or disabled, switching to Portal) must not throw away a file already
-    // saved from an earlier submission.
-    if let Some(bytes) = &upload.schedule_csv {
-        let dir = csv_upload_dir(state);
-        save_uploaded_csv(&dir, "schedule.csv", bytes);
-        *write_lock(&state.schedule_csv_path) =
-            dir.join("schedule.csv").to_str().map(str::to_string);
-    }
-    if let Some(bytes) = &upload.roster_csv {
-        let dir = csv_upload_dir(state);
-        save_uploaded_csv(&dir, "roster.csv", bytes);
-        *write_lock(&state.roster_csv_path) = dir.join("roster.csv").to_str().map(str::to_string);
+    if upload.schedule_csv.is_some() || upload.roster_csv.is_some() {
+        return choose_roster_with_upload(state, source, &upload);
     }
 
+    // Nothing uploaded this submission -- a file input left untouched (or disabled, switching to
+    // Portal) must not throw away a file already saved from an earlier submission.
     let schedule_path = read_lock(&state.schedule_csv_path).clone();
     let roster_path = read_lock(&state.roster_csv_path).clone();
 
@@ -743,10 +819,10 @@ async fn choose_roster_source(state: &AppState, upload: RosterSourceUpload) -> N
         ),
         config::RosterSource::Local => {
             match try_load_local_roster(schedule_path.as_deref(), roster_path.as_deref()) {
-                Ok(loaded) => (
-                    Some(loaded),
-                    Notice::done("Team and player names now come from the uploaded CSV files."),
-                ),
+                Ok(loaded) => {
+                    let notice = local_roster_notice(loaded.report());
+                    (Some(loaded), notice)
+                }
                 Err(message) => (
                     None,
                     Notice::problem(format!(
@@ -759,6 +835,115 @@ async fn choose_roster_source(state: &AppState, upload: RosterSourceUpload) -> N
     };
 
     *write_lock(&state.local_roster) = loaded;
+    *write_lock(&state.roster_source) = source;
+
+    if let Some(path) = &state.settings_path {
+        config::remember_roster_source(path, source, schedule_path, roster_path);
+    }
+
+    notice
+}
+
+/// The roster-source submission when at least one CSV file was uploaded with it. **A file that
+/// does not load never replaces one that did.** Each upload is written to a temporary file
+/// beside the saved one, and the pair -- the new upload(s), plus the already-saved file for
+/// whichever one was not uploaded this time -- is loaded from there. Only if that load succeeds
+/// are the temporary files renamed over the saved ones and the new names put into use. If it
+/// fails, the temporary files are deleted and nothing at all changes: not the saved files, not
+/// the names on air, not the source, not the remembered settings -- so a mistyped column
+/// discovered mid-tournament cannot blank the graphic that was working a moment ago.
+fn choose_roster_with_upload(
+    state: &AppState,
+    source: config::RosterSource,
+    upload: &RosterSourceUpload,
+) -> Notice {
+    let unchanged = "Nothing was changed -- the bridge is still using the same files and names \
+                     as before. Fix the file and upload it again.";
+    let dir = csv_upload_dir(state);
+
+    let schedule = match upload.schedule_csv.as_deref() {
+        Some(bytes) => match stage_uploaded_csv(&dir, "schedule.csv", bytes) {
+            Ok(staged) => Some(staged),
+            Err(message) => return Notice::problem(format!("{message}. {unchanged}")),
+        },
+        None => None,
+    };
+    let roster = match upload.roster_csv.as_deref() {
+        Some(bytes) => match stage_uploaded_csv(&dir, "roster.csv", bytes) {
+            Ok(staged) => Some(staged),
+            Err(message) => {
+                discard_staged(&schedule.iter().collect::<Vec<_>>());
+                return Notice::problem(format!("{message}. {unchanged}"));
+            }
+        },
+        None => None,
+    };
+    let staged: Vec<&StagedCsv> = schedule.iter().chain(roster.iter()).collect();
+
+    let schedule_candidate = match &schedule {
+        Some(staged) => staged.temp.to_str().map(str::to_string),
+        None => read_lock(&state.schedule_csv_path).clone(),
+    };
+    let roster_candidate = match &roster {
+        Some(staged) => staged.temp.to_str().map(str::to_string),
+        None => read_lock(&state.roster_csv_path).clone(),
+    };
+    if schedule_candidate.is_none() || roster_candidate.is_none() {
+        discard_staged(&staged);
+        return Notice::problem(
+            "The uploaded file was not used: names need both a schedule CSV and a roster CSV, \
+             and the other one has not been uploaded yet. Choose both files and save again. \
+             Nothing was changed.",
+        );
+    }
+
+    let loaded =
+        match try_load_local_roster(schedule_candidate.as_deref(), roster_candidate.as_deref()) {
+            Ok(loaded) => loaded,
+            Err(message) => {
+                discard_staged(&staged);
+                return Notice::problem(format!(
+                    "The uploaded files were not used: {message}. {unchanged}"
+                ));
+            }
+        };
+
+    for (i, file) in staged.iter().enumerate() {
+        if let Err(e) = std::fs::rename(&file.temp, &file.destination) {
+            discard_staged(&staged[i..]);
+            eprintln!(
+                "could not move {} to {}: {e}",
+                file.temp.display(),
+                file.destination.display()
+            );
+            return Notice::problem(format!(
+                "The uploaded files loaded, but could not be saved ({e}). The names on air were \
+                 not changed. Try uploading them again."
+            ));
+        }
+    }
+
+    if let Some(staged) = &schedule {
+        *write_lock(&state.schedule_csv_path) = staged.destination.to_str().map(str::to_string);
+    }
+    if let Some(staged) = &roster {
+        *write_lock(&state.roster_csv_path) = staged.destination.to_str().map(str::to_string);
+    }
+    let schedule_path = read_lock(&state.schedule_csv_path).clone();
+    let roster_path = read_lock(&state.roster_csv_path).clone();
+
+    let (local_roster, notice) = match source {
+        config::RosterSource::Portal => (
+            None,
+            Notice::done("Team and player names now come from the UWH Portal."),
+        ),
+        config::RosterSource::Local => {
+            let notice = local_roster_notice(loaded.report());
+            (Some(loaded), notice)
+        }
+    };
+
+    *write_lock(&state.local_roster) = local_roster;
     *write_lock(&state.roster_source) = source;
 
     if let Some(path) = &state.settings_path {
@@ -975,8 +1160,9 @@ fn is_connected(state: &AppState) -> bool {
 /// Loads the local roster files named by `settings`, if `roster_source` calls for them. `None`
 /// whenever the source is [`config::RosterSource::Portal`]; also `None` (with a message on
 /// stderr, never a panic) if `Local` was chosen but either path is unset or the files could not
-/// be read -- the bridge still starts, with names simply staying blank until a valid pair of
-/// paths is configured. See [`AppState::local_roster`].
+/// be loaded (see [`LocalRoster::load`]) -- the bridge still starts, with names simply staying
+/// blank until a valid pair of paths is configured. Skipped rows and duplicates in files that
+/// did load are logged to stderr too. See [`AppState::local_roster`].
 fn load_local_roster(settings: &config::Resolved) -> Option<LocalRoster> {
     if !matches!(settings.roster_source, config::RosterSource::Local) {
         return None;
@@ -985,7 +1171,25 @@ fn load_local_roster(settings: &config::Resolved) -> Option<LocalRoster> {
         settings.schedule_csv_path.as_deref(),
         settings.roster_csv_path.as_deref(),
     ) {
-        Ok(loaded) => Some(loaded),
+        Ok(loaded) => {
+            let report = loaded.report();
+            if report.rows_skipped() > 0 {
+                eprintln!(
+                    "local roster: {} schedule row(s) and {} roster row(s) could not be read and \
+                     were skipped",
+                    report.schedule_rows_skipped, report.roster_rows_skipped
+                );
+            }
+            let duplicates = report.duplicates();
+            if !duplicates.is_empty() {
+                eprintln!(
+                    "local roster: these appear on more than one row, so they will show no \
+                     names: {}",
+                    duplicates.join(", ")
+                );
+            }
+            Some(loaded)
+        }
         Err(message) => {
             eprintln!(
                 "roster source is set to local, but {message} -- team and player names will \
@@ -1011,7 +1215,7 @@ fn try_load_local_roster(
         std::path::Path::new(schedule_path),
         std::path::Path::new(roster_path),
     )
-    .map_err(|e| format!("could not load the local roster files: {e}"))
+    .map_err(|e| e.to_string())
 }
 
 /// Looks up `game_number`'s team names, court and start time. From the local roster files if
@@ -3066,10 +3270,20 @@ mod tests {
     async fn bridge_reading(
         refbox_addr: SocketAddr,
     ) -> (Arc<AppState>, SocketAddr, Vec<tokio::task::JoinHandle<()>>) {
-        let state = Arc::new(AppState::new(config::Resolved {
+        bridge_reading_with(config::Resolved {
             refbox: RefboxAddress::new(refbox_addr.ip().to_string(), refbox_addr.port()),
             ..Default::default()
-        }));
+        })
+        .await
+    }
+
+    /// [`bridge_reading`], but with the caller's own settings -- for a test that needs a
+    /// settings file of its own (and so its own `csv-files` directory) rather than sharing the
+    /// OS temp directory with every other test.
+    async fn bridge_reading_with(
+        settings: config::Resolved,
+    ) -> (Arc<AppState>, SocketAddr, Vec<tokio::task::JoinHandle<()>>) {
+        let state = Arc::new(AppState::new(settings));
         let (tx, rx) = mpsc::unbounded_channel();
         let supervisor = tokio::spawn(crate::feed::Supervisor::run(
             state.target_handle(),
@@ -4305,5 +4519,252 @@ mod tests {
             Some(("Chengdu", "Beijing")),
             "switching away and back with nothing re-uploaded must not lose the earlier upload"
         );
+    }
+
+    /// A bridge reading a refbox on game 1, with its own settings file in `dir` -- so the CSV
+    /// files it saves land in `dir/csv-files`, never in a directory another test also writes.
+    async fn bridge_on_game_1_saving_into(
+        dir: &std::path::Path,
+    ) -> (Arc<AppState>, SocketAddr, Vec<tokio::task::JoinHandle<()>>) {
+        let (refbox_addr, refbox) = fake_refbox(game(GamePeriod::FirstHalf, 613, 2, 1, "1")).await;
+        let (state, addr, mut tasks) = bridge_reading_with(config::Resolved {
+            refbox: RefboxAddress::from(refbox_addr),
+            settings_path: Some(dir.join("settings.toml")),
+            ..Default::default()
+        })
+        .await;
+        wait_for_scores(&state, 2, 1).await;
+        tasks.push(refbox);
+        (state, addr, tasks)
+    }
+
+    fn roster_upload(schedule: &str, roster: &str) -> reqwest::multipart::Form {
+        reqwest::multipart::Form::new()
+            .text("source", "local")
+            .part("schedule_csv", csv_part("schedule.csv", schedule))
+            .part("roster_csv", csv_part("roster.csv", roster))
+    }
+
+    fn current_notice(state: &AppState) -> Notice {
+        read_lock(&state.notice)
+            .clone()
+            .expect("the form should have left a notice")
+    }
+
+    fn roster_players(table: &Value) -> Vec<String> {
+        table
+            .as_array()
+            .expect("/roster should be an array")
+            .iter()
+            .filter_map(|row| row["player"].as_str())
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn a_first_upload_of_only_one_file_asks_for_both_and_changes_nothing() {
+        let dir = tempfile::tempdir().expect("create a temp dir");
+        let (state, addr, tasks) = bridge_on_game_1_saving_into(dir.path()).await;
+
+        let only_roster = reqwest::multipart::Form::new()
+            .text("source", "local")
+            .part(
+                "roster_csv",
+                csv_part(
+                    "roster.csv",
+                    "team,capNumber,rosterName\nChengdu,2,Li Wei\n",
+                ),
+            );
+        let response =
+            post_multipart_with_site(addr, "/roster-source", only_roster, "same-origin").await;
+        assert_eq!(response.status().as_u16(), 200);
+
+        let notice = current_notice(&state);
+        assert!(!notice.done, "got: {notice:?}");
+        assert!(
+            notice.text.contains("both a schedule CSV and a roster CSV"),
+            "the notice must say both files are needed, got: {}",
+            notice.text
+        );
+        assert_eq!(
+            *read_lock(&state.roster_source),
+            config::RosterSource::Portal
+        );
+        assert!(read_lock(&state.local_roster).is_none());
+        assert!(read_lock(&state.roster_csv_path).is_none());
+        let saved: Vec<_> = std::fs::read_dir(dir.path().join("csv-files"))
+            .expect("read the csv-files directory")
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(saved.is_empty(), "nothing may be saved: {saved:?}");
+
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_bad_roster_upload_changes_nothing_and_names_the_missing_column() {
+        let dir = tempfile::tempdir().expect("create a temp dir");
+        let (state, addr, tasks) = bridge_on_game_1_saving_into(dir.path()).await;
+
+        let good = roster_upload(
+            "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n",
+            "team,capNumber,rosterName\nChengdu,2,Li Wei\nBeijing,4,Wang Fang\n",
+        );
+        let response = post_multipart_with_site(addr, "/roster-source", good, "same-origin").await;
+        assert_eq!(response.status().as_u16(), 200);
+        let notice = current_notice(&state);
+        assert!(
+            notice.done,
+            "a good pair of files should be accepted, got: {notice:?}"
+        );
+        assert!(
+            notice.text.contains("1 game") && notice.text.contains("2 players"),
+            "the notice should say how much was loaded, got: {}",
+            notice.text
+        );
+        assert_eq!(
+            roster_players(&get_json(addr, "/roster").await),
+            vec!["Li Wei".to_string(), "Wang Fang".to_string()]
+        );
+
+        let saved_roster = dir.path().join("csv-files").join("roster.csv");
+        let before = std::fs::read(&saved_roster).expect("the good roster should be saved");
+
+        // The roster column is misspelled -- every row of this file would fail to read.
+        let bad = reqwest::multipart::Form::new()
+            .text("source", "local")
+            .part(
+                "roster_csv",
+                csv_part(
+                    "roster.csv",
+                    "team,capNumber,name\nChengdu,2,Someone Else\n",
+                ),
+            );
+        let response = post_multipart_with_site(addr, "/roster-source", bad, "same-origin").await;
+        assert_eq!(response.status().as_u16(), 200);
+
+        let notice = current_notice(&state);
+        assert!(
+            !notice.done,
+            "a bad file must be reported as a problem, got: {notice:?}"
+        );
+        assert!(
+            notice.text.contains("rosterName"),
+            "the notice must name the missing column, got: {}",
+            notice.text
+        );
+        assert!(
+            notice.text.contains("still using"),
+            "the notice must say the previous names are still in use, got: {}",
+            notice.text
+        );
+        assert_eq!(
+            std::fs::read(&saved_roster).expect("the saved roster should still be there"),
+            before,
+            "a bad upload must never replace the good file already saved"
+        );
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path().join("csv-files"))
+            .expect("read the csv-files directory")
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name != "schedule.csv" && name != "roster.csv")
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "no temporary file may be left behind: {leftovers:?}"
+        );
+        assert_eq!(
+            roster_players(&get_json(addr, "/roster").await),
+            vec!["Li Wei".to_string(), "Wang Fang".to_string()],
+            "the graphic must keep the names it had before the bad upload"
+        );
+        assert_eq!(
+            *read_lock(&state.roster_source),
+            config::RosterSource::Local
+        );
+
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_bad_upload_while_on_the_portal_does_not_switch_to_blank_local_names() {
+        let dir = tempfile::tempdir().expect("create a temp dir");
+        let (state, addr, tasks) = bridge_on_game_1_saving_into(dir.path()).await;
+
+        let bad = roster_upload(
+            "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n",
+            "team,capNumber,rosterName\n",
+        );
+        let response = post_multipart_with_site(addr, "/roster-source", bad, "same-origin").await;
+        assert_eq!(response.status().as_u16(), 200);
+
+        let notice = current_notice(&state);
+        assert!(
+            !notice.done,
+            "an empty roster must be reported as a problem, got: {notice:?}"
+        );
+        assert_eq!(
+            *read_lock(&state.roster_source),
+            config::RosterSource::Portal,
+            "a failed upload must leave the source as it was"
+        );
+        assert!(
+            !dir.path().join("csv-files").join("roster.csv").exists(),
+            "a file that failed to load must not be saved"
+        );
+        assert!(
+            !dir.path().join("csv-files").join("schedule.csv").exists(),
+            "neither file of a failed pair may be saved"
+        );
+
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn an_upload_with_duplicates_loads_the_rest_and_lists_them() {
+        let dir = tempfile::tempdir().expect("create a temp dir");
+        let (state, addr, tasks) = bridge_on_game_1_saving_into(dir.path()).await;
+
+        let upload = roster_upload(
+            "gameNumber,blackTeam,whiteTeam\n\
+             1,Chengdu,Beijing\n\
+             2,Beijing,Chengdu\n\
+             2,Shanghai,Chengdu\n",
+            "team,capNumber,rosterName\n\
+             Chengdu,2,Li Wei\n\
+             Chengdu,7,Zhang Min\n\
+             Chengdu,2,Chen Jie\n",
+        );
+        let response =
+            post_multipart_with_site(addr, "/roster-source", upload, "same-origin").await;
+        assert_eq!(response.status().as_u16(), 200);
+
+        let notice = current_notice(&state);
+        assert!(
+            !notice.done,
+            "duplicates must be reported as a problem the operator will notice, got: {notice:?}"
+        );
+        assert!(
+            notice.text.contains("game 2") && notice.text.contains("Chengdu cap 2"),
+            "the notice must list each duplicate, got: {}",
+            notice.text
+        );
+        assert_eq!(
+            roster_players(&get_json(addr, "/roster").await),
+            vec!["Zhang Min".to_string()],
+            "a duplicated cap must serve no name rather than either of the conflicting ones"
+        );
+
+        for task in tasks {
+            task.abort();
+        }
     }
 }

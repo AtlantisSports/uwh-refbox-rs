@@ -493,7 +493,8 @@ impl App {
                 court.refbox_unreadable = Some(reason.clone());
                 court.note(format!(
                     "✖ The refbox sends data Stream Manager can't read. Check the refbox port is \
-                     8000 (8001 is the LED panel's). Details: {reason}"
+                     19540, or 8000 for an older refbox (not 19541 or 8001: that is the \
+                     refbox's other feed). Details: {reason}"
                 ));
             }
             // Only a silence during the break counts: the refbox also goes quiet while a game's

@@ -2969,6 +2969,10 @@ impl TournamentManager {
                 }
                 GamePeriod::SuddenDeath => {
                     if !scores.are_not_equal() {
+                        // The tie was restored, so the deciding goal was disallowed. Clear its
+                        // scorer: the recent-goal expiry in `generate_snapshot` only works on a
+                        // clock counting down, so on sudden death's it would never fire.
+                        self.recent_goal = None;
                         GamePeriod::SuddenDeath
                     } else {
                         GamePeriod::BetweenGames
@@ -10556,6 +10560,49 @@ mod test {
             Duration::from_secs(31),
             "sudden death restarted its clock instead of resuming at the reading it had when \
              the goal was scored"
+        );
+    }
+
+    // A deciding goal that the operator disallows by restoring the tie must not stay on the
+    // overlay. The recent-goal expiry test assumes a clock counting DOWN, so on sudden death's
+    // up-counting clock it never fires, and only a period change would clear the flag. The goal
+    // has to come in the first 15 s of sudden death to show at all: the window freezes the clock
+    // at 10 ms, which drops any later goal at once (a known limitation in the design doc). Found
+    // by code review, 2026-10-12.
+    #[test]
+    fn test_restoring_a_tie_clears_the_disallowed_scorer() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: true,
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        let now = start + Duration::from_secs(1);
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(10));
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, start);
+        tm.start_game_clock(start);
+
+        tm.add_deciding_goal(Color::Black, 7, now).unwrap();
+        assert_eq!(
+            tm.generate_snapshot(now).unwrap().recent_goal,
+            Some((Color::Black, 7)),
+            "the scorer should show while the goal is awaiting confirmation"
+        );
+
+        let corrected = now + Duration::from_secs(4);
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, corrected);
+        tm.end_confirm_pause(corrected).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+
+        let later = corrected + Duration::from_secs(60);
+        assert_eq!(
+            tm.generate_snapshot(later).unwrap().recent_goal,
+            None,
+            "a disallowed deciding goal is still credited on the overlay a minute later"
         );
     }
 

@@ -4219,25 +4219,21 @@ impl RefBoxApp {
                 } else {
                     let mut tm = self.tm.lock();
                     let now = Instant::now();
-                    if tm.current_period() == GamePeriod::SuddenDeath {
+                    let next_state = if tm.current_period() == GamePeriod::SuddenDeath {
                         // Safe: add_deciding_goal's only Err comes from pause_for_confirm, which
                         // cannot fail in sudden death — it accepts a stopped clock and clears any
                         // active timeout. The period check above guarantees we are in it.
                         tm.add_deciding_goal(color, 0, now).unwrap();
-                        let scores = tm.get_scores();
-                        let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
-                        std::mem::drop(tm);
-                        let task = self.apply_snapshot(snapshot);
-                        self.app_state = AppState::ConfirmScores(scores);
-                        task
+                        AppState::ConfirmScores(tm.get_scores())
                     } else {
                         tm.add_score(color, 0, now);
-                        let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
-                        std::mem::drop(tm);
-                        let task = self.apply_snapshot(snapshot);
-                        self.app_state = AppState::MainPage;
-                        task
-                    }
+                        AppState::MainPage
+                    };
+                    let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
+                    std::mem::drop(tm);
+                    let task = self.apply_snapshot(snapshot);
+                    self.app_state = next_state;
+                    task
                 };
                 trace!("AppState changed to {:?}", self.app_state);
                 task

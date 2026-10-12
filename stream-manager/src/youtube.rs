@@ -35,6 +35,7 @@ pub struct StreamInfo {
 pub struct Playlist {
     pub id: String,
     pub title: String,
+    pub description: String,
 }
 
 #[derive(Debug, Clone)]
@@ -303,6 +304,10 @@ impl YouTube {
                 Some(Playlist {
                     id: p["id"].as_str()?.to_string(),
                     title: p["snippet"]["title"].as_str()?.to_string(),
+                    description: p["snippet"]["description"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
                 })
             })
             .collect())

@@ -156,7 +156,7 @@ pub fn parse_event_plan(json: &str) -> Result<EventPlan, BoxError> {
     });
 
     Ok(EventPlan {
-        event_name: raw.event.name,
+        event_name: raw.event.name.trim().to_string(),
         games: planned,
     })
 }
@@ -313,6 +313,13 @@ mod tests {
             (g10.dark.as_str(), g10.light.as_str()),
             ("Winner G3", "Loser G2")
         );
+    }
+
+    #[test]
+    fn event_name_is_trimmed() {
+        let json = SAMPLE.replace(r#""name": "Test Cup""#, r#""name": "  Test Cup  ""#);
+        let plan = parse_event_plan(&json).unwrap();
+        assert_eq!(plan.event_name, "Test Cup");
     }
 
     #[test]

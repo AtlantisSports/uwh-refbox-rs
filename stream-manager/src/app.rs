@@ -402,8 +402,22 @@ impl App {
 
     /// (Re)connects to every configured court's refbox.
     pub fn start_refbox_connections(self: &Arc<Self>) {
-        let (tx, mut rx) = mpsc::unbounded_channel::<(u64, usize, RefboxEvent)>();
-        let mut inner = self.inner();
+        let rx = {
+            let mut inner = self.inner();
+            self.restart_refbox_tasks(&mut inner)
+        };
+        self.spawn_refbox_event_loop(rx);
+    }
+
+    /// The part of [`App::start_refbox_connections`] done under the lock the caller holds: stops
+    /// the old connections and workers, starts new ones for `inner.config.courts`, and moves to
+    /// a new generation so updates from the old ones are dropped. Hand the returned receiver to
+    /// [`App::spawn_refbox_event_loop`] once the lock is released.
+    fn restart_refbox_tasks(
+        self: &Arc<Self>,
+        inner: &mut Inner,
+    ) -> mpsc::UnboundedReceiver<(u64, usize, RefboxEvent)> {
+        let (tx, rx) = mpsc::unbounded_channel::<(u64, usize, RefboxEvent)>();
         for task in inner.refbox_tasks.drain(..) {
             task.abort();
         }
@@ -451,8 +465,14 @@ impl App {
         inner.refbox_tasks = tasks;
         inner.refbox_tx = Some(tx);
         inner.executors = executors;
-        drop(inner);
+        rx
+    }
 
+    /// Hands every refbox update to [`App::on_refbox_event`]. Must run without the lock held.
+    fn spawn_refbox_event_loop(
+        self: &Arc<Self>,
+        mut rx: mpsc::UnboundedReceiver<(u64, usize, RefboxEvent)>,
+    ) {
         let app = Arc::clone(self);
         tokio::spawn(async move {
             while let Some((generation, i, event)) = rx.recv().await {
@@ -693,15 +713,26 @@ impl App {
     /// After resuming, vMix's output for the live video is started again (it is off after a
     /// reboot), except in practice mode.
     pub async fn recover_live_videos(self: &Arc<Self>) {
-        let (generation, courts, plan, slug, practice) = {
+        let (generation, courts, plan, url, slug, practice) = {
             let inner = self.inner();
             (
                 inner.generation,
                 courts_to_recover(&inner),
                 inner.plan.clone(),
+                inner.config.portal_url.clone(),
                 inner.config.event_slug.clone(),
                 inner.config.practice_mode,
             )
+        };
+        // What was found is only applied while the settings still name this event: the
+        // operator may choose another one while YouTube is being asked.
+        let for_event = |i: usize, f: &mut dyn FnMut(&mut CourtRuntime)| {
+            let mut inner = self.inner();
+            if inner.generation == generation && fetched_from_current(&inner.config, &url, &slug) {
+                if let Some(court) = inner.courts.get_mut(i) {
+                    f(court);
+                }
+            }
         };
         if courts.is_empty() {
             return;
@@ -723,7 +754,7 @@ impl App {
             let videos = recovery::todays_videos(&plan, &state, &court.name, now);
             if videos.is_empty() {
                 // No video today, so none can be live.
-                self.with_court(generation, i, |c| c.recovered = true);
+                for_event(i, &mut |c| c.recovered = true);
                 continue;
             }
             // Not connected to YouTube: nothing to resume from (yet).
@@ -737,7 +768,7 @@ impl App {
             match found {
                 Ok((Some(live), also_live)) => {
                     let mut resumed = false;
-                    self.with_court(generation, i, |c| {
+                    for_event(i, &mut |c| {
                         c.recovered = true;
                         resumed = resume_court(c, &live, &also_live);
                     });
@@ -746,7 +777,7 @@ impl App {
                             .await;
                     }
                 }
-                Ok((None, _)) => self.with_court(generation, i, |c| c.recovered = true),
+                Ok((None, _)) => for_event(i, &mut |c| c.recovered = true),
                 Err(e) => warn!(
                     "[Court {}] Couldn't check which video is live: {e}",
                     court.name
@@ -877,12 +908,12 @@ impl App {
         self: &Arc<Self>,
         edit: impl FnOnce(&Config) -> Result<Config, E>,
     ) -> Result<(), E> {
-        let courts_changed;
+        let mut refbox_events = None;
         {
             let mut inner = self.inner();
             let new = edit(&inner.config)?;
             new.validate_for_save(&inner.config)?;
-            courts_changed = inner.config.courts != new.courts;
+            let courts_changed = inner.config.courts != new.courts;
             let day_running = inner.courts.iter().any(|c| c.switcher.status().day_running);
             for running in inner
                 .courts
@@ -944,9 +975,6 @@ impl App {
                     .iter()
                     .map(|c| CourtRuntime::new(c.clone(), rules))
                     .collect();
-                // Updates still on their way from the old refbox connections must not land on
-                // the new courts, which are matched by position.
-                inner.generation += 1;
             } else if rules_changed {
                 // Same courts and the same refbox connections: only the timing changes, so each
                 // court keeps its connection state, last game update and log.
@@ -963,9 +991,15 @@ impl App {
                 }
             }
             inner.config = new;
+            if courts_changed {
+                // In the same step as replacing the courts: updates still on their way from the
+                // old refbox connections and workers (a new generation) must not land on the new
+                // courts, which are matched by position.
+                refbox_events = Some(self.restart_refbox_tasks(&mut inner));
+            }
         }
-        if courts_changed {
-            self.start_refbox_connections();
+        if let Some(rx) = refbox_events {
+            self.spawn_refbox_event_loop(rx);
         }
         let app = Arc::clone(self);
         tokio::spawn(async move { app.refresh_plan_and_recover().await });
@@ -1782,6 +1816,23 @@ mod tests {
         // The last game update is kept too.
         let switcher = app.inner().courts[0].switcher.status();
         assert_eq!(switcher.next.as_deref(), Some("14"));
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[tokio::test]
+    async fn changing_the_courts_restarts_their_connections_in_one_step() {
+        let app = temp_app("courts-restart");
+        let generation = app.inner().generation;
+        let mut new = app.config();
+        let mut second = new.courts[0].clone();
+        second.name = "2".to_string();
+        new.courts.push(second);
+        app.apply_settings(new).unwrap();
+        // One new generation for the new courts and their connections and workers together.
+        let inner = app.inner();
+        assert_eq!(inner.generation, generation + 1);
+        assert_eq!((inner.courts.len(), inner.executors.len()), (2, 2));
+        drop(inner);
         let _ = std::fs::remove_dir_all(&app.config_dir);
     }
 

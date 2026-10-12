@@ -208,14 +208,16 @@ impl State {
     fn update_state(&mut self, received_update: StateUpdate) {
         match received_update {
             StateUpdate::Snapshot(snapshot) => {
-                if self.snapshot.event_id != snapshot.event_id {
+                let new_event = self.snapshot.event_id != snapshot.event_id;
+                if new_event {
                     info!("Snapshot for new event received: {:?}", snapshot.event_id);
                     self.event_logo = None;
                     self.sponsor_logo = None;
                 }
-                // Not nested under the event check: within one event (and with no event at all,
-                // the local-CSV case) the previous game's teams must not stay on air into the next.
-                if self.snapshot.game_number() != snapshot.game_number() {
+                // A different game is a new event OR a new game number: within one event (and with
+                // no event at all, the local-CSV case) and across events that happen to share a
+                // game number, the previous game's teams must not stay on air into the next.
+                if new_event || self.snapshot.game_number() != snapshot.game_number() {
                     info!("Snapshot for new game received: {}", snapshot.game_number());
                     self.black = TeamInfo::with_name(BLACK_TEAM_NAME);
                     self.white = TeamInfo::with_name(WHITE_TEAM_NAME);
@@ -735,6 +737,37 @@ mod tests {
         assert!(state.pool.is_empty());
         assert!(state.start_time.is_empty());
         assert_eq!(state.half_play_duration, None);
+    }
+
+    #[test]
+    fn a_new_event_on_the_same_game_number_clears_the_previous_event_s_teams() {
+        let snapshot = |event: &str| GameSnapshot {
+            game_number: "1".to_string(),
+            is_old_game: true,
+            event_id: Some(uwh_common::uwhportal::schedule::EventId::from_partial(
+                event,
+            )),
+            ..Default::default()
+        };
+        let mut state = State {
+            snapshot: snapshot("event-a"),
+            black: TeamInfo::with_name("Sharks"),
+            white: TeamInfo::with_name("Rays"),
+            referees: Vec::new(),
+            pool: "Pool A".to_string(),
+            start_time: "10:00".to_string(),
+            half_play_duration: Some(600),
+            event_logo: None,
+            sponsor_logo: None,
+        };
+
+        state.update_state(StateUpdate::Snapshot(snapshot("event-a")));
+        assert_eq!(state.black.team_name, "Sharks");
+
+        state.update_state(StateUpdate::Snapshot(snapshot("event-b")));
+        assert_eq!(state.black.team_name, BLACK_TEAM_NAME);
+        assert_eq!(state.white.team_name, WHITE_TEAM_NAME);
+        assert!(state.pool.is_empty());
     }
 
     #[test]

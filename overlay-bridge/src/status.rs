@@ -278,13 +278,18 @@ pub fn render_page(data: &PageData) -> String {
     // quote characters that would otherwise end the attribute early and let the rest of the
     // sentence become markup. The settings path is interpolated, never hard-coded: it is
     // different on every machine, and naming someone else's file would send an operator hunting
-    // for a path they do not have.
-    let scan_hint = escape_html(
+    // for a path they do not have. The feed port is interpolated for a different reason: it is
+    // one value in one place (`config::DEFAULT_REFBOX_PORT`), and a tooltip that quoted its own
+    // copy of the number would be the fifth literal this branch exists to remove.
+    let scan_hint = escape_html(&format!(
         "Searching checks every address on that network and takes a few seconds. It only reports \
          something as a refbox if it answers with a game, so anything else listening on the same \
-         port is ignored. The first search may raise a firewall prompt on Windows; if searching \
-         is blocked here, type the refbox's address instead.",
-    );
+         port is ignored. Searching looks on port {}. A refbox older than this version serves its \
+         feed on 8000 and will not be found — type its address instead, with :8000 on the end. \
+         The first search may raise a firewall prompt on Windows; if searching is blocked here, \
+         type the refbox's address instead.",
+        crate::config::DEFAULT_REFBOX_PORT
+    ));
     let settings_hint = escape_html(&format!(
         "The refbox address and the bridge's own port can also be set with a command-line flag \
          (--refbox-host, --refbox-port, --port) and are remembered automatically for next time. \
@@ -1262,6 +1267,39 @@ mod tests {
         // is the point: an apostrophe reaching an attribute raw is how a quote character ends
         // the attribute early and turns the rest of the sentence into markup.
         assert!(html.contains("type the refbox&#39;s address instead"));
+    }
+
+    #[test]
+    fn the_search_tooltip_names_both_ports_an_operator_might_need() {
+        // The gap this closes: an operator who searches instead of typing an address never met
+        // the fact that an older refbox serves 8000, so an empty result read as the firewall
+        // sentence sitting beside it. Scoped to the Search tooltip on purpose -- the *settings*
+        // tooltip has said 8000 since `3dd9f3cd`, so a page-wide `contains("8000")` passes with
+        // this sentence deleted and proves nothing at all.
+        let html = render_page(&base_data());
+        let after_search = html
+            .split_once("<button type=\"submit\">Search</button>")
+            .expect("the Search button anchors the tooltip belonging to it")
+            .1;
+        let tip = after_search
+            .split_once("data-tip=\"")
+            .expect("the Search button is followed by its own help marker")
+            .1
+            .split_once('"')
+            .expect("the tooltip attribute must be closed")
+            .0;
+
+        assert!(
+            tip.contains(&format!(
+                "Searching looks on port {}",
+                crate::config::DEFAULT_REFBOX_PORT
+            )),
+            "the Search tooltip must name the port it actually scans, got:\n{tip}"
+        );
+        assert!(
+            tip.contains("serves its feed on 8000 and will not be found"),
+            "and must say an older refbox will not be found by searching, got:\n{tip}"
+        );
     }
 
     #[test]

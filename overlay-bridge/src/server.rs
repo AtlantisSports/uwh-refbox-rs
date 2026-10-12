@@ -749,12 +749,17 @@ fn discard_staged(staged: &[&StagedCsv]) {
     }
 }
 
-/// Moves every staged file over the file it replaces, **all or nothing**: a new schedule beside the
-/// old roster would be loaded on the next restart, and the operator would have been told nothing
-/// changed. Each saved file is first moved aside to its `.old` path, then the staged file is moved
-/// into place. If any step fails, every step already done is undone, the remaining staged files
-/// are deleted, and the error is returned -- the saved files are then exactly as they were. On
-/// success the `.old` files are deleted (a failure there is only logged: the new pair is in place).
+/// Moves every staged file over the file it replaces, **all or nothing when a step fails**: a new
+/// schedule beside the old roster would be loaded on the next restart, and the operator would have
+/// been told nothing changed. Each saved file is first moved aside to its `.old` path, then the
+/// staged file is moved into place. If any step fails, every step already done is undone, the
+/// remaining staged files are deleted, and the error is returned -- the saved files are then
+/// exactly as they were. On success the `.old` files are deleted (a failure there is only logged:
+/// the new pair is in place).
+///
+/// This is not proof against the process stopping part-way (a power cut, or the bridge being
+/// killed): that can leave a `.old` or `.new` file behind, or half a pair in place, and nothing
+/// recovers from that automatically on the next start.
 fn commit_staged(staged: &[&StagedCsv]) -> std::io::Result<()> {
     // Each staged file put in place, and whether a saved file was moved aside for it.
     let mut done: Vec<(&StagedCsv, bool)> = Vec::new();
@@ -877,7 +882,7 @@ fn duplicates_warning(report: &LoadReport) -> Option<String> {
         listed.push_str(&format!(" and {} more", duplicates.len() - SHOWN));
     }
     Some(format!(
-        "These appear on more than one row with different names, so they will show no \
+        "These appear on more than one row with different details, so they will show no \
          names: {listed}."
     ))
 }
@@ -954,8 +959,8 @@ fn choose_roster_source(state: &AppState, upload: RosterSourceUpload) -> Notice 
                     Err(message) => (
                         None,
                         Notice::problem(format!(
-                            "Switched to Local, but {message} -- choose a schedule CSV and a \
-                             roster CSV and save again. Nothing else was changed."
+                            "Switched to Local, but {message}. No names are shown until this \
+                             is fixed -- upload a corrected file and press Save."
                         )),
                     ),
                 }
@@ -980,23 +985,31 @@ fn choose_roster_source(state: &AppState, upload: RosterSourceUpload) -> Notice 
 /// if that load succeeds are the temporary files moved over the saved ones (all or nothing -- see
 /// [`commit_staged`]) and the new names put into use. If anything fails, the temporary files are
 /// deleted and nothing at all changes: not the saved files, not the names on air, not the source,
-/// not the remembered settings -- so a mistyped column discovered mid-tournament cannot blank the
-/// graphic that was working a moment ago.
+/// not the remembered settings -- so a FAILED upload, such as a mistyped column discovered
+/// mid-tournament, never blanks the graphic that was working a moment ago.
 ///
-/// When only one file was uploaded and the other has never been saved, there is no pair to load:
-/// that file is checked on its own and kept for later instead -- see [`save_lone_upload`]. The
-/// bridge then switches to (stays on) Local with no names shown until the other file arrives,
-/// because the operator chose Local.
+/// A VALID upload can still leave no names on air. When only one file was uploaded and the other
+/// has never been saved (or its saved file is gone from disk), there is no pair to load: that file
+/// is checked on its own and kept for later instead -- see [`save_lone_upload`]. The bridge then
+/// switches to (stays on) Local with no names shown until the other file arrives, because the
+/// operator chose Local: it does not leave Local, and does not throw the one valid file away --
+/// it asks for the missing one (Eric's ruling, 2026-10-12).
 fn choose_roster_with_upload(state: &AppState, upload: &RosterSourceUpload) -> Notice {
     let unchanged = "Nothing was changed -- the bridge is still using the same files and names \
                      as before. Fix the file and upload it again.";
 
     let dir = csv_upload_dir(state);
 
-    // Only one of the two uploaded, and the other never saved: there is no pair to load yet, so
-    // check this one on its own and keep it until the other arrives.
-    let schedule_saved = read_lock(&state.schedule_csv_path).is_some();
-    let roster_saved = read_lock(&state.roster_csv_path).is_some();
+    // Only one of the two uploaded, and the other not saved: there is no pair to load yet, so
+    // check this one on its own and keep it until the other arrives. A remembered path whose file
+    // is gone (deleted, or a `--roster-csv` flag naming a file that has moved) is not a saved
+    // file: pairing with it would always fail, and throw this upload away every time.
+    let is_saved_file = |path: &Option<String>| {
+        path.as_deref()
+            .is_some_and(|p| std::path::Path::new(p).is_file())
+    };
+    let schedule_saved = is_saved_file(&read_lock(&state.schedule_csv_path));
+    let roster_saved = is_saved_file(&read_lock(&state.roster_csv_path));
     match (upload.schedule_csv.as_deref(), upload.roster_csv.as_deref()) {
         (Some(bytes), None) if !roster_saved => {
             return save_lone_upload(state, &dir, LoneCsv::Schedule, bytes);
@@ -1436,7 +1449,7 @@ fn load_local_roster(settings: &config::Resolved) -> Option<LocalRoster> {
             let duplicates = report.duplicates();
             if !duplicates.is_empty() {
                 eprintln!(
-                    "local roster: these appear on more than one row with different names, so \
+                    "local roster: these appear on more than one row with different details, so \
                      they will show no names: {}",
                     duplicates.join(", ")
                 );
@@ -5089,9 +5102,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("create a temp dir");
         let (state, addr, tasks) = bridge_on_game_1_saving_into(dir.path()).await;
 
+        // Every roster row unreadable (a cap number that is not a number).
         let bad = roster_upload(
             "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n",
-            "team,capNumber,rosterName\n",
+            "team,capNumber,rosterName\nChengdu,notanumber,Li Wei\n",
         );
         let response = post_multipart_with_site(addr, "/roster-source", bad, "same-origin").await;
         assert_eq!(response.status().as_u16(), 200);
@@ -5099,7 +5113,7 @@ mod tests {
         let notice = current_notice(&state);
         assert!(
             !notice.done,
-            "an empty roster must be reported as a problem, got: {notice:?}"
+            "a roster with no readable row must be reported as a problem, got: {notice:?}"
         );
         assert_eq!(
             *read_lock(&state.roster_source),
@@ -5154,6 +5168,13 @@ mod tests {
                 .text
                 .contains("1 player. These appear on more than one row"),
             "the warning must read as its own sentence, got: {}",
+            notice.text
+        );
+        assert!(
+            notice
+                .text
+                .contains("on more than one row with different details"),
+            "a duplicated game differs in its teams, not its names, got: {}",
             notice.text
         );
         assert_eq!(
@@ -5294,6 +5315,141 @@ mod tests {
         );
         let leftovers = leftover_temp_files(dir.path());
         assert!(leftovers.is_empty(), "nothing may be staged: {leftovers:?}");
+
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_roster_with_only_its_header_row_loads_team_names_and_no_players() {
+        let dir = tempfile::tempdir().expect("create a temp dir");
+        let (state, addr, tasks) = bridge_on_game_1_saving_into(dir.path()).await;
+
+        // An event with no player lists: the roster CSV has its header row and nothing else.
+        let upload = roster_upload(
+            "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n",
+            "team,capNumber,rosterName\n",
+        );
+        let response =
+            post_multipart_with_site(addr, "/roster-source", upload, "same-origin").await;
+        assert_eq!(response.status().as_u16(), 200);
+
+        let notice = current_notice(&state);
+        assert!(
+            notice.done,
+            "a header-only roster is team names only, not a failure, got: {notice:?}"
+        );
+        assert!(
+            notice.text.contains("1 game") && notice.text.contains("0 players"),
+            "the notice must say no players were loaded, got: {}",
+            notice.text
+        );
+        assert_eq!(
+            *read_lock(&state.roster_source),
+            config::RosterSource::Local
+        );
+        let scorebug = get_json(addr, "/scorebug").await;
+        assert_eq!(scorebug[0]["blackTeam"].as_str(), Some("Chengdu"));
+        assert_eq!(scorebug[0]["whiteTeam"].as_str(), Some("Beijing"));
+        assert!(
+            roster_players(&get_json(addr, "/roster").await).is_empty(),
+            "a roster with no rows must serve no player names"
+        );
+
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_lone_upload_whose_saved_partner_file_is_gone_is_saved_on_its_own() {
+        let dir = tempfile::tempdir().expect("create a temp dir");
+        let (state, addr, tasks) = bridge_on_game_1_saving_into(dir.path()).await;
+
+        let good = roster_upload(
+            "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n",
+            "team,capNumber,rosterName\nChengdu,2,Li Wei\n",
+        );
+        post_multipart_with_site(addr, "/roster-source", good, "same-origin").await;
+        assert!(current_notice(&state).done);
+
+        // The saved roster disappears from disk, though its path is still remembered.
+        let csv_dir = dir.path().join("csv-files");
+        std::fs::remove_file(csv_dir.join("roster.csv")).expect("delete the saved roster");
+
+        let new_schedule = "gameNumber,blackTeam,whiteTeam\n1,Shanghai,Tianjin\n";
+        let only_schedule = reqwest::multipart::Form::new()
+            .text("source", "local")
+            .part("schedule_csv", csv_part("schedule.csv", new_schedule));
+        let response =
+            post_multipart_with_site(addr, "/roster-source", only_schedule, "same-origin").await;
+        assert_eq!(response.status().as_u16(), 200);
+
+        let notice = current_notice(&state);
+        assert!(!notice.done, "got: {notice:?}");
+        assert!(
+            !notice.text.contains("were not used"),
+            "a valid upload must not be thrown away over a partner file that is gone, got: {}",
+            notice.text
+        );
+        assert!(
+            notice.text.contains("Schedule CSV saved: 1 game")
+                && notice.text.contains("The roster CSV is still missing"),
+            "the schedule must be saved on its own and the roster asked for, got: {}",
+            notice.text
+        );
+        assert_eq!(
+            std::fs::read_to_string(csv_dir.join("schedule.csv")).expect("saved schedule"),
+            new_schedule
+        );
+        assert_eq!(
+            *read_lock(&state.roster_source),
+            config::RosterSource::Local
+        );
+
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn switching_to_local_with_a_saved_file_that_no_longer_loads_says_no_names_are_shown() {
+        let dir = tempfile::tempdir().expect("create a temp dir");
+        let (state, addr, tasks) = bridge_on_game_1_saving_into(dir.path()).await;
+
+        let good = roster_upload(
+            "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n",
+            "team,capNumber,rosterName\nChengdu,2,Li Wei\n",
+        );
+        post_multipart_with_site(addr, "/roster-source", good, "same-origin").await;
+        assert!(current_notice(&state).done);
+
+        // The saved roster is edited on disk and its header broken.
+        std::fs::write(
+            dir.path().join("csv-files").join("roster.csv"),
+            "team,cap,rosterName\nChengdu,2,Li Wei\n",
+        )
+        .expect("overwrite the saved roster");
+
+        let form = reqwest::multipart::Form::new().text("source", "local");
+        let response = post_multipart_with_site(addr, "/roster-source", form, "same-origin").await;
+        assert_eq!(response.status().as_u16(), 200);
+
+        let notice = current_notice(&state);
+        assert!(!notice.done, "got: {notice:?}");
+        assert!(
+            notice
+                .text
+                .contains("No names are shown until this is fixed"),
+            "the notice must say the names are now blank, got: {}",
+            notice.text
+        );
+        assert!(
+            !notice.text.contains("Nothing else was changed"),
+            "the source did change, so the notice must not say nothing changed, got: {}",
+            notice.text
+        );
 
         for task in tasks {
             task.abort();

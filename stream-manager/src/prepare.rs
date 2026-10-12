@@ -419,7 +419,7 @@ fn select_targets<'a>(
             .take(selection.limit.unwrap_or(usize::MAX))
             .collect();
         targets.push(Target {
-            playlist_title: playlist_title(day, &court_name),
+            playlist_title: playlist_title(&plan.event_name, day, &court_name),
             court,
             games,
         });
@@ -551,11 +551,13 @@ pub async fn run(
                         p.id.clone()
                     }
                     None => {
+                        // YouTube does not allow angle brackets in descriptions either.
                         let description = format!(
                             "{} — {title}\n{}",
                             plan.event_name,
                             portal_event_page(config)
-                        );
+                        )
+                        .replace(['<', '>'], "");
                         let id = step
                             .create_playlist(title, &description, &config.privacy)
                             .await?;

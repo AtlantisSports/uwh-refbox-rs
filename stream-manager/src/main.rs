@@ -315,9 +315,22 @@ async fn save_thumbnails(config: &Config, out: &Path, day: Option<usize>) -> Res
     let mut thumbnails = prepare::Thumbnails::default();
     let mut count = 0;
     for game in plan.games.iter().filter(|g| day.is_none_or(|d| g.day == d)) {
-        let (jpeg, _) = thumbnails
+        let jpeg = match thumbnails
             .draw(&plan, game, &mut |line| info!("{line}"))
-            .await?;
+            .await
+        {
+            Ok((jpeg, _)) => jpeg,
+            // A name the font can't draw: no picture, as Prepare would upload none.
+            Err(e) if e.is::<thumbnail::MissingGlyph>() => {
+                let (line, stop) = prepare::thumbnail_failed(&game.number, e.as_ref());
+                println!("{line}");
+                if stop {
+                    break;
+                }
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
         let number: String = game
             .number
             .chars()

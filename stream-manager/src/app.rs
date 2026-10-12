@@ -713,7 +713,7 @@ impl App {
     /// After resuming, vMix's output for the live video is started again (it is off after a
     /// reboot), except in practice mode.
     pub async fn recover_live_videos(self: &Arc<Self>) {
-        let (generation, courts, plan, url, slug, practice) = {
+        let (generation, courts, plan, url, slug) = {
             let inner = self.inner();
             (
                 inner.generation,
@@ -721,16 +721,17 @@ impl App {
                 inner.plan.clone(),
                 inner.config.portal_url.clone(),
                 inner.config.event_slug.clone(),
-                inner.config.practice_mode,
             )
         };
         // What was found is only applied while the settings still name this event: the
-        // operator may choose another one while YouTube is being asked.
-        let for_event = |i: usize, f: &mut dyn FnMut(&mut CourtRuntime)| {
+        // operator may choose another one, or turn practice mode on, while YouTube is being
+        // asked. `f` is also told whether practice mode is on now.
+        let for_event = |i: usize, f: &mut dyn FnMut(&mut CourtRuntime, bool)| {
             let mut inner = self.inner();
             if inner.generation == generation && fetched_from_current(&inner.config, &url, &slug) {
+                let practice = inner.config.practice_mode;
                 if let Some(court) = inner.courts.get_mut(i) {
-                    f(court);
+                    f(court, practice);
                 }
             }
         };
@@ -754,7 +755,7 @@ impl App {
             let videos = recovery::todays_videos(&plan, &state, &court.name, now);
             if videos.is_empty() {
                 // No video today, so none can be live.
-                for_event(i, &mut |c| c.recovered = true);
+                for_event(i, &mut |c, _| c.recovered = true);
                 continue;
             }
             // Not connected to YouTube: nothing to resume from (yet).
@@ -767,17 +768,17 @@ impl App {
             drop(court_lock);
             match found {
                 Ok((Some(live), also_live)) => {
-                    let mut resumed = false;
-                    for_event(i, &mut |c| {
+                    let mut restart = false;
+                    for_event(i, &mut |c, practice| {
                         c.recovered = true;
-                        resumed = resume_court(c, &live, &also_live);
+                        restart = resume_court(c, &live, &also_live) && !practice;
                     });
-                    if resumed && !practice {
+                    if restart {
                         self.restart_output(generation, i, &court, &state, &live)
                             .await;
                     }
                 }
-                Ok((None, _)) => for_event(i, &mut |c| c.recovered = true),
+                Ok((None, _)) => for_event(i, &mut |c, _| c.recovered = true),
                 Err(e) => warn!(
                     "[Court {}] Couldn't check which video is live: {e}",
                     court.name

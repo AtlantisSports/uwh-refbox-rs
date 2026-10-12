@@ -9,7 +9,7 @@ use crate::{
     BoxError,
     config::{Config, CourtConfig, StreamMode},
     portal::{EventPlan, PlannedGame, TeamArt, playlist_title, video_title},
-    thumbnail::{self, DESIGN_VERSION, Painter},
+    thumbnail::{self, DESIGN_VERSION, MissingGlyph, Painter},
     youtube::{BroadcastSpec, Playlist, StreamInfo, YouTube, YouTubeAccess},
 };
 use image::DynamicImage;
@@ -492,6 +492,23 @@ impl Thumbnails {
     }
 }
 
+/// What to log when a game's thumbnail can't be drawn, and whether to stop drawing them for the
+/// rest of the run. A name the font can't draw skips only that game; the event name is on every
+/// thumbnail, so it skips them all.
+pub fn thumbnail_failed(
+    game: &str,
+    e: &(dyn std::error::Error + Send + Sync + 'static),
+) -> (String, bool) {
+    match e.downcast_ref::<MissingGlyph>() {
+        Some(missing) if missing.in_event_name => (format!("Thumbnails skipped — {missing}"), true),
+        Some(missing) => (format!("Game {game}: thumbnail skipped — {missing}"), false),
+        None => (
+            format!("Thumbnails skipped for the rest of this run. Game {game}: {e}"),
+            true,
+        ),
+    }
+}
+
 fn team_picture<'a>(
     name: &'a str,
     art: &'a Option<TeamArt>,
@@ -755,12 +772,13 @@ pub async fn run(
             let drawn = if needs_thumbnail {
                 match thumbnails.draw(plan, game, log).await {
                     Ok(drawn) => Some(drawn),
+                    // Nothing is uploaded or recorded, so the next Prepare tries again.
                     Err(e) => {
-                        log(format!(
-                            "Thumbnails skipped for the rest of this run. Game {}: {e}",
-                            game.number
-                        ));
-                        thumbnails.enabled = false;
+                        let (line, stop) = thumbnail_failed(&game.number, e.as_ref());
+                        log(line);
+                        if stop {
+                            thumbnails.enabled = false;
+                        }
                         None
                     }
                 }
@@ -1275,6 +1293,58 @@ mod tests {
             "Kept Game 2 on stream key Court 1 - A because Court 1's day is running; \
              re-run Prepare after End day to rebind"
         );
+    }
+
+    #[test]
+    fn a_name_the_font_cant_draw_skips_only_that_games_thumbnail() {
+        let missing =
+            |ch, in_event_name| -> BoxError { Box::new(MissingGlyph { ch, in_event_name }) };
+        assert_eq!(
+            thumbnail_failed("7", missing('東', false).as_ref()),
+            (
+                "Game 7: thumbnail skipped — the font has no \"東\"".to_string(),
+                false
+            )
+        );
+        assert_eq!(
+            thumbnail_failed("7", missing('東', true).as_ref()),
+            (
+                "Thumbnails skipped — the font has no \"東\" in the event name".to_string(),
+                true
+            )
+        );
+        let other: BoxError = "the picture couldn't be made".into();
+        assert_eq!(
+            thumbnail_failed("7", other.as_ref()),
+            (
+                "Thumbnails skipped for the rest of this run. Game 7: the picture couldn't be made"
+                    .to_string(),
+                true
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn drawing_a_game_the_font_cant_draw_gives_no_picture() {
+        let mut plan = one_game_plan("2020-08-01T09:30:00+10:00");
+        plan.games[0].dark = "東京 Sharks".to_string();
+        let game = plan.games[0].clone();
+        let mut thumbnails = Thumbnails::default();
+        let e = thumbnails
+            .draw(&plan, &game, &mut |_| {})
+            .await
+            .err()
+            .and_then(|e| e.downcast::<MissingGlyph>().ok());
+        assert_eq!(e.map(|e| (e.ch, e.in_event_name)), Some(('東', false)));
+
+        plan.event_name = "東京 Cup".to_string();
+        let mut thumbnails = Thumbnails::default();
+        let e = thumbnails
+            .draw(&plan, &game, &mut |_| {})
+            .await
+            .err()
+            .and_then(|e| e.downcast::<MissingGlyph>().ok());
+        assert_eq!(e.map(|e| (e.ch, e.in_event_name)), Some(('東', true)));
     }
 
     fn one_game_plan(start: &str) -> EventPlan {

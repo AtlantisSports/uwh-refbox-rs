@@ -126,6 +126,27 @@ pub struct Game<'a> {
     pub light: Team<'a>,
 }
 
+/// A thumbnail that isn't drawn because the font has no letter for a character it would show.
+/// The picture is skipped rather than drawn with an empty box where that letter should be.
+#[derive(Debug)]
+pub struct MissingGlyph {
+    pub ch: char,
+    /// In the event name, which is on every game's thumbnail.
+    pub in_event_name: bool,
+}
+
+impl std::fmt::Display for MissingGlyph {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the font has no \"{}\"", self.ch)?;
+        if self.in_event_name {
+            write!(f, " in the event name")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for MissingGlyph {}
+
 /// Draws thumbnails for one event. Everything that is the same for every game (banner,
 /// halves, event name, "VS", logo) is drawn once up front.
 pub struct Painter {
@@ -136,6 +157,8 @@ pub struct Painter {
 impl Painter {
     pub fn new(event_name: &str, banner: Option<&DynamicImage>) -> Result<Self, BoxError> {
         let font = Font::new()?;
+        // Checked as drawn, in capitals: a letter's capital may be a different character.
+        font.drawable(&event_name.to_uppercase(), true)?;
         let mut base = background(banner).ok_or("could not create the thumbnail canvas")?;
         halves(&mut base);
         slash(&mut base);
@@ -147,6 +170,15 @@ impl Painter {
 
     /// The finished thumbnail as a JPEG.
     pub fn render(&self, game: &Game) -> Result<Vec<u8>, BoxError> {
+        for team in [&game.dark, &game.light] {
+            self.font.drawable(&name_text(team), false)?;
+            if let Some(letters) = badge_text(team) {
+                self.font.drawable(&letters, false)?;
+            }
+        }
+        let (head, rest) = info_text(game);
+        self.font.drawable(&head, false)?;
+        self.font.drawable(&rest, false)?;
         let mut canvas = self.base.clone();
         side(&mut canvas, &self.font, &game.dark, &DARK_SIDE);
         side(&mut canvas, &self.font, &game.light, &LIGHT_SIDE);
@@ -407,11 +439,7 @@ fn side(canvas: &mut Pixmap, font: &Font, team: &Team, style: &SideStyle) {
                 if let Some(shader) = gradient {
                     fill(canvas, &inner, paint(shader), id);
                 }
-                let letters = if team.known {
-                    initials(team.name)
-                } else {
-                    "?".to_string()
-                };
+                let letters = badge_text(team).unwrap_or_default();
                 let (size, spacing) = (110.0, 2.0);
                 let line = font.normal_line(size);
                 let x = cx - font.width(&letters, size, spacing) / 2.0;
@@ -445,7 +473,7 @@ fn side(canvas: &mut Pixmap, font: &Font, team: &Team, style: &SideStyle) {
 
     // Name plate.
     let (size, lines) = font.fit(
-        &team.name.to_uppercase(),
+        &name_text(team),
         NAME_SIZE,
         0.0,
         NAME_MAX_WIDTH,
@@ -478,6 +506,20 @@ fn side(canvas: &mut Pixmap, font: &Font, team: &Team, style: &SideStyle) {
         if let Some(path) = font.path(text, x, baseline, size, 0.0, ITALIC) {
             fill(canvas, &path, solid(style.plate[1], 1.0), id);
         }
+    }
+}
+
+/// The team name as its plate shows it.
+fn name_text(team: &Team) -> String {
+    team.name.to_uppercase()
+}
+
+/// The letters in the badge of a team without a logo.
+fn badge_text(team: &Team) -> Option<String> {
+    match (team.logo, team.known) {
+        (Some(_), _) => None,
+        (None, true) => Some(initials(team.name)),
+        (None, false) => Some("?".to_string()),
     }
 }
 
@@ -579,8 +621,7 @@ fn team_logo(canvas: &mut Pixmap, logo: &DynamicImage, cx: f32, cy: f32, circle:
 
 /// "GAME 12   Court 1 · Wed 5 Aug, 14:00" on a dark bar at the bottom.
 fn info_bar(canvas: &mut Pixmap, font: &Font, game: &Game) {
-    let head = format!("GAME {}", game.number);
-    let rest = format!("Court {} · {}", game.court, game.when);
+    let (head, rest) = info_text(game);
     let gap = 16.0;
     let mut size: f32 = 36.0;
     let total = |size: f32| font.width(&head, size, 0.0) + gap + font.width(&rest, size, 0.0);
@@ -614,6 +655,14 @@ fn info_bar(canvas: &mut Pixmap, font: &Font, game: &Game) {
     if let Some(path) = font.path(&rest, x, baseline, size, 0.0, 0.0) {
         fill(canvas, &path, solid(WHITE, 1.0), Transform::identity());
     }
+}
+
+/// The two parts of the bottom bar's text.
+fn info_text(game: &Game) -> (String, String) {
+    (
+        format!("GAME {}", game.number),
+        format!("Court {} · {}", game.court, game.when),
+    )
 }
 
 fn encode_jpeg(canvas: &Pixmap) -> Result<Vec<u8>, BoxError> {
@@ -658,8 +707,31 @@ impl Font {
         size / f32::from(self.face.units_per_em())
     }
 
+    /// Whether the font can draw every character of `text`; if not, the first one it can't.
+    /// Spaces and other blanks don't count: there is nothing to see.
+    fn covers(&self, text: &str) -> Result<(), char> {
+        match text
+            .chars()
+            .find(|ch| !ch.is_whitespace() && self.face.glyph_index(*ch).is_none())
+        {
+            Some(ch) => Err(ch),
+            None => Ok(()),
+        }
+    }
+
+    /// Refuses `text` if the font can't draw all of it.
+    fn drawable(&self, text: &str, in_event_name: bool) -> Result<(), MissingGlyph> {
+        self.covers(text)
+            .map_err(|ch| MissingGlyph { ch, in_event_name })
+    }
+
+    /// Only a blank can be missing here, since `covers` is checked before anything is drawn
+    /// (e.g. a tab in a court name): it takes the place of a space.
     fn glyph(&self, ch: char) -> GlyphId {
-        self.face.glyph_index(ch).unwrap_or(GlyphId(0))
+        self.face
+            .glyph_index(ch)
+            .or_else(|| self.face.glyph_index(' '))
+            .unwrap_or(GlyphId(0))
     }
 
     /// Width of `text`, including the extra `spacing` after every letter (as CSS does).
@@ -1057,6 +1129,83 @@ mod tests {
                 .iter()
                 .all(|l| font.width(l, size, 0.0) <= NAME_MAX_WIDTH)
         );
+    }
+
+    fn team(name: &str) -> Team<'_> {
+        Team {
+            name,
+            known: true,
+            logo: None,
+        }
+    }
+
+    fn missing(result: Result<impl Sized, BoxError>) -> MissingGlyph {
+        match result {
+            Ok(_) => panic!("drawn, but the font can't draw it"),
+            Err(e) => match e.downcast::<MissingGlyph>() {
+                Ok(missing) => *missing,
+                Err(e) => panic!("failed for another reason: {e}"),
+            },
+        }
+    }
+
+    #[test]
+    fn the_font_covers_latin_names_but_not_chinese() {
+        let font = Font::new().unwrap();
+        assert_eq!(font.covers("Team Alpha"), Ok(()));
+        assert_eq!(font.covers("東京"), Err('東'));
+        assert_eq!(font.covers("Team 東京"), Err('東'));
+        // Blanks are never drawn, even ones the font has no glyph for (tab, ideographic space).
+        assert_eq!(font.covers(" \t\u{3000}"), Ok(()));
+        // Bahnschrift has these accented letters, in both cases.
+        assert_eq!(font.covers("Équipe Sœur"), Ok(()));
+        assert_eq!(font.covers("ÉQUIPE SŒUR"), Ok(()));
+        // ... but not every Latin letter: "ǆ" (a Croatian digraph) is missing.
+        assert_eq!(font.covers("Đurđevac ǆ"), Err('ǆ'));
+    }
+
+    #[test]
+    fn a_team_name_the_font_cant_draw_skips_the_picture() {
+        let painter = Painter::new("Test Cup", None).unwrap();
+        let skipped = missing(painter.render(&game(team("東京 Sharks"), team("Sydney Kings A"))));
+        assert_eq!(skipped.ch, '東');
+        assert!(!skipped.in_event_name);
+        assert_eq!(skipped.to_string(), "the font has no \"東\"");
+
+        let skipped = missing(painter.render(&game(team("Sydney Kings A"), team("Ǆ Club"))));
+        assert_eq!(skipped.ch, 'Ǆ');
+
+        // The court is on the picture too.
+        let mut on_court = game(team("Sydney Kings A"), team("Brisbane"));
+        on_court.court = "東";
+        assert_eq!(missing(painter.render(&on_court)).ch, '東');
+    }
+
+    #[test]
+    fn names_are_checked_as_drawn_in_capitals() {
+        // "ﬁ" is one ligature character the font lacks, but the name is drawn in capitals,
+        // where it becomes the plain letters "FI".
+        let painter = Painter::new("Test Cup", None).unwrap();
+        let name = "Équipe ﬁnale";
+        assert_eq!(Font::new().unwrap().covers(name), Err('ﬁ'));
+        assert!(
+            painter
+                .render(&game(team(name), team("Sydney Kings A")))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn an_event_name_the_font_cant_draw_skips_every_picture() {
+        let skipped = missing(Painter::new("東京 Cup", None));
+        assert_eq!(skipped.ch, '東');
+        assert!(skipped.in_event_name);
+        assert_eq!(
+            skipped.to_string(),
+            "the font has no \"東\" in the event name"
+        );
+        // Drawn in capitals: the ligature "ﬁ" becomes "FI", which the font has.
+        assert!(Painter::new("ﬁnals", None).is_ok());
     }
 
     #[test]

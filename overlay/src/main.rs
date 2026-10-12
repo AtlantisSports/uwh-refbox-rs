@@ -93,6 +93,17 @@ fn migrate_bridge_address(config: &mut AppConfig) -> bool {
     true
 }
 
+/// Where `confy` keeps this overlay's settings file, named in the log so an operator who needs
+/// the old port back knows which file to edit -- the path differs per machine and per operating
+/// system. Says it could not be determined rather than guessing one, because a wrong path sends
+/// someone to edit a file that changes nothing.
+fn settings_file_description() -> String {
+    match confy::get_configuration_file_path(APP_NAME, None) {
+        Ok(path) => path.display().to_string(),
+        Err(e) => format!("<the settings file path could not be determined: {e}>"),
+    }
+}
+
 /// Moves a saved refbox port off the old default 8000 to 19540, once: a settings file from before
 /// the move is moved, and marked, so that 8000 chosen afterwards is the operator's own choice and
 /// is kept. Returns whether `config` changed and needs saving.
@@ -106,11 +117,28 @@ fn migrate_refbox_port(config: &mut AppConfig) -> bool {
         return false;
     }
     if config.refbox_port == OLD_REFBOX_PORT {
-        info!("Moved the refbox port from {OLD_REFBOX_PORT} to {NEW_REFBOX_PORT}");
+        info!(
+            "Moved the refbox port from {OLD_REFBOX_PORT} to {NEW_REFBOX_PORT} in {}. An overlay \
+             that must reach an older refbox needs {OLD_REFBOX_PORT} set back in that file.",
+            settings_file_description()
+        );
         config.refbox_port = NEW_REFBOX_PORT;
     }
     config.refbox_port_moved = true;
     true
+}
+
+/// Runs every one-time port move, and reports whether `config` changed and so needs saving.
+///
+/// Both moves are evaluated before the answer rather than short-circuiting, so a settings file
+/// that needs both is written once. Collapsing this into `migrate_bridge_address(config) ||
+/// migrate_refbox_port(config)` would leave the second move until the next launch -- one launch
+/// of exactly the dead feed these moves exist to remove. That is what
+/// `both_port_moves_happen_before_the_save` holds in place.
+fn migrate_ports(config: &mut AppConfig) -> bool {
+    let bridge_moved = migrate_bridge_address(config);
+    let refbox_moved = migrate_refbox_port(config);
+    bridge_moved || refbox_moved
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -339,11 +367,8 @@ async fn main() {
         }
     };
     // The bridge's default port moved from 8099 (vMix's hard-coded TCP API port) to 8098, and the
-    // refbox's from 8000 (held by a Windows service on some machines) to 19540. Both are evaluated
-    // before the store, rather than short-circuiting, so a file needing both is written once.
-    let bridge_moved = migrate_bridge_address(&mut config);
-    let refbox_moved = migrate_refbox_port(&mut config);
-    if bridge_moved || refbox_moved {
+    // refbox's from 8000 (held by a Windows service on some machines) to 19540.
+    if migrate_ports(&mut config) {
         if let Err(e) = confy::store(APP_NAME, None, &config) {
             warn!("Couldn't save the moved ports: {e}");
         }
@@ -740,6 +765,37 @@ mod tests {
         let mut chosen = config(OLD_REFBOX_PORT, true);
         assert!(!migrate_refbox_port(&mut chosen));
         assert_eq!(chosen.refbox_port, OLD_REFBOX_PORT);
+    }
+
+    #[test]
+    fn both_port_moves_happen_before_the_save() {
+        // A settings file written before either move, carrying both old ports.
+        let mut old = AppConfig {
+            bridge_url: format!("http://127.0.0.1:{OLD_BRIDGE_PORT}"),
+            bridge_port_moved: false,
+            refbox_port: OLD_REFBOX_PORT,
+            refbox_port_moved: false,
+            ..AppConfig::default()
+        };
+
+        assert!(
+            migrate_ports(&mut old),
+            "a file needing both moves has changed and must be saved"
+        );
+        // Neither move may wait for the next launch: the overlay saves once, here, and does not
+        // look again. A short-circuiting `||` leaves the refbox on 8000 until the launch after
+        // this one, which is one run of a blank overlay on the stream.
+        assert_eq!(
+            old.bridge_url,
+            format!("http://127.0.0.1:{NEW_BRIDGE_PORT}"),
+            "the bridge address must be moved before the save"
+        );
+        assert!(old.bridge_port_moved);
+        assert_eq!(
+            old.refbox_port, NEW_REFBOX_PORT,
+            "the refbox port must be moved before the save"
+        );
+        assert!(old.refbox_port_moved);
     }
 
     #[test]

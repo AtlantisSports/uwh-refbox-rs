@@ -134,10 +134,42 @@ pub fn share(limit: u32, percent: u8) -> u32 {
 
 /// Extras are allowed while what's left still covers the remaining switches plus MARGIN.
 pub fn extras_allowed(remaining: u32, switches_left: u32) -> bool {
-    let needed = switches_left
+    remaining >= reserve(switches_left)
+}
+
+/// What is kept for the switches still to come: their cost plus MARGIN.
+fn reserve(switches_left: u32) -> u32 {
+    switches_left
         .saturating_mul(SWITCH_COST)
-        .saturating_add(MARGIN);
-    remaining >= needed
+        .saturating_add(MARGIN)
+}
+
+/// Whether an extra costing `cost` may be paid for now: after paying it, what's left must still
+/// cover the remaining switches plus MARGIN (the switches always come first).
+pub fn can_spend_extra(remaining: u32, switches_left: u32, cost: u32) -> bool {
+    remaining
+        .checked_sub(cost)
+        .is_some_and(|after| extras_allowed(after, switches_left))
+}
+
+/// Prepare's warning when its work would eat into what the switches need: `core` units for the
+/// videos themselves plus `extra` units for thumbnails, against `remaining` of the share.
+/// `None` while it fits.
+pub fn allowance_warning(
+    core: u32,
+    extra: u32,
+    remaining: u32,
+    switches_left: u32,
+) -> Option<String> {
+    let total = core.saturating_add(extra);
+    let reserve = reserve(switches_left);
+    let available = remaining.saturating_sub(reserve);
+    (total > available).then(|| {
+        format!(
+            "This would use about {total} units; the court has about {available} left after \
+             keeping {reserve} for today's switches. Thumbnails are skipped first if it runs short."
+        )
+    })
 }
 
 /// The schedule day whose games on `court` start on today's date (in the games' own time zone).
@@ -378,6 +410,44 @@ mod tests {
         assert!(extras_allowed(MARGIN, 0));
         assert!(!extras_allowed(0, 0));
         assert!(!extras_allowed(u32::MAX - 1, u32::MAX));
+    }
+
+    #[test]
+    fn an_extra_is_paid_for_only_if_the_switches_are_still_covered_afterwards() {
+        // 3 switches: 3 × 120 + 200 = 560 kept; a 50-unit thumbnail needs 610.
+        assert!(can_spend_extra(611, 3, 50));
+        assert!(can_spend_extra(610, 3, 50));
+        assert!(!can_spend_extra(609, 3, 50));
+        assert!(can_spend_extra(MARGIN + 50, 0, 50));
+        assert!(!can_spend_extra(49, 0, 50));
+        assert!(!can_spend_extra(u32::MAX, u32::MAX, 50));
+        // With nothing to pay, the same rule as the other extras.
+        assert_eq!(can_spend_extra(560, 3, 0), extras_allowed(560, 3));
+    }
+
+    #[test]
+    fn prepare_warns_only_when_its_work_would_use_what_the_switches_need() {
+        // 3 switches: 560 kept, so 5,000 left leaves 4,440 for Prepare.
+        assert_eq!(
+            allowance_warning(4_000, 450, 5_000, 3),
+            Some(
+                "This would use about 4450 units; the court has about 4440 left after keeping \
+                 560 for today's switches. Thumbnails are skipped first if it runs short."
+                    .to_string()
+            )
+        );
+        assert_eq!(allowance_warning(4_000, 440, 5_000, 3), None);
+        assert_eq!(allowance_warning(100, 0, 5_000, 3), None);
+        // Less left than the switches need: nothing is available.
+        assert_eq!(
+            allowance_warning(50, 0, 300, 3),
+            Some(
+                "This would use about 50 units; the court has about 0 left after keeping 560 \
+                 for today's switches. Thumbnails are skipped first if it runs short."
+                    .to_string()
+            )
+        );
+        assert_eq!(allowance_warning(0, 0, 300, 3), None);
     }
 
     #[test]

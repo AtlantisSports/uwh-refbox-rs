@@ -203,6 +203,7 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
                 &state_file,
                 &selection,
                 portal_notice,
+                &ledger,
             )
             .await;
             // Also after a failure: the videos made before it still get their links. A

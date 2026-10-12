@@ -41,17 +41,14 @@ pub enum EngineStatus {
     Ready,
     /// Couldn't be installed or loaded; the preview says why and offers the button again.
     Unavailable(String),
-    /// The engine loaded, but NDI output couldn't start; the preview offers Install NDI to
-    /// reinstall.
+    /// The engine loaded, but NDI output couldn't start. No button: a reinstall can't replace the
+    /// engine this process has already loaded, so the preview asks for a restart instead.
     OutputFailed,
 }
 
 /// Whether the Install NDI button is shown (and a click acted on).
 pub fn install_allowed(status: &EngineStatus) -> bool {
-    matches!(
-        status,
-        EngineStatus::Missing | EngineStatus::Unavailable(_) | EngineStatus::OutputFailed
-    )
+    matches!(status, EngineStatus::Missing | EngineStatus::Unavailable(_))
 }
 
 /// The line shown on the local preview while NDI output isn't running.
@@ -62,9 +59,7 @@ pub fn preview_note(status: &EngineStatus) -> String {
         EngineStatus::Installing(message) => format!("NDI: {message}"),
         EngineStatus::Unavailable(message) => format!("NDI off: {message}"),
         EngineStatus::Ready => "NDI off: couldn't start NDI output (see the log)".to_string(),
-        EngineStatus::OutputFailed => format!(
-            "NDI off: NDI is installed, but it couldn't start sending the picture. {MANUAL_HELP}"
-        ),
+        EngineStatus::OutputFailed => "NDI off: NDI is installed, but it couldn't start sending the picture. Restart the overlay to try again. If that doesn't help, reinstall the NDI engine from https://ndi.link/NDIRedistV6 (or NDI Tools from https://ndi.video/tools/) and restart the overlay.".to_string(),
     }
 }
 
@@ -155,7 +150,7 @@ impl EngineWatch {
     }
 
     /// Called by the frame loop when NDI output couldn't start although the engine is Ready: the
-    /// preview then offers Install NDI, and output is tried again once the engine is Ready again.
+    /// preview then asks for a restart, and output isn't tried again.
     pub fn output_failed(&self) {
         self.set(EngineStatus::OutputFailed);
     }
@@ -901,18 +896,18 @@ mod tests {
             "Downloading…".into()
         )));
         assert!(!install_allowed(&EngineStatus::Ready));
-        // Installed, but output couldn't start: reinstalling may fix it.
-        assert!(install_allowed(&EngineStatus::OutputFailed));
+        // Installed, but output couldn't start: reinstalling can't fix it while the overlay runs.
+        assert!(!install_allowed(&EngineStatus::OutputFailed));
     }
 
     #[test]
-    fn output_that_wont_start_offers_a_reinstall() {
+    fn output_that_wont_start_asks_for_a_restart() {
         let watch = EngineWatch::with_status(EngineStatus::Ready);
         watch.output_failed();
         assert_eq!(watch.status(), EngineStatus::OutputFailed);
         assert!(!watch.is_ready());
-        assert!(watch.begin_install());
-        assert!(matches!(watch.status(), EngineStatus::Installing(_)));
+        assert!(!watch.begin_install());
+        assert_eq!(watch.status(), EngineStatus::OutputFailed);
     }
 
     #[test]
@@ -951,7 +946,7 @@ mod tests {
         let output_failed = preview_note(&EngineStatus::OutputFailed);
         assert_eq!(
             output_failed,
-            "NDI off: NDI is installed, but it couldn't start sending the picture. Click Install NDI to try again, or install the NDI engine from https://ndi.link/NDIRedistV6 (or NDI Tools from https://ndi.video/tools/) and restart the overlay."
+            "NDI off: NDI is installed, but it couldn't start sending the picture. Restart the overlay to try again. If that doesn't help, reinstall the NDI engine from https://ndi.link/NDIRedistV6 (or NDI Tools from https://ndi.video/tools/) and restart the overlay."
         );
         assert!(output_failed.contains("https://ndi.link/NDIRedistV6"));
     }

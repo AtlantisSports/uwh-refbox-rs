@@ -41,11 +41,17 @@ pub enum EngineStatus {
     Ready,
     /// Couldn't be installed or loaded; the preview says why and offers the button again.
     Unavailable(String),
+    /// The engine loaded, but NDI output couldn't start; the preview offers Install NDI to
+    /// reinstall.
+    OutputFailed,
 }
 
 /// Whether the Install NDI button is shown (and a click acted on).
 pub fn install_allowed(status: &EngineStatus) -> bool {
-    matches!(status, EngineStatus::Missing | EngineStatus::Unavailable(_))
+    matches!(
+        status,
+        EngineStatus::Missing | EngineStatus::Unavailable(_) | EngineStatus::OutputFailed
+    )
 }
 
 /// The line shown on the local preview while NDI output isn't running.
@@ -56,7 +62,56 @@ pub fn preview_note(status: &EngineStatus) -> String {
         EngineStatus::Installing(message) => format!("NDI: {message}"),
         EngineStatus::Unavailable(message) => format!("NDI off: {message}"),
         EngineStatus::Ready => "NDI off: couldn't start NDI output (see the log)".to_string(),
+        EngineStatus::OutputFailed => format!(
+            "NDI off: NDI is installed, but it couldn't start sending the picture. {MANUAL_HELP}"
+        ),
     }
+}
+
+/// Breaks the preview's note into lines no wider than `max_width` (as `measure` reports), between
+/// words where it can. The preview window can be narrower than the note, and the part that was
+/// cut off used to be the manual-install link. A word too wide for a line by itself (such as a
+/// link) is split between characters. Every line holds at least one character, however small
+/// `max_width` is.
+pub fn wrap_note(text: &str, max_width: f32, measure: impl Fn(&str) -> f32) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for mut word in text.split_whitespace() {
+        loop {
+            let candidate = if line.is_empty() {
+                word.to_string()
+            } else {
+                format!("{line} {word}")
+            };
+            if measure(&candidate) <= max_width {
+                line = candidate;
+                break;
+            }
+            if !line.is_empty() {
+                // Try the word again at the start of a fresh line.
+                lines.push(std::mem::take(&mut line));
+                continue;
+            }
+            // Too wide even alone: keep the longest start of it that fits, at least one character.
+            let mut end = word.chars().next().map_or(word.len(), char::len_utf8);
+            for (start, c) in word.char_indices().skip(1) {
+                let longer = start + c.len_utf8();
+                if measure(&word[..longer]) > max_width {
+                    break;
+                }
+                end = longer;
+            }
+            lines.push(word[..end].to_string());
+            word = &word[end..];
+            if word.is_empty() {
+                break;
+            }
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
 }
 
 #[derive(Clone)]
@@ -97,6 +152,12 @@ impl EngineWatch {
     /// Whether the engine is loaded.
     pub fn is_ready(&self) -> bool {
         self.status() == EngineStatus::Ready
+    }
+
+    /// Called by the frame loop when NDI output couldn't start although the engine is Ready: the
+    /// preview then offers Install NDI, and output is tried again once the engine is Ready again.
+    pub fn output_failed(&self) {
+        self.set(EngineStatus::OutputFailed);
     }
 
     /// Moves to Installing if an install is allowed now; false if not (e.g. one is running).
@@ -840,6 +901,18 @@ mod tests {
             "Downloading…".into()
         )));
         assert!(!install_allowed(&EngineStatus::Ready));
+        // Installed, but output couldn't start: reinstalling may fix it.
+        assert!(install_allowed(&EngineStatus::OutputFailed));
+    }
+
+    #[test]
+    fn output_that_wont_start_offers_a_reinstall() {
+        let watch = EngineWatch::with_status(EngineStatus::Ready);
+        watch.output_failed();
+        assert_eq!(watch.status(), EngineStatus::OutputFailed);
+        assert!(!watch.is_ready());
+        assert!(watch.begin_install());
+        assert!(matches!(watch.status(), EngineStatus::Installing(_)));
     }
 
     #[test]
@@ -875,5 +948,76 @@ mod tests {
             preview_note(&EngineStatus::Unavailable("no".into())),
             "NDI off: no"
         );
+        let output_failed = preview_note(&EngineStatus::OutputFailed);
+        assert_eq!(
+            output_failed,
+            "NDI off: NDI is installed, but it couldn't start sending the picture. Click Install NDI to try again, or install the NDI engine from https://ndi.link/NDIRedistV6 (or NDI Tools from https://ndi.video/tools/) and restart the overlay."
+        );
+        assert!(output_failed.contains("https://ndi.link/NDIRedistV6"));
+    }
+
+    /// Ten units per character, so widths are easy to reason about.
+    fn ten_per_char(s: &str) -> f32 {
+        s.chars().count() as f32 * 10.0
+    }
+
+    #[test]
+    fn a_note_that_fits_stays_on_one_line() {
+        assert_eq!(
+            wrap_note("NDI off: no", 1000.0, ten_per_char),
+            ["NDI off: no"]
+        );
+        // Exactly the width still fits.
+        assert_eq!(wrap_note("abc de", 60.0, ten_per_char), ["abc de"]);
+    }
+
+    #[test]
+    fn a_long_note_breaks_between_words() {
+        let lines = wrap_note("  one two   three four five  ", 90.0, ten_per_char);
+        assert_eq!(lines, ["one two", "three", "four five"]);
+        for line in &lines {
+            assert_eq!(line.trim(), line);
+            assert!(ten_per_char(line) <= 90.0);
+        }
+    }
+
+    #[test]
+    fn a_word_wider_than_the_line_is_split() {
+        let lines = wrap_note("see https://ndi.link/NDIRedistV6 now", 100.0, ten_per_char);
+        assert_eq!(
+            lines,
+            ["see", "https://nd", "i.link/NDI", "RedistV6", "now"]
+        );
+        for line in &lines {
+            assert!(ten_per_char(line) <= 100.0);
+        }
+        // The remainder of a split word is joined by the next word when they fit.
+        assert_eq!(
+            wrap_note("abcdefg hi", 50.0, ten_per_char),
+            ["abcde", "fg hi"]
+        );
+    }
+
+    #[test]
+    fn a_tiny_width_still_ends_and_loses_nothing() {
+        let text = "NDI: Looking for the NDI engine…";
+        let without_spaces: String = text.split_whitespace().collect();
+        for width in [5.0, 0.0, -10.0, f32::NAN] {
+            let lines = wrap_note(text, width, ten_per_char);
+            assert!(lines.iter().all(|line| !line.is_empty()));
+            assert_eq!(lines.concat(), without_spaces);
+        }
+    }
+
+    #[test]
+    fn an_empty_note_has_no_lines() {
+        assert!(wrap_note("", 100.0, ten_per_char).is_empty());
+        assert!(wrap_note(" \t\n ", 100.0, ten_per_char).is_empty());
+    }
+
+    #[test]
+    fn a_multibyte_character_is_never_split() {
+        let lines = wrap_note("engine…………", 30.0, ten_per_char);
+        assert_eq!(lines, ["eng", "ine", "………", "…"]);
     }
 }

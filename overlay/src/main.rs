@@ -424,8 +424,10 @@ async fn main() {
     let ndi_engine = ndi_runtime::EngineWatch::start();
     #[cfg(feature = "ndi")]
     let mut ndi_output: Option<(ndi_output::NdiOutput, ndi_output::KeyCombiner)> = None;
+    // Set when the graphics card couldn't prepare the NDI picture: not retried, as reinstalling
+    // NDI can't fix that.
     #[cfg(feature = "ndi")]
-    let mut ndi_started = false;
+    let mut combiner_failed = false;
     #[cfg(feature = "ndi")]
     let mut mouse_shown = false;
     // The preview's note, worked out again only when the engine's status changes.
@@ -433,6 +435,12 @@ async fn main() {
     let mut last_status: Option<ndi_runtime::EngineStatus> = None;
     #[cfg(feature = "ndi")]
     let mut note = String::new();
+    // The note broken into lines that fit the preview, and the width they were broken for: worked
+    // out again only when the note or the window's width changes.
+    #[cfg(feature = "ndi")]
+    let mut note_lines: Vec<String> = Vec::new();
+    #[cfg(feature = "ndi")]
+    let mut note_lines_width: Option<f32> = None;
 
     // Every page draws assuming a fixed 3840x1080 canvas (see `pages::mod`'s
     // `draw_texture_both!` family, which hardcodes a 1920 split). The *window* `window_conf()`
@@ -513,10 +521,12 @@ async fn main() {
         // NDI is fed from the offscreen canvas, never from `get_screen_data()` (the visible
         // window), which may be smaller than 3840x1080 on this machine (see `canvas`'s doc
         // above). `ndi_output::KeyCombiner` turns the canvas's color and key halves into the one
-        // 1920x1080 picture that is sent.
+        // 1920x1080 picture that is sent. Output is tried while it isn't running and the engine is
+        // Ready. If NDI output can't start, the engine is marked OutputFailed (so this isn't
+        // retried every frame) and the preview offers Install NDI; once a reinstall leaves the
+        // engine Ready again, output is tried once more.
         #[cfg(feature = "ndi")]
-        if !ndi_started && ndi_engine.is_ready() {
-            ndi_started = true;
+        if ndi_output.is_none() && !combiner_failed && ndi_engine.is_ready() {
             ndi_output = match ndi_output::NdiOutput::new("UWH Overlay") {
                 Ok(output) => match ndi_output::KeyCombiner::new() {
                     Ok(combiner) => {
@@ -525,11 +535,13 @@ async fn main() {
                     }
                     Err(e) => {
                         warn!("Failed to prepare the NDI picture, continuing without NDI: {e}");
+                        combiner_failed = true;
                         None
                     }
                 },
                 Err(e) => {
                     warn!("Failed to start NDI output, continuing without it: {e}");
+                    ndi_engine.output_failed();
                     None
                 }
             };
@@ -558,6 +570,7 @@ async fn main() {
         // that installs it. The mouse pointer shows only while the button does.
         #[cfg(feature = "ndi")]
         {
+            const NOTE_LINE_HEIGHT: f32 = 28.;
             let status = ndi_engine.status();
             let want_mouse = ndi_output.is_none() && ndi_runtime::install_allowed(&status);
             if want_mouse != mouse_shown {
@@ -568,11 +581,24 @@ async fn main() {
                 if last_status.as_ref() != Some(&status) {
                     note = ndi_runtime::preview_note(&status);
                     last_status = Some(status);
+                    note_lines_width = None;
                 }
-                draw_text(&note, 10., 30., 24., YELLOW);
+                let width = screen_width() - 20.;
+                if note_lines_width != Some(width) {
+                    note_lines = ndi_runtime::wrap_note(&note, width, |s| {
+                        measure_text(s, None, 24, 1.0).width
+                    });
+                    note_lines_width = Some(width);
+                }
+                for (i, line) in note_lines.iter().enumerate() {
+                    draw_text(line, 10., 30. + i as f32 * NOTE_LINE_HEIGHT, 24., YELLOW);
+                }
             }
             if want_mouse {
-                let button = Rect::new(10., 44., 220., 40.);
+                // 14px below the note's last line.
+                let last_baseline =
+                    30. + note_lines.len().saturating_sub(1) as f32 * NOTE_LINE_HEIGHT;
+                let button = Rect::new(10., last_baseline + 14., 220., 40.);
                 draw_rectangle(button.x, button.y, button.w, button.h, DARKGRAY);
                 draw_rectangle_lines(button.x, button.y, button.w, button.h, 2., YELLOW);
                 draw_text("Install NDI", button.x + 16., button.y + 28., 28., WHITE);

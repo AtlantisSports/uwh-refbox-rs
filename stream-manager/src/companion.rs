@@ -465,19 +465,42 @@ mod tests {
         assert_eq!(last.changes("a", &wanted).len(), 4);
     }
 
-    /// Review Focus 5: a Companion that isn't there fails fast instead of holding anything up.
+    /// Review Focus 5: a Companion that isn't there gives up within the client's `TIMEOUT`.
+    /// On Windows a refused local connection is retried for about 2 s, so it can take the
+    /// whole of it; switches never wait on this (`App::run_companion_sync` runs on its own).
     #[tokio::test]
-    async fn closed_port_fails_in_under_two_seconds() {
+    async fn closed_port_gives_up_within_the_timeout() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap().to_string();
         drop(listener);
+        // Built first: loading the system's certificates is not part of the wait being timed.
+        client().unwrap();
         let started = Instant::now();
         let result = set_variable(&address, "sm_court_1_hold", "ON").await;
         assert!(result.is_err());
+        let limit = TIMEOUT + Duration::from_millis(750);
+        assert!(started.elapsed() < limit, "{:?}", started.elapsed());
+    }
+
+    /// A Companion that takes the connection and never answers is cut off by `TIMEOUT` too.
+    #[tokio::test]
+    async fn silent_companion_is_cut_off_at_the_timeout() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let _held = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            drop(socket);
+        });
+        // Built first: loading the system's certificates is not part of the wait being timed.
+        client().unwrap();
+        let started = Instant::now();
+        let result = set_variable(&address, "sm_court_1_hold", "ON").await;
+        assert!(result.is_err());
+        let elapsed = started.elapsed();
         assert!(
-            started.elapsed() < Duration::from_secs(2),
-            "{:?}",
-            started.elapsed()
+            elapsed >= TIMEOUT && elapsed < TIMEOUT + Duration::from_millis(750),
+            "{elapsed:?}"
         );
     }
 

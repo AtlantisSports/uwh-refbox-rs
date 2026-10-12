@@ -61,8 +61,6 @@ pub enum LinkError {
     NoPendingLink,
     /// The code isn't the one the portal shows.
     InvalidCode,
-    /// The event isn't marked "Will be streamed" on the portal.
-    NotStreamed,
     /// Anything else, as text a person can read.
     Other(String),
 }
@@ -78,7 +76,7 @@ pub async fn exchange_code(
         "{}/api/events/{event_slug}/access-keys/stream-manager",
         portal_url.trim_end_matches('/')
     );
-    let client = crate::http_client().map_err(|e| LinkError::Other(unreachable_text(e)))?;
+    let client = portal_client().map_err(|e| LinkError::Other(unreachable_text(e)))?;
     let response = client
         .post(&url)
         .json(&json!({ "streamManagerId": stream_manager_id, "code": code }))
@@ -101,7 +99,6 @@ pub async fn exchange_code(
         match reason_of(&text).as_deref() {
             Some("NoPendingLink") => return Err(LinkError::NoPendingLink),
             Some("InvalidCode") => return Err(LinkError::InvalidCode),
-            Some("NotStreamed") => return Err(LinkError::NotStreamed),
             _ => {}
         }
     }
@@ -143,7 +140,7 @@ async fn put_watch_urls(
         "{}/api/events/{event_slug}/schedule/watch-urls",
         portal_url.trim_end_matches('/')
     );
-    let client = crate::http_client().map_err(|e| SendError::Other(unreachable_text(e)))?;
+    let client = portal_client().map_err(|e| SendError::Other(unreachable_text(e)))?;
     let response = client
         .put(&url)
         .bearer_auth(access_key)
@@ -240,7 +237,9 @@ pub async fn publish(
         }
         // The key is still good: only the event's "Will be streamed" setting is off.
         (Err(SendError::NotStreamed), Purpose::Set) => log("Portal: watch links weren't set: the event isn't marked \"Will be streamed\" on the portal. Turn that on for the event, then run Prepare again.".to_string()),
-        (Err(SendError::NotStreamed), Purpose::Clear) => log("Portal: watch links weren't cleared: the event isn't marked \"Will be streamed\" on the portal. Turn that on, then delete again to clear them.".to_string()),
+        (Err(SendError::NotStreamed), Purpose::Clear) => log(
+            "Portal: watch links weren't cleared: the portal said the event isn't marked \"Will be streamed\"".to_string(),
+        ),
         (Err(SendError::Other(error)), Purpose::Set) => log(format!(
             "Portal: watch links weren't set: {error}. Run Prepare again to send them."
         )),
@@ -299,6 +298,15 @@ impl KeyCheck {
                 ),
             )),
         }
+    }
+}
+
+/// What the preview says once the schedule's "Will be streamed" setting is known: an accepted
+/// key on an event the schedule says isn't streamed can't set links, so it warns.
+pub fn with_streaming(check: KeyCheck, will_be_streamed: Option<bool>) -> KeyCheck {
+    match (check, will_be_streamed) {
+        (KeyCheck::Accepted, Some(false)) => KeyCheck::NotStreamed,
+        (check, _) => check,
     }
 }
 
@@ -388,6 +396,15 @@ pub async fn publish_after_cleanup(
     }
 }
 
+/// The web client for the watch-link calls. It never follows a redirect, so the key and the
+/// code only ever go to the portal that was asked; a redirect is an error like any other reply.
+fn portal_client() -> Result<reqwest::Client, BoxError> {
+    Ok(reqwest::Client::builder()
+        .timeout(crate::HTTP_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+        .build()?)
+}
+
 fn unreachable_text(error: impl std::fmt::Display) -> String {
     format!("Couldn't reach the portal: {error}")
 }
@@ -442,6 +459,8 @@ pub(crate) mod test_portal {
     struct Shared {
         default_reply: (u16, String),
         replies_by_path: HashMap<String, (u16, String)>,
+        /// The `Location` header to send with a path's reply.
+        locations_by_path: HashMap<String, String>,
         requests: Vec<Request>,
         /// How long to wait before each reply.
         delay: Duration,
@@ -483,6 +502,17 @@ pub(crate) mod test_portal {
                 .insert(path.to_string(), (status, body.to_string()));
         }
 
+        /// From now on, answers `path` with a 302 sending the caller to `location`.
+        pub(crate) fn redirect_on(&self, path: &str, location: &str) {
+            let mut shared = self.shared.lock().unwrap();
+            shared
+                .replies_by_path
+                .insert(path.to_string(), (302, String::new()));
+            shared
+                .locations_by_path
+                .insert(path.to_string(), location.to_string());
+        }
+
         /// From now on, waits `delay` before each reply (the request is recorded at once).
         pub(crate) fn delay_replies(&self, delay: Duration) {
             self.shared.lock().unwrap().delay = delay;
@@ -501,7 +531,7 @@ pub(crate) mod test_portal {
         headers: HeaderMap,
         body: Bytes,
     ) -> Response {
-        let (status, reply, delay) = {
+        let (status, reply, delay, location) = {
             let mut shared = shared.lock().unwrap();
             shared.requests.push(Request {
                 method: method.to_string(),
@@ -517,11 +547,19 @@ pub(crate) mod test_portal {
                 .get(uri.path())
                 .unwrap_or(&shared.default_reply)
                 .clone();
-            (status, reply, shared.delay)
+            let location = shared.locations_by_path.get(uri.path()).cloned();
+            (status, reply, shared.delay, location)
         };
         tokio::time::sleep(delay).await;
         let status = StatusCode::from_u16(status).unwrap();
-        (status, [(header::CONTENT_TYPE, "application/json")], reply).into_response()
+        let mut response =
+            (status, [(header::CONTENT_TYPE, "application/json")], reply).into_response();
+        if let Some(location) = location {
+            response
+                .headers_mut()
+                .insert(header::LOCATION, location.parse().unwrap());
+        }
+        response
     }
 }
 
@@ -590,16 +628,6 @@ mod tests {
                 400,
                 r#"{"reason":"InvalidCode"}"#,
                 Some(LinkError::InvalidCode),
-            ),
-            (
-                400,
-                r#"{"reason":"NotStreamed"}"#,
-                Some(LinkError::NotStreamed),
-            ),
-            (
-                400,
-                r#"{"Reason":"NotStreamed","detail":"x"}"#,
-                Some(LinkError::NotStreamed),
             ),
             (400, "", None),
             (500, "boom", None),
@@ -694,6 +722,60 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn a_redirect_is_not_followed_with_the_key_or_the_code() {
+        let portal = MockPortal::start(204, "").await;
+        portal.redirect_on(SEND_PATH, "/elsewhere");
+        match send_watch_urls(portal.base_url(), "cup-2026", KEY, &links()).await {
+            Err(SendError::Other(text)) => {
+                assert!(text.starts_with("The portal said 302"), "{text}")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(portal.requests().len(), 1);
+
+        let portal = MockPortal::start(200, r#"{"accessKey":"elsewhere-key"}"#).await;
+        portal.redirect_on(EXCHANGE_PATH, "/elsewhere");
+        match exchange_code(portal.base_url(), "cup-2026", "123456", "9876").await {
+            Err(LinkError::Other(text)) => {
+                assert!(text.starts_with("The portal said 302"), "{text}")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(portal.requests().len(), 1);
+    }
+
+    #[test]
+    fn the_schedules_will_be_streamed_setting_turns_an_accepted_key_into_a_warning() {
+        assert_eq!(
+            with_streaming(KeyCheck::Accepted, Some(false)),
+            KeyCheck::NotStreamed
+        );
+        let (warning, text) = with_streaming(KeyCheck::Accepted, Some(false))
+            .notice()
+            .unwrap();
+        assert!(warning);
+        assert_eq!(
+            text,
+            "Portal watch links: the event isn't marked \"Will be streamed\" on the portal, so \
+             watch links won't be set. Turn that on for the event first, or go ahead without \
+             watch links."
+        );
+        assert_eq!(
+            with_streaming(KeyCheck::Accepted, Some(true)),
+            KeyCheck::Accepted
+        );
+        assert_eq!(with_streaming(KeyCheck::Accepted, None), KeyCheck::Accepted);
+        assert_eq!(
+            with_streaming(KeyCheck::Refused, Some(false)),
+            KeyCheck::Refused
+        );
+        assert_eq!(
+            with_streaming(KeyCheck::NotLinked, Some(false)),
+            KeyCheck::NotLinked
+        );
+    }
+
     #[test]
     fn the_reason_is_read_from_the_reply_whatever_its_case() {
         assert_eq!(
@@ -784,6 +866,7 @@ mod tests {
                     description: None,
                 })
                 .collect(),
+            will_be_streamed: None,
         }
     }
 
@@ -1255,7 +1338,7 @@ mod tests {
     }
 
     const NOT_STREAMED_SET: &str = "Portal: watch links weren't set: the event isn't marked \"Will be streamed\" on the portal. Turn that on for the event, then run Prepare again.";
-    const NOT_STREAMED_CLEAR: &str = "Portal: watch links weren't cleared: the event isn't marked \"Will be streamed\" on the portal. Turn that on, then delete again to clear them.";
+    const NOT_STREAMED_CLEAR: &str = "Portal: watch links weren't cleared: the portal said the event isn't marked \"Will be streamed\"";
 
     #[tokio::test]
     async fn an_event_not_marked_will_be_streamed_keeps_the_key_and_says_to_turn_it_on() {

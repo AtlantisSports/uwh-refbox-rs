@@ -785,11 +785,27 @@ async fn refresh_schedule(State(app): State<AppState>, headers: HeaderMap) -> Ap
     Ok(Json(json!({ "ok": app.plan().is_some() })))
 }
 
+/// What Prepare's preview says about watch links (`portal_links`, or `None`), and whether this
+/// check forgot a refused key, so the page can redraw Settings' portal-link card.
+fn preview_reply_parts(key_check: &watch_links::KeyCheck) -> (Option<Value>, bool) {
+    let portal_links = key_check
+        .notice()
+        .map(|(warning, text)| json!({ "warning": warning, "text": text }));
+    (portal_links, *key_check == watch_links::KeyCheck::Refused)
+}
+
+/// The reply when Prepare's preview fails after the portal key check ran: the error, with what
+/// the check found, so a YouTube failure doesn't hide a key the check has just forgotten.
+fn preview_error_body(message: &str, key_check: &watch_links::KeyCheck) -> Value {
+    let (portal_links, key_forgotten) = preview_reply_parts(key_check);
+    json!({ "error": message, "portal_links": portal_links, "key_forgotten": key_forgotten })
+}
+
 async fn prepare_preview(
     State(app): State<AppState>,
     headers: HeaderMap,
     Json(selection): Json<Selection>,
-) -> ApiResult {
+) -> Result<Response, ApiError> {
     authorize(&app, &headers)?;
     let plan = app
         .plan()
@@ -806,24 +822,35 @@ async fn prepare_preview(
         prepare::lookups(&mut yt),
         watch_links::check_key(&link_file, &config)
     );
-    let lookups = lookups.map_err(|e| bad(e.to_string()))?;
-    let work = prepare::preview(
+    // From here a failure still says what the key check found: it may have just forgotten a
+    // refused key, and this is the only time the operator is told.
+    let failed = |error: crate::BoxError| {
+        let body = preview_error_body(&error.to_string(), &key_check);
+        Ok((StatusCode::BAD_REQUEST, Json(body)).into_response())
+    };
+    let lookups = match lookups {
+        Ok(lookups) => lookups,
+        Err(error) => return failed(error),
+    };
+    let work = match prepare::preview(
         &config,
         &plan,
         &state,
         &lookups,
         &selection,
         &|court: &str| app.day_running(court),
-    )
-    .map_err(|e| bad(e.to_string()))?;
-    let portal_links = key_check
-        .notice()
-        .map(|(warning, text)| json!({ "warning": warning, "text": text }));
+    ) {
+        Ok(work) => work,
+        Err(error) => return failed(error),
+    };
+    let (portal_links, key_forgotten) = preview_reply_parts(&key_check);
     Ok(Json(json!({
         "work": work,
         "empty": work.is_empty(),
         "portal_links": portal_links,
-    })))
+        "key_forgotten": key_forgotten,
+    }))
+    .into_response())
 }
 
 async fn prepare_run(
@@ -2008,5 +2035,63 @@ mod tests {
         assert!(!dir.join(watch_links::LINK_FILE).exists());
         assert_eq!(portal_linked(&client, &base, &cookie).await, false);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ----- Prepare's preview and the portal key check -----
+
+    #[test]
+    fn a_refused_key_is_a_warning_and_says_it_was_forgotten() {
+        let (portal_links, key_forgotten) = preview_reply_parts(&watch_links::KeyCheck::Refused);
+        let portal_links = portal_links.unwrap();
+        assert_eq!(portal_links["warning"], true);
+        assert!(
+            portal_links["text"]
+                .as_str()
+                .unwrap()
+                .contains("refused this Stream Manager's key"),
+            "{portal_links}"
+        );
+        assert!(key_forgotten);
+    }
+
+    #[test]
+    fn an_accepted_or_kept_key_is_not_forgotten() {
+        assert_eq!(
+            preview_reply_parts(&watch_links::KeyCheck::Accepted),
+            (None, false)
+        );
+        let (portal_links, key_forgotten) =
+            preview_reply_parts(&watch_links::KeyCheck::NotStreamed);
+        assert_eq!(portal_links.unwrap()["warning"], true);
+        assert!(!key_forgotten);
+        for check in [
+            watch_links::KeyCheck::NotLinked,
+            watch_links::KeyCheck::Unknown("timed out".into()),
+        ] {
+            let (portal_links, key_forgotten) = preview_reply_parts(&check);
+            assert_eq!(portal_links.unwrap()["warning"], false, "{check:?}");
+            assert!(!key_forgotten, "{check:?}");
+        }
+    }
+
+    #[test]
+    fn a_failed_preview_still_says_the_key_was_refused_and_forgotten() {
+        let body = preview_error_body("YouTube said 500", &watch_links::KeyCheck::Refused);
+        assert_eq!(body["error"], "YouTube said 500");
+        assert_eq!(body["portal_links"]["warning"], true);
+        assert!(
+            body["portal_links"]["text"]
+                .as_str()
+                .unwrap()
+                .contains("refused this Stream Manager's key"),
+            "{body}"
+        );
+        assert_eq!(body["key_forgotten"], true);
+
+        let body = preview_error_body("YouTube said 500", &watch_links::KeyCheck::Accepted);
+        assert_eq!(
+            body,
+            json!({ "error": "YouTube said 500", "portal_links": null, "key_forgotten": false })
+        );
     }
 }

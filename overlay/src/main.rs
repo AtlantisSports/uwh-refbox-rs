@@ -380,11 +380,10 @@ async fn main() {
     // asks for that same size, but the OS is free to hand back something smaller -- on a
     // machine whose combined monitor width doesn't reach 3840, it does, silently, and every
     // page whose layout goes further right than the window actually got is cropped out of
-    // the captured picture entirely (see `ndi_output.rs`'s doc for the same constraint on the
-    // alpha side of this). Rendering into a fixed-size offscreen target instead removes that
-    // dependency on the real display altogether: the picture handed to NDI is always the full
-    // 3840x1080 the design assumes, on any machine, regardless of what the visible window's
-    // own size ends up being.
+    // the captured picture entirely. Rendering into a fixed-size offscreen target instead
+    // removes that dependency on the real display altogether: the canvas NDI is made from is
+    // always the full 3840x1080 the design assumes, on any machine, regardless of what the
+    // visible window's own size ends up being.
     let canvas = render_target(3840, 1080);
     canvas.texture.set_filter(FilterMode::Nearest);
     // `from_display_rect` flips y for drawing to the screen; a render target needs the
@@ -452,9 +451,10 @@ async fn main() {
             }
         }
 
-        // The full, uncropped 3840x1080 picture -- from the offscreen canvas, never from
-        // `get_screen_data()` (the visible window), which may be smaller than that on this
-        // machine (see `canvas`'s doc above).
+        // NDI is fed from the offscreen canvas, never from `get_screen_data()` (the visible
+        // window), which may be smaller than 3840x1080 on this machine (see `canvas`'s doc
+        // above). `ndi_output::KeyCombiner` turns the canvas's color and key halves into the one
+        // 1920x1080 picture that is sent.
         #[cfg(feature = "ndi")]
         if !ndi_started && ndi_engine.is_ready() {
             ndi_started = true;

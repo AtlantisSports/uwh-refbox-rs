@@ -19,7 +19,9 @@
 //!
 //! The render loop polls [`EngineWatch::is_ready`] and starts NDI output as soon as the engine is
 //! loaded, so no restart is needed after installing. If anything fails, the overlay keeps running
-//! without NDI, says why, and offers the button again.
+//! without NDI and says why. It offers the button again, except when the engine loaded but NDI
+//! output couldn't start: a reinstall can't replace an engine already loaded, so the preview asks
+//! for a restart instead.
 
 use std::{
     path::{Path, PathBuf},
@@ -156,7 +158,7 @@ impl EngineWatch {
             .clone()
     }
 
-    /// Whether the engine is loaded.
+    /// Whether the engine is loaded and NDI output hasn't failed to start.
     pub fn is_ready(&self) -> bool {
         self.status() == EngineStatus::Ready
     }

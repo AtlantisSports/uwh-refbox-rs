@@ -460,9 +460,10 @@ async fn main() {
         // NDI is fed from the offscreen canvas, never from `get_screen_data()` (the visible
         // window), which may be smaller than 3840x1080 on this machine (see `canvas`'s doc
         // above). `ndi_output::KeyCombiner` turns the canvas's color and key halves into the one
-        // 1920x1080 picture that is sent. If NDI output can't start, the engine is marked
+        // 1920x1080 picture that is sent. If `NdiOutput` can't start, the engine is marked
         // OutputFailed and the preview asks for a restart: the engine it loaded can't be replaced
-        // while the overlay runs.
+        // while the overlay runs. If the graphics card can't prepare the picture, the engine stays
+        // Ready and the preview says to see the log.
         #[cfg(feature = "ndi")]
         if !ndi_started && ndi_engine.is_ready() {
             ndi_started = true;

@@ -212,16 +212,17 @@ impl State {
                     info!("Snapshot for new event received: {:?}", snapshot.event_id);
                     self.event_logo = None;
                     self.sponsor_logo = None;
-
-                    if self.snapshot.game_number() != snapshot.game_number() {
-                        info!("Snapshot for new game received: {}", snapshot.game_number());
-                        self.black = TeamInfo::with_name(BLACK_TEAM_NAME);
-                        self.white = TeamInfo::with_name(WHITE_TEAM_NAME);
-                        self.referees.clear();
-                        self.pool = String::new();
-                        self.start_time = String::new();
-                        self.half_play_duration = None;
-                    }
+                }
+                // Not nested under the event check: within one event (and with no event at all,
+                // the local-CSV case) the previous game's teams must not stay on air into the next.
+                if self.snapshot.game_number() != snapshot.game_number() {
+                    info!("Snapshot for new game received: {}", snapshot.game_number());
+                    self.black = TeamInfo::with_name(BLACK_TEAM_NAME);
+                    self.white = TeamInfo::with_name(WHITE_TEAM_NAME);
+                    self.referees.clear();
+                    self.pool = String::new();
+                    self.start_time = String::new();
+                    self.half_play_duration = None;
                 }
                 self.snapshot = snapshot;
             }
@@ -704,6 +705,37 @@ fn window_conf() -> Conf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_game_in_the_same_event_clears_the_previous_game_s_teams() {
+        let snapshot = |game: &str| GameSnapshot {
+            game_number: game.to_string(),
+            is_old_game: true,
+            ..Default::default()
+        };
+        let mut state = State {
+            snapshot: snapshot("1"),
+            black: TeamInfo::with_name("Sharks"),
+            white: TeamInfo::with_name("Rays"),
+            referees: Vec::new(),
+            pool: "Pool A".to_string(),
+            start_time: "10:00".to_string(),
+            half_play_duration: Some(600),
+            event_logo: None,
+            sponsor_logo: None,
+        };
+
+        // Same event (none at all, as from a local-CSV bridge), so only the game number changes.
+        state.update_state(StateUpdate::Snapshot(snapshot("1")));
+        assert_eq!(state.black.team_name, "Sharks");
+
+        state.update_state(StateUpdate::Snapshot(snapshot("2")));
+        assert_eq!(state.black.team_name, BLACK_TEAM_NAME);
+        assert_eq!(state.white.team_name, WHITE_TEAM_NAME);
+        assert!(state.pool.is_empty());
+        assert!(state.start_time.is_empty());
+        assert_eq!(state.half_play_duration, None);
+    }
 
     #[test]
     fn any_bridge_address_on_the_old_port_moves_to_8098() {

@@ -23,7 +23,7 @@ const REPLY_CHARS: usize = 200;
 
 /// How long Prepare's preview waits for the key check. It only decides whether to warn, so a
 /// slow portal mustn't hold up the preview.
-const KEY_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const KEY_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// This Stream Manager's link to one portal event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -301,11 +301,11 @@ impl KeyCheck {
     }
 }
 
-/// What the preview says once the schedule's "Will be streamed" setting is known: an accepted
-/// key on an event the schedule says isn't streamed can't set links, so it warns.
+/// What the preview says once the schedule's "Will be streamed" setting is known: a key that
+/// wasn't refused, on an event the schedule says isn't streamed, can't set links, so it warns.
 pub fn with_streaming(check: KeyCheck, will_be_streamed: Option<bool>) -> KeyCheck {
     match (check, will_be_streamed) {
-        (KeyCheck::Accepted, Some(false)) => KeyCheck::NotStreamed,
+        (KeyCheck::Accepted | KeyCheck::Unknown(_), Some(false)) => KeyCheck::NotStreamed,
         (check, _) => check,
     }
 }
@@ -766,6 +766,15 @@ mod tests {
             KeyCheck::Accepted
         );
         assert_eq!(with_streaming(KeyCheck::Accepted, None), KeyCheck::Accepted);
+        // The portal not answering doesn't change what the schedule says.
+        assert_eq!(
+            with_streaming(KeyCheck::Unknown("slow".to_string()), Some(false)),
+            KeyCheck::NotStreamed
+        );
+        assert_eq!(
+            with_streaming(KeyCheck::Unknown("slow".to_string()), Some(true)),
+            KeyCheck::Unknown("slow".to_string())
+        );
         assert_eq!(
             with_streaming(KeyCheck::Refused, Some(false)),
             KeyCheck::Refused

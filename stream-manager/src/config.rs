@@ -20,6 +20,8 @@ pub fn default_config_path() -> PathBuf {
 
 pub const LIVE_PORTAL_URL: &str = "https://api.uwhportal.com";
 pub const DEV_PORTAL_URL: &str = "https://api.dev.uwhportal.com";
+/// The refbox's game-data (JSON) feed port: the `--json-port` default in `refbox/src/main.rs`.
+pub const DEFAULT_REFBOX_PORT: u16 = 19540;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -168,7 +170,7 @@ impl Default for Config {
             courts: vec![CourtConfig {
                 name: "1".to_string(),
                 refbox_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                refbox_port: 8000,
+                refbox_port: DEFAULT_REFBOX_PORT,
                 stream_a: None,
                 stream_b: None,
                 vmix_address: default_vmix_address(),
@@ -285,6 +287,39 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_court_uses_the_refbox_game_feed_port() {
+        assert_eq!(Config::default().courts[0].refbox_port, 19540);
+    }
+
+    // The refbox owns the port; this fails if its `--json-port` default moves without us.
+    #[test]
+    fn refbox_port_matches_the_refbox_default() {
+        let main_rs = include_str!("../../refbox/src/main.rs");
+        let lines: Vec<&str> = main_rs.lines().collect();
+        let field = lines
+            .iter()
+            .position(|l| l.trim() == "json_port: u16,")
+            .expect("`json_port: u16,` field not found in refbox/src/main.rs");
+        let attr = lines[..field]
+            .iter()
+            .rev()
+            .map(|l| l.trim())
+            .find(|l| !l.starts_with("///"))
+            .expect("no attribute above `json_port` in refbox/src/main.rs");
+        let value = attr
+            .strip_prefix("#[clap(")
+            .and_then(|a| a.split("default_value = \"").nth(1))
+            .and_then(|rest| rest.split('"').next())
+            .unwrap_or_else(|| {
+                panic!("no `default_value` in the attribute above `json_port`: {attr}")
+            });
+        let port: u16 = value
+            .parse()
+            .unwrap_or_else(|e| panic!("`json_port` default {value:?} is not a port: {e}"));
+        assert_eq!(port, DEFAULT_REFBOX_PORT);
+    }
 
     #[test]
     fn default_is_valid_and_typos_are_rejected() {

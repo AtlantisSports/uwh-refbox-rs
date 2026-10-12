@@ -28,13 +28,13 @@ Learn more about NDI and get NDI Tools at https://ndi.video.
 ## 1. What runs where
 
 ```
- Court 1 refbox ──(port 8000)──┐
-                               ▼
+ Court 1 refbox ──(port 19540)──┐
+                                ▼
  ┌───────────────────── Court 1 mini PC ─────────────────────┐
  │ overlay-bridge ──► overlay ──NDI──► vMix ──► YouTube       │
  │   (status page :8098)                ▲                     │
  │ Stream Manager ──(vMix control :8088)┘  ──► YouTube API    │
- │   (control page :8090)  also reads the refbox (port 8000)  │
+ │   (control page :8090) also reads the refbox (port 19540)  │
  └────────────────────────────────────────────────────────────┘
  Court 2: the same again on Court 2's mini PC.
 ```
@@ -49,7 +49,7 @@ Learn more about NDI and get NDI Tools at https://ndi.video.
 
 | Program | Code | Ready-made download |
 |---|---|---|
-| overlay, overlay-bridge | `master` (the NDI picture fix and offline team names from PR #3383 are merged). The streaming-PC fixes this guide relies on (the Install NDI button, bridge on port 8098, a local refbox listed once) are on `feat/overlay/streaming-pc-setup` until that PR is merged | `streaming-tools-windows.zip` (A0) |
+| overlay, overlay-bridge | `master` (the NDI picture fix and offline team names from PR #3383 are merged). The streaming-PC fixes this guide relies on (the Install NDI button, bridge on port 8098, a local refbox listed once) are merged (PR #3522) | `streaming-tools-windows.zip` (A0) |
 | Stream Manager | `feat/workspace/stream-manager` until its PR is merged, then `master` | the same zip |
 
 ---
@@ -170,10 +170,11 @@ single file; the overlay's images and fonts are built into it.
 
 1. Double-click **overlay-bridge**. A console window opens and the **status page** opens in the
    browser at `http://127.0.0.1:8098`. (Port 8099 is taken by vMix, so the bridge uses 8098.)
-2. On the status page, set the **refbox** to this court's refbox (its IP address, port `8000`).
-   - Refbox on **this same PC**: use `127.0.0.1:8000`. Every 127.x address means "this PC".
+2. On the status page, set the **refbox** to this court's refbox (its IP address, port `19540`;
+   `8000` for a refbox from release 0.5.2 or earlier).
+   - Refbox on **this same PC**: use `127.0.0.1:19540`. Every 127.x address means "this PC".
    - Refbox on **another device** (the usual setup at the pool): use that device's network address,
-     e.g. `192.168.1.20:8000`.
+     e.g. `192.168.1.20:19540`.
    - Use the **same refbox address** in Stream Manager (B5).
 3. Choose where team names come from: **UWH Portal** (normal), or **Local** with the two CSV files
    (for venues without portal access).
@@ -284,7 +285,7 @@ Also set:
      else is refused.
    - **Privacy:** Unlisted for tests. ⛔ Public only when a human says so.
    - **Courts:** **only this mini PC's court**. Remove any other. Court name exactly as the portal
-     uses it (e.g. `1`), refbox IP and port `8000`, **vMix address `127.0.0.1:8088`**. Leave the
+     uses it (e.g. `1`), refbox IP and port `19540`, **vMix address `127.0.0.1:8088`**. Leave the
      stream key names empty to use `Court N - A` / `Court N - B`.
    - **Stream keys:** **Two (A/B, no gap)** unless a human says the venue's upload can't take the
      brief doubling at each switch. Then choose **One (short gap)**: vMix streams to key A all
@@ -508,8 +509,8 @@ key A.
 | Overlay shows no team names or scores | The overlay can't reach the bridge. Check `bridge_url` in `%APPDATA%\overlay\config\default-config.toml` matches the bridge's port (`http://127.0.0.1:8098`), and that the bridge's status page shows the refbox connected. Restart the overlay after changing the file. |
 | Stream Manager: "Refbox connected, waiting for its first update" (amber) | Connected, but the refbox hasn't sent a game update yet. It only sends while something changes, e.g. a running clock. Start a clock or the break countdown on the refbox. |
 | Stream Manager: "Refbox not responding: no countdown for 10 s, automatic switching paused" (red) | During the break the refbox sends its countdown every second, and nothing has come for 10 s (e.g. its Wi-Fi dropped). Automatic switching waits until it sends again. Check the refbox and its network. If a switch is due, press **Switch now**. |
-| Stream Manager: "Refbox data can't be read: check the refbox port is 8000" (red) | Connected to the refbox's LED-panel port (8001) instead of its game-data port. In Settings → Courts set the refbox port to **8000**. |
-| Bridge's refbox scan lists the same refbox many times at 127.0.0.x | Older bridge versions did this on Windows (every 127.x is "this PC"). Pick `127.0.0.1:8000`; the current version lists it once. |
+| Stream Manager: "Refbox data can't be read: check the refbox port is 19540 (8000 for an older refbox)" (red) | Connected to the refbox's other feed port (19541, or 8001 on an older refbox), or to another program such as Companion, instead of its game-data port. In Settings → Courts set the refbox port to **19540** (**8000** for a refbox from release 0.5.2 or earlier). |
+| Bridge's refbox scan lists the same refbox many times at 127.0.0.x | Older bridge versions did this on Windows (every 127.x is "this PC"). Pick `127.0.0.1:19540`; the current version lists it once. |
 | Settings: "The event … may only use letters, digits and dashes" | The event name isn't a portal event name. Pick the event from the list again. |
 | Signing in is slow to say "Wrong PIN" | After a wrong PIN the next try waits longer each time (up to 30 s). Check the PIN. The wait resets 15 minutes after the last wrong PIN. |
 | "Too many sign-in attempts; wait a moment and try again." | More than 20 sign-ins are waiting, maybe someone guessing the PIN. Wait a minute and try again. |

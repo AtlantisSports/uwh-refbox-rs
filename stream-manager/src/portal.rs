@@ -9,6 +9,8 @@ use uwh_common::uwhportal::schedule::FORMAT;
 
 /// YouTube rejects titles longer than this.
 const MAX_TITLE_CHARS: usize = 100;
+/// YouTube rejects playlist titles longer than this.
+const MAX_PLAYLIST_TITLE_CHARS: usize = 150;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedGame {
@@ -58,8 +60,30 @@ impl EventPlan {
     }
 }
 
-pub fn playlist_title(day: usize, court: &str) -> String {
-    format!("Day {day} · Court {court}")
+/// Named after the event, so a new tournament on the same channel never adopts an earlier
+/// tournament's playlist. A long event name is shortened, never dropped, so the day and court
+/// always show.
+pub fn playlist_title(event_name: &str, day: usize, court: &str) -> String {
+    // YouTube does not allow angle brackets in titles.
+    let event_name = event_name.replace(['<', '>'], "");
+    let court = court.replace(['<', '>'], "");
+    let without_event = format!(" · Day {day} · Court {court}");
+    let full = format!("{event_name}{without_event}");
+    if full.chars().count() <= MAX_PLAYLIST_TITLE_CHARS {
+        return full;
+    }
+    // Room for at least one character of the event name plus the "…".
+    let room = MAX_PLAYLIST_TITLE_CHARS.saturating_sub(without_event.chars().count());
+    if room >= 2 {
+        let mut cut: String = event_name.chars().take(room - 1).collect();
+        cut.push('…');
+        cut.push_str(&without_event);
+        cut
+    } else {
+        let mut cut: String = full.chars().take(MAX_PLAYLIST_TITLE_CHARS - 1).collect();
+        cut.push('…');
+        cut
+    }
 }
 
 pub fn video_title(event_name: &str, game: &PlannedGame) -> String {
@@ -304,7 +328,39 @@ mod tests {
                 (2, "1".to_string())
             ]
         );
-        assert_eq!(playlist_title(1, "2"), "Day 1 · Court 2");
+        assert_eq!(
+            playlist_title("Nationals 2026", 1, "2"),
+            "Nationals 2026 · Day 1 · Court 2"
+        );
+    }
+
+    #[test]
+    fn playlist_title_has_no_angle_brackets() {
+        assert_eq!(
+            playlist_title("<Cup> 2026", 1, "<2>"),
+            "Cup 2026 · Day 1 · Court 2"
+        );
+    }
+
+    #[test]
+    fn playlist_titles_differ_between_events() {
+        assert_ne!(
+            playlist_title("Nationals 2026", 1, "1"),
+            playlist_title("State Titles 2026", 1, "1")
+        );
+    }
+
+    #[test]
+    fn long_event_name_is_shortened_in_playlist_title_keeping_day_and_court() {
+        // Multi-byte characters prove the limit counts characters, not bytes.
+        let event = "é".repeat(200);
+        let title = playlist_title(&event, 1, "2");
+        assert_eq!(title.chars().count(), MAX_PLAYLIST_TITLE_CHARS);
+        let event_part = title
+            .strip_suffix(" · Day 1 · Court 2")
+            .expect("day and court kept");
+        assert!(event_part.ends_with('…'));
+        assert!(event_part.starts_with('é'));
     }
 
     #[test]

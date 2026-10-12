@@ -521,7 +521,7 @@ async fn main() {
                     last_status = Some(status);
                     note_lines_width = None;
                 }
-                let width = screen_width() - 20.;
+                let width = ndi_runtime::note_width(screen_width());
                 if note_lines_width != Some(width) {
                     note_lines = ndi_runtime::wrap_note(&note, width, |s| {
                         measure_text(s, None, 24, 1.0).width

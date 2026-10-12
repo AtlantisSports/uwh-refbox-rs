@@ -63,6 +63,18 @@ pub fn preview_note(status: &EngineStatus) -> String {
     }
 }
 
+/// The longest a line of the preview's note may be. The window asks for 3840 wide, so it can run
+/// across two monitors or past the edge of one, and with display scaling above 100% one monitor
+/// shows even less of it: wrapping at the window's edge left the end of the note off-screen. 1200
+/// fits on a 1920-wide screen at up to 150% scaling, and on a 1366-wide one at 100%.
+pub const NOTE_MAX_WIDTH: f32 = 1200.;
+
+/// The width to wrap the preview's note to, given the window's width: 10px clear of each side,
+/// and never wider than [`NOTE_MAX_WIDTH`].
+pub fn note_width(window_width: f32) -> f32 {
+    (window_width - 20.).min(NOTE_MAX_WIDTH)
+}
+
 /// Breaks the preview's note into lines no wider than `max_width` (as `measure` reports), between
 /// words where it can. The preview window can be narrower than the note, and the part that was
 /// cut off used to be the manual-install link. A word too wide for a line by itself (such as a
@@ -954,6 +966,15 @@ mod tests {
     /// Ten units per character, so widths are easy to reason about.
     fn ten_per_char(s: &str) -> f32 {
         s.chars().count() as f32 * 10.0
+    }
+
+    #[test]
+    fn the_note_wraps_within_what_one_screen_shows() {
+        // The 3840-wide window can be wider than the monitor showing it.
+        assert_eq!(note_width(3840.), NOTE_MAX_WIDTH);
+        assert_eq!(note_width(1220.), NOTE_MAX_WIDTH);
+        // A window narrower than that keeps 10px clear of each side.
+        assert_eq!(note_width(1000.), 980.);
     }
 
     #[test]

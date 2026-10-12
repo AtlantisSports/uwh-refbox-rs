@@ -1,6 +1,6 @@
 //! Keeps a court's upcoming YouTube videos in step with the portal during the day (ADR 026 §2):
-//! titles (placeholder teams resolved), descriptions and start times. Games removed from the
-//! portal are reported, never deleted.
+//! titles (placeholder teams resolved), descriptions and start times, and on the 10-minute
+//! check their thumbnails too. Games removed from the portal are reported, never deleted.
 
 use crate::{
     BoxError,
@@ -9,7 +9,7 @@ use crate::{
     portal::{self, EventPlan, PlannedGame},
     prepare::{self, EventState},
     quota,
-    youtube::{YouTube, YouTubeAccess},
+    youtube::{THUMBNAIL_COST, YouTube, YouTubeAccess},
 };
 use std::path::PathBuf;
 use time::OffsetDateTime;
@@ -124,17 +124,36 @@ pub async fn begin(
     })
 }
 
-/// Updates the checked games' videos where the portal has changed. Returns how many changed.
-/// The court's lock is taken one game at a time, so a switch can go ahead in between.
+/// Updates the checked games' videos where the portal has changed. Returns how many changed
+/// (thumbnails not counted). The court's lock is taken one game at a time, so a switch can go
+/// ahead in between. With `thumbnails`, a game's thumbnail is drawn and uploaded again when
+/// what it shows has changed; never on a switch's own check, which only has a few seconds.
 async fn update(
     app: &App,
     youtube: &mut YouTubeAccess<'_>,
     check: &Check,
+    thumbnails: bool,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<usize, BoxError> {
     let state_file = record_file(app, check)?;
     let mut updated = 0;
+    let mut pictures = prepare::Thumbnails::default();
     for game in check.games.iter().filter_map(|g| check.plan.game(g)) {
+        // Drawn before taking the court's lock, so a slow picture download never holds up a
+        // switch.
+        let redrawn = if thumbnails {
+            prepare::redraw_thumbnail(
+                &mut pictures,
+                &check.config,
+                &check.plan,
+                game,
+                &state_file,
+                log,
+            )
+            .await
+        } else {
+            None
+        };
         let mut yt = youtube.step(&game.court).await?;
         // Read afresh: a switch may have changed the record while the court's lock was free.
         let mut state = prepare::load_state(&state_file, &check.config.event_slug)?;
@@ -150,6 +169,20 @@ async fn update(
         .await?;
         if changed {
             updated += 1;
+        }
+        if let Some(redrawn) = redrawn {
+            prepare::upload_redrawn(
+                &mut yt,
+                &check.config,
+                game,
+                redrawn,
+                &mut pictures,
+                &state,
+                &state_file,
+                &|court: &str| app.can_spend_extra(court, THUMBNAIL_COST),
+                log,
+            )
+            .await;
         }
     }
     Ok(updated)
@@ -197,7 +230,7 @@ pub async fn sync_court(
     let updated = if check.games.is_empty() {
         0
     } else {
-        update(app, &mut YouTubeAccess::shared(app), &check, log).await?
+        update(app, &mut YouTubeAccess::shared(app), &check, true, log).await?
     };
     finish(app, court, &check, updated, log)
 }
@@ -223,7 +256,7 @@ pub async fn complete(
     check: &Check,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<SyncReport, BoxError> {
-    let updated = update(app, &mut YouTubeAccess::Held(yt), check, log).await?;
+    let updated = update(app, &mut YouTubeAccess::Held(yt), check, false, log).await?;
     finish(app, court, check, updated, log)
 }
 

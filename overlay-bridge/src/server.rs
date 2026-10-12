@@ -929,18 +929,36 @@ fn choose_roster_source(state: &AppState, upload: RosterSourceUpload) -> Notice 
             }),
         ),
         config::RosterSource::Local => {
-            match try_load_local_roster(schedule_path.as_deref(), roster_path.as_deref()) {
-                Ok(loaded) => {
-                    let notice = local_roster_notice(loaded.report());
-                    (Some(loaded), notice)
+            let missing = match (schedule_path.is_some(), roster_path.is_some()) {
+                (true, true) => None,
+                (true, false) => Some("the roster CSV has not been uploaded yet -- choose it"),
+                (false, true) => Some("the schedule CSV has not been uploaded yet -- choose it"),
+                (false, false) => {
+                    Some("no schedule CSV or roster CSV has been uploaded yet -- choose both")
                 }
-                Err(message) => (
+            };
+            if let Some(missing) = missing {
+                (
                     None,
                     Notice::problem(format!(
-                        "Switched to Local, but {message} -- choose a schedule CSV and a roster \
-                         CSV and save again. Nothing else was changed."
+                        "Switched to Local, but {missing} and press Save. No names are shown \
+                         until both files are saved."
                     )),
-                ),
+                )
+            } else {
+                match try_load_local_roster(schedule_path.as_deref(), roster_path.as_deref()) {
+                    Ok(loaded) => {
+                        let notice = local_roster_notice(loaded.report());
+                        (Some(loaded), notice)
+                    }
+                    Err(message) => (
+                        None,
+                        Notice::problem(format!(
+                            "Switched to Local, but {message} -- choose a schedule CSV and a \
+                             roster CSV and save again. Nothing else was changed."
+                        )),
+                    ),
+                }
             }
         }
     };
@@ -966,7 +984,9 @@ fn choose_roster_source(state: &AppState, upload: RosterSourceUpload) -> Notice 
 /// graphic that was working a moment ago.
 ///
 /// When only one file was uploaded and the other has never been saved, there is no pair to load:
-/// that file is checked on its own and kept for later instead -- see [`save_lone_upload`].
+/// that file is checked on its own and kept for later instead -- see [`save_lone_upload`]. The
+/// bridge then switches to (stays on) Local with no names shown until the other file arrives,
+/// because the operator chose Local.
 fn choose_roster_with_upload(state: &AppState, upload: &RosterSourceUpload) -> Notice {
     let unchanged = "Nothing was changed -- the bridge is still using the same files and names \
                      as before. Fix the file and upload it again.";
@@ -1076,9 +1096,10 @@ enum LoneCsv {
 /// own**, by the same rules a pair load applies to it ([`local_roster::check_schedule`] /
 /// [`local_roster::check_roster`]). A file that fails is deleted and nothing changes, exactly as
 /// for a pair. A file that passes is saved (via [`commit_staged`], so a failure there also
-/// changes nothing) and its path remembered -- but the names on air and the source are left
-/// exactly as they were: half a pair cannot show any names, so nothing on air changes until the
-/// other file arrives and the next upload takes the ordinary pair path.
+/// changes nothing) and its path remembered. Because the operator chose Local, the bridge
+/// switches to (or stays on) Local, and the notice is always a problem asking for the missing
+/// file: half a pair cannot show any names, so none are shown until the other file arrives and
+/// the next upload takes the ordinary pair path.
 fn save_lone_upload(
     state: &AppState,
     dir: &std::path::Path,
@@ -1135,9 +1156,17 @@ fn save_lone_upload(
     }
     let schedule_path = read_lock(&state.schedule_csv_path).clone();
     let roster_path = read_lock(&state.roster_csv_path).clone();
-    let source = *read_lock(&state.roster_source);
+    // The operator chose Local, so the bridge switches to (or stays on) it -- with no names shown
+    // until the other file arrives.
+    *write_lock(&state.local_roster) = None;
+    *write_lock(&state.roster_source) = config::RosterSource::Local;
     if let Some(path) = &state.settings_path {
-        config::remember_roster_source(path, source, schedule_path, roster_path);
+        config::remember_roster_source(
+            path,
+            config::RosterSource::Local,
+            schedule_path,
+            roster_path,
+        );
     }
 
     let saved = match which {
@@ -1150,17 +1179,6 @@ fn save_lone_upload(
             plural(report.players, "player", "players")
         ),
     };
-    let next = match source {
-        config::RosterSource::Portal => format!(
-            "Now choose Local, choose the {other} and press Save -- until both files are saved, \
-             names still come from the UWH Portal."
-        ),
-        config::RosterSource::Local => format!(
-            "Now choose the {other} and press Save -- until both files are saved, no names are \
-             shown."
-        ),
-    };
-
     let mut warnings = Vec::new();
     if report.rows_skipped() > 0 {
         warnings.push(format!(
@@ -1174,11 +1192,15 @@ fn save_lone_upload(
         ));
     }
     warnings.extend(duplicates_warning(&report));
+    let missing = format!(
+        "The {other} is still missing -- choose it and press Save. No names are shown until \
+         both files are saved."
+    );
     if warnings.is_empty() {
-        Notice::done(format!("{saved} {next}"))
+        Notice::problem(format!("{saved} {missing}"))
     } else {
         Notice::problem(format!(
-            "{saved} {} Fix the file and upload it again. {next}",
+            "{saved} {} Fix the file and upload it again. {missing}",
             warnings.join(" ")
         ))
     }
@@ -4820,13 +4842,12 @@ mod tests {
 
         let notice = current_notice(&state);
         assert!(
-            notice.done,
-            "a good lone file should be kept, got: {notice:?}"
+            !notice.done,
+            "a lone file leaves the pair incomplete, so the notice is a problem, got: {notice:?}"
         );
         assert!(
             notice.text.contains("Roster CSV saved: 2 players")
-                && notice.text.contains("schedule CSV")
-                && notice.text.contains("names still come from the UWH Portal"),
+                && notice.text.contains("The schedule CSV is still missing"),
             "the notice must say the roster was kept and ask for the schedule, got: {}",
             notice.text
         );
@@ -4840,8 +4861,8 @@ mod tests {
         assert!(read_lock(&state.schedule_csv_path).is_none());
         assert_eq!(
             *read_lock(&state.roster_source),
-            config::RosterSource::Portal,
-            "names on air must not change until both files are saved"
+            config::RosterSource::Local,
+            "the operator chose Local, so the bridge switches to it"
         );
         assert!(read_lock(&state.local_roster).is_none());
         assert_eq!(
@@ -4879,6 +4900,53 @@ mod tests {
             vec!["Li Wei".to_string(), "Wang Fang".to_string()]
         );
         assert!(leftover_temp_files(dir.path()).is_empty());
+
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn saving_local_with_only_the_schedule_saved_asks_for_the_roster() {
+        let dir = tempfile::tempdir().expect("create a temp dir");
+        let (state, addr, tasks) = bridge_on_game_1_saving_into(dir.path()).await;
+
+        let only_schedule = reqwest::multipart::Form::new()
+            .text("source", "local")
+            .part(
+                "schedule_csv",
+                csv_part(
+                    "schedule.csv",
+                    "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n",
+                ),
+            );
+        let response =
+            post_multipart_with_site(addr, "/roster-source", only_schedule, "same-origin").await;
+        assert_eq!(response.status().as_u16(), 200);
+
+        // Now Local again with no files at all.
+        let form = reqwest::multipart::Form::new().text("source", "local");
+        let response = post_multipart_with_site(addr, "/roster-source", form, "same-origin").await;
+        assert_eq!(response.status().as_u16(), 200);
+
+        let notice = current_notice(&state);
+        assert!(!notice.done, "expected a problem, got: {notice:?}");
+        assert!(
+            notice
+                .text
+                .contains("the roster CSV has not been uploaded yet"),
+            "got: {}",
+            notice.text
+        );
+        assert!(
+            !notice.text.contains("choose a schedule CSV"),
+            "must not ask for the file that is already saved, got: {}",
+            notice.text
+        );
+        assert_eq!(
+            *read_lock(&state.roster_source),
+            config::RosterSource::Local
+        );
 
         for task in tasks {
             task.abort();

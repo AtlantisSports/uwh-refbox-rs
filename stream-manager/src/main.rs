@@ -189,7 +189,7 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
                 courts: court.into_iter().collect(),
                 limit,
             };
-            prepare::run_cli(&config, &plan, &mut yt, &state_file()?, &selection).await
+            prepare::run_cli(&config, &plan, &mut yt, &state_file()?, &selection, &ledger).await
         }
         CliCommand::Thumbnails { out, day } => save_thumbnails(&config, &out, day).await,
         CliCommand::Videos => show_videos(&config, &mut youtube()?, &state_file()?).await,

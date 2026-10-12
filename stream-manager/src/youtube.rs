@@ -24,6 +24,9 @@ const API: &str = "https://www.googleapis.com/youtube/v3";
 const UPLOAD_API: &str = "https://www.googleapis.com/upload/youtube/v3";
 const LIST_COST: u32 = 1;
 const WRITE_COST: u32 = 50;
+/// A thumbnail upload. Thumbnails are extras: Prepare uploads one only while the allowance
+/// still covers the switches (`quota::can_spend_extra`).
+pub const THUMBNAIL_COST: u32 = 50;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StreamInfo {
@@ -572,7 +575,7 @@ impl YouTube {
             .query(&[("videoId", video_id), ("uploadType", "media")])
             .header(CONTENT_TYPE, "image/jpeg")
             .body(jpeg);
-        self.send(request, "thumbnails/set", WRITE_COST).await?;
+        self.send(request, "thumbnails/set", THUMBNAIL_COST).await?;
         Ok(())
     }
 

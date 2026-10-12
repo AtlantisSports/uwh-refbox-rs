@@ -11,7 +11,7 @@ use crate::{
     portal::EventPlan,
     prepare::{self, Selection, Thumbnails},
     switcher::Command,
-    youtube::YouTubeAccess,
+    youtube::{THUMBNAIL_COST, YouTubeAccess},
 };
 use axum::{
     Json, Router,
@@ -742,7 +742,13 @@ async fn prepare_preview(
         &|court: &str| app.day_running(court),
     )
     .map_err(|e| bad(e.to_string()))?;
-    Ok(Json(json!({ "work": work, "empty": work.is_empty() })))
+    let (remaining, switches_left) = app.prepare_allowance(&selection.courts);
+    let allowance_warning = prepare::allowance_warning(&work, remaining, switches_left);
+    Ok(Json(json!({
+        "work": work,
+        "empty": work.is_empty(),
+        "allowance_warning": allowance_warning,
+    })))
 }
 
 /// One game's thumbnail exactly as Prepare would upload it. Nothing is sent to YouTube.
@@ -812,6 +818,7 @@ async fn prepare_run(
                 &lookups,
                 &selection,
                 &|court: &str| app.day_running(court),
+                &|court: &str| app.can_spend_extra(court, THUMBNAIL_COST),
                 &mut log,
             )
             .await

@@ -9,8 +9,9 @@ use crate::{
     BoxError,
     config::{Config, CourtConfig, StreamMode},
     portal::{EventPlan, PlannedGame, TeamArt, playlist_title, video_title},
+    quota,
     thumbnail::{self, DESIGN_VERSION, MissingGlyph, Painter},
-    youtube::{BroadcastSpec, Playlist, StreamInfo, YouTube, YouTubeAccess},
+    youtube::{BroadcastSpec, Playlist, StreamInfo, THUMBNAIL_COST, YouTube, YouTubeAccess},
 };
 use image::DynamicImage;
 use log::info;
@@ -547,7 +548,11 @@ pub struct Work {
     pub binds: usize,
     pub playlist_adds: usize,
     pub thumbnails: usize,
+    /// Units for everything except the thumbnails.
     pub units: usize,
+    /// Units for the thumbnails: extras, uploaded only while the allowance still covers the
+    /// switches.
+    pub extra_units: usize,
     pub privacy: String,
 }
 
@@ -561,6 +566,28 @@ impl Work {
             + self.thumbnails
             == 0
     }
+}
+
+/// Preview's warning when `work` would use what the switches need (`quota::allowance_warning`),
+/// given what's left of the share and the switches still to come today.
+pub fn allowance_warning(work: &Work, remaining: u32, switches_left: u32) -> Option<String> {
+    let units = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+    quota::allowance_warning(
+        units(work.units),
+        units(work.extra_units),
+        remaining,
+        switches_left,
+    )
+}
+
+/// The terminal's answer to "switches still to come today": it knows nothing of the refbox, so
+/// it keeps back every game starting today on every court in the config.
+fn switches_left_today(config: &Config, plan: &EventPlan, now: OffsetDateTime) -> u32 {
+    config
+        .courts
+        .iter()
+        .map(|c| quota::court_switches_left(plan, &c.name, None, None, now))
+        .fold(0, u32::saturating_add)
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -696,8 +723,8 @@ pub fn preview(
             + work.videos_to_create
             + work.videos_to_update
             + work.binds
-            + work.playlist_adds
-            + work.thumbnails);
+            + work.playlist_adds);
+    work.extra_units = THUMBNAIL_COST as usize * work.thumbnails;
     Ok(work)
 }
 
@@ -709,6 +736,9 @@ pub fn preview(
 /// On a court whose day is running (asked of `day_running` for each game, just before its
 /// stream key is decided), videos keep the stream key they are bound to; titles, descriptions
 /// and start times are still updated.
+///
+/// Thumbnails are extras: `extras_ok` is asked with the court's name just before each upload,
+/// and a game whose thumbnail it refuses is left for a later run.
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     config: &Config,
@@ -718,6 +748,7 @@ pub async fn run(
     lookups: &Lookups,
     selection: &Selection,
     day_running: &(dyn Fn(&str) -> bool + Sync),
+    extras_ok: &(dyn Fn(&str) -> bool + Sync),
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<(), BoxError> {
     let mut thumbnails = Thumbnails::default();
@@ -870,30 +901,41 @@ pub async fn run(
                 })?;
             }
 
-            if let Some((jpeg, complete)) = drawn {
-                match youtube.set_thumbnail(&video.broadcast_id, jpeg).await {
-                    Ok(()) => {
-                        log(format!("Game {}: thumbnail set", game.number));
-                        let key = if complete {
-                            thumbnail_key
-                        } else {
-                            thumbnail_key + INCOMPLETE
-                        };
-                        update_state(state_file, &config.event_slug, |state| {
-                            if let Some(v) = state.videos.get_mut(&game.number) {
-                                v.thumbnail = Some(key);
-                            }
-                        })?;
-                    }
-                    // The videos matter more than their thumbnails: carry on without them.
-                    Err(e) => {
-                        log(format!(
-                            "Thumbnails skipped for the rest of this run. Game {}: {e}",
-                            game.number
-                        ));
-                        thumbnails.enabled = false;
+            match drawn {
+                // Asked just before each upload: the switches always come first. Nothing is
+                // recorded, so a later Prepare tries again.
+                Some(_) if !extras_ok(&target.court.name) => {
+                    log(format!(
+                        "Game {}: thumbnail not uploaded — saving the allowance for switches",
+                        game.number
+                    ));
+                }
+                Some((jpeg, complete)) => {
+                    match youtube.set_thumbnail(&video.broadcast_id, jpeg).await {
+                        Ok(()) => {
+                            log(format!("Game {}: thumbnail set", game.number));
+                            let key = if complete {
+                                thumbnail_key
+                            } else {
+                                thumbnail_key + INCOMPLETE
+                            };
+                            update_state(state_file, &config.event_slug, |state| {
+                                if let Some(v) = state.videos.get_mut(&game.number) {
+                                    v.thumbnail = Some(key);
+                                }
+                            })?;
+                        }
+                        // The videos matter more than their thumbnails: carry on without them.
+                        Err(e) => {
+                            log(format!(
+                                "Thumbnails skipped for the rest of this run. Game {}: {e}",
+                                game.number
+                            ));
+                            thumbnails.enabled = false;
+                        }
                     }
                 }
+                None => {}
             }
         }
     }
@@ -908,6 +950,7 @@ pub async fn run_cli(
     youtube: &mut YouTube,
     state_file: &Path,
     selection: &Selection,
+    ledger: &quota::LedgerFile,
 ) -> Result<(), BoxError> {
     let state = load_state(state_file, &config.event_slug)?;
     let lookups = lookups(youtube).await?;
@@ -925,7 +968,8 @@ pub async fn run_cli(
     println!(
         "\nThis will create {} playlist(s) and {} video(s), update {} video(s),\n\
          link {} video(s) to stream keys, add {} to playlists and set {} thumbnail(s).\n\
-         Privacy: {}. Estimated cost: about {} of the 10,000 daily units.",
+         Privacy: {}. Estimated cost: about {} of the 10,000 daily units,\n\
+         plus about {} units for thumbnails, uploaded only while the allowance allows.",
         work.playlists_to_create,
         work.videos_to_create,
         work.videos_to_update,
@@ -934,7 +978,18 @@ pub async fn run_cli(
         work.thumbnails,
         work.privacy,
         work.units + 2,
+        work.extra_units,
     );
+    let share = quota::share(config.quota_daily_limit, config.quota_share_percent);
+    let remaining = |now| share.saturating_sub(ledger.used_today(now));
+    let now = OffsetDateTime::now_utc();
+    if let Some(warning) = allowance_warning(
+        &work,
+        remaining(now),
+        switches_left_today(config, plan, now),
+    ) {
+        println!("{warning}");
+    }
     if !confirm("Go ahead?") {
         println!("Cancelled. Nothing was changed.");
         return Ok(());
@@ -947,6 +1002,14 @@ pub async fn run_cli(
         &lookups,
         selection,
         &no_day_running,
+        &|_: &str| {
+            let now = OffsetDateTime::now_utc();
+            quota::can_spend_extra(
+                remaining(now),
+                switches_left_today(config, plan, now),
+                THUMBNAIL_COST,
+            )
+        },
         &mut |line| info!("{line}"),
     )
     .await
@@ -1270,6 +1333,58 @@ mod tests {
             .err()
             .and_then(|e| e.downcast::<MissingGlyph>().ok());
         assert_eq!(e.map(|e| (e.ch, e.in_event_name)), Some(('東', true)));
+    }
+
+    #[test]
+    fn the_preview_counts_thumbnails_apart_from_the_videos_units() {
+        let config = Config::default();
+        let plan = one_game_plan("2030-08-01T09:30:00+10:00");
+        let game = &plan.games[0];
+        let lookups = Lookups {
+            streams: vec![stream("Court 1 - A"), stream("Court 1 - B")],
+            existing_playlists: Vec::new(),
+        };
+        let selection = Selection {
+            day: game.day,
+            courts: Vec::new(),
+            limit: None,
+        };
+        let no_day_running = |_: &str| false;
+        let mut state = EventState::default();
+        // Nothing yet: a playlist, a video, its key and its playlist place, plus a thumbnail.
+        let work = preview(
+            &config,
+            &plan,
+            &state,
+            &lookups,
+            &selection,
+            &no_day_running,
+        )
+        .unwrap();
+        assert_eq!(work.units, 4 * 50);
+        assert_eq!(work.extra_units, THUMBNAIL_COST as usize);
+
+        // Everything done except the thumbnail: no units for the videos, still work to do.
+        let spec = broadcast_spec(&config, &plan, game);
+        let mut video = recorded(&spec, portal_start(game));
+        video.court = Some(game.court.clone());
+        video.day = Some(game.day);
+        state.videos.insert(game.number.clone(), video);
+        state
+            .playlists
+            .insert(playlist_title(&plan.event_name, game.day, "1"), "p1".into());
+        let work = preview(
+            &config,
+            &plan,
+            &state,
+            &lookups,
+            &selection,
+            &no_day_running,
+        )
+        .unwrap();
+        assert_eq!((work.units, work.thumbnails), (0, 1));
+        assert_eq!(work.extra_units, THUMBNAIL_COST as usize);
+        assert!(!work.is_empty());
     }
 
     fn one_game_plan(start: &str) -> EventPlan {

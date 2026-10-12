@@ -1131,6 +1131,40 @@ impl App {
         extras_allowed_with(&inner, court_name, used, OffsetDateTime::now_utc())
     }
 
+    /// Whether an extra costing `cost` (a thumbnail) may be paid for now on this court: after
+    /// paying it, what's left of the share must still cover the rest of today's switches plus
+    /// a margin.
+    pub fn can_spend_extra(&self, court_name: &str, cost: u32) -> bool {
+        let used = self.quota_used_today();
+        let inner = self.inner();
+        let share = quota::share(
+            inner.config.quota_daily_limit,
+            inner.config.quota_share_percent,
+        );
+        quota::can_spend_extra(
+            share.saturating_sub(used),
+            switches_left(&inner, court_name, OffsetDateTime::now_utc()),
+            cost,
+        )
+    }
+
+    /// For Prepare's preview: what's left of the share, and the switches still to come today on
+    /// `courts` (every court when empty) and on every court whose day is running.
+    pub fn prepare_allowance(&self, courts: &[String]) -> (u32, u32) {
+        let used = self.quota_used_today();
+        let inner = self.inner();
+        let share = quota::share(
+            inner.config.quota_daily_limit,
+            inner.config.quota_share_percent,
+        );
+        let switches = switches_left_where(
+            &inner,
+            |name| courts.is_empty() || courts.iter().any(|c| c == name),
+            OffsetDateTime::now_utc(),
+        );
+        (share.saturating_sub(used), switches)
+    }
+
     /// Notes that a switch or End day stopped `court_name`'s vMix `destination` just now.
     pub fn note_stopped(&self, court_name: &str, destination: u8) {
         self.stopped_keys
@@ -1302,13 +1336,19 @@ impl App {
 /// Switches still to come today on `court_name` and, as the share covers the whole program, on
 /// every other court whose day is running.
 fn switches_left(inner: &Inner, court_name: &str, now: OffsetDateTime) -> u32 {
+    switches_left_where(inner, |name| name == court_name, now)
+}
+
+/// Switches still to come today on the courts `include` picks and on every court whose day is
+/// running.
+fn switches_left_where(inner: &Inner, include: impl Fn(&str) -> bool, now: OffsetDateTime) -> u32 {
     let Some(plan) = inner.plan.as_ref() else {
         return 0;
     };
     inner
         .courts
         .iter()
-        .filter(|c| c.config.name == court_name || c.switcher.status().day_running)
+        .filter(|c| include(&c.config.name) || c.switcher.status().day_running)
         .map(|c| {
             let status = c.switcher.status();
             let next = match &status.phase {

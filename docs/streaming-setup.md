@@ -456,6 +456,13 @@ key A.
 **Check:** on the portal, the event's schedule shows the watch link for each prepared game (only
 once this Stream Manager is linked, B5 step 4).
 
+**Thumbnails.** Prepare also gives each video a thumbnail with both teams' logos (or initials) and
+the event banner. The preview shows their cost separately. They are extras: if the allowance would
+otherwise run short of what the day's switches need, the log says "Game 12: thumbnail not uploaded
+— saving the allowance for switches" and the next Prepare, or the next title check, tries again.
+YouTube only accepts thumbnails from a channel allowed custom thumbnails (YouTube Studio asks for
+phone verification).
+
 ### C2. Dry run (strongly recommended)
 
 1. With Practice mode **ON**, set the refbox to the event, court and first game. Press **Start
@@ -496,8 +503,9 @@ once this Stream Manager is linked, B5 step 4).
     **Start day** to put the next game live.
 - **Titles follow the portal:** every 10 minutes, and again just before each switch, upcoming
   videos are updated when the portal changes a team (e.g. "Winner G12" → the real team) or a start
-  time. A game removed from the portal is listed on the court's card ("No longer on the portal: …")
-  and its video is kept; delete it in YouTube Studio if it's really cancelled.
+  time. The 10-minute check also redraws that game's thumbnail. A game removed from the portal is
+  listed on the court's card ("No longer on the portal: …") and its video is kept; delete it in
+  YouTube Studio if it's really cancelled.
 - **If the allowance runs low**, the court's log says "Allowance low: skipped the chat message and
   Next game link". The switches carry on; only the chat message, the "Next game" link and the
   10-minute title checks pause.
@@ -558,6 +566,8 @@ once this Stream Manager is linked, B5 step 4).
 | Log: "Portal: watch links weren't set: The portal said 403 Forbidden: `<html>…`", or Prepare's preview: "Portal watch links: couldn't check the link (The portal said 403 …)" | Something between this PC and the portal answered instead of the portal, usually the venue Wi-Fi's sign-in page or a network filter. The key is kept. Sign in to the venue Wi-Fi in a browser on this PC (or use another network), then run **Prepare** again. |
 | Log: "Portal: watch links weren't set: the event isn't marked \"Will be streamed\" …", or Prepare's preview: "Portal watch links: the event isn't marked \"Will be streamed\" on the portal …" | On the portal, turn on **Will be streamed** for the event, then run **Prepare** again. The link is kept. (Links are still cleared when videos are deleted, whatever this setting.) |
 | Watch links weren't set on the portal (log: "Portal: watch links weren't set …" or "… isn't linked to the event, so none were set") | Run **Prepare** again; it sends the links again. If the log says it isn't linked, link it first (B5 step 4). |
+| Log: "Game 12: thumbnail skipped — the font has no "東"" | A team or event name uses a character the thumbnail's font can't draw. The video keeps YouTube's own picture; nothing else is affected. |
+| Log: "Game 12: thumbnail not uploaded — saving the allowance for switches" | The allowance is being kept for the switches. Nothing to do: the next Prepare or title check tries again while there is room. |
 | Log: "⚠ The portal or YouTube didn't answer in time; titles weren't checked" | The internet or the portal was slow. Nothing to do: titles are checked again in 10 minutes and just before each switch. |
 
 ---

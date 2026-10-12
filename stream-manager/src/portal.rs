@@ -29,6 +29,9 @@ pub struct EventPlan {
     pub event_name: String,
     /// Games sorted by start time, then game number.
     pub games: Vec<PlannedGame>,
+    /// Whether the event is marked "Will be streamed" on the portal; `None` when the schedule
+    /// doesn't say.
+    pub will_be_streamed: Option<bool>,
 }
 
 impl EventPlan {
@@ -158,6 +161,7 @@ pub fn parse_event_plan(json: &str) -> Result<EventPlan, BoxError> {
     Ok(EventPlan {
         event_name: raw.event.name.trim().to_string(),
         games: planned,
+        will_be_streamed: raw.event.will_be_streamed,
     })
 }
 
@@ -207,6 +211,8 @@ struct RawSchedule {
 #[derive(Deserialize)]
 struct RawEvent {
     name: String,
+    #[serde(rename = "willBeStreamed", default)]
+    will_be_streamed: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -313,6 +319,26 @@ mod tests {
             (g10.dark.as_str(), g10.light.as_str()),
             ("Winner G3", "Loser G2")
         );
+    }
+
+    #[test]
+    fn will_be_streamed_is_read_from_the_event() {
+        for (value, expected) in [("true", Some(true)), ("false", Some(false)), ("null", None)] {
+            let json = SAMPLE.replace(
+                r#""name": "Test Cup" }"#,
+                &format!(r#""name": "Test Cup", "willBeStreamed": {value} }}"#),
+            );
+            assert_ne!(json, SAMPLE);
+            let plan = parse_event_plan(&json).unwrap();
+            assert_eq!(plan.will_be_streamed, expected, "{value}");
+        }
+    }
+
+    #[test]
+    fn will_be_streamed_absent_is_unknown() {
+        assert!(!SAMPLE.contains("willBeStreamed"));
+        let plan = parse_event_plan(SAMPLE).unwrap();
+        assert_eq!(plan.will_be_streamed, None);
     }
 
     #[test]

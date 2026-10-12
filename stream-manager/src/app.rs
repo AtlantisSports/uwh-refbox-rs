@@ -480,12 +480,14 @@ impl App {
             RefboxEvent::Connected => {
                 court.refbox_connected = true;
                 court.refbox_has_data = false;
+                court.refbox_unreadable = None;
                 court.refbox_silent = false;
                 court.note("Refbox connected".into());
             }
             RefboxEvent::Disconnected => {
                 court.refbox_connected = false;
                 court.refbox_has_data = false;
+                court.refbox_unreadable = None;
                 court.refbox_silent = false;
                 court.note("Refbox connection lost — automatic switching paused".into());
             }
@@ -942,11 +944,22 @@ impl App {
                     .iter()
                     .map(|c| CourtRuntime::new(c.clone(), rules))
                     .collect();
+                // Updates still on their way from the old refbox connections must not land on
+                // the new courts, which are matched by position.
+                inner.generation += 1;
             } else if rules_changed {
                 // Same courts and the same refbox connections: only the timing changes, so each
                 // court keeps its connection state, last game update and log.
                 for court in &mut inner.courts {
                     court.switcher.set_rules(rules);
+                }
+            }
+            if event_changed && !courts_changed {
+                // Recovery may have looked under the wrong event; look again under the new one.
+                // No day is running (changing the event is refused then).
+                for court in &mut inner.courts {
+                    court.recovered = false;
+                    court.removed_reported.clear();
                 }
             }
             inner.config = new;
@@ -1621,6 +1634,42 @@ mod tests {
         assert_eq!(refbox(&app), "disconnected");
         send(RefboxEvent::Connected);
         assert_eq!(refbox(&app), "waiting");
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn a_reconnect_clears_a_refbox_that_could_not_be_read() {
+        let app = temp_app("unreadable");
+        let generation = app.inner().generation;
+        let refbox = |app: &App| app.status().courts[0].refbox;
+        let send = |event| app.on_refbox_event(generation, 0, event);
+        send(RefboxEvent::Connected);
+        send(RefboxEvent::Unreadable("bad data".into()));
+        assert_eq!(refbox(&app), "unreadable");
+        send(RefboxEvent::Disconnected);
+        send(RefboxEvent::Connected);
+        assert_eq!(refbox(&app), "waiting");
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[tokio::test]
+    async fn changing_the_event_runs_restart_recovery_again() {
+        let app = temp_app("recover-event");
+        {
+            let mut inner = app.inner();
+            inner.courts[0].recovered = true;
+            inner.courts[0].removed_reported = vec!["22".to_string()];
+        }
+        assert!(courts_to_recover(&app.inner()).is_empty());
+        let mut new = app.config();
+        new.event_slug = "the-right-cup".to_string();
+        app.apply_settings(new).unwrap();
+        let pending: Vec<usize> = courts_to_recover(&app.inner())
+            .into_iter()
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(pending, [0]);
+        assert!(app.status().courts[0].removed_games.is_empty());
         let _ = std::fs::remove_dir_all(&app.config_dir);
     }
 

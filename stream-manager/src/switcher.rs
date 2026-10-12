@@ -81,6 +81,9 @@ pub struct CourtSwitcher {
     live: Option<GameNumber>,
     hold: bool,
     last: Option<GameSnapshot>,
+    /// Games whose video this switcher switched away from during the current day. Their videos
+    /// have ended, so they are never switched to again, even if the refbox still shows them.
+    left_behind: Vec<GameNumber>,
 }
 
 impl CourtSwitcher {
@@ -91,6 +94,7 @@ impl CourtSwitcher {
             live: None,
             hold: false,
             last: None,
+            left_behind: Vec::new(),
         }
     }
 
@@ -106,8 +110,10 @@ impl CourtSwitcher {
                 upcoming,
                 secs_left,
             } => {
-                let switch = (self.day_running && self.live.as_ref() != Some(upcoming))
-                    .then(|| secs_left.saturating_sub(self.rules.switch_lead_secs));
+                let switch = (self.day_running
+                    && self.live.as_ref() != Some(upcoming)
+                    && !self.left_behind.contains(upcoming))
+                .then(|| secs_left.saturating_sub(self.rules.switch_lead_secs));
                 let rosters = (*secs_left > self.rules.roster_start_secs)
                     .then(|| secs_left - self.rules.roster_start_secs);
                 (switch, rosters)
@@ -136,7 +142,11 @@ impl CourtSwitcher {
             };
         };
         let target = match phase {
-            Phase::Playing(game) | Phase::Break { upcoming: game, .. } if game != *live => game,
+            Phase::Playing(game) | Phase::Break { upcoming: game, .. }
+                if game != *live && !self.left_behind.contains(&game) =>
+            {
+                game
+            }
             // The live video already shows the current/upcoming game, so move on to the one
             // after it (none after the court's last game).
             _ => snapshot.next_game_number()?.clone(),
@@ -158,12 +168,15 @@ impl CourtSwitcher {
                 }
                 let target = self.next_target()?;
                 self.day_running = true;
+                self.hold = false;
+                self.left_behind.clear();
                 self.live = Some(target.clone());
                 Some(Action::GoLive(target))
             }
             Command::EndDay => {
                 self.day_running = false;
                 self.hold = false;
+                self.left_behind.clear();
                 self.live.take().map(Action::End)
             }
             Command::Hold => {
@@ -190,6 +203,7 @@ impl CourtSwitcher {
         self.day_running = true;
         self.live = Some(live);
         self.hold = false;
+        self.left_behind.clear();
     }
 
     /// A switch couldn't be carried out. `actually_live` is the game whose video is really live
@@ -211,14 +225,19 @@ impl CourtSwitcher {
             // for End day (ADR 026).
             Phase::Unknown | Phase::Finished => return None,
             // Catch up: a game is in progress but its video isn't live.
-            Phase::Playing(game) => (game != *live).then_some(game)?,
+            Phase::Playing(game) => {
+                (game != *live && !self.left_behind.contains(&game)).then_some(game)?
+            }
             Phase::Break {
                 upcoming,
                 secs_left,
             } => {
                 let in_rosters = (self.rules.roster_end_secs..=self.rules.roster_start_secs)
                     .contains(&secs_left);
-                (upcoming != *live && secs_left <= self.rules.switch_lead_secs && !in_rosters)
+                (upcoming != *live
+                    && !self.left_behind.contains(&upcoming)
+                    && secs_left <= self.rules.switch_lead_secs
+                    && !in_rosters)
                     .then_some(upcoming)?
             }
         };
@@ -227,6 +246,7 @@ impl CourtSwitcher {
 
     fn switch_to(&mut self, target: GameNumber) -> Option<Action> {
         let from = self.live.replace(target.clone())?;
+        self.left_behind.push(from.clone());
         Some(Action::Switch { from, to: target })
     }
 }
@@ -482,6 +502,62 @@ mod tests {
         // Live video already shows the current game: move to the one after it.
         let mut s = started(playing("15", "16"));
         assert_eq!(s.on_command(Command::SwitchNow), switch("15", "16"));
+    }
+
+    #[test]
+    fn a_game_switched_away_from_is_never_switched_back_to() {
+        // Switch now during Game 15 moves on to Game 16; the refbox still says Game 15 is on.
+        let mut s = started(playing("15", "16"));
+        assert_eq!(s.on_command(Command::SwitchNow), switch("15", "16"));
+        assert_eq!(s.on_snapshot(&playing("15", "16")), None);
+        assert!(!s.status().hold);
+        assert_eq!(s.status().next, None);
+    }
+
+    #[test]
+    fn switch_now_twice_during_a_game_does_not_go_back() {
+        let mut s = started(playing("15", "16"));
+        assert_eq!(s.on_command(Command::SwitchNow), switch("15", "16"));
+        assert_eq!(s.on_command(Command::SwitchNow), None);
+        assert_eq!(s.status().live.as_deref(), Some("16"));
+    }
+
+    #[test]
+    fn after_switching_away_early_the_next_switch_still_happens() {
+        let mut s = started(playing("15", "16"));
+        assert_eq!(s.on_command(Command::SwitchNow), switch("15", "16"));
+        assert_eq!(s.on_snapshot(&playing("15", "16")), None);
+        assert_eq!(s.on_snapshot(&break_old("15", "16", 195)), None);
+        assert_eq!(s.on_snapshot(&playing("16", "17")), None);
+        assert_eq!(
+            s.on_snapshot(&break_old("16", "17", 195)),
+            switch("16", "17")
+        );
+    }
+
+    #[test]
+    fn no_countdown_to_a_game_switched_away_from() {
+        // Switch now during Game 15, then the refbox goes back to the break before Game 15.
+        let mut s = started(playing("15", "16"));
+        assert_eq!(s.on_command(Command::SwitchNow), switch("15", "16"));
+        s.on_snapshot(&break_old("14", "15", 500));
+        assert_eq!(s.status().secs_until_switch, None);
+    }
+
+    #[test]
+    fn start_day_clears_a_hold_pressed_before_the_day() {
+        let mut s = CourtSwitcher::new(RULES);
+        s.on_command(Command::Hold);
+        s.on_snapshot(&playing("14", "15"));
+        assert_eq!(
+            s.on_command(Command::StartDay),
+            Some(Action::GoLive("14".into()))
+        );
+        assert!(!s.status().hold);
+        assert_eq!(
+            s.on_snapshot(&break_old("14", "15", 195)),
+            switch("14", "15")
+        );
     }
 
     #[test]

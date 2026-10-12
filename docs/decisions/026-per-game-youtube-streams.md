@@ -520,3 +520,9 @@ Made after a review of the PR against this ADR, and approved by Eric.
     playlist names from different tournaments. A very long event name is shortened with "…" so
     the title stays within YouTube's 150 characters and the day and court always show. Playlists
     made under the old names are not renamed; Prepare makes new ones.
+12. **An event not marked "Will be streamed" is explained, and the key is kept** (Eric,
+    2026-10-12): the portal refuses watch links and linking with 400 `NotStreamed` while the
+    event's "Will be streamed" option is off. Stream Manager says so in plain words for Prepare,
+    Delete, Preview and linking, and keeps the saved key, because the key is still good. A refused
+    key found by Preview is still forgotten (D4), but its warning now survives a YouTube failure
+    in the same preview, and Settings stops showing the event as linked straight away.

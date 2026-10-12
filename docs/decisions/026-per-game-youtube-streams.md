@@ -309,7 +309,6 @@ restart recovery; live status on the Stream Deck through Companion.
 
 - Separate interview videos
 - A per-court "always current game" link
-- Automatic thumbnails with team flags
 - The final score in the title or description
 - Atem support
 - Any change to the refbox, `uwh-common`, overlay, or wireless remote
@@ -515,3 +514,13 @@ Made after a review of the PR against this ADR, and approved by Eric.
     playlist names from different tournaments. A very long event name is shortened with "…" so
     the title stays within YouTube's 150 characters and the day and court always show. Playlists
     made under the old names are not renamed; Prepare makes new ones.
+13. **Each game's video gets a thumbnail** (Eric, 2026-10-12, programme decision D3): a picture
+    with both teams' logos (or their initials when there is no logo) and the event banner, drawn
+    by Prepare and uploaded with the video. Thumbnails are extras: one is uploaded only while
+    what is left of the court's allowance, after paying for it, still covers the rest of the
+    day's switches, and Prepare's preview shows their cost separately and warns when the work
+    would use what the switches need. A thumbnail the font can't draw (e.g. a team name in a
+    script it lacks) is skipped and logged, never drawn with blank boxes. The 10-minute title
+    check draws and uploads it again when a team becomes known, a logo or the banner changes,
+    or a picture missing last time is now available; the check just before a switch never does.
+    (Numbered 13 because #3523 takes 12.)

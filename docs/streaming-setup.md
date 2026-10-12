@@ -440,6 +440,13 @@ stream key A or B, alternating (all to A in one-key mode). Prepare is safe to ru
 the existing videos, and after switching a court to one-key mode it moves that day's videos to
 key A.
 
+**Thumbnails.** Prepare also gives each video a thumbnail with both teams' logos (or initials) and
+the event banner. The preview shows their cost separately. They are extras: if the allowance would
+otherwise run short of what the day's switches need, the log says "Game 12: thumbnail not uploaded
+— saving the allowance for switches" and the next Prepare, or the next title check, tries again.
+YouTube only accepts thumbnails from a channel allowed custom thumbnails (YouTube Studio asks for
+phone verification).
+
 ### C2. Dry run (strongly recommended)
 
 1. With Practice mode **ON**, set the refbox to the event, court and first game. Press **Start
@@ -472,8 +479,9 @@ key A.
     **Start day** to put the next game live.
 - **Titles follow the portal:** every 10 minutes, and again just before each switch, upcoming
   videos are updated when the portal changes a team (e.g. "Winner G12" → the real team) or a start
-  time. A game removed from the portal is listed on the court's card ("No longer on the portal: …")
-  and its video is kept; delete it in YouTube Studio if it's really cancelled.
+  time. The 10-minute check also redraws that game's thumbnail. A game removed from the portal is
+  listed on the court's card ("No longer on the portal: …") and its video is kept; delete it in
+  YouTube Studio if it's really cancelled.
 - **If the allowance runs low**, the court's log says "Allowance low: skipped the chat message and
   Next game link". The switches carry on; only the chat message, the "Next game" link and the
   10-minute title checks pause.
@@ -526,6 +534,8 @@ key A.
 | End day pressed, but vMix still streaming | Older versions stopped only one destination. Update Stream Manager; End day now stops both (in one-key mode only destination 1, so anything else on destination 2 keeps running). |
 | Start day: "Re-run Prepare: some of today's videos use a stream key other than A" | The court was switched to one-key mode after Prepare. Run **Prepare** again for that day and court; it moves the videos to key A. |
 | Log: "Allowance low: skipped the chat message and Next game link" | This PC's share of YouTube's daily allowance is nearly used. Switching carries on. If Google has granted a higher limit, raise **Daily allowance (units)** in Settings; otherwise nothing to do until midnight US Pacific time. |
+| Log: "Game 12: thumbnail skipped — the font has no "東"" | A team or event name uses a character the thumbnail's font can't draw. The video keeps YouTube's own picture; nothing else is affected. |
+| Log: "Game 12: thumbnail not uploaded — saving the allowance for switches" | The allowance is being kept for the switches. Nothing to do: the next Prepare or title check tries again while there is room. |
 | Log: "⚠ The portal or YouTube didn't answer in time; titles weren't checked" | The internet or the portal was slow. Nothing to do: titles are checked again in 10 minutes and just before each switch. |
 
 ---

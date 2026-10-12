@@ -288,7 +288,10 @@ assertion in `test_deciding_goal_with_clock_stopped_is_recorded_and_waits`, obse
   goal's clock reading exceeds `RECENT_GOAL_TIME` (15 s). A deciding goal in the first 15 seconds of
   sudden death raises the flag; a later one does not. Not a regression — `recent_goal` was never set
   for a deciding goal before — but a partial miss on "treat it exactly like any other goal", and two
-  otherwise identical goals will look different on the stream. Found by code review.
+  otherwise identical goals will look different on the stream. Found by code review. One case is
+  fixed rather than accepted (2026-10-12): when the operator disallows the goal by restoring the
+  tie, `end_confirm_pause` clears the flag. The staleness test only works on a clock counting down,
+  so an early deciding goal's flag otherwise stayed on the stream for the rest of sudden death.
 - **With the clock stopped, the on-screen confirmation countdown freezes and never expires.** The
   ruling above says the window must wait for the operator, and the countdown is drawn from the
   snapshot — but no snapshots are produced while the clock-running latch is false, so the number

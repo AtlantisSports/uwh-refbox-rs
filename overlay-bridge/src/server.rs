@@ -870,7 +870,7 @@ fn local_roster_notice(report: &LoadReport) -> Notice {
         Notice::done(loaded)
     } else {
         Notice::problem(format!(
-            "{loaded} But {} Fix the file and upload it again.",
+            "{loaded} {} Fix the file and upload it again.",
             warnings.join(" ")
         ))
     }
@@ -4861,6 +4861,13 @@ mod tests {
         assert!(
             notice.text.contains("game 2") && notice.text.contains("Chengdu cap 2"),
             "the notice must list each duplicate, got: {}",
+            notice.text
+        );
+        assert!(
+            notice
+                .text
+                .contains("1 player. These appear on more than one row"),
+            "the warning must read as its own sentence, got: {}",
             notice.text
         );
         assert_eq!(

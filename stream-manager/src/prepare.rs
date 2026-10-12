@@ -388,7 +388,7 @@ fn when_text(game: &PlannedGame) -> String {
 }
 
 /// Everything a game's thumbnail shows. When this changes (a team becomes known, a logo or
-/// the banner changes, or the design is updated), Prepare uploads the thumbnail again.
+/// the banner changes, or the design is updated), Prepare and title sync upload it again.
 fn thumbnail_key(plan: &EventPlan, game: &PlannedGame) -> String {
     let team = |name: &str, art: &Option<TeamArt>| match art {
         Some(art) => format!("{name} ({})", art.logo_url.as_deref().unwrap_or("no logo")),
@@ -409,6 +409,131 @@ fn thumbnail_key(plan: &EventPlan, game: &PlannedGame) -> String {
 /// Added to the key when a banner or logo could not be downloaded, so the next Prepare tries
 /// again.
 const INCOMPLETE: &str = " | incomplete";
+
+/// Whether title sync should draw and upload a game's thumbnail again: what it shows has
+/// changed since the upload (a team became known, a logo or the banner changed, or the design
+/// was updated), or the upload left out a picture that is now available. A game with no
+/// thumbnail recorded (Prepare skipped it or left it for later) is tried too.
+pub fn thumbnail_needs_redraw(
+    recorded: Option<&str>,
+    current_key: &str,
+    pictures_available: bool,
+) -> bool {
+    match recorded {
+        None => true,
+        Some(recorded) => match recorded.strip_suffix(INCOMPLETE) {
+            Some(shown) => shown != current_key || pictures_available,
+            None => recorded != current_key,
+        },
+    }
+}
+
+/// A game's thumbnail drawn again by title sync, waiting for the court's lock to be uploaded.
+pub struct Redrawn {
+    key: String,
+    jpeg: Vec<u8>,
+    complete: bool,
+}
+
+/// Title sync's first half of a thumbnail update: draws the thumbnail of a game Prepare made a
+/// video for, if [`thumbnail_needs_redraw`]. Done before taking the court's lock, so a slow
+/// picture download never holds up a switch. Problems are logged, never returned: the titles
+/// matter more than their thumbnails.
+pub async fn redraw_thumbnail(
+    thumbnails: &mut Thumbnails,
+    config: &Config,
+    plan: &EventPlan,
+    game: &PlannedGame,
+    state_file: &Path,
+    log: &mut (dyn FnMut(String) + Send),
+) -> Option<Redrawn> {
+    if !thumbnails.enabled {
+        return None;
+    }
+    let state = match load_state(state_file, &config.event_slug) {
+        Ok(state) => state,
+        Err(e) => {
+            log(format!("Game {}: thumbnail not checked — {e}", game.number));
+            return None;
+        }
+    };
+    let recorded = state.videos.get(&game.number)?.thumbnail.as_deref();
+    let key = thumbnail_key(plan, game);
+    // Drawn whenever the pictures could make a difference; whether they did is decided by
+    // `upload_redrawn`.
+    if !thumbnail_needs_redraw(recorded, &key, true) {
+        return None;
+    }
+    match thumbnails.draw(plan, game, log).await {
+        Ok((jpeg, complete)) => Some(Redrawn {
+            key,
+            jpeg,
+            complete,
+        }),
+        // Nothing is uploaded or recorded, so the next check tries again.
+        Err(e) => {
+            let (line, stop) = thumbnail_failed(&game.number, e.as_ref());
+            log(line);
+            if stop {
+                thumbnails.enabled = false;
+            }
+            None
+        }
+    }
+}
+
+/// Title sync's second half, holding the court's lock: uploads a [`redraw_thumbnail`] picture
+/// if the record (`state`, read under the lock) still needs it and `extras_ok` allows it for
+/// the game's court, then records what it shows. A failed upload leaves the old record, so the
+/// next check tries again, and stops thumbnails for the rest of this check.
+#[allow(clippy::too_many_arguments)]
+pub async fn upload_redrawn(
+    yt: &mut YouTube,
+    config: &Config,
+    game: &PlannedGame,
+    redrawn: Redrawn,
+    thumbnails: &mut Thumbnails,
+    state: &EventState,
+    state_file: &Path,
+    extras_ok: &(dyn Fn(&str) -> bool + Sync),
+    log: &mut (dyn FnMut(String) + Send),
+) {
+    let Some(video) = state.videos.get(&game.number) else {
+        return;
+    };
+    if !thumbnail_needs_redraw(video.thumbnail.as_deref(), &redrawn.key, redrawn.complete) {
+        return;
+    }
+    if !extras_ok(&game.court) {
+        log(format!(
+            "Game {}: thumbnail not uploaded — saving the allowance for switches",
+            game.number
+        ));
+        return;
+    }
+    if let Err(e) = yt.set_thumbnail(&video.broadcast_id, redrawn.jpeg).await {
+        log(format!("Game {}: thumbnail not updated — {e}", game.number));
+        thumbnails.enabled = false;
+        return;
+    }
+    log(format!("Game {}: thumbnail set", game.number));
+    let key = if redrawn.complete {
+        redrawn.key
+    } else {
+        redrawn.key + INCOMPLETE
+    };
+    let recorded = update_state(state_file, &config.event_slug, |state| {
+        if let Some(v) = state.videos.get_mut(&game.number) {
+            v.thumbnail = Some(key);
+        }
+    });
+    if let Err(e) = recorded {
+        log(format!(
+            "Game {}: thumbnail set but not recorded, so it will be set again — {e}",
+            game.number
+        ));
+    }
+}
 
 /// A picture that takes longer than this to download is left out (logo → initials).
 const PICTURE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
@@ -1460,6 +1585,65 @@ mod tests {
         assert_eq!((work.units, work.thumbnails), (0, 1));
         assert_eq!(work.extra_units, THUMBNAIL_COST as usize);
         assert!(!work.is_empty());
+    }
+
+    /// A game's thumbnail key, and the same key recorded for an upload missing a picture.
+    fn keys(plan: &EventPlan) -> (String, String) {
+        let key = thumbnail_key(plan, &plan.games[0]);
+        (key.clone(), key + INCOMPLETE)
+    }
+
+    #[test]
+    fn a_thumbnail_is_redrawn_when_a_team_becomes_known() {
+        let mut plan = one_game_plan("2026-08-01T09:30:00+10:00");
+        let (before, incomplete) = keys(&plan);
+        plan.games[0].dark = "Sharks".to_string();
+        let (after, _) = keys(&plan);
+        assert!(thumbnail_needs_redraw(Some(&before), &after, true));
+        assert!(thumbnail_needs_redraw(Some(&before), &after, false));
+        assert!(thumbnail_needs_redraw(Some(&incomplete), &after, false));
+    }
+
+    #[test]
+    fn a_thumbnail_is_not_redrawn_while_nothing_on_it_changed() {
+        let plan = one_game_plan("2026-08-01T09:30:00+10:00");
+        let (key, _) = keys(&plan);
+        assert!(!thumbnail_needs_redraw(Some(&key), &key, true));
+        assert!(!thumbnail_needs_redraw(Some(&key), &key, false));
+    }
+
+    #[test]
+    fn a_thumbnail_missing_a_picture_is_redrawn_once_the_picture_is_available() {
+        let plan = one_game_plan("2026-08-01T09:30:00+10:00");
+        let (key, incomplete) = keys(&plan);
+        assert!(thumbnail_needs_redraw(Some(&incomplete), &key, true));
+    }
+
+    #[test]
+    fn a_thumbnail_missing_a_picture_is_not_redrawn_while_it_is_still_missing() {
+        let plan = one_game_plan("2026-08-01T09:30:00+10:00");
+        let (key, incomplete) = keys(&plan);
+        assert!(!thumbnail_needs_redraw(Some(&incomplete), &key, false));
+    }
+
+    #[test]
+    fn a_thumbnail_is_redrawn_when_the_design_changes() {
+        let plan = one_game_plan("2026-08-01T09:30:00+10:00");
+        let (key, _) = keys(&plan);
+        let old_design = key.replacen(
+            &format!("design {DESIGN_VERSION} "),
+            &format!("design {} ", DESIGN_VERSION - 1),
+            1,
+        );
+        assert_ne!(old_design, key);
+        assert!(thumbnail_needs_redraw(Some(&old_design), &key, false));
+    }
+
+    #[test]
+    fn a_game_with_no_thumbnail_recorded_is_tried() {
+        let plan = one_game_plan("2026-08-01T09:30:00+10:00");
+        let (key, _) = keys(&plan);
+        assert!(thumbnail_needs_redraw(None, &key, false));
     }
 
     fn one_game_plan(start: &str) -> EventPlan {

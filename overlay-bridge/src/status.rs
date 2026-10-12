@@ -55,9 +55,15 @@
 //! Two consequences for this module, both deliberate. **Everything shown here is display data
 //! already resolved by the caller** -- this stays a pure string transform with no lock, no clock
 //! and no network, so the scan results and the outcome sentence are rendered exactly the way the
-//! connection state already was. And **the forms are forms, not a front-end application**: no
-//! script of any kind, so the page behaves identically on the streaming PC's browser and on a
-//! phone at the poolside, and so nothing here can fail to load (see "Self-contained" below).
+//! connection state already was. And **the forms are forms, not a front-end application**: every
+//! action is a plain form post that works with no script at all, so the page behaves identically
+//! on the streaming PC's browser and on a phone at the poolside, and so nothing here can fail to
+//! load (see "Self-contained" below). The page's one inline script (see `LIVE_SCRIPT`) only ever
+//! adds to that: it keeps the displayed values current, and -- the one exception that touches a
+//! form -- it unlocks the two CSV file pickers as soon as Local is picked in the names dropdown,
+//! because having to Save Local first before they unlocked was not intuitive (Eric's walkthrough,
+//! 2026-10-12). The server still renders those pickers disabled while the saved mode is the
+//! Portal, so if the script never runs the form behaves exactly as it did without it.
 //!
 //! Command-line flags still set every persisted value, and the page still names them and says
 //! where the settings file lives, because the address is the only one of them the page itself can
@@ -323,10 +329,10 @@ pub fn render_page(data: &PageData) -> String {
     let local_selected = if is_portal { "" } else { " selected" };
     // Disabled, not merely hidden, while `UWH Portal` is the active mode: greyed-out controls
     // tell the operator at a glance that the two files play no part right now, without a second
-    // click to find out. Reflects the mode already saved, not whatever the `<select>` is showing
-    // mid-edit -- this page carries no script beyond the live update (see the module doc's
-    // "forms are forms" section), so there is no way to react to an unsaved change in the
-    // `<select>` before the operator presses Save.
+    // click to find out. Rendered from the mode already saved; the page's script then follows
+    // the `<select>` live, so picking Local unlocks the pickers before Save is pressed (see the
+    // module doc's "forms are forms" section and `LIVE_SCRIPT`). Without the script, this saved
+    // state is what the operator gets.
     let local_files_disabled = if is_portal { " disabled" } else { "" };
     let schedule_uploaded = if data.schedule_csv_path.is_empty() {
         "No schedule file uploaded yet."
@@ -531,6 +537,12 @@ fn render_scan(scan: &ScanOutcome) -> String {
 /// A failed fetch leaves the page exactly as it was rather than blanking it: the bridge being
 /// briefly unreachable is not evidence about the refbox, and guessing otherwise is the same
 /// mistake as ticking the clock.
+///
+/// One addition that is not a live value: it also follows the names dropdown, unlocking the two
+/// CSV file pickers as soon as Local is picked rather than only after a Save (Eric's walkthrough,
+/// 2026-10-12). It runs after the live update is started and inside its own `try`, and does
+/// nothing if any of the three elements is missing, so it can never stop the live update; without
+/// it the pickers simply keep the state the server rendered (see the module doc).
 const LIVE_SCRIPT: &str = r#"(function () {
   async function tick() {
     if (document.hidden) { return; }
@@ -551,6 +563,24 @@ const LIVE_SCRIPT: &str = r#"(function () {
   }
   setInterval(tick, 250);
   tick();
+
+  /* The names dropdown unlocks the two file pickers as soon as Local is picked, without a
+     Save first. Wrapped so it can never stop the live update above. */
+  try {
+    var source = document.getElementById("roster-source");
+    if (source) {
+      var syncFilePickers = function () {
+        ["schedule-csv-file", "roster-csv-file"].forEach(function (id) {
+          var picker = document.getElementById(id);
+          if (picker) { picker.disabled = source.value !== "local"; }
+        });
+      };
+      source.addEventListener("change", syncFilePickers);
+      syncFilePickers();
+    }
+  } catch (e) {
+    /* The server-rendered state stands. */
+  }
 })();
 "#;
 
@@ -1108,6 +1138,37 @@ mod tests {
             html.contains("name=\"roster_csv\" type=\"file\" accept=\".csv\" disabled"),
             "the roster file picker must be disabled in Portal mode, got:\n{html}"
         );
+    }
+
+    #[test]
+    fn picking_local_in_the_dropdown_unlocks_the_file_pickers_without_saving_first() {
+        // Eric's walkthrough 2026-10-12: having to Save Local before the file pickers unlocked
+        // was not intuitive. The page's one script follows the dropdown; without it the
+        // server-rendered `disabled` above is what the operator gets, exactly as before.
+        let html = render_page(&base_data());
+        assert_eq!(
+            html.matches("<script").count(),
+            1,
+            "the dropdown wiring must live in the page's one script, not a second one"
+        );
+        let script = html
+            .split("<script>")
+            .nth(1)
+            .and_then(|rest| rest.split("</script>").next())
+            .expect("the page should carry its script");
+        for wired in [
+            "getElementById(\"roster-source\")",
+            "addEventListener(\"change\"",
+            "\"schedule-csv-file\"",
+            "\"roster-csv-file\"",
+            "!== \"local\"",
+        ] {
+            assert!(
+                script.contains(wired),
+                "the script should contain {wired:?} to tie the dropdown to both file pickers, \
+                 got:\n{script}"
+            );
+        }
     }
 
     #[test]

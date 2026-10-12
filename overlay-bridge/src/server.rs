@@ -119,7 +119,7 @@ use crate::{
     config, discovery,
     feed::{Connection, ConnectionState, ConnectionStatus, FeedMessage, FeedTarget, RefboxAddress},
     game_feed,
-    local_roster::{LoadReport, LocalRoster},
+    local_roster::{self, LoadReport, LocalRoster},
     portal::{Directory, TeamNames},
     state::{Display, LiveState},
     status::{self, Notice, ScanOutcome},
@@ -849,23 +849,7 @@ fn local_roster_notice(report: &LoadReport) -> Notice {
             report.roster_rows_skipped,
         ));
     }
-    let duplicates = report.duplicates();
-    if !duplicates.is_empty() {
-        const SHOWN: usize = 10;
-        let mut listed = duplicates
-            .iter()
-            .take(SHOWN)
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(", ");
-        if duplicates.len() > SHOWN {
-            listed.push_str(&format!(" and {} more", duplicates.len() - SHOWN));
-        }
-        warnings.push(format!(
-            "These appear on more than one row with different names, so they will show no \
-             names: {listed}."
-        ));
-    }
+    warnings.extend(duplicates_warning(report));
     if warnings.is_empty() {
         Notice::done(loaded)
     } else {
@@ -874,6 +858,28 @@ fn local_roster_notice(report: &LoadReport) -> Notice {
             warnings.join(" ")
         ))
     }
+}
+
+/// The sentence listing `report`'s conflicting duplicates, or `None` if there are none.
+fn duplicates_warning(report: &LoadReport) -> Option<String> {
+    let duplicates = report.duplicates();
+    if duplicates.is_empty() {
+        return None;
+    }
+    const SHOWN: usize = 10;
+    let mut listed = duplicates
+        .iter()
+        .take(SHOWN)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    if duplicates.len() > SHOWN {
+        listed.push_str(&format!(" and {} more", duplicates.len() - SHOWN));
+    }
+    Some(format!(
+        "These appear on more than one row with different names, so they will show no \
+         names: {listed}."
+    ))
 }
 
 /// `count` with the right one of `one`/`many` after it: "1 game", "24 games".
@@ -958,23 +964,27 @@ fn choose_roster_source(state: &AppState, upload: RosterSourceUpload) -> Notice 
 /// deleted and nothing at all changes: not the saved files, not the names on air, not the source,
 /// not the remembered settings -- so a mistyped column discovered mid-tournament cannot blank the
 /// graphic that was working a moment ago.
+///
+/// When only one file was uploaded and the other has never been saved, there is no pair to load:
+/// that file is checked on its own and kept for later instead -- see [`save_lone_upload`].
 fn choose_roster_with_upload(state: &AppState, upload: &RosterSourceUpload) -> Notice {
     let unchanged = "Nothing was changed -- the bridge is still using the same files and names \
                      as before. Fix the file and upload it again.";
 
     let dir = csv_upload_dir(state);
 
-    // Only one of the two uploaded, and the other never saved: ask for both before staging
-    // anything.
-    let missing_schedule =
-        upload.schedule_csv.is_none() && read_lock(&state.schedule_csv_path).is_none();
-    let missing_roster = upload.roster_csv.is_none() && read_lock(&state.roster_csv_path).is_none();
-    if missing_schedule || missing_roster {
-        return Notice::problem(
-            "The uploaded file was not used: names need both a schedule CSV and a roster CSV, \
-             and the other one has not been uploaded yet. Choose both files and save again. \
-             Nothing was changed.",
-        );
+    // Only one of the two uploaded, and the other never saved: there is no pair to load yet, so
+    // check this one on its own and keep it until the other arrives.
+    let schedule_saved = read_lock(&state.schedule_csv_path).is_some();
+    let roster_saved = read_lock(&state.roster_csv_path).is_some();
+    match (upload.schedule_csv.as_deref(), upload.roster_csv.as_deref()) {
+        (Some(bytes), None) if !roster_saved => {
+            return save_lone_upload(state, &dir, LoneCsv::Schedule, bytes);
+        }
+        (None, Some(bytes)) if !schedule_saved => {
+            return save_lone_upload(state, &dir, LoneCsv::Roster, bytes);
+        }
+        _ => {}
     }
 
     let schedule = match upload.schedule_csv.as_deref() {
@@ -1052,6 +1062,126 @@ fn choose_roster_with_upload(state: &AppState, upload: &RosterSourceUpload) -> N
     }
 
     notice
+}
+
+/// Which file [`save_lone_upload`] was given.
+#[derive(Debug, Clone, Copy)]
+enum LoneCsv {
+    Schedule,
+    Roster,
+}
+
+/// The first of the two CSV files, uploaded while the other has never been saved -- see
+/// [`choose_roster_with_upload`]. There is no pair to load yet, so the file is checked **on its
+/// own**, by the same rules a pair load applies to it ([`local_roster::check_schedule`] /
+/// [`local_roster::check_roster`]). A file that fails is deleted and nothing changes, exactly as
+/// for a pair. A file that passes is saved (via [`commit_staged`], so a failure there also
+/// changes nothing) and its path remembered -- but the names on air and the source are left
+/// exactly as they were: half a pair cannot show any names, so nothing on air changes until the
+/// other file arrives and the next upload takes the ordinary pair path.
+fn save_lone_upload(
+    state: &AppState,
+    dir: &std::path::Path,
+    which: LoneCsv,
+    bytes: &[u8],
+) -> Notice {
+    let (filename, saved_label, other) = match which {
+        LoneCsv::Schedule => ("schedule.csv", "Schedule CSV", "roster CSV"),
+        LoneCsv::Roster => ("roster.csv", "Roster CSV", "schedule CSV"),
+    };
+    let unchanged = "Nothing was changed.";
+
+    let staged = match stage_uploaded_csv(dir, filename, bytes) {
+        Ok(staged) => staged,
+        Err(message) => return Notice::problem(format!("{message}. {unchanged}")),
+    };
+
+    let checked = match which {
+        LoneCsv::Schedule => local_roster::check_schedule(&staged.temp),
+        LoneCsv::Roster => local_roster::check_roster(&staged.temp),
+    };
+    let report = match checked {
+        Ok(report) => report,
+        Err(e) => {
+            discard_staged(&[&staged]);
+            return Notice::problem(format!(
+                "The uploaded file was not saved: {e}. Fix the file and upload it again. \
+                 {unchanged}"
+            ));
+        }
+    };
+
+    // Checked before the file is moved into place, so a path that cannot be remembered never
+    // leaves a saved file the bridge has no record of.
+    let Some(saved_path) = staged.destination.to_str().map(str::to_string) else {
+        discard_staged(&[&staged]);
+        return Notice::problem(format!(
+            "The uploaded file was not used: the bridge cannot use the name of the folder it \
+             saves it in ({}). {unchanged}",
+            dir.display()
+        ));
+    };
+
+    if let Err(e) = commit_staged(&[&staged]) {
+        return Notice::problem(format!(
+            "The uploaded file was checked, but could not be saved ({e}). {unchanged} Try \
+             uploading it again."
+        ));
+    }
+
+    match which {
+        LoneCsv::Schedule => *write_lock(&state.schedule_csv_path) = Some(saved_path),
+        LoneCsv::Roster => *write_lock(&state.roster_csv_path) = Some(saved_path),
+    }
+    let schedule_path = read_lock(&state.schedule_csv_path).clone();
+    let roster_path = read_lock(&state.roster_csv_path).clone();
+    let source = *read_lock(&state.roster_source);
+    if let Some(path) = &state.settings_path {
+        config::remember_roster_source(path, source, schedule_path, roster_path);
+    }
+
+    let saved = match which {
+        LoneCsv::Schedule => format!(
+            "{saved_label} saved: {}.",
+            plural(report.games, "game", "games")
+        ),
+        LoneCsv::Roster => format!(
+            "{saved_label} saved: {}.",
+            plural(report.players, "player", "players")
+        ),
+    };
+    let next = match source {
+        config::RosterSource::Portal => format!(
+            "Now choose Local, choose the {other} and press Save -- until both files are saved, \
+             names still come from the UWH Portal."
+        ),
+        config::RosterSource::Local => format!(
+            "Now choose the {other} and press Save -- until both files are saved, no names are \
+             shown."
+        ),
+    };
+
+    let mut warnings = Vec::new();
+    if report.rows_skipped() > 0 {
+        warnings.push(format!(
+            "{} could not be read and {} skipped.",
+            plural(report.rows_skipped(), "row", "rows"),
+            if report.rows_skipped() == 1 {
+                "was"
+            } else {
+                "were"
+            },
+        ));
+    }
+    warnings.extend(duplicates_warning(&report));
+    if warnings.is_empty() {
+        Notice::done(format!("{saved} {next}"))
+    } else {
+        Notice::problem(format!(
+            "{saved} {} Fix the file and upload it again. {next}",
+            warnings.join(" ")
+        ))
+    }
 }
 
 /// The scan form. Both fields are text, and both are `serde(default)`, for the same reason as
@@ -4669,18 +4799,103 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_first_upload_of_only_one_file_asks_for_both_and_changes_nothing() {
+    async fn a_first_upload_of_only_one_file_is_saved_and_the_other_completes_the_pair() {
         let dir = tempfile::tempdir().expect("create a temp dir");
         let (state, addr, tasks) = bridge_on_game_1_saving_into(dir.path()).await;
+        let roster_before = get_json(addr, "/roster").await;
 
+        // The roster on its own first, with nothing saved for the schedule.
         let only_roster = reqwest::multipart::Form::new()
             .text("source", "local")
             .part(
                 "roster_csv",
                 csv_part(
                     "roster.csv",
-                    "team,capNumber,rosterName\nChengdu,2,Li Wei\n",
+                    "team,capNumber,rosterName\nChengdu,2,Li Wei\nBeijing,4,Wang Fang\n",
                 ),
+            );
+        let response =
+            post_multipart_with_site(addr, "/roster-source", only_roster, "same-origin").await;
+        assert_eq!(response.status().as_u16(), 200);
+
+        let notice = current_notice(&state);
+        assert!(
+            notice.done,
+            "a good lone file should be kept, got: {notice:?}"
+        );
+        assert!(
+            notice.text.contains("Roster CSV saved: 2 players")
+                && notice.text.contains("schedule CSV")
+                && notice.text.contains("names still come from the UWH Portal"),
+            "the notice must say the roster was kept and ask for the schedule, got: {}",
+            notice.text
+        );
+        let saved_roster = dir.path().join("csv-files").join("roster.csv");
+        assert!(saved_roster.is_file(), "the roster CSV should be saved");
+        assert_eq!(
+            read_lock(&state.roster_csv_path).as_deref(),
+            saved_roster.to_str(),
+            "the saved roster's path should be remembered"
+        );
+        assert!(read_lock(&state.schedule_csv_path).is_none());
+        assert_eq!(
+            *read_lock(&state.roster_source),
+            config::RosterSource::Portal,
+            "names on air must not change until both files are saved"
+        );
+        assert!(read_lock(&state.local_roster).is_none());
+        assert_eq!(
+            get_json(addr, "/roster").await,
+            roster_before,
+            "/roster must serve nothing new from a lone file"
+        );
+        assert!(leftover_temp_files(dir.path()).is_empty());
+
+        // Then the schedule on its own: the saved roster completes the pair.
+        let only_schedule = reqwest::multipart::Form::new()
+            .text("source", "local")
+            .part(
+                "schedule_csv",
+                csv_part(
+                    "schedule.csv",
+                    "gameNumber,blackTeam,whiteTeam\n1,Chengdu,Beijing\n",
+                ),
+            );
+        let response =
+            post_multipart_with_site(addr, "/roster-source", only_schedule, "same-origin").await;
+        assert_eq!(response.status().as_u16(), 200);
+
+        let notice = current_notice(&state);
+        assert!(
+            notice.done,
+            "the completed pair should load, got: {notice:?}"
+        );
+        assert_eq!(
+            *read_lock(&state.roster_source),
+            config::RosterSource::Local
+        );
+        assert_eq!(
+            roster_players(&get_json(addr, "/roster").await),
+            vec!["Li Wei".to_string(), "Wang Fang".to_string()]
+        );
+        assert!(leftover_temp_files(dir.path()).is_empty());
+
+        for task in tasks {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_bad_first_upload_of_only_one_file_is_refused_and_nothing_is_saved() {
+        let dir = tempfile::tempdir().expect("create a temp dir");
+        let (state, addr, tasks) = bridge_on_game_1_saving_into(dir.path()).await;
+
+        // `rosterName` misspelled, and no schedule saved to pair it with.
+        let only_roster = reqwest::multipart::Form::new()
+            .text("source", "local")
+            .part(
+                "roster_csv",
+                csv_part("roster.csv", "team,capNumber,name\nChengdu,2,Li Wei\n"),
             );
         let response =
             post_multipart_with_site(addr, "/roster-source", only_roster, "same-origin").await;
@@ -4689,8 +4904,8 @@ mod tests {
         let notice = current_notice(&state);
         assert!(!notice.done, "got: {notice:?}");
         assert!(
-            notice.text.contains("both a schedule CSV and a roster CSV"),
-            "the notice must say both files are needed, got: {}",
+            notice.text.contains("rosterName") && notice.text.contains("Nothing was changed"),
+            "the notice must name the missing column and say nothing changed, got: {}",
             notice.text
         );
         assert_eq!(
@@ -4704,7 +4919,10 @@ mod tests {
             .filter_map(Result::ok)
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .collect();
-        assert!(saved.is_empty(), "nothing may be saved: {saved:?}");
+        assert!(
+            saved.is_empty(),
+            "nothing may be saved, not even a .new: {saved:?}"
+        );
 
         for task in tasks {
             task.abort();

@@ -404,7 +404,7 @@ pub fn render_page(data: &PageData) -> String {
 <span class="help" tabindex="0" aria-label="{scan_hint}" data-tip="{scan_hint}">?</span>
 </form>
 {scan_html}
-<h2>Team and player names <span class="help" tabindex="0" aria-label="{roster_hint}"
+<h2 class="tipped">Team and player names <span class="help" tabindex="0" aria-label="{roster_hint}"
  data-tip="{roster_hint}">?</span></h2>
 <form class="chooser" method="post" action="/roster-source" enctype="multipart/form-data">
 <label for="roster-source">Mode:</label>
@@ -590,11 +590,16 @@ h2 { font-size: 1.05rem; margin-bottom: 0.25rem; }
    edge, whatever the window size. Anchoring to the marker instead is what lets a bubble beside a
    control near the edge bleed off the side of the window. */
 .tipped { position: relative; }
-/* Only those two blocks are positioned at all, and that is deliberate. A positioned element paints
-   above an unpositioned one, so every OTHER block -- the address form, the vMix heading -- could
-   cover a bubble hanging over it simply by coming later in the document. Marking the blocks that
-   own a marker, rather than every heading and every form, takes the rest of the page out of the
-   contest. This half needs no `:has()`, so it holds in every browser. */
+/* Only the blocks that own a marker are positioned at all, and that is deliberate. A positioned
+   element paints above an unpositioned one, so every OTHER block could cover a bubble hanging over
+   it simply by coming later in the document. Marking just the blocks that own a marker, rather
+   than every heading and every form, takes the rest of the page out of the contest. This half
+   needs no `:has()`, so it holds in every browser.
+   The rule cuts both ways, and the second edge is the sharp one: a block that owns a marker and is
+   NOT marked positions its bubble against the page instead of against itself, putting it a screen
+   away from the marker. Do not enumerate the blocks here -- a list goes stale the moment a section
+   is added, which is how the team-and-player-names heading arrived with a marker and no class.
+   `every_block_that_owns_a_help_marker_is_positioned` checks the rule itself. */
 /* Raising the *block* while the marker is hovered or focused, not just the bubble. Positioned
    elements with `z-index: auto` paint in document order, so a bubble hanging off the heading was
    painted under the table and forms that follow it however high its own `z-index` was -- the
@@ -1299,6 +1304,36 @@ mod tests {
         assert!(
             tip.contains("serves its feed on 8000 and will not be found"),
             "and must say an older refbox will not be found by searching, got:\n{tip}"
+        );
+    }
+
+    #[test]
+    fn every_block_that_owns_a_help_marker_is_positioned() {
+        // Guards the rule rather than today's blocks. The bubble is positioned against the block
+        // its marker sits in, so a marker in an unmarked block puts its bubble against the page
+        // and a screen away from the thing it explains. No other test here can see it -- the
+        // markup either way is identical, and only a rendered page tells them apart.
+        let html = render_page(&base_data());
+        let mut checked = 0;
+        for (i, _) in html.match_indices("class=\"help\"") {
+            let before = &html[..i];
+            let open = before
+                .rfind("<h2")
+                .into_iter()
+                .chain(before.rfind("<form"))
+                .max()
+                .expect("a help marker must sit inside a heading or a form");
+            let tag = &before[open..];
+            assert!(
+                tag.contains("tipped"),
+                "a help marker sits in a block that is not positioned, so its tooltip would be \
+                 placed against the page rather than against the block:\n{tag}"
+            );
+            checked += 1;
+        }
+        assert!(
+            checked >= 3,
+            "expected to have checked every help marker on the page, saw {checked}"
         );
     }
 

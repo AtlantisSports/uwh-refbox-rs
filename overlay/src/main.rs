@@ -365,10 +365,8 @@ async fn main() {
     let ndi_engine = ndi_runtime::EngineWatch::start();
     #[cfg(feature = "ndi")]
     let mut ndi_output: Option<(ndi_output::NdiOutput, ndi_output::KeyCombiner)> = None;
-    // Set when the graphics card couldn't prepare the NDI picture: not retried, as reinstalling
-    // NDI can't fix that.
     #[cfg(feature = "ndi")]
-    let mut combiner_failed = false;
+    let mut ndi_started = false;
     #[cfg(feature = "ndi")]
     let mut mouse_shown = false;
     // The preview's note, worked out again only when the engine's status changes.
@@ -462,12 +460,12 @@ async fn main() {
         // NDI is fed from the offscreen canvas, never from `get_screen_data()` (the visible
         // window), which may be smaller than 3840x1080 on this machine (see `canvas`'s doc
         // above). `ndi_output::KeyCombiner` turns the canvas's color and key halves into the one
-        // 1920x1080 picture that is sent. Output is tried while it isn't running and the engine is
-        // Ready. If NDI output can't start, the engine is marked OutputFailed (so this isn't
-        // retried every frame) and the preview offers Install NDI; once a reinstall leaves the
-        // engine Ready again, output is tried once more.
+        // 1920x1080 picture that is sent. If NDI output can't start, the engine is marked
+        // OutputFailed and the preview asks for a restart: the engine it loaded can't be replaced
+        // while the overlay runs.
         #[cfg(feature = "ndi")]
-        if ndi_output.is_none() && !combiner_failed && ndi_engine.is_ready() {
+        if !ndi_started && ndi_engine.is_ready() {
+            ndi_started = true;
             ndi_output = match ndi_output::NdiOutput::new("UWH Overlay") {
                 Ok(output) => match ndi_output::KeyCombiner::new() {
                     Ok(combiner) => {
@@ -476,7 +474,6 @@ async fn main() {
                     }
                     Err(e) => {
                         warn!("Failed to prepare the NDI picture, continuing without NDI: {e}");
-                        combiner_failed = true;
                         None
                     }
                 },

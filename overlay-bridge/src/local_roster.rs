@@ -19,13 +19,20 @@
 //! read at all is a real failure ([`LoadError`]): every one of its rows would have been skipped,
 //! and "loading" it would silently blank every name.
 //!
-//! **A duplicate serves nothing, never a guess.** A game number on more than one schedule row,
-//! or the same cap number on more than one row for one team, is dropped entirely -- that game
-//! shows no team names, that cap shows no player name -- because picking either row would put a
-//! name on air that may well be wrong. Each one is listed in the [`LoadReport`] so the operator
-//! can fix the file.
+//! **A conflicting duplicate serves nothing, never a guess.** A game number on more than one
+//! schedule row, or the same cap number on more than one row for one team, is dropped entirely
+//! when those rows DISAGREE -- that game shows no team names, that cap shows no player name --
+//! because picking either row would put a name on air that may well be wrong. Each one is listed
+//! in the [`LoadReport`] so the operator can fix the file. Rows that repeat the same values (a
+//! pasted block pasted twice) are not ambiguous, so that one value is served and nothing is
+//! listed.
 
-use std::{collections::HashMap, fmt, path::Path};
+use std::{
+    collections::{HashMap, HashSet, hash_map::Entry},
+    fmt,
+    hash::Hash,
+    path::Path,
+};
 
 use serde::de::DeserializeOwned;
 
@@ -53,20 +60,22 @@ pub struct LocalRoster {
 }
 
 /// What a successful load found: how much is being served, how many rows could not be read, and
-/// which duplicates were dropped (see the module doc). For telling the operator, not for lookups.
+/// which conflicting duplicates were dropped (see the module doc). For telling the operator, not for lookups.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LoadReport {
-    /// Games with team names being served (duplicated game numbers not included).
+    /// Games with team names being served (conflicting game numbers not included; a game on
+    /// identical rows counts once).
     pub games: usize,
-    /// Players with a name being served, across every team (duplicated caps not included).
+    /// Players with a name being served, across every team (conflicting caps not included; a cap
+    /// on identical rows counts once).
     pub players: usize,
     /// Schedule rows that could not be read and were skipped.
     pub schedule_rows_skipped: usize,
     /// Roster rows that could not be read and were skipped.
     pub roster_rows_skipped: usize,
-    /// Game numbers on more than one schedule row, ascending.
+    /// Game numbers on more than one schedule row where those rows disagree, ascending.
     pub duplicate_games: Vec<u32>,
-    /// (team, cap number) pairs on more than one roster row, sorted.
+    /// (team, cap number) pairs on more than one roster row where those rows disagree, sorted.
     pub duplicate_caps: Vec<(String, u8)>,
 }
 
@@ -76,7 +85,7 @@ impl LoadReport {
         self.schedule_rows_skipped + self.roster_rows_skipped
     }
 
-    /// Every duplicate, described the way an operator would look for it in the file: `game 12`,
+    /// Every conflicting duplicate, described the way an operator would look for it in the file: `game 12`,
     /// `Chengdu cap 4`. Games first, then caps.
     pub fn duplicates(&self) -> Vec<String> {
         self.duplicate_games
@@ -172,7 +181,8 @@ struct RosterRow {
 impl LocalRoster {
     /// Loads both files. Fails if either file can't be opened or read, its header row is missing
     /// a required column, or not one of its rows can be read -- an individual bad data row is
-    /// skipped and counted instead, and duplicates are dropped and listed, per the module doc.
+    /// skipped and counted instead, and conflicting duplicates are dropped and listed, per the
+    /// module doc.
     /// See [`Self::report`] for what was skipped and dropped.
     pub fn load(schedule_path: &Path, roster_path: &Path) -> Result<Self, LoadError> {
         let schedule = read_rows::<ScheduleRow>(schedule_path, SCHEDULE_COLUMNS)
@@ -204,17 +214,19 @@ impl LocalRoster {
     }
 
     /// The black and white team names for `game_number`, or `None` if that game number isn't in
-    /// the schedule file (or is on more than one row of it) -- the caller's fallback is the same
-    /// as the Portal path's: show whatever the refbox itself already reports (in this case,
-    /// nothing, since a Manual-mode refbox never has a team name at all) rather than an error.
+    /// the schedule file (or is on more than one row of it, and those rows disagree) -- the
+    /// caller's fallback is the same as the Portal path's: show whatever the refbox itself
+    /// already reports (in this case, nothing, since a Manual-mode refbox never has a team name
+    /// at all) rather than an error.
     pub fn team_names_for(&self, game_number: u32) -> Option<(&str, &str)> {
         let (black, white) = self.schedule.get(&game_number)?;
         Some((black.as_str(), white.as_str()))
     }
 
     /// `cap_number`'s name on `team_name`'s roster, or `None` if that team isn't in the roster
-    /// file, or the cap number isn't on it (or is on more than one of its rows) -- the caller's
-    /// fallback is to display the cap number with no name, same as the Portal path.
+    /// file, or the cap number isn't on it (or is on more than one of its rows, and they
+    /// disagree) -- the caller's fallback is to display the cap number with no name, same as the
+    /// Portal path.
     pub fn player_name(&self, team_name: &str, cap_number: u8) -> Option<&str> {
         self.rosters
             .get(team_name)?
@@ -282,55 +294,53 @@ fn read_rows<T: DeserializeOwned>(
     Ok(Rows { rows, skipped })
 }
 
-/// The schedule by game number, with every game number that appears on more than one row left
-/// out entirely, and those game numbers (ascending).
+/// The schedule by game number, with every game number whose rows disagree left out entirely,
+/// and those game numbers (ascending) -- see [`split_conflicts`].
 fn build_schedule(rows: Vec<ScheduleRow>) -> (HashMap<u32, (String, String)>, Vec<u32>) {
-    let mut counts: HashMap<u32, usize> = HashMap::new();
-    for row in &rows {
-        *counts.entry(row.game_number).or_default() += 1;
-    }
-    let mut duplicates: Vec<u32> = counts
-        .iter()
-        .filter(|&(_, &count)| count > 1)
-        .map(|(&game, _)| game)
-        .collect();
-    duplicates.sort_unstable();
-
-    let schedule = rows
-        .into_iter()
-        .filter(|row| counts.get(&row.game_number) == Some(&1))
-        .map(|row| (row.game_number, (row.black_team, row.white_team)))
-        .collect();
-    (schedule, duplicates)
+    split_conflicts(
+        rows.into_iter()
+            .map(|row| (row.game_number, (row.black_team, row.white_team))),
+    )
 }
 
-/// Every team's roster, with every (team, cap number) pair that appears on more than one row left
-/// out entirely, and those pairs (sorted).
+/// Every team's roster, with every (team, cap number) pair whose rows disagree left out entirely,
+/// and those pairs (sorted) -- see [`split_conflicts`].
 fn build_rosters(rows: Vec<RosterRow>) -> (HashMap<String, TeamRoster>, Vec<(String, u8)>) {
-    let mut counts: HashMap<(String, u8), usize> = HashMap::new();
-    for row in &rows {
-        *counts
-            .entry((row.team.clone(), row.cap_number))
-            .or_default() += 1;
-    }
-    let mut duplicates: Vec<(String, u8)> = counts
-        .iter()
-        .filter(|&(_, &count)| count > 1)
-        .map(|(key, _)| key.clone())
-        .collect();
-    duplicates.sort_unstable();
-
+    let (players, conflicts) = split_conflicts(
+        rows.into_iter()
+            .map(|row| ((row.team, row.cap_number), row.roster_name)),
+    );
     let mut rosters: HashMap<String, TeamRoster> = HashMap::new();
-    for row in rows {
-        if counts.get(&(row.team.clone(), row.cap_number)) != Some(&1) {
-            continue;
-        }
-        rosters
-            .entry(row.team)
-            .or_default()
-            .insert(row.cap_number, row.roster_name);
+    for ((team, cap), name) in players {
+        rosters.entry(team).or_default().insert(cap, name);
     }
-    (rosters, duplicates)
+    (rosters, conflicts)
+}
+
+/// Groups `rows` by key. A key whose rows all carry the same value -- one row, or the same row
+/// repeated -- keeps that value. A key whose rows disagree is left out entirely, because picking
+/// either value could put the wrong name on air, and is returned in the sorted list instead.
+fn split_conflicts<K: Hash + Eq + Ord + Clone, V: PartialEq>(
+    rows: impl IntoIterator<Item = (K, V)>,
+) -> (HashMap<K, V>, Vec<K>) {
+    let mut kept: HashMap<K, V> = HashMap::new();
+    let mut conflicts: HashSet<K> = HashSet::new();
+    for (key, value) in rows {
+        match kept.entry(key) {
+            Entry::Vacant(slot) => {
+                slot.insert(value);
+            }
+            Entry::Occupied(slot) => {
+                if *slot.get() != value {
+                    conflicts.insert(slot.key().clone());
+                }
+            }
+        }
+    }
+    kept.retain(|key, _| !conflicts.contains(key));
+    let mut conflicts: Vec<K> = conflicts.into_iter().collect();
+    conflicts.sort_unstable();
+    (kept, conflicts)
 }
 
 #[cfg(test)]
@@ -550,6 +560,54 @@ mod tests {
         assert_eq!(
             local.report().duplicates(),
             vec!["Chengdu cap 2".to_string()]
+        );
+    }
+
+    #[test]
+    fn an_identically_repeated_game_row_is_served_and_not_listed() {
+        // A pasted block repeated: the same game, the same two teams, twice. Nothing is
+        // ambiguous, so nothing may be blanked.
+        let schedule = temp_csv(
+            "gameNumber,blackTeam,whiteTeam\n\
+             1,Chengdu,Beijing\n\
+             2,Beijing,Chengdu\n\
+             1,Chengdu,Beijing\n",
+        );
+        let roster = temp_csv(ROSTER_CSV);
+        let local = LocalRoster::load(schedule.path(), roster.path()).expect("should load");
+
+        assert_eq!(local.team_names_for(1), Some(("Chengdu", "Beijing")));
+        assert_eq!(local.team_names_for(2), Some(("Beijing", "Chengdu")));
+        assert_eq!(local.report().games, 2);
+        assert!(
+            local.report().duplicates().is_empty(),
+            "rows that agree are not a conflict: {:?}",
+            local.report().duplicates()
+        );
+    }
+
+    #[test]
+    fn an_identically_repeated_team_and_cap_row_is_served_and_not_listed() {
+        let schedule = temp_csv(SCHEDULE_CSV);
+        let roster = temp_csv(
+            "team,capNumber,rosterName\n\
+             Chengdu,2,Li Wei\n\
+             Chengdu,7,Zhang Min\n\
+             Chengdu,2,Li Wei\n\
+             Beijing,2,Wang Fang\n",
+        );
+        let local = LocalRoster::load(schedule.path(), roster.path()).expect("should load");
+
+        assert_eq!(local.player_name("Chengdu", 2), Some("Li Wei"));
+        assert_eq!(
+            local.full_roster("Chengdu"),
+            vec![(2, "Li Wei"), (7, "Zhang Min")]
+        );
+        assert_eq!(local.report().players, 3);
+        assert!(
+            local.report().duplicates().is_empty(),
+            "rows that agree are not a conflict: {:?}",
+            local.report().duplicates()
         );
     }
 

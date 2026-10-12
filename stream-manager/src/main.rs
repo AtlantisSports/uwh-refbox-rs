@@ -182,8 +182,8 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
                 limit,
             };
             let state_file = state_file()?;
-            let portal_notice = watch_links::check_key(&link_file, &config)
-                .await
+            let key_check = watch_links::check_key(&link_file, &config).await;
+            let portal_notice = watch_links::with_streaming(key_check, plan.will_be_streamed)
                 .notice()
                 .map(|(_, text)| text);
             let result = prepare::run_cli(

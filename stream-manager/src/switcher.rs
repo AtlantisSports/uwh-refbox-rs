@@ -110,10 +110,8 @@ impl CourtSwitcher {
                 upcoming,
                 secs_left,
             } => {
-                let switch = (self.day_running
-                    && self.live.as_ref() != Some(upcoming)
-                    && !self.left_behind.contains(upcoming))
-                .then(|| secs_left.saturating_sub(self.rules.switch_lead_secs));
+                let switch = (self.day_running && self.can_target(upcoming))
+                    .then(|| secs_left.saturating_sub(self.rules.switch_lead_secs));
                 let rosters = (*secs_left > self.rules.roster_start_secs)
                     .then(|| secs_left - self.rules.roster_start_secs);
                 (switch, rosters)
@@ -135,15 +133,15 @@ impl CourtSwitcher {
     fn next_target(&self) -> Option<GameNumber> {
         let snapshot = self.last.as_ref()?;
         let phase = phase_of(snapshot);
-        let Some(live) = self.live.as_ref().filter(|_| self.day_running) else {
+        if self.live.is_none() || !self.day_running {
             return match phase {
                 Phase::Playing(game) | Phase::Break { upcoming: game, .. } => Some(game),
                 Phase::Unknown | Phase::Finished => None,
             };
-        };
+        }
         let target = match phase {
             Phase::Playing(game) | Phase::Break { upcoming: game, .. }
-                if game != *live && !self.left_behind.contains(&game) =>
+                if self.can_target(&game) =>
             {
                 game
             }
@@ -151,7 +149,7 @@ impl CourtSwitcher {
             // after it (none after the court's last game).
             _ => snapshot.next_game_number()?.clone(),
         };
-        (target != *live && !self.left_behind.contains(&target)).then_some(target)
+        self.can_target(&target).then_some(target)
     }
 
     /// Feed every snapshot the refbox sends. Returns an action when it's time to switch.
@@ -219,29 +217,32 @@ impl CourtSwitcher {
         if !self.day_running || self.hold {
             return None;
         }
-        let live = self.live.as_ref()?;
+        self.live.as_ref()?;
         let target = match phase_of(self.last.as_ref()?) {
             // After the court's last game there is no next video, so the last one simply waits
             // for End day (ADR 026).
             Phase::Unknown | Phase::Finished => return None,
             // Catch up: a game is in progress but its video isn't live.
-            Phase::Playing(game) => {
-                (game != *live && !self.left_behind.contains(&game)).then_some(game)?
-            }
+            Phase::Playing(game) => self.can_target(&game).then_some(game)?,
             Phase::Break {
                 upcoming,
                 secs_left,
             } => {
                 let in_rosters = (self.rules.roster_end_secs..=self.rules.roster_start_secs)
                     .contains(&secs_left);
-                (upcoming != *live
-                    && !self.left_behind.contains(&upcoming)
+                (self.can_target(&upcoming)
                     && secs_left <= self.rules.switch_lead_secs
                     && !in_rosters)
                     .then_some(upcoming)?
             }
         };
         self.switch_to(target)
+    }
+
+    /// Whether `game`'s video can be switched to: it isn't the live one, and it wasn't
+    /// switched away from today (its video has ended). Every choice of target asks this.
+    fn can_target(&self, game: &GameNumber) -> bool {
+        self.live.as_ref() != Some(game) && !self.left_behind.contains(game)
     }
 
     fn switch_to(&mut self, target: GameNumber) -> Option<Action> {

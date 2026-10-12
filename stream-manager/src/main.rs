@@ -310,7 +310,7 @@ async fn show_plan(config: &Config) -> Result<(), BoxError> {
         };
         println!(
             "Playlist \"{}\" — {} videos{note}",
-            playlist_title(day, &court),
+            playlist_title(&plan.event_name, day, &court),
             games.len()
         );
         for game in games {

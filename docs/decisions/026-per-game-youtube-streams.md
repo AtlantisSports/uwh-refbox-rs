@@ -28,7 +28,8 @@ advance and listed in a playlist per court per day.
 ### Requirements gathered from the organizer
 
 - One YouTube channel for everything; the organizer is the channel owner.
-- One playlist per court per day, e.g. "Day 1 · Court 1", "Day 1 · Court 2".
+- One playlist per court per day, e.g. "Nationals 2026 · Day 1 · Court 1",
+  "Nationals 2026 · Day 1 · Court 2".
 - Streaming is done with **vMix** (not the Atem).
 - At most **2 courts** streamed at once; the longest day is about **12 hours** (≈20–24 games
   per court).
@@ -53,7 +54,7 @@ without modifying either.
 
 The operator runs a "prepare" step for a chosen event and day. For each court:
 
-- Create the playlist "Day N · Court X" if it doesn't exist.
+- Create the playlist "<event> · Day N · Court X" if it doesn't exist.
 - For every game on that court that day, create a scheduled YouTube live video:
   - **Title:** `<Event> · Court X · Game 14 · Team A vs Team B`
   - **Description:** event name, division/timing rule, scheduled start time, link to the portal.
@@ -324,9 +325,9 @@ restart recovery; live status on the Stream Deck through Companion.
 Tested at a practice session using **unlisted** videos and a small test event on the portal
 (e.g. 3 short games on 2 courts):
 
-1. After running "prepare", YouTube Studio shows playlists "Day 1 · Court 1" and "Day 1 ·
-   Court 2", each with that court's games as upcoming live videos, correctly titled and in
-   order.
+1. After running "prepare", YouTube Studio shows playlists "<event> · Day 1 · Court 1" and
+   "<event> · Day 1 · Court 2", each with that court's games as upcoming live videos, correctly
+   titled and in order.
 2. Pressing Start day makes Game 1 go live.
 3. After Game 1 ends, its video keeps running through a mock interview. It switches to Game 2
    about 3:15 before Game 2's start. Game 2's video opens with Game 2's full team rosters, and
@@ -507,3 +508,10 @@ Made after a review of the PR against this ADR, and approved by Eric.
       itself.
     - The PIN only signs in on the page. Sign-ins are checked one at a time, with a growing wait
       after each wrong PIN.
+11. **Playlists are named after the event** (Eric, 2026-10-12): `<event> · Day N · Court X`, e.g.
+    "Nationals 2026 · Day 1 · Court 1". Under the earlier "Day N · Court X", Prepare for a new
+    tournament on the same channel adopted the previous tournament's playlist of the same name and
+    recorded it as its own, so the test clean-up could then delete it; viewers also saw identical
+    playlist names from different tournaments. A very long event name is shortened with "…" so
+    the title stays within YouTube's 150 characters and the day and court always show. Playlists
+    made under the old names are not renamed; Prepare makes new ones.

@@ -39,6 +39,12 @@ const APP_NAME: &str = "overlay";
 /// The old default port of the overlay-bridge; see `overlay-bridge`'s `config.rs`.
 const OLD_BRIDGE_PORT: u16 = 8099;
 const NEW_BRIDGE_PORT: u16 = 8098;
+/// The refbox's old default JSON-feed port, and the port it moved to. A Windows service holds
+/// 8000 on some machines, so a refbox there never served its feed at all; see `refbox`'s
+/// `--json-port`. These are this crate's own copies of those numbers -- the overlay depends on
+/// neither `refbox` nor `overlay-bridge`, and a shared constant was considered and not taken up.
+const OLD_REFBOX_PORT: u16 = 8000;
+const NEW_REFBOX_PORT: u16 = 19540;
 
 /// `url` (trimmed) with its port moved from 8099 to 8098, or `None` if it isn't on 8099. Where
 /// the port is written as `:8099`, only the port is changed in the text as written, so the rest of
@@ -87,6 +93,26 @@ fn migrate_bridge_address(config: &mut AppConfig) -> bool {
     true
 }
 
+/// Moves a saved refbox port off the old default 8000 to 19540, once: a settings file from before
+/// the move is moved, and marked, so that 8000 chosen afterwards is the operator's own choice and
+/// is kept. Returns whether `config` changed and needs saving.
+///
+/// Without this the overlay would keep asking an existing settings file's 8000 of a refbox that
+/// now serves 19540, and `network.rs`'s connect loop retries a refused connection forever without
+/// surfacing anything -- a blank overlay on the stream, with no error an operator would find and
+/// no flag or setting screen to correct it.
+fn migrate_refbox_port(config: &mut AppConfig) -> bool {
+    if config.refbox_port_moved {
+        return false;
+    }
+    if config.refbox_port == OLD_REFBOX_PORT {
+        info!("Moved the refbox port from {OLD_REFBOX_PORT} to {NEW_REFBOX_PORT}");
+        config.refbox_port = NEW_REFBOX_PORT;
+    }
+    config.refbox_port_moved = true;
+    true
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct AppConfig {
     refbox_ip: IpAddr,
@@ -99,17 +125,21 @@ pub struct AppConfig {
     /// Set once an old `:8099` bridge address has been moved to 8098; a later 8099 is kept.
     #[serde(default)]
     bridge_port_moved: bool,
+    /// Set once a saved refbox port of 8000 has been moved to 19540; a later 8000 is kept.
+    #[serde(default)]
+    refbox_port_moved: bool,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             refbox_ip: IpAddr::from_str("127.0.0.1").unwrap(),
-            refbox_port: 19540,
+            refbox_port: NEW_REFBOX_PORT,
             uwhportal_url: String::from("https://api.uwhportal.com"),
             bridge_url: String::from("http://127.0.0.1:8098"),
-            // A new settings file never held the old port, so there is nothing to move.
+            // A new settings file never held either old port, so there is nothing to move.
             bridge_port_moved: true,
+            refbox_port_moved: true,
         }
     }
 }
@@ -308,10 +338,14 @@ async fn main() {
             config
         }
     };
-    // The bridge's default port moved from 8099 (vMix's hard-coded TCP API port) to 8098.
-    if migrate_bridge_address(&mut config) {
+    // The bridge's default port moved from 8099 (vMix's hard-coded TCP API port) to 8098, and the
+    // refbox's from 8000 (held by a Windows service on some machines) to 19540. Both are evaluated
+    // before the store, rather than short-circuiting, so a file needing both is written once.
+    let bridge_moved = migrate_bridge_address(&mut config);
+    let refbox_moved = migrate_refbox_port(&mut config);
+    if bridge_moved || refbox_moved {
         if let Err(e) = confy::store(APP_NAME, None, &config) {
-            warn!("Couldn't save the overlay-bridge address: {e}");
+            warn!("Couldn't save the moved ports: {e}");
         }
     }
 
@@ -675,6 +709,37 @@ mod tests {
         .expect("an old settings file still loads");
         assert!(!old.bridge_port_moved);
         assert!(AppConfig::default().bridge_port_moved);
+        // The same file carries the refbox's old port, and must be marked for that move too.
+        assert_eq!(old.refbox_port, OLD_REFBOX_PORT);
+        assert!(!old.refbox_port_moved);
+        assert!(AppConfig::default().refbox_port_moved);
+    }
+
+    #[test]
+    fn the_refbox_port_moves_once_and_a_later_8000_is_kept() {
+        let config = |port: u16, moved: bool| AppConfig {
+            refbox_port: port,
+            refbox_port_moved: moved,
+            ..AppConfig::default()
+        };
+
+        // From before the move: moved, marked, and saved. Without this the overlay asks a refbox
+        // that now serves 19540 for 8000 forever, and shows nothing while it does.
+        let mut old = config(OLD_REFBOX_PORT, false);
+        assert!(migrate_refbox_port(&mut old));
+        assert_eq!(old.refbox_port, NEW_REFBOX_PORT);
+        assert!(old.refbox_port_moved);
+
+        // From before the move but on another port: a deliberate choice, left alone, still marked.
+        let mut other = config(9000, false);
+        assert!(migrate_refbox_port(&mut other));
+        assert_eq!(other.refbox_port, 9000);
+        assert!(other.refbox_port_moved);
+
+        // 8000 chosen after the move -- an older refbox on the network: kept, nothing to save.
+        let mut chosen = config(OLD_REFBOX_PORT, true);
+        assert!(!migrate_refbox_port(&mut chosen));
+        assert_eq!(chosen.refbox_port, OLD_REFBOX_PORT);
     }
 
     #[test]

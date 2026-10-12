@@ -61,6 +61,8 @@ pub enum LinkError {
     NoPendingLink,
     /// The code isn't the one the portal shows.
     InvalidCode,
+    /// The event isn't marked "Will be streamed" on the portal.
+    NotStreamed,
     /// Anything else, as text a person can read.
     Other(String),
 }
@@ -96,9 +98,10 @@ pub async fn exchange_code(
             .ok_or_else(|| LinkError::Other("The portal's reply had no access key".to_string()));
     }
     if status == StatusCode::BAD_REQUEST {
-        match body["reason"].as_str() {
+        match reason_of(&text).as_deref() {
             Some("NoPendingLink") => return Err(LinkError::NoPendingLink),
             Some("InvalidCode") => return Err(LinkError::InvalidCode),
+            Some("NotStreamed") => return Err(LinkError::NotStreamed),
             _ => {}
         }
     }
@@ -110,6 +113,8 @@ pub async fn exchange_code(
 pub enum SendError {
     /// The portal no longer accepts the key (401 or 403).
     KeyRefused,
+    /// The event isn't marked "Will be streamed" on the portal. The key is still good.
+    NotStreamed,
     /// Anything else, as text a person can read.
     Other(String),
 }
@@ -157,6 +162,9 @@ async fn put_watch_urls(
         .text()
         .await
         .map_err(|e| SendError::Other(unreachable_text(e)))?;
+    if status == StatusCode::BAD_REQUEST && reason_of(&text).as_deref() == Some("NotStreamed") {
+        return Err(SendError::NotStreamed);
+    }
     Err(SendError::Other(portal_said(status, &text)))
 }
 
@@ -230,6 +238,9 @@ pub async fn publish(
             forget_refused(link_file, &link);
             log("Portal: the event refused this Stream Manager's key (it was removed on the portal, or the event is over). Link it again in Settings to set watch links.".to_string());
         }
+        // The key is still good: only the event's "Will be streamed" setting is off.
+        (Err(SendError::NotStreamed), Purpose::Set) => log("Portal: watch links weren't set: the event isn't marked \"Will be streamed\" on the portal. Turn that on for the event, then run Prepare again.".to_string()),
+        (Err(SendError::NotStreamed), Purpose::Clear) => log("Portal: watch links weren't cleared: the event isn't marked \"Will be streamed\" on the portal. Turn that on, then delete again to clear them.".to_string()),
         (Err(SendError::Other(error)), Purpose::Set) => log(format!(
             "Portal: watch links weren't set: {error}. Run Prepare again to send them."
         )),
@@ -249,6 +260,8 @@ pub enum KeyCheck {
     NotLinked,
     /// The portal refused the saved key; it has been forgotten.
     Refused,
+    /// The event isn't marked "Will be streamed" on the portal; the key is kept.
+    NotStreamed,
     /// The portal couldn't be asked, as text a person can read.
     Unknown(String),
 }
@@ -269,6 +282,13 @@ impl KeyCheck {
                 "Portal watch links: the event refused this Stream Manager's key (it was removed \
                  on the portal, or the event is over), so watch links won't be set. Link it again \
                  in Settings first, or go ahead without watch links."
+                    .to_string(),
+            )),
+            KeyCheck::NotStreamed => Some((
+                true,
+                "Portal watch links: the event isn't marked \"Will be streamed\" on the portal, \
+                 so watch links won't be set. Turn that on for the event first, or go ahead \
+                 without watch links."
                     .to_string(),
             )),
             KeyCheck::Unknown(error) => Some((
@@ -305,6 +325,7 @@ async fn check_key_within(link_file: &Path, config: &Config, timeout: Duration) 
             forget_refused(link_file, &link);
             KeyCheck::Refused
         }
+        Ok(Err(SendError::NotStreamed)) => KeyCheck::NotStreamed,
         Ok(Err(SendError::Other(error))) => KeyCheck::Unknown(error),
     }
 }
@@ -369,6 +390,18 @@ pub async fn publish_after_cleanup(
 
 fn unreachable_text(error: impl std::fmt::Display) -> String {
     format!("Couldn't reach the portal: {error}")
+}
+
+/// The `reason` (or `Reason`, in any case) the portal gave in a JSON reply, if it gave one.
+fn reason_of(body: &str) -> Option<String> {
+    let Value::Object(fields) = serde_json::from_str(body).ok()? else {
+        return None;
+    };
+    fields
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("reason"))
+        .and_then(|(_, value)| value.as_str())
+        .map(str::to_string)
 }
 
 fn portal_said(status: StatusCode, body: &str) -> String {
@@ -558,6 +591,16 @@ mod tests {
                 r#"{"reason":"InvalidCode"}"#,
                 Some(LinkError::InvalidCode),
             ),
+            (
+                400,
+                r#"{"reason":"NotStreamed"}"#,
+                Some(LinkError::NotStreamed),
+            ),
+            (
+                400,
+                r#"{"Reason":"NotStreamed","detail":"x"}"#,
+                Some(LinkError::NotStreamed),
+            ),
             (400, "", None),
             (500, "boom", None),
         ];
@@ -629,6 +672,44 @@ mod tests {
                 }
                 other => panic!("{status}: {other:?}"),
             }
+        }
+        let portal = MockPortal::start(400, "").await;
+        match send_watch_urls(portal.base_url(), "cup-2026", KEY, &links()).await {
+            Err(SendError::Other(text)) => {
+                assert!(text.starts_with("The portal said 400"), "{text}")
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn sending_links_to_an_event_not_marked_will_be_streamed_says_so() {
+        for body in [
+            r#"{"reason":"NotStreamed"}"#,
+            r#"{"Reason":"NotStreamed","detail":"x"}"#,
+        ] {
+            let portal = MockPortal::start(400, body).await;
+            let result = send_watch_urls(portal.base_url(), "cup-2026", KEY, &links()).await;
+            assert_eq!(result, Err(SendError::NotStreamed), "{body}");
+        }
+    }
+
+    #[test]
+    fn the_reason_is_read_from_the_reply_whatever_its_case() {
+        assert_eq!(
+            reason_of(r#"{"reason":"NotStreamed"}"#).as_deref(),
+            Some("NotStreamed")
+        );
+        assert_eq!(
+            reason_of(r#"{"Reason":"NotStreamed","detail":"x"}"#).as_deref(),
+            Some("NotStreamed")
+        );
+        assert_eq!(
+            reason_of(r#"{"reason":"UnknownGame"}"#).as_deref(),
+            Some("UnknownGame")
+        );
+        for body in ["", "boom", "{}", r#"{"reason":3}"#, r#"["reason"]"#] {
+            assert_eq!(reason_of(body), None, "{body}");
         }
     }
 
@@ -1171,5 +1252,40 @@ mod tests {
         forget(&path).unwrap();
         assert!(!path.exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    const NOT_STREAMED_SET: &str = "Portal: watch links weren't set: the event isn't marked \"Will be streamed\" on the portal. Turn that on for the event, then run Prepare again.";
+    const NOT_STREAMED_CLEAR: &str = "Portal: watch links weren't cleared: the event isn't marked \"Will be streamed\" on the portal. Turn that on, then delete again to clear them.";
+
+    #[tokio::test]
+    async fn an_event_not_marked_will_be_streamed_keeps_the_key_and_says_to_turn_it_on() {
+        let portal = MockPortal::start(400, r#"{"reason":"NotStreamed"}"#).await;
+        let mut publishing = Publishing::new("publish-not-streamed", &portal, Some("cup-2026"));
+        publishing.publish(&links(), Purpose::Set).await;
+        assert_eq!(publishing.lines, [NOT_STREAMED_SET]);
+        assert!(publishing.link_file.exists());
+
+        publishing.publish(&links(), Purpose::Clear).await;
+        assert_eq!(publishing.lines[1], NOT_STREAMED_CLEAR);
+        assert!(publishing.link_file.exists());
+        assert_eq!(portal.requests().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn the_key_check_warns_about_an_event_not_marked_will_be_streamed_and_keeps_the_key() {
+        let portal = MockPortal::start(400, r#"{"reason":"NotStreamed"}"#).await;
+        let publishing = Publishing::new("check-not-streamed", &portal, Some("cup-2026"));
+        let check = check_key(&publishing.link_file, &publishing.config).await;
+        assert_eq!(check, KeyCheck::NotStreamed);
+        let (warning, text) = check.notice().unwrap();
+        assert!(warning);
+        assert_eq!(
+            text,
+            "Portal watch links: the event isn't marked \"Will be streamed\" on the portal, so \
+             watch links won't be set. Turn that on for the event first, or go ahead without \
+             watch links."
+        );
+        assert!(!text.contains("will still try"), "{text}");
+        assert!(publishing.link_file.exists());
     }
 }

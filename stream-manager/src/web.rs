@@ -653,6 +653,10 @@ async fn link_portal(
             "That code isn't right, or it has expired. Codes last 15 minutes; add the Stream \
              Manager again on the portal for a new one.",
         ),
+        LinkError::NotStreamed => bad(
+            "The portal won't link Stream Manager to this event because it isn't marked \
+             \"Will be streamed\". Turn that on for the event, then get a new code.",
+        ),
         LinkError::Other(e) => bad(format!("Couldn't link: {e}")),
     })?;
     // The key is for the event and portal the code was swapped for; never save it for others.
@@ -1872,6 +1876,15 @@ mod tests {
             reply["error"],
             "The portal isn't expecting this Stream Manager. On the event's Manage Event → \
              Stream management tab, add Stream Manager ID 482917, then type the code it shows."
+        );
+
+        portal.reply_on(EXCHANGE_PATH, 400, r#"{"reason":"NotStreamed"}"#);
+        let (status, reply) = link(&client, &base, &cookie, "482197").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            reply["error"],
+            "The portal won't link Stream Manager to this event because it isn't marked \
+             \"Will be streamed\". Turn that on for the event, then get a new code."
         );
 
         portal.reply_on(EXCHANGE_PATH, 500, "boom");

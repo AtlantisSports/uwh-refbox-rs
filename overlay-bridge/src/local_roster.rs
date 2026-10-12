@@ -15,9 +15,14 @@
 //! loading everything else follows the same "never blank the whole picture over one bad piece"
 //! contract `portal.rs` uses for a malformed Portal response. Every skipped row is counted in
 //! the [`LoadReport`], so the operator is told about it rather than left guessing. A file that
-//! cannot be opened, is missing one of the columns every row needs, or has no row that can be
-//! read at all is a real failure ([`LoadError`]): every one of its rows would have been skipped,
-//! and "loading" it would silently blank every name.
+//! cannot be opened, is missing one of the columns every row needs, or has rows none of which
+//! can be read is a real failure ([`LoadError`]): every one of its rows would have been skipped,
+//! and "loading" it would silently blank every name. A schedule with no rows at all fails too.
+//!
+//! **A roster with its header row and no other rows loads, as "team names only".** That is how an
+//! event with no player lists gets team names: they come from the schedule, and no player names
+//! are shown (the report counts 0 players). It is not the silent blank above -- nothing was
+//! skipped, so nothing the organiser typed is being thrown away.
 //!
 //! **A conflicting duplicate serves nothing, never a guess.** A game number on more than one
 //! schedule row, or the same cap number on more than one row for one team, is dropped entirely
@@ -115,7 +120,8 @@ pub enum FileError {
     Read(csv::Error),
     /// The header row does not name these required columns.
     MissingColumns(Vec<&'static str>),
-    /// Not one row could be read; `skipped` is how many rows there were, all unreadable.
+    /// Not one row could be read; `skipped` is how many rows there were, all unreadable. For a
+    /// schedule, `skipped` may be 0 (no rows at all); a roster with no rows at all loads instead.
     NoUsableRows { skipped: usize },
 }
 
@@ -180,15 +186,14 @@ struct RosterRow {
 
 impl LocalRoster {
     /// Loads both files. Fails if either file can't be opened or read, its header row is missing
-    /// a required column, or not one of its rows can be read -- an individual bad data row is
-    /// skipped and counted instead, and conflicting duplicates are dropped and listed, per the
-    /// module doc.
+    /// a required column, or it has rows and not one of them can be read -- an individual bad
+    /// data row is skipped and counted instead, and conflicting duplicates are dropped and listed,
+    /// per the module doc. The schedule must have at least one row; a roster with no rows at all
+    /// loads, serving team names only (see the module doc).
     /// See [`Self::report`] for what was skipped and dropped.
     pub fn load(schedule_path: &Path, roster_path: &Path) -> Result<Self, LoadError> {
-        let schedule = read_rows::<ScheduleRow>(schedule_path, SCHEDULE_COLUMNS)
-            .map_err(LoadError::Schedule)?;
-        let rosters =
-            read_rows::<RosterRow>(roster_path, ROSTER_COLUMNS).map_err(LoadError::Roster)?;
+        let schedule = read_schedule(schedule_path).map_err(LoadError::Schedule)?;
+        let rosters = read_roster(roster_path).map_err(LoadError::Roster)?;
 
         let (schedule_map, duplicate_games) = build_schedule(schedule.rows);
         let (rosters_map, duplicate_caps) = build_rosters(rosters.rows);
@@ -255,7 +260,7 @@ impl LocalRoster {
 /// file uploaded before its partner, so a bad one is refused at once rather than only when the
 /// other file arrives. The report's roster fields are all zero -- there is no roster to report on.
 pub fn check_schedule(path: &Path) -> Result<LoadReport, LoadError> {
-    let schedule = read_rows::<ScheduleRow>(path, SCHEDULE_COLUMNS).map_err(LoadError::Schedule)?;
+    let schedule = read_schedule(path).map_err(LoadError::Schedule)?;
     let (schedule_map, duplicate_games) = build_schedule(schedule.rows);
     Ok(LoadReport {
         games: schedule_map.len(),
@@ -265,9 +270,11 @@ pub fn check_schedule(path: &Path) -> Result<LoadReport, LoadError> {
     })
 }
 
-/// [`check_schedule`]'s counterpart for a roster CSV. The report's schedule fields are all zero.
+/// [`check_schedule`]'s counterpart for a roster CSV. The report's schedule fields are all zero. As
+/// in a pair, a roster with its header row and no other rows passes, with 0 players (see the
+/// module doc).
 pub fn check_roster(path: &Path) -> Result<LoadReport, LoadError> {
-    let rosters = read_rows::<RosterRow>(path, ROSTER_COLUMNS).map_err(LoadError::Roster)?;
+    let rosters = read_roster(path).map_err(LoadError::Roster)?;
     let (rosters_map, duplicate_caps) = build_rosters(rosters.rows);
     Ok(LoadReport {
         players: rosters_map.values().map(HashMap::len).sum(),
@@ -283,10 +290,34 @@ struct Rows<T> {
     skipped: usize,
 }
 
+/// The schedule CSV's rows: [`read_rows`], and a schedule with no readable row -- whether its
+/// rows were all unreadable or it has no rows at all -- is an error.
+fn read_schedule(path: &Path) -> Result<Rows<ScheduleRow>, FileError> {
+    let schedule = read_rows::<ScheduleRow>(path, SCHEDULE_COLUMNS)?;
+    if schedule.rows.is_empty() {
+        return Err(FileError::NoUsableRows {
+            skipped: schedule.skipped,
+        });
+    }
+    Ok(schedule)
+}
+
+/// The roster CSV's rows: [`read_rows`], and a roster whose rows were all unreadable is an error.
+/// A roster with no rows at all is not -- it is "team names only" (see the module doc).
+fn read_roster(path: &Path) -> Result<Rows<RosterRow>, FileError> {
+    let rosters = read_rows::<RosterRow>(path, ROSTER_COLUMNS)?;
+    if rosters.rows.is_empty() && rosters.skipped > 0 {
+        return Err(FileError::NoUsableRows {
+            skipped: rosters.skipped,
+        });
+    }
+    Ok(rosters)
+}
+
 /// Reads `path`, checking first that its header row names every one of `required` -- without
 /// that check, a misspelled column makes every row fail to read and the file "loads" with
-/// nothing in it. A row that does not read is skipped and counted; a file with no readable row
-/// at all is an error.
+/// nothing in it. A row that does not read is skipped and counted. Whether too few rows were
+/// read is the caller's to decide -- see [`read_schedule`] and [`read_roster`].
 fn read_rows<T: DeserializeOwned>(
     path: &Path,
     required: &[&'static str],
@@ -314,9 +345,6 @@ fn read_rows<T: DeserializeOwned>(
             }
             Err(_) => skipped += 1,
         }
-    }
-    if rows.is_empty() {
-        return Err(FileError::NoUsableRows { skipped });
     }
     Ok(Rows { rows, skipped })
 }
@@ -528,12 +556,43 @@ mod tests {
     }
 
     #[test]
-    fn a_roster_with_no_rows_at_all_fails_to_load() {
+    fn a_roster_with_no_rows_at_all_loads_team_names_only() {
         let schedule = temp_csv(SCHEDULE_CSV);
         let roster = temp_csv("team,capNumber,rosterName\n");
+        let local = LocalRoster::load(schedule.path(), roster.path())
+            .expect("a header-only roster must load, for an event with no player lists");
+
+        assert_eq!(local.team_names_for(1), Some(("Chengdu", "Beijing")));
+        assert_eq!(local.player_name("Chengdu", 2), None);
+        assert_eq!(local.full_roster("Chengdu"), Vec::new());
+        assert_eq!(local.report().players, 0);
+        assert_eq!(local.report().roster_rows_skipped, 0);
+    }
+
+    #[test]
+    fn a_roster_with_only_unreadable_rows_fails_to_load() {
+        let schedule = temp_csv(SCHEDULE_CSV);
+        let roster = temp_csv("team,capNumber,rosterName\nChengdu,notanumber,Li Wei\n");
         let result = LocalRoster::load(schedule.path(), roster.path());
         assert!(
-            matches!(result, Err(LoadError::Roster(_))),
+            matches!(
+                result,
+                Err(LoadError::Roster(FileError::NoUsableRows { skipped: 1 }))
+            ),
+            "got {result:?}"
+        );
+    }
+
+    #[test]
+    fn a_schedule_with_no_rows_at_all_fails_to_load() {
+        let schedule = temp_csv("gameNumber,blackTeam,whiteTeam\n");
+        let roster = temp_csv(ROSTER_CSV);
+        let result = LocalRoster::load(schedule.path(), roster.path());
+        assert!(
+            matches!(
+                result,
+                Err(LoadError::Schedule(FileError::NoUsableRows { skipped: 0 }))
+            ),
             "got {result:?}"
         );
     }
@@ -692,6 +751,33 @@ mod tests {
         assert!(
             error.to_string().contains("rosterName"),
             "the error should name the missing column, got: {error}"
+        );
+    }
+
+    #[test]
+    fn a_lone_roster_with_no_rows_at_all_passes_its_check_with_no_players() {
+        let header_only = temp_csv("team,capNumber,rosterName\n");
+        let report = check_roster(header_only.path())
+            .expect("a header-only roster must pass, for an event with no player lists");
+        assert_eq!(report.players, 0);
+        assert_eq!(report.roster_rows_skipped, 0);
+
+        let unreadable = temp_csv("team,capNumber,rosterName\nChengdu,x,Bad\n");
+        assert!(
+            matches!(
+                check_roster(unreadable.path()),
+                Err(LoadError::Roster(FileError::NoUsableRows { skipped: 1 }))
+            ),
+            "a roster whose rows are all unreadable must still fail"
+        );
+
+        let header_only_schedule = temp_csv("gameNumber,blackTeam,whiteTeam\n");
+        assert!(
+            matches!(
+                check_schedule(header_only_schedule.path()),
+                Err(LoadError::Schedule(FileError::NoUsableRows { skipped: 0 }))
+            ),
+            "a schedule with no rows must still fail"
         );
     }
 }

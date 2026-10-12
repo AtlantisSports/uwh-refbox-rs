@@ -812,16 +812,25 @@ async fn prepare_preview(
         .and_then(|file| prepare::load_state(&file, &config.event_slug))
         .map_err(|e| bad(e.to_string()))?;
     let mut yt = app.youtube().map_err(|e| bad(e.to_string()))?;
-    // The portal key check runs alongside the YouTube lookups, so it adds a wait only when the
-    // portal is slower than YouTube: at most the check's limit (`KEY_CHECK_TIMEOUT`, 5 seconds).
+    // The portal key check and the schedule read run alongside the YouTube lookups, so they add
+    // a wait only when the portal is slower than YouTube: at most `KEY_CHECK_TIMEOUT` (5 seconds).
     let link_file = app.link_file();
-    let (lookups, key_check) = tokio::join!(
+    let (lookups, key_check, fresh_plan) = tokio::join!(
         prepare::lookups(&mut yt),
-        watch_links::check_key(&link_file, &config)
+        watch_links::check_key(&link_file, &config),
+        tokio::time::timeout(
+            watch_links::KEY_CHECK_TIMEOUT,
+            crate::portal::fetch_event_plan(&config.portal_url, &config.event_slug)
+        )
     );
     // The portal accepts an empty update whatever the event's "Will be streamed" setting, so
-    // the schedule's copy of it says whether links can be set.
-    let key_check = watch_links::with_streaming(key_check, plan.will_be_streamed);
+    // the schedule says whether links can be set. It is read afresh, because the organiser may
+    // have just turned it on as the warning asks; the loaded copy answers if that fails.
+    let will_be_streamed = match fresh_plan {
+        Ok(Ok(fresh)) => fresh.will_be_streamed,
+        _ => plan.will_be_streamed,
+    };
+    let key_check = watch_links::with_streaming(key_check, will_be_streamed);
     // From here a failure still says what the key check found: it may have just forgotten a
     // refused key, and this is the only time the operator is told.
     let failed = |error: crate::BoxError| {

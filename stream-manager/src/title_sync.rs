@@ -11,6 +11,7 @@ use crate::{
     quota,
     youtube::{YouTube, YouTubeAccess},
 };
+use std::path::PathBuf;
 use time::OffsetDateTime;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -83,6 +84,12 @@ pub struct Check {
     games: Vec<String>,
 }
 
+/// The record of the check's own event, whatever event the settings name by now: a check still
+/// running when the event is changed must never write into the new event's record.
+fn record_file(app: &App, check: &Check) -> Result<PathBuf, BoxError> {
+    prepare::state_path(&app.config_dir, &check.config.event_slug)
+}
+
 /// Fetches the schedule, replaces the app's cached copy, and picks the games to check. Needs no
 /// YouTube connection, so a switch can run it while it waits for YouTube.
 pub async fn begin(
@@ -125,7 +132,7 @@ async fn update(
     check: &Check,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<usize, BoxError> {
-    let state_file = app.state_file()?;
+    let state_file = record_file(app, check)?;
     let mut updated = 0;
     for game in check.games.iter().filter_map(|g| check.plan.game(g)) {
         let mut yt = youtube.step(&game.court).await?;
@@ -158,7 +165,7 @@ fn finish(
 ) -> Result<SyncReport, BoxError> {
     let removed = match check.day {
         Some(day) => {
-            let state = prepare::load_state(&app.state_file()?, &check.config.event_slug)?;
+            let state = prepare::load_state(&record_file(app, check)?, &check.config.event_slug)?;
             removed_games(&state, &check.plan, &court.name, day)
         }
         None => Vec::new(),
@@ -288,6 +295,41 @@ mod tests {
             sync_day(&plan, "1", None, None, datetime!(2026-08-05 08:00 +10)),
             None
         );
+    }
+
+    #[test]
+    fn a_check_keeps_to_its_own_events_record_after_the_event_changes() {
+        let dir =
+            std::env::temp_dir().join(format!("stream-manager-title-sync-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // The settings now name another event than the one the check started with.
+        let settings = Config {
+            event_slug: "new-cup".to_string(),
+            ..Default::default()
+        };
+        let app = App::new(dir.join("config.toml"), settings.clone());
+        let court = settings.courts[0].clone();
+        let mut config = settings;
+        config.event_slug = "old-cup".to_string();
+        // The check's own event has a video for a game no longer on its schedule.
+        let mut state = EventState {
+            event_slug: "old-cup".to_string(),
+            ..Default::default()
+        };
+        state
+            .videos
+            .insert("99".to_string(), video("99", Some((&court.name, 1))));
+        prepare::save_state(&prepare::state_path(&dir, "old-cup").unwrap(), &state).unwrap();
+        let check = Check {
+            config,
+            plan: sample(),
+            day: Some(1),
+            games: Vec::new(),
+        };
+        let report = finish(&app, &court, &check, 0, &mut |_| {}).unwrap();
+        assert_eq!(report.removed, ["99"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn video(number: &str, court_and_day: Option<(&str, usize)>) -> VideoState {

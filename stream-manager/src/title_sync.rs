@@ -9,9 +9,12 @@ use crate::{
     portal::{self, EventPlan, PlannedGame},
     prepare::{self, EventState},
     quota,
-    youtube::{THUMBNAIL_COST, YouTube, YouTubeAccess},
+    thumbnail::MissingGlyph,
+    youtube::{self, THUMBNAIL_COST, YouTube, YouTubeAccess},
 };
-use time::OffsetDateTime;
+use std::{collections::HashSet, path::Path};
+use time::{Date, OffsetDateTime};
+use tokio::time::Instant;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SyncReport {
@@ -19,6 +22,52 @@ pub struct SyncReport {
     pub updated: usize,
     /// Games with a video that are no longer on the portal (the videos are kept).
     pub removed: Vec<String>,
+}
+
+/// What the 10-minute checks remember about thumbnails from one check to the next. Kept by the
+/// app in memory, so a restart starts afresh.
+#[derive(Debug, Default)]
+pub struct ThumbnailMemory {
+    /// The allowance day (Google's, in Pacific time) on which YouTube refused an upload.
+    refused_on: Option<Date>,
+    /// Courts already told their thumbnails are waiting to save the allowance for switches,
+    /// until the allowance allows them again.
+    told_saving: HashSet<String>,
+    /// An event name the font can't draw, which is on every thumbnail.
+    undrawable_event: Option<String>,
+}
+
+impl ThumbnailMemory {
+    /// YouTube refused an upload at `now`: the checks upload no more thumbnails that day.
+    pub fn note_refusal(&mut self, now: OffsetDateTime) {
+        self.refused_on = Some(quota::pacific_date(now));
+    }
+
+    /// Whether YouTube refused an upload earlier on `now`'s allowance day.
+    pub fn refused_today(&self, now: OffsetDateTime) -> bool {
+        self.refused_on == Some(quota::pacific_date(now))
+    }
+
+    /// Notes whether the allowance lets `court` upload a thumbnail now. True when it doesn't
+    /// and the court hasn't been told so since it last did, which is when to say so.
+    pub fn saving_news(&mut self, court: &str, allowed: bool) -> bool {
+        if allowed {
+            self.told_saving.remove(court);
+            false
+        } else {
+            self.told_saving.insert(court.to_string())
+        }
+    }
+
+    /// The font can't draw `event_name`: no thumbnails until the event's name changes.
+    pub fn note_undrawable_event(&mut self, event_name: &str) {
+        self.undrawable_event = Some(event_name.to_string());
+    }
+
+    /// Whether `event_name` is one the font couldn't draw.
+    pub fn undrawable_event(&self, event_name: &str) -> bool {
+        self.undrawable_event.as_deref() == Some(event_name)
+    }
 }
 
 /// The schedule day to check: that of `only_game`, else of the live game, else today's.
@@ -119,34 +168,19 @@ pub async fn begin(
 
 /// Updates the checked games' videos where the portal has changed. Returns how many changed
 /// (thumbnails not counted). The court's lock is taken one game at a time, so a switch can go
-/// ahead in between. With `thumbnails`, a game's thumbnail is drawn and uploaded again when
-/// what it shows has changed; never on a switch's own check, which only has a few seconds.
+/// ahead in between. With `thumbnails_until`, once every title is checked, the thumbnails whose
+/// content changed are drawn and uploaded again until then; never on a switch's own check,
+/// which only has a few seconds.
 async fn update(
     app: &App,
     youtube: &mut YouTubeAccess<'_>,
     check: &Check,
-    thumbnails: bool,
+    thumbnails_until: Option<Instant>,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<usize, BoxError> {
     let state_file = app.state_file()?;
     let mut updated = 0;
-    let mut pictures = prepare::Thumbnails::default();
     for game in check.games.iter().filter_map(|g| check.plan.game(g)) {
-        // Drawn before taking the court's lock, so a slow picture download never holds up a
-        // switch.
-        let redrawn = if thumbnails {
-            prepare::redraw_thumbnail(
-                &mut pictures,
-                &check.config,
-                &check.plan,
-                game,
-                &state_file,
-                log,
-            )
-            .await
-        } else {
-            None
-        };
         let mut yt = youtube.step(&game.court).await?;
         // Read afresh: a switch may have changed the record while the court's lock was free.
         let mut state = prepare::load_state(&state_file, &check.config.event_slug)?;
@@ -163,22 +197,144 @@ async fn update(
         if changed {
             updated += 1;
         }
-        if let Some(redrawn) = redrawn {
-            prepare::upload_redrawn(
-                &mut yt,
-                &check.config,
-                game,
-                redrawn,
-                &mut pictures,
-                &state,
-                &state_file,
-                &|court: &str| app.can_spend_extra(court, THUMBNAIL_COST),
-                log,
-            )
-            .await;
+    }
+    if let Some(until) = thumbnails_until {
+        // Whatever is left when the time is up waits for the next check.
+        if Instant::now() < until {
+            let thumbnails = update_thumbnails(app, check, &state_file, log);
+            let _ = tokio::time::timeout_at(until, thumbnails).await;
         }
     }
     Ok(updated)
+}
+
+/// Asks whether the allowance lets `court` upload a thumbnail, and says it doesn't once until
+/// it does again.
+fn thumbnails_allowed(
+    app: &App,
+    court: &str,
+    allowed: bool,
+    log: &mut (dyn FnMut(String) + Send),
+) -> bool {
+    let news = app.thumbnail_memory().saving_news(court, allowed);
+    if news {
+        log("Thumbnails not uploaded — saving the allowance for switches".to_string());
+    }
+    allowed
+}
+
+/// The 10-minute check's thumbnails: draws and uploads again those of the checked games whose
+/// content changed. Done without the court's lock, so neither a slow picture download nor an
+/// upload ever holds up a switch. Problems are logged, never returned: the titles matter more
+/// than their thumbnails. One stops the thumbnails for the rest of this check, and a refusal
+/// from YouTube for the rest of Google's day.
+async fn update_thumbnails(
+    app: &App,
+    check: &Check,
+    state_file: &Path,
+    log: &mut (dyn FnMut(String) + Send),
+) {
+    {
+        let memory = app.thumbnail_memory();
+        if memory.refused_today(OffsetDateTime::now_utc())
+            || memory.undrawable_event(&check.plan.event_name)
+        {
+            return;
+        }
+    }
+    let mut yt = match app.youtube() {
+        Ok(yt) => yt,
+        Err(e) => {
+            log(format!("Thumbnails not checked — {e}"));
+            return;
+        }
+    };
+    let mut pictures = prepare::Thumbnails::default();
+    for game in check.games.iter().filter_map(|g| check.plan.game(g)) {
+        let key = match prepare::load_state(state_file, &check.config.event_slug) {
+            Ok(state) => match prepare::thumbnail_to_redraw(&state, &check.plan, game) {
+                Some(key) => key,
+                None => continue,
+            },
+            Err(e) => {
+                log(format!("Game {}: thumbnail not checked — {e}", game.number));
+                continue;
+            }
+        };
+        // Asked before drawing, so nothing is drawn or downloaded while the switches need the
+        // allowance.
+        let allowed = app.can_spend_extra(&game.court, THUMBNAIL_COST);
+        if !thumbnails_allowed(app, &game.court, allowed, log) {
+            return;
+        }
+        let redrawn = match prepare::redraw_thumbnail(
+            &mut pictures,
+            &check.plan,
+            game,
+            key.clone(),
+            log,
+        )
+        .await
+        {
+            Ok(redrawn) => redrawn,
+            Err(e) => {
+                let (line, stop) = prepare::thumbnail_failed(&game.number, e.as_ref());
+                log(line);
+                match e.downcast_ref::<MissingGlyph>() {
+                    Some(missing) if missing.in_event_name => app
+                        .thumbnail_memory()
+                        .note_undrawable_event(&check.plan.event_name),
+                    Some(_) => {
+                        let recorded =
+                            prepare::record_undrawable(state_file, &check.config, game, key);
+                        if let Err(e) = recorded {
+                            log(format!(
+                                "Game {}: the skip wasn't recorded, so it will be tried again — {e}",
+                                game.number
+                            ));
+                        }
+                    }
+                    None => {}
+                }
+                if stop {
+                    return;
+                }
+                continue;
+            }
+        };
+        // Asked again just before the upload: the switches always come first.
+        let extras_ok = || app.can_spend_extra(&game.court, THUMBNAIL_COST);
+        let uploaded = prepare::upload_redrawn(
+            &mut yt,
+            &check.config,
+            game,
+            redrawn,
+            state_file,
+            &extras_ok,
+            log,
+        )
+        .await;
+        match uploaded {
+            Ok(prepare::Upload::NotAllowed) => {
+                thumbnails_allowed(app, &game.court, false, log);
+                return;
+            }
+            Ok(_) => {}
+            Err(e) if youtube::is_refusal(e.as_ref()) => {
+                app.thumbnail_memory()
+                    .note_refusal(OffsetDateTime::now_utc());
+                log(format!(
+                    "Thumbnails: YouTube refused an upload ({e}), so the 10-minute check \
+                     uploads no more today. Prepare still tries."
+                ));
+                return;
+            }
+            Err(e) => {
+                log(format!("Game {}: thumbnail not updated — {e}", game.number));
+                return;
+            }
+        }
+    }
 }
 
 /// Lists the court's games gone from the portal, and notes the ones not reported yet today.
@@ -205,18 +361,21 @@ fn finish(
 }
 
 /// Checks the court's games today that haven't been live yet (or only `only_game`) against the
-/// portal and updates their videos where it changed.
+/// portal and updates their videos where it changed, then their thumbnails until
+/// `thumbnails_until`.
 pub async fn sync_court(
     app: &App,
     court: &CourtConfig,
     only_game: Option<&str>,
+    thumbnails_until: Instant,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<SyncReport, BoxError> {
     let check = begin(app, court, only_game).await?;
     let updated = if check.games.is_empty() {
         0
     } else {
-        update(app, &mut YouTubeAccess::shared(app), &check, true, log).await?
+        let mut youtube = YouTubeAccess::shared(app);
+        update(app, &mut youtube, &check, Some(thumbnails_until), log).await?
     };
     finish(app, court, &check, updated, log)
 }
@@ -242,7 +401,7 @@ pub async fn complete(
     check: &Check,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<SyncReport, BoxError> {
-    let updated = update(app, &mut YouTubeAccess::Held(yt), check, false, log).await?;
+    let updated = update(app, &mut YouTubeAccess::Held(yt), check, None, log).await?;
     finish(app, court, check, updated, log)
 }
 
@@ -321,6 +480,42 @@ mod tests {
             sync_day(&plan, "1", None, None, datetime!(2026-08-05 08:00 +10)),
             None
         );
+    }
+
+    #[test]
+    fn a_refused_upload_stops_the_checks_thumbnails_until_googles_next_day() {
+        let mut memory = ThumbnailMemory::default();
+        // 10:00 in Sydney on 1 Aug is 17:00 on 31 Jul in Pacific time.
+        let refused = datetime!(2026-08-01 10:00 +10);
+        assert!(!memory.refused_today(refused));
+        memory.note_refusal(refused);
+        assert!(memory.refused_today(refused));
+        // Google's day turns at 17:00 in Sydney.
+        assert!(memory.refused_today(datetime!(2026-08-01 16:59 +10)));
+        assert!(!memory.refused_today(datetime!(2026-08-01 17:00 +10)));
+    }
+
+    #[test]
+    fn saving_the_allowance_is_said_once_per_court_until_it_allows_again() {
+        let mut memory = ThumbnailMemory::default();
+        assert!(!memory.saving_news("1", true));
+        assert!(memory.saving_news("1", false));
+        assert!(!memory.saving_news("1", false));
+        // Another court is told on its own.
+        assert!(memory.saving_news("2", false));
+        // Allowed again, then not: told again.
+        assert!(!memory.saving_news("1", true));
+        assert!(memory.saving_news("1", false));
+        assert!(!memory.saving_news("2", false));
+    }
+
+    #[test]
+    fn an_event_name_the_font_cant_draw_is_tried_again_once_it_changes() {
+        let mut memory = ThumbnailMemory::default();
+        assert!(!memory.undrawable_event("東京 Cup"));
+        memory.note_undrawable_event("東京 Cup");
+        assert!(memory.undrawable_event("東京 Cup"));
+        assert!(!memory.undrawable_event("Tokyo Cup"));
     }
 
     fn video(number: &str, court_and_day: Option<(&str, usize)>) -> VideoState {

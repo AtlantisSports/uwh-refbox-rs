@@ -8,7 +8,7 @@
 use crate::{BoxError, app::App, google_auth::GoogleAuth, quota};
 use log::warn;
 use reqwest::{
-    Method, RequestBuilder,
+    Method, RequestBuilder, StatusCode,
     header::{CONTENT_LENGTH, CONTENT_TYPE},
 };
 use serde_json::{Value, json};
@@ -56,6 +56,30 @@ pub struct BroadcastSpec {
     /// RFC 3339, e.g. `2026-08-01T09:30:00+10:00`.
     pub scheduled_start: String,
     pub privacy: String,
+}
+
+/// YouTube answered a call with an error. The text says what went wrong; the status tells a
+/// refusal (see [`is_refusal`]) from a fault on Google's side.
+#[derive(Debug)]
+pub struct ApiError {
+    status: StatusCode,
+    text: String,
+}
+
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.text)
+    }
+}
+
+impl std::error::Error for ApiError {}
+
+/// Whether YouTube refused the call itself (a 4xx answer: not allowed, out of allowance, a bad
+/// picture), so trying again later the same day would only be refused again. A network
+/// failure, a timeout or a fault on Google's side (5xx) may well work next time.
+pub fn is_refusal(e: &(dyn std::error::Error + Send + Sync + 'static)) -> bool {
+    e.downcast_ref::<ApiError>()
+        .is_some_and(|e| e.status.is_client_error())
 }
 
 /// A handle on the YouTube connection. Cloning it is cheap, and every clone shares the Google
@@ -232,15 +256,18 @@ impl YouTube {
                     .as_str()
                     .unwrap_or("unknown");
                 let message = value["error"]["message"].as_str().unwrap_or(&text);
-                Err(format!("YouTube refused {path} ({status}, {reason}): {message}").into())
+                Err(Box::new(ApiError {
+                    status,
+                    text: format!("YouTube refused {path} ({status}, {reason}): {message}"),
+                }))
             }
             // Not JSON, e.g. an HTML error page from Google's front end.
             None => {
                 let snippet: String = text.chars().take(300).collect();
-                Err(
-                    format!("Unexpected reply from YouTube for {path} ({status}): {snippet}")
-                        .into(),
-                )
+                Err(Box::new(ApiError {
+                    status,
+                    text: format!("Unexpected reply from YouTube for {path} ({status}): {snippet}"),
+                }))
             }
         }
     }
@@ -603,4 +630,42 @@ fn id_of(resource: &Value) -> Result<String, BoxError> {
         .as_str()
         .ok_or("YouTube's reply had no id")?
         .to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn answer(status: StatusCode) -> BoxError {
+        Box::new(ApiError {
+            status,
+            text: format!("YouTube refused thumbnails/set ({status}, forbidden): no"),
+        })
+    }
+
+    #[test]
+    fn a_4xx_answer_is_a_refusal() {
+        for status in [
+            StatusCode::BAD_REQUEST,
+            StatusCode::FORBIDDEN,
+            StatusCode::PAYLOAD_TOO_LARGE,
+            StatusCode::TOO_MANY_REQUESTS,
+        ] {
+            assert!(is_refusal(answer(status).as_ref()), "{status}");
+        }
+    }
+
+    #[test]
+    fn a_fault_on_googles_side_or_the_network_is_not_a_refusal() {
+        for status in [
+            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::BAD_GATEWAY,
+            StatusCode::SERVICE_UNAVAILABLE,
+        ] {
+            assert!(!is_refusal(answer(status).as_ref()), "{status}");
+        }
+        // No answer at all, even when its text mentions a refusal.
+        let network: BoxError = "error sending request: connection refused".into();
+        assert!(!is_refusal(network.as_ref()));
+    }
 }

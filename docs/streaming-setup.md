@@ -443,7 +443,8 @@ key A.
 **Thumbnails.** Prepare also gives each video a thumbnail with both teams' logos (or initials) and
 the event banner. The preview shows their cost separately. They are extras: if the allowance would
 otherwise run short of what the day's switches need, the log says "Game 12: thumbnail not uploaded
-— saving the allowance for switches" and the next Prepare, or the next title check, tries again.
+— saving the allowance for switches" (Prepare) or, once, "Thumbnails not uploaded — saving the
+allowance for switches" (the 10-minute check), and the next Prepare, or a later check, tries again.
 YouTube only accepts thumbnails from a channel allowed custom thumbnails (YouTube Studio asks for
 phone verification).
 
@@ -535,7 +536,8 @@ phone verification).
 | Start day: "Re-run Prepare: some of today's videos use a stream key other than A" | The court was switched to one-key mode after Prepare. Run **Prepare** again for that day and court; it moves the videos to key A. |
 | Log: "Allowance low: skipped the chat message and Next game link" | This PC's share of YouTube's daily allowance is nearly used. Switching carries on. If Google has granted a higher limit, raise **Daily allowance (units)** in Settings; otherwise nothing to do until midnight US Pacific time. |
 | Log: "Game 12: thumbnail skipped — the font has no "東"" | A team or event name uses a character the thumbnail's font can't draw. The video keeps YouTube's own picture; nothing else is affected. |
-| Log: "Game 12: thumbnail not uploaded — saving the allowance for switches" | The allowance is being kept for the switches. Nothing to do: the next Prepare or title check tries again while there is room. |
+| Log: "Game 12: thumbnail not uploaded — saving the allowance for switches", or "Thumbnails not uploaded — saving the allowance for switches" | The allowance is being kept for the switches. Nothing to do: the next Prepare or title check tries again while there is room. |
+| Log: "Thumbnails: YouTube refused an upload (…), so the 10-minute check uploads no more today" | YouTube won't take thumbnails, often because the channel isn't allowed custom thumbnails (verify it in YouTube Studio). The check stops trying until tomorrow (US Pacific time) so it doesn't waste the allowance; once fixed, run **Prepare** again to set them now. |
 | Log: "⚠ The portal or YouTube didn't answer in time; titles weren't checked" | The internet or the portal was slow. Nothing to do: titles are checked again in 10 minutes and just before each switch. |
 
 ---

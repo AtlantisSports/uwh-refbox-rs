@@ -31,7 +31,7 @@ use std::{
 use time::{OffsetDateTime, macros::format_description};
 use tokio::{
     sync::{
-        Mutex as AsyncMutex, OwnedMutexGuard,
+        Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard, OwnedMutexGuard,
         mpsc::{self, UnboundedReceiver},
     },
     task::JoinHandle,
@@ -75,6 +75,9 @@ pub struct App {
     thumbnail_memory: Mutex<title_sync::ThumbnailMemory>,
     /// Each court's latest thumbnail job, by court name, so only one runs at a time.
     thumbnail_jobs: Mutex<HashMap<String, JoinHandle<()>>>,
+    /// Taken by a thumbnail job for each upload, so only one court uploads at a time (see
+    /// [`App::thumbnail_upload_turn`]).
+    thumbnail_upload_turn: AsyncMutex<()>,
 }
 
 struct Inner {
@@ -275,6 +278,7 @@ impl App {
             )),
             thumbnail_memory: Mutex::new(title_sync::ThumbnailMemory::default()),
             thumbnail_jobs: Mutex::new(HashMap::new()),
+            thumbnail_upload_turn: AsyncMutex::new(()),
             config_dir,
         })
     }
@@ -285,6 +289,13 @@ impl App {
         self.thumbnail_memory
             .lock()
             .unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Waits for this thumbnail job's turn to upload: one court's at a time, so the courts'
+    /// jobs can't together spend the allowance kept for switches, nor keep uploading once
+    /// another has found the channel refused. Switches never take it, so it never delays them.
+    pub async fn thumbnail_upload_turn(&self) -> AsyncMutexGuard<'_, ()> {
+        self.thumbnail_upload_turn.lock().await
     }
 
     fn inner(&self) -> MutexGuard<'_, Inner> {

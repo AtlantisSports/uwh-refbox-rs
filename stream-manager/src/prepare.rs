@@ -414,11 +414,15 @@ const INCOMPLETE: &str = " | incomplete";
 /// doesn't try it again until what the thumbnail shows changes.
 const UNDRAWABLE: &str = " | undrawable";
 
+/// Added to the key when YouTube won't accept the game's thumbnail for that one video, so
+/// title sync doesn't try it again until what the thumbnail shows changes.
+const REJECTED: &str = " | rejected";
+
 /// Whether title sync should draw and upload a game's thumbnail again: what it shows has
 /// changed since the upload (a team became known, a logo or the banner changed, or the design
 /// was updated), or the upload left out a picture that is now available. A game with no
 /// thumbnail recorded (Prepare skipped it or left it for later) is tried too; one the font
-/// couldn't draw only once what it shows has changed.
+/// couldn't draw, or YouTube wouldn't accept, only once what it shows has changed.
 pub fn thumbnail_needs_redraw(
     recorded: Option<&str>,
     current_key: &str,
@@ -429,7 +433,10 @@ pub fn thumbnail_needs_redraw(
         Some(recorded) => {
             if let Some(shown) = recorded.strip_suffix(INCOMPLETE) {
                 shown != current_key || pictures_available
-            } else if let Some(shown) = recorded.strip_suffix(UNDRAWABLE) {
+            } else if let Some(shown) = recorded
+                .strip_suffix(UNDRAWABLE)
+                .or_else(|| recorded.strip_suffix(REJECTED))
+            {
                 shown != current_key
             } else {
                 recorded != current_key
@@ -503,29 +510,60 @@ pub fn record_undrawable(
     read: Option<String>,
     key: String,
 ) -> Result<(), BoxError> {
+    record_skipped(state_file, config, game, read, key + UNDRAWABLE)
+}
+
+/// Records that YouTube wouldn't accept the game's thumbnail showing `key` for its video, so
+/// title sync leaves it until what the thumbnail shows changes. `read` is the record's thumbnail
+/// as read just before the upload ([`Upload::Failed`]): a newer one recorded meanwhile is kept.
+pub fn record_rejected(
+    state_file: &Path,
+    config: &Config,
+    game: &PlannedGame,
+    read: Option<String>,
+    key: String,
+) -> Result<(), BoxError> {
+    record_skipped(state_file, config, game, read, key + REJECTED)
+}
+
+/// Records `skipped` as the game's thumbnail, unless another has been recorded since `read`.
+fn record_skipped(
+    state_file: &Path,
+    config: &Config,
+    game: &PlannedGame,
+    read: Option<String>,
+    skipped: String,
+) -> Result<(), BoxError> {
     update_state(state_file, &config.event_slug, |state| {
         if let Some(v) = state.videos.get_mut(&game.number) {
-            record_if_unchanged(&mut v.thumbnail, read.as_deref(), key + UNDRAWABLE);
+            record_if_unchanged(&mut v.thumbnail, read.as_deref(), skipped);
         }
     })?;
     Ok(())
 }
 
 /// What [`upload_redrawn`] did.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum Upload {
     Set,
     /// The record no longer needs it (a switch or Prepare got there first).
     NotNeeded,
     /// `extras_ok` refused it.
     NotAllowed,
+    /// YouTube didn't take it. `read` is the record's thumbnail as read just before the upload,
+    /// for [`record_rejected`].
+    Failed {
+        error: BoxError,
+        read: Option<String>,
+    },
 }
 
 /// Title sync's second half: reads the record afresh and, if it still needs a
 /// [`redraw_thumbnail`] picture and `extras_ok` allows it, uploads it and records what it
 /// shows, unless another has been recorded since it was read. Needs no court's lock: the upload
 /// changes nothing a switch works on, and the record is changed through [`update_state`]. A
-/// failed upload leaves the old record, so a later check tries again.
+/// failed upload leaves the old record, so a later check tries again, unless the caller records
+/// it as rejected ([`Upload::Failed`]).
 pub async fn upload_redrawn(
     yt: &mut YouTube,
     config: &Config,
@@ -546,7 +584,9 @@ pub async fn upload_redrawn(
         return Ok(Upload::NotAllowed);
     }
     let read = video.thumbnail.clone();
-    yt.set_thumbnail(&video.broadcast_id, redrawn.jpeg).await?;
+    if let Err(error) = yt.set_thumbnail(&video.broadcast_id, redrawn.jpeg).await {
+        return Ok(Upload::Failed { error, read });
+    }
     log(format!("Game {}: thumbnail set", game.number));
     let key = if redrawn.complete {
         redrawn.key
@@ -1617,6 +1657,19 @@ mod tests {
         let (after, _) = keys(&plan);
         assert!(thumbnail_needs_redraw(Some(&undrawable), &after, true));
         assert!(thumbnail_needs_redraw(Some(&undrawable), &after, false));
+    }
+
+    #[test]
+    fn a_thumbnail_youtube_rejected_is_tried_again_only_once_it_changes() {
+        let mut plan = one_game_plan("2026-08-01T09:30:00+10:00");
+        let (before, _) = keys(&plan);
+        let rejected = before.clone() + REJECTED;
+        assert!(!thumbnail_needs_redraw(Some(&rejected), &before, true));
+        assert!(!thumbnail_needs_redraw(Some(&rejected), &before, false));
+        plan.games[0].dark = "Sharks".to_string();
+        let (after, _) = keys(&plan);
+        assert!(thumbnail_needs_redraw(Some(&rejected), &after, true));
+        assert!(thumbnail_needs_redraw(Some(&rejected), &after, false));
     }
 
     #[test]

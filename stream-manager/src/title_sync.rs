@@ -229,8 +229,10 @@ fn thumbnails_allowed(
 /// lock, so neither a slow picture download nor an upload ever holds up a switch. Problems are
 /// logged, never returned: the titles matter more than their thumbnails. A failed upload skips
 /// its game, stops this job, or (YouTube refusing the channel) stops the checks' thumbnails for
-/// the rest of Google's day (see [`ThumbnailFailure`]). Stops at the next game once
-/// `still_current` says the settings have changed.
+/// the rest of Google's day (see [`ThumbnailFailure`]); one YouTube won't accept is not tried
+/// again until it changes. Uploads take turns with the other courts' jobs (see
+/// [`App::thumbnail_upload_turn`]). Stops at the next game once `still_current` says the
+/// settings have changed.
 pub async fn update_thumbnails(
     app: &App,
     check: &Check,
@@ -322,6 +324,17 @@ pub async fn update_thumbnails(
                 continue;
             }
         };
+        // Drawn above without the turn, so a slow download never holds up another court's
+        // upload; uploaded and recorded below within it. Inside the turn, the day's refusal and
+        // the allowance are asked again, as another court's upload may have changed either.
+        let turn = app.thumbnail_upload_turn().await;
+        if !still_current()
+            || app
+                .thumbnail_memory()
+                .refused_today(OffsetDateTime::now_utc())
+        {
+            return;
+        }
         // Asked again just before the upload: the switches always come first.
         let extras_ok = || app.can_spend_extra(&game.court, THUMBNAIL_COST);
         let uploaded = prepare::upload_redrawn(
@@ -334,31 +347,50 @@ pub async fn update_thumbnails(
             log,
         )
         .await;
-        match uploaded {
+        // `read` is known only once the upload was tried.
+        let (e, read) = match uploaded {
             Ok(prepare::Upload::NotAllowed) => {
                 thumbnails_allowed(app, &game.court, false, log);
                 return;
             }
-            Ok(_) => {}
-            Err(e) => match youtube::thumbnail_failure(e.as_ref()) {
-                ThumbnailFailure::StopForDay => {
-                    app.thumbnail_memory()
-                        .note_refusal(OffsetDateTime::now_utc());
+            Ok(prepare::Upload::Set | prepare::Upload::NotNeeded) => continue,
+            Ok(prepare::Upload::Failed { error, read }) => (error, Some(read)),
+            Err(e) => (e, None),
+        };
+        match youtube::thumbnail_failure(e.as_ref()) {
+            ThumbnailFailure::StopForDay => {
+                app.thumbnail_memory()
+                    .note_refusal(OffsetDateTime::now_utc());
+                log(format!(
+                    "Thumbnails: YouTube refused an upload ({e}), so the 10-minute check \
+                     uploads no more today. Prepare still tries."
+                ));
+                return;
+            }
+            ThumbnailFailure::SkipGame => match read {
+                Some(read) => {
                     log(format!(
-                        "Thumbnails: YouTube refused an upload ({e}), so the 10-minute check \
-                         uploads no more today. Prepare still tries."
+                        "Game {}: thumbnail not accepted by YouTube, so it isn't tried again \
+                         until it changes — {e}",
+                        game.number
                     ));
-                    return;
+                    let recorded =
+                        prepare::record_rejected(&state_file, &check.config, game, read, key);
+                    if let Err(e) = recorded {
+                        log(format!(
+                            "Game {}: the skip wasn't recorded, so it will be tried again — {e}",
+                            game.number
+                        ));
+                    }
                 }
-                ThumbnailFailure::SkipGame => {
-                    log(format!("Game {}: thumbnail not updated — {e}", game.number));
-                }
-                ThumbnailFailure::StopForNow => {
-                    log(format!("Game {}: thumbnail not updated — {e}", game.number));
-                    return;
-                }
+                None => log(format!("Game {}: thumbnail not updated — {e}", game.number)),
             },
+            ThumbnailFailure::StopForNow => {
+                log(format!("Game {}: thumbnail not updated — {e}", game.number));
+                return;
+            }
         }
+        drop(turn);
     }
 }
 

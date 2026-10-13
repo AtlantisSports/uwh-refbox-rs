@@ -43,6 +43,9 @@ const COURT_LOG_LINES: usize = 12;
 const TITLE_SYNC_EVERY: Duration = Duration::from_secs(600);
 /// The longest one court's 10-minute check may take before it is given up.
 const TITLE_SYNC_WAIT: Duration = Duration::from_secs(60);
+/// The 10-minute check's thumbnails stop this long before the check is given up, so a slow
+/// picture or upload never costs the titles their check.
+const THUMBNAIL_MARGIN: Duration = Duration::from_secs(15);
 /// How often the Stream Deck's live status is brought up to date in Companion (ADR 026 §4).
 const COMPANION_EVERY: Duration = Duration::from_secs(1);
 
@@ -68,6 +71,8 @@ pub struct App {
     /// Whether the YouTube sign-in file exists, as last checked: at start, and whenever the
     /// YouTube connection is dropped (e.g. after connecting).
     youtube_connected: AtomicBool,
+    /// What the 10-minute checks remember about thumbnails between checks.
+    thumbnail_memory: Mutex<title_sync::ThumbnailMemory>,
 }
 
 struct Inner {
@@ -266,8 +271,17 @@ impl App {
             youtube_connected: AtomicBool::new(google_auth::is_connected(
                 &config_dir.join(TOKEN_FILE),
             )),
+            thumbnail_memory: Mutex::new(title_sync::ThumbnailMemory::default()),
             config_dir,
         })
+    }
+
+    /// What the 10-minute checks remember about thumbnails. Never held while waiting.
+    pub fn thumbnail_memory(&self) -> MutexGuard<'_, title_sync::ThumbnailMemory> {
+        // A panic while holding the lock leaves the data usable; keep going.
+        self.thumbnail_memory
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     fn inner(&self) -> MutexGuard<'_, Inner> {
@@ -896,7 +910,9 @@ impl App {
                 let mut log =
                     move |line: String| log_app.with_court(generation, i, |c| c.note(line));
                 // Giving up drops the check, which releases the court's lock for its switches.
-                let check = title_sync::sync_court(self, &court, None, &mut log);
+                let thumbnails_until =
+                    tokio::time::Instant::now() + TITLE_SYNC_WAIT - THUMBNAIL_MARGIN;
+                let check = title_sync::sync_court(self, &court, None, thumbnails_until, &mut log);
                 let problem = match tokio::time::timeout(TITLE_SYNC_WAIT, check).await {
                     Ok(Ok(_)) => None,
                     Ok(Err(e)) => Some(format!(
@@ -1136,8 +1152,8 @@ impl App {
     }
 
     /// The lock for one court's videos. A switch (with its title check), End day, Go live,
-    /// restart recovery, and each per-game step of Prepare and of the 10-minute title check
-    /// hold it, so no two of them work on the same court at once, while different courts'
+    /// restart recovery, and each per-game step of Prepare and of the 10-minute title check's
+    /// titles hold it (its thumbnails don't), so no two of them work on the same court at once, while different courts'
     /// switches run side by side.
     ///
     /// No deadlock: a holder never waits for another court's lock (only

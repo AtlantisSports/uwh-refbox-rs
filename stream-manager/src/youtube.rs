@@ -58,11 +58,13 @@ pub struct BroadcastSpec {
     pub privacy: String,
 }
 
-/// YouTube answered a call with an error. The text says what went wrong; the status tells a
-/// refusal (see [`is_refusal`]) from a fault on Google's side.
+/// YouTube answered a call with an error. The text says what went wrong; the status and the
+/// reason tell what to do about it (see [`thumbnail_failure`]).
 #[derive(Debug)]
 pub struct ApiError {
     status: StatusCode,
+    /// The reason YouTube gave (e.g. `forbidden`, `quotaExceeded`), if its answer said.
+    reason: Option<String>,
     text: String,
 }
 
@@ -74,12 +76,36 @@ impl std::fmt::Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-/// Whether YouTube refused the call itself (a 4xx answer: not allowed, out of allowance, a bad
-/// picture), so trying again later the same day would only be refused again. A network
-/// failure, a timeout or a fault on Google's side (5xx) may well work next time.
-pub fn is_refusal(e: &(dyn std::error::Error + Send + Sync + 'static)) -> bool {
-    e.downcast_ref::<ApiError>()
-        .is_some_and(|e| e.status.is_client_error())
+/// What the 10-minute check's thumbnails do after an upload failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThumbnailFailure {
+    /// YouTube refuses the channel itself (custom thumbnails not allowed, or the allowance is
+    /// used up): trying again the same day would only be refused again.
+    StopForDay,
+    /// Something about this one video or picture: the next game is tried.
+    SkipGame,
+    /// Too many calls at once, the sign-in, a fault on Google's side, the network or the
+    /// record: the next check tries again.
+    StopForNow,
+}
+
+/// Sorts a failed thumbnail upload into a [`ThumbnailFailure`].
+pub fn thumbnail_failure(e: &(dyn std::error::Error + Send + Sync + 'static)) -> ThumbnailFailure {
+    let Some(e) = e.downcast_ref::<ApiError>() else {
+        return ThumbnailFailure::StopForNow;
+    };
+    let reason = e.reason.as_deref();
+    if reason == Some("quotaExceeded") {
+        return ThumbnailFailure::StopForDay;
+    }
+    let rate_limited = matches!(reason, Some("rateLimitExceeded" | "userRateLimitExceeded"));
+    match e.status {
+        StatusCode::FORBIDDEN if rate_limited => ThumbnailFailure::StopForNow,
+        StatusCode::FORBIDDEN => ThumbnailFailure::StopForDay,
+        StatusCode::UNAUTHORIZED | StatusCode::TOO_MANY_REQUESTS => ThumbnailFailure::StopForNow,
+        status if status.is_client_error() => ThumbnailFailure::SkipGame,
+        _ => ThumbnailFailure::StopForNow,
+    }
 }
 
 /// A handle on the YouTube connection. Cloning it is cheap, and every clone shares the Google
@@ -252,13 +278,16 @@ impl YouTube {
         match value {
             Some(value) if status.is_success() => Ok(value),
             Some(value) => {
-                let reason = value["error"]["errors"][0]["reason"]
-                    .as_str()
-                    .unwrap_or("unknown");
+                let reason = value["error"]["errors"][0]["reason"].as_str();
                 let message = value["error"]["message"].as_str().unwrap_or(&text);
+                let text = format!(
+                    "YouTube refused {path} ({status}, {}): {message}",
+                    reason.unwrap_or("unknown")
+                );
                 Err(Box::new(ApiError {
                     status,
-                    text: format!("YouTube refused {path} ({status}, {reason}): {message}"),
+                    reason: reason.map(str::to_string),
+                    text,
                 }))
             }
             // Not JSON, e.g. an HTML error page from Google's front end.
@@ -266,6 +295,7 @@ impl YouTube {
                 let snippet: String = text.chars().take(300).collect();
                 Err(Box::new(ApiError {
                     status,
+                    reason: None,
                     text: format!("Unexpected reply from YouTube for {path} ({status}): {snippet}"),
                 }))
             }
@@ -636,36 +666,77 @@ fn id_of(resource: &Value) -> Result<String, BoxError> {
 mod tests {
     use super::*;
 
-    fn answer(status: StatusCode) -> BoxError {
+    fn answer(status: StatusCode, reason: Option<&str>) -> BoxError {
         Box::new(ApiError {
             status,
-            text: format!("YouTube refused thumbnails/set ({status}, forbidden): no"),
+            reason: reason.map(str::to_string),
+            text: format!("YouTube refused thumbnails/set ({status}): no"),
         })
     }
 
     #[test]
-    fn a_4xx_answer_is_a_refusal() {
-        for status in [
-            StatusCode::BAD_REQUEST,
-            StatusCode::FORBIDDEN,
-            StatusCode::PAYLOAD_TOO_LARGE,
-            StatusCode::TOO_MANY_REQUESTS,
-        ] {
-            assert!(is_refusal(answer(status).as_ref()), "{status}");
+    fn a_thumbnail_failure_stops_for_the_day_only_when_the_channel_is_refused() {
+        use ThumbnailFailure::*;
+        let cases = [
+            // Not allowed custom thumbnails, or out of allowance: refused all day.
+            (StatusCode::FORBIDDEN, Some("forbidden"), StopForDay),
+            (StatusCode::FORBIDDEN, None, StopForDay),
+            (StatusCode::FORBIDDEN, Some("quotaExceeded"), StopForDay),
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Some("quotaExceeded"),
+                StopForDay,
+            ),
+            // Too many calls at once: a later check may well work.
+            (StatusCode::FORBIDDEN, Some("rateLimitExceeded"), StopForNow),
+            (
+                StatusCode::FORBIDDEN,
+                Some("userRateLimitExceeded"),
+                StopForNow,
+            ),
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Some("rateLimitExceeded"),
+                StopForNow,
+            ),
+            (StatusCode::TOO_MANY_REQUESTS, None, StopForNow),
+            // The sign-in needs refreshing.
+            (StatusCode::UNAUTHORIZED, Some("authError"), StopForNow),
+            // A fault on Google's side.
+            (StatusCode::INTERNAL_SERVER_ERROR, None, StopForNow),
+            (StatusCode::BAD_GATEWAY, None, StopForNow),
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Some("backendError"),
+                StopForNow,
+            ),
+            // About the one video or picture: the next game is tried.
+            (StatusCode::BAD_REQUEST, Some("invalidImage"), SkipGame),
+            (StatusCode::NOT_FOUND, Some("videoNotFound"), SkipGame),
+            (StatusCode::CONFLICT, None, SkipGame),
+            (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Some("mediaBodyTooLarge"),
+                SkipGame,
+            ),
+            (StatusCode::UNPROCESSABLE_ENTITY, None, SkipGame),
+        ];
+        for (status, reason, expected) in cases {
+            assert_eq!(
+                thumbnail_failure(answer(status, reason).as_ref()),
+                expected,
+                "{status} {reason:?}"
+            );
         }
     }
 
     #[test]
-    fn a_fault_on_googles_side_or_the_network_is_not_a_refusal() {
-        for status in [
-            StatusCode::INTERNAL_SERVER_ERROR,
-            StatusCode::BAD_GATEWAY,
-            StatusCode::SERVICE_UNAVAILABLE,
-        ] {
-            assert!(!is_refusal(answer(status).as_ref()), "{status}");
-        }
+    fn a_thumbnail_failure_with_no_answer_from_youtube_stops_for_now() {
         // No answer at all, even when its text mentions a refusal.
         let network: BoxError = "error sending request: connection refused".into();
-        assert!(!is_refusal(network.as_ref()));
+        assert_eq!(
+            thumbnail_failure(network.as_ref()),
+            ThumbnailFailure::StopForNow
+        );
     }
 }

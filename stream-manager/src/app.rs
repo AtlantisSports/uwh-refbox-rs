@@ -43,9 +43,9 @@ const COURT_LOG_LINES: usize = 12;
 const TITLE_SYNC_EVERY: Duration = Duration::from_secs(600);
 /// The longest one court's 10-minute check may take before it is given up.
 const TITLE_SYNC_WAIT: Duration = Duration::from_secs(60);
-/// The 10-minute check's thumbnails stop this long before the check is given up, so a slow
-/// picture or upload never costs the titles their check.
-const THUMBNAIL_MARGIN: Duration = Duration::from_secs(15);
+/// The longest one court's thumbnail job (started after its 10-minute check's titles) may take
+/// before it is given up; whatever is left waits for the next check.
+const THUMBNAIL_JOB_WAIT: Duration = Duration::from_secs(300);
 /// How often the Stream Deck's live status is brought up to date in Companion (ADR 026 §4).
 const COMPANION_EVERY: Duration = Duration::from_secs(1);
 
@@ -73,6 +73,8 @@ pub struct App {
     youtube_connected: AtomicBool,
     /// What the 10-minute checks remember about thumbnails between checks.
     thumbnail_memory: Mutex<title_sync::ThumbnailMemory>,
+    /// Each court's latest thumbnail job, by court name, so only one runs at a time.
+    thumbnail_jobs: Mutex<HashMap<String, JoinHandle<()>>>,
 }
 
 struct Inner {
@@ -272,6 +274,7 @@ impl App {
                 &config_dir.join(TOKEN_FILE),
             )),
             thumbnail_memory: Mutex::new(title_sync::ThumbnailMemory::default()),
+            thumbnail_jobs: Mutex::new(HashMap::new()),
             config_dir,
         })
     }
@@ -910,11 +913,12 @@ impl App {
                 let mut log =
                     move |line: String| log_app.with_court(generation, i, |c| c.note(line));
                 // Giving up drops the check, which releases the court's lock for its switches.
-                let thumbnails_until =
-                    tokio::time::Instant::now() + TITLE_SYNC_WAIT - THUMBNAIL_MARGIN;
-                let check = title_sync::sync_court(self, &court, None, thumbnails_until, &mut log);
+                let check = title_sync::sync_court(self, &court, None, &mut log);
                 let problem = match tokio::time::timeout(TITLE_SYNC_WAIT, check).await {
-                    Ok(Ok(_)) => None,
+                    Ok(Ok((_, check))) => {
+                        self.start_thumbnail_job(generation, i, &court.name, check);
+                        None
+                    }
                     Ok(Err(e)) => Some(format!(
                         "⚠ Couldn't check the titles against the portal: {e}"
                     )),
@@ -928,6 +932,43 @@ impl App {
                 }
             }
         }
+    }
+
+    /// Starts the court's thumbnail job for the games its 10-minute check just looked at, on its
+    /// own so the titles never wait for it. Not started while the court's previous one still
+    /// runs. It is given up after [`THUMBNAIL_JOB_WAIT`], before the next check, and stops at
+    /// its next game once the courts, the event or the portal change; its lines go to the
+    /// court's log only while the courts are the same.
+    fn start_thumbnail_job(
+        self: &Arc<Self>,
+        generation: u64,
+        i: usize,
+        court: &str,
+        check: title_sync::Check,
+    ) {
+        let mut jobs = self
+            .thumbnail_jobs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if jobs.get(court).is_some_and(|job| !job.is_finished()) {
+            return;
+        }
+        let app = Arc::clone(self);
+        let job = tokio::spawn(async move {
+            let log_app = Arc::clone(&app);
+            let mut log = move |line: String| log_app.with_court(generation, i, |c| c.note(line));
+            let portal_url = check.config().portal_url.clone();
+            let event_slug = check.config().event_slug.clone();
+            let still_current = || {
+                let inner = app.inner();
+                inner.generation == generation
+                    && fetched_from_current(&inner.config, &portal_url, &event_slug)
+            };
+            let thumbnails = title_sync::update_thumbnails(&app, &check, &still_current, &mut log);
+            // Whatever is left when the time is up waits for the next check.
+            let _ = tokio::time::timeout(THUMBNAIL_JOB_WAIT, thumbnails).await;
+        });
+        jobs.insert(court.to_string(), job);
     }
 
     /// Every second, sends each court's Hold, rosters, now live and up next to Companion's
@@ -1260,7 +1301,8 @@ impl App {
     }
 
     /// After connecting afresh: the handles already handed out (a running switch, Prepare) move
-    /// to the new sign-in, then the connection is dropped as [`App::forget_youtube`] does.
+    /// to the new sign-in, then the connection is dropped as [`App::forget_youtube`] does, and
+    /// the 10-minute checks try thumbnails again even if YouTube refused one earlier today.
     pub async fn reconnect_youtube(&self) {
         let current = self
             .youtube
@@ -1274,6 +1316,8 @@ impl App {
             }
         }
         self.forget_youtube();
+        // Perhaps another channel, or one now allowed custom thumbnails.
+        self.thumbnail_memory().forget_refusal();
     }
 
     /// Drops the YouTube connection (it is opened again on next use), e.g. after connecting

@@ -477,17 +477,35 @@ pub async fn redraw_thumbnail(
     })
 }
 
+/// Sets a record's thumbnail to `new` only if it still says `read`, what it said when the work
+/// began. Otherwise someone newer (Prepare, or another check) has recorded theirs meanwhile, and
+/// it is kept. Returns whether it was written.
+pub fn record_if_unchanged(
+    thumbnail: &mut Option<String>,
+    read: Option<&str>,
+    new: String,
+) -> bool {
+    if thumbnail.as_deref() == read {
+        *thumbnail = Some(new);
+        true
+    } else {
+        false
+    }
+}
+
 /// Records that the font can't draw the game's thumbnail showing `key`, so title sync leaves it
-/// until what the thumbnail shows changes.
+/// until what the thumbnail shows changes. `read` is the record's thumbnail as read before
+/// drawing: a newer one recorded meanwhile is kept.
 pub fn record_undrawable(
     state_file: &Path,
     config: &Config,
     game: &PlannedGame,
+    read: Option<String>,
     key: String,
 ) -> Result<(), BoxError> {
     update_state(state_file, &config.event_slug, |state| {
         if let Some(v) = state.videos.get_mut(&game.number) {
-            v.thumbnail = Some(key + UNDRAWABLE);
+            record_if_unchanged(&mut v.thumbnail, read.as_deref(), key + UNDRAWABLE);
         }
     })?;
     Ok(())
@@ -505,9 +523,9 @@ pub enum Upload {
 
 /// Title sync's second half: reads the record afresh and, if it still needs a
 /// [`redraw_thumbnail`] picture and `extras_ok` allows it, uploads it and records what it
-/// shows. Needs no court's lock: the upload changes nothing a switch works on, and the record
-/// is changed through [`update_state`]. A failed upload leaves the old record, so a later check
-/// tries again.
+/// shows, unless another has been recorded since it was read. Needs no court's lock: the upload
+/// changes nothing a switch works on, and the record is changed through [`update_state`]. A
+/// failed upload leaves the old record, so a later check tries again.
 pub async fn upload_redrawn(
     yt: &mut YouTube,
     config: &Config,
@@ -527,6 +545,7 @@ pub async fn upload_redrawn(
     if !extras_ok() {
         return Ok(Upload::NotAllowed);
     }
+    let read = video.thumbnail.clone();
     yt.set_thumbnail(&video.broadcast_id, redrawn.jpeg).await?;
     log(format!("Game {}: thumbnail set", game.number));
     let key = if redrawn.complete {
@@ -536,7 +555,7 @@ pub async fn upload_redrawn(
     };
     let recorded = update_state(state_file, &config.event_slug, |state| {
         if let Some(v) = state.videos.get_mut(&game.number) {
-            v.thumbnail = Some(key);
+            record_if_unchanged(&mut v.thumbnail, read.as_deref(), key);
         }
     });
     if let Err(e) = recorded {
@@ -1680,6 +1699,36 @@ mod tests {
         let plan = one_game_plan("2026-08-01T09:30:00+10:00");
         let (key, _) = keys(&plan);
         assert!(thumbnail_needs_redraw(None, &key, false));
+    }
+
+    #[test]
+    fn a_thumbnail_is_recorded_only_if_unchanged_since_it_was_read() {
+        // Unchanged since it was read: recorded.
+        let mut thumbnail = Some("old".to_string());
+        assert!(record_if_unchanged(
+            &mut thumbnail,
+            Some("old"),
+            "new".to_string()
+        ));
+        assert_eq!(thumbnail.as_deref(), Some("new"));
+        let mut thumbnail = None;
+        assert!(record_if_unchanged(&mut thumbnail, None, "new".to_string()));
+        assert_eq!(thumbnail.as_deref(), Some("new"));
+        // Someone newer recorded theirs meanwhile: theirs is kept.
+        let mut thumbnail = Some("newer".to_string());
+        assert!(!record_if_unchanged(
+            &mut thumbnail,
+            Some("old"),
+            "new".to_string()
+        ));
+        assert_eq!(thumbnail.as_deref(), Some("newer"));
+        let mut thumbnail = Some("newer".to_string());
+        assert!(!record_if_unchanged(
+            &mut thumbnail,
+            None,
+            "new".to_string()
+        ));
+        assert_eq!(thumbnail.as_deref(), Some("newer"));
     }
 
     fn one_game_plan(start: &str) -> EventPlan {

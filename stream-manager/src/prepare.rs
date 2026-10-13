@@ -410,10 +410,15 @@ fn thumbnail_key(plan: &EventPlan, game: &PlannedGame) -> String {
 /// again.
 const INCOMPLETE: &str = " | incomplete";
 
+/// Added to the key when the font can't draw a name on the game's thumbnail, so title sync
+/// doesn't try it again until what the thumbnail shows changes.
+const UNDRAWABLE: &str = " | undrawable";
+
 /// Whether title sync should draw and upload a game's thumbnail again: what it shows has
 /// changed since the upload (a team became known, a logo or the banner changed, or the design
 /// was updated), or the upload left out a picture that is now available. A game with no
-/// thumbnail recorded (Prepare skipped it or left it for later) is tried too.
+/// thumbnail recorded (Prepare skipped it or left it for later) is tried too; one the font
+/// couldn't draw only once what it shows has changed.
 pub fn thumbnail_needs_redraw(
     recorded: Option<&str>,
     current_key: &str,
@@ -421,101 +426,108 @@ pub fn thumbnail_needs_redraw(
 ) -> bool {
     match recorded {
         None => true,
-        Some(recorded) => match recorded.strip_suffix(INCOMPLETE) {
-            Some(shown) => shown != current_key || pictures_available,
-            None => recorded != current_key,
-        },
+        Some(recorded) => {
+            if let Some(shown) = recorded.strip_suffix(INCOMPLETE) {
+                shown != current_key || pictures_available
+            } else if let Some(shown) = recorded.strip_suffix(UNDRAWABLE) {
+                shown != current_key
+            } else {
+                recorded != current_key
+            }
+        }
     }
 }
 
-/// A game's thumbnail drawn again by title sync, waiting for the court's lock to be uploaded.
+/// A game's thumbnail drawn again by title sync, waiting to be uploaded.
 pub struct Redrawn {
     key: String,
     jpeg: Vec<u8>,
     complete: bool,
 }
 
-/// Title sync's first half of a thumbnail update: draws the thumbnail of a game Prepare made a
-/// video for, if [`thumbnail_needs_redraw`]. Done before taking the court's lock, so a slow
-/// picture download never holds up a switch. Problems are logged, never returned: the titles
-/// matter more than their thumbnails.
-pub async fn redraw_thumbnail(
-    thumbnails: &mut Thumbnails,
-    config: &Config,
+/// What title sync should draw for a game Prepare made a video for: the key of what its
+/// thumbnail shows now, if [`thumbnail_needs_redraw`] says it should be drawn again.
+pub fn thumbnail_to_redraw(
+    state: &EventState,
     plan: &EventPlan,
     game: &PlannedGame,
-    state_file: &Path,
-    log: &mut (dyn FnMut(String) + Send),
-) -> Option<Redrawn> {
-    if !thumbnails.enabled {
-        return None;
-    }
-    let state = match load_state(state_file, &config.event_slug) {
-        Ok(state) => state,
-        Err(e) => {
-            log(format!("Game {}: thumbnail not checked — {e}", game.number));
-            return None;
-        }
-    };
+) -> Option<String> {
     let recorded = state.videos.get(&game.number)?.thumbnail.as_deref();
     let key = thumbnail_key(plan, game);
     // Drawn whenever the pictures could make a difference; whether they did is decided by
     // `upload_redrawn`.
-    if !thumbnail_needs_redraw(recorded, &key, true) {
-        return None;
-    }
-    match thumbnails.draw(plan, game, log).await {
-        Ok((jpeg, complete)) => Some(Redrawn {
-            key,
-            jpeg,
-            complete,
-        }),
-        // Nothing is uploaded or recorded, so the next check tries again.
-        Err(e) => {
-            let (line, stop) = thumbnail_failed(&game.number, e.as_ref());
-            log(line);
-            if stop {
-                thumbnails.enabled = false;
-            }
-            None
-        }
-    }
+    thumbnail_needs_redraw(recorded, &key, true).then_some(key)
 }
 
-/// Title sync's second half, holding the court's lock: uploads a [`redraw_thumbnail`] picture
-/// if the record (`state`, read under the lock) still needs it and `extras_ok` allows it for
-/// the game's court, then records what it shows. A failed upload leaves the old record, so the
-/// next check tries again, and stops thumbnails for the rest of this check.
-#[allow(clippy::too_many_arguments)]
+/// Title sync's first half of a thumbnail update: draws the game's thumbnail showing `key`
+/// (from [`thumbnail_to_redraw`]). Done without the court's lock, so a slow picture download
+/// never holds up a switch.
+pub async fn redraw_thumbnail(
+    thumbnails: &mut Thumbnails,
+    plan: &EventPlan,
+    game: &PlannedGame,
+    key: String,
+    log: &mut (dyn FnMut(String) + Send),
+) -> Result<Redrawn, BoxError> {
+    let (jpeg, complete) = thumbnails.draw(plan, game, log).await?;
+    Ok(Redrawn {
+        key,
+        jpeg,
+        complete,
+    })
+}
+
+/// Records that the font can't draw the game's thumbnail showing `key`, so title sync leaves it
+/// until what the thumbnail shows changes.
+pub fn record_undrawable(
+    state_file: &Path,
+    config: &Config,
+    game: &PlannedGame,
+    key: String,
+) -> Result<(), BoxError> {
+    update_state(state_file, &config.event_slug, |state| {
+        if let Some(v) = state.videos.get_mut(&game.number) {
+            v.thumbnail = Some(key + UNDRAWABLE);
+        }
+    })?;
+    Ok(())
+}
+
+/// What [`upload_redrawn`] did.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Upload {
+    Set,
+    /// The record no longer needs it (a switch or Prepare got there first).
+    NotNeeded,
+    /// `extras_ok` refused it.
+    NotAllowed,
+}
+
+/// Title sync's second half: reads the record afresh and, if it still needs a
+/// [`redraw_thumbnail`] picture and `extras_ok` allows it, uploads it and records what it
+/// shows. Needs no court's lock: the upload changes nothing a switch works on, and the record
+/// is changed through [`update_state`]. A failed upload leaves the old record, so a later check
+/// tries again.
 pub async fn upload_redrawn(
     yt: &mut YouTube,
     config: &Config,
     game: &PlannedGame,
     redrawn: Redrawn,
-    thumbnails: &mut Thumbnails,
-    state: &EventState,
     state_file: &Path,
-    extras_ok: &(dyn Fn(&str) -> bool + Sync),
+    extras_ok: &(dyn Fn() -> bool + Sync),
     log: &mut (dyn FnMut(String) + Send),
-) {
+) -> Result<Upload, BoxError> {
+    let state = load_state(state_file, &config.event_slug)?;
     let Some(video) = state.videos.get(&game.number) else {
-        return;
+        return Ok(Upload::NotNeeded);
     };
     if !thumbnail_needs_redraw(video.thumbnail.as_deref(), &redrawn.key, redrawn.complete) {
-        return;
+        return Ok(Upload::NotNeeded);
     }
-    if !extras_ok(&game.court) {
-        log(format!(
-            "Game {}: thumbnail not uploaded — saving the allowance for switches",
-            game.number
-        ));
-        return;
+    if !extras_ok() {
+        return Ok(Upload::NotAllowed);
     }
-    if let Err(e) = yt.set_thumbnail(&video.broadcast_id, redrawn.jpeg).await {
-        log(format!("Game {}: thumbnail not updated — {e}", game.number));
-        thumbnails.enabled = false;
-        return;
-    }
+    yt.set_thumbnail(&video.broadcast_id, redrawn.jpeg).await?;
     log(format!("Game {}: thumbnail set", game.number));
     let key = if redrawn.complete {
         redrawn.key
@@ -533,6 +545,7 @@ pub async fn upload_redrawn(
             game.number
         ));
     }
+    Ok(Upload::Set)
 }
 
 /// A picture that takes longer than this to download is left out (logo → initials).
@@ -545,7 +558,8 @@ pub struct Thumbnails {
     painter: Option<Painter>,
     banner_ok: bool,
     pictures: Pictures,
-    http: reqwest::Client,
+    /// `None` if the downloader couldn't be set up: every picture then counts as unavailable.
+    http: Option<reqwest::Client>,
     /// Turned off after an upload fails, so a refused upload isn't repeated for every video.
     enabled: bool,
 }
@@ -559,7 +573,7 @@ impl Default for Thumbnails {
             http: reqwest::Client::builder()
                 .timeout(PICTURE_TIMEOUT)
                 .build()
-                .unwrap_or_default(),
+                .ok(),
             enabled: true,
         }
     }
@@ -569,10 +583,19 @@ impl Thumbnails {
     /// Downloads a picture unless already tried; false if it couldn't be fetched or read.
     async fn fetch(&mut self, url: &str, log: &mut (dyn FnMut(String) + Send)) -> bool {
         if !self.pictures.contains_key(url) {
-            let picture = match download_picture(&self.http, url).await {
-                Ok(picture) => Some(picture),
-                Err(e) => {
-                    log(format!("Could not download picture {url}: {e}"));
+            let picture = match &self.http {
+                Some(http) => match download_picture(http, url).await {
+                    Ok(picture) => Some(picture),
+                    Err(e) => {
+                        log(format!("Could not download picture {url}: {e}"));
+                        None
+                    }
+                },
+                None => {
+                    // Said once: no picture has been tried before the first.
+                    if self.pictures.is_empty() {
+                        log("Pictures left out: the picture downloader couldn't start".to_string());
+                    }
                     None
                 }
             };
@@ -1637,6 +1660,19 @@ mod tests {
         );
         assert_ne!(old_design, key);
         assert!(thumbnail_needs_redraw(Some(&old_design), &key, false));
+    }
+
+    #[test]
+    fn a_game_the_font_cant_draw_is_tried_again_only_once_its_thumbnail_changes() {
+        let mut plan = one_game_plan("2026-08-01T09:30:00+10:00");
+        let (before, _) = keys(&plan);
+        let undrawable = before.clone() + UNDRAWABLE;
+        assert!(!thumbnail_needs_redraw(Some(&undrawable), &before, true));
+        assert!(!thumbnail_needs_redraw(Some(&undrawable), &before, false));
+        plan.games[0].dark = "Sharks".to_string();
+        let (after, _) = keys(&plan);
+        assert!(thumbnail_needs_redraw(Some(&undrawable), &after, true));
+        assert!(thumbnail_needs_redraw(Some(&undrawable), &after, false));
     }
 
     #[test]

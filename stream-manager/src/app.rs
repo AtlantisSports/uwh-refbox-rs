@@ -323,6 +323,11 @@ impl App {
             .any(|c| c.config.name == court_name && c.switcher.status().day_running)
     }
 
+    /// Whether the settings still name this portal and event.
+    pub fn is_current(&self, portal_url: &str, event_slug: &str) -> bool {
+        fetched_from_current(&self.inner().config, portal_url, event_slug)
+    }
+
     /// Of `removed`, the games not yet reported for this court since Start day or End day.
     /// They count as reported from now on.
     pub fn newly_removed(&self, court_name: &str, removed: &[String]) -> Vec<String> {

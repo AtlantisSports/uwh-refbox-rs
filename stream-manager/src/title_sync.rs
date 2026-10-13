@@ -84,8 +84,8 @@ pub struct Check {
     games: Vec<String>,
 }
 
-/// The record of the check's own event, whatever event the settings name by now: a check still
-/// running when the event is changed must never write into the new event's record.
+/// The record of the check's own event, whatever event the settings name by now, so a check
+/// still running when the event is changed keeps to its own event's record.
 fn record_file(app: &App, check: &Check) -> Result<PathBuf, BoxError> {
     prepare::state_path(&app.config_dir, &check.config.event_slug)
 }
@@ -170,7 +170,14 @@ fn finish(
         }
         None => Vec::new(),
     };
-    for game in app.newly_removed(&court.name, &removed) {
+    // A check that outlived its event says nothing in the new event's court log.
+    let still_current = app.is_current(&check.config.portal_url, &check.config.event_slug);
+    let newly_removed = if still_current {
+        app.newly_removed(&court.name, &removed)
+    } else {
+        Vec::new()
+    };
+    for game in newly_removed {
         log(format!(
             "⚠ Game {game} is no longer on the portal; its video was kept"
         ));
@@ -327,8 +334,11 @@ mod tests {
             day: Some(1),
             games: Vec::new(),
         };
-        let report = finish(&app, &court, &check, 0, &mut |_| {}).unwrap();
+        let mut lines = Vec::new();
+        let report = finish(&app, &court, &check, 0, &mut |line| lines.push(line)).unwrap();
         assert_eq!(report.removed, ["99"]);
+        // Nothing about the old event goes into the new event's court log.
+        assert!(lines.is_empty(), "{lines:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

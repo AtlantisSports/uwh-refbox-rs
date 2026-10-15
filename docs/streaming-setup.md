@@ -456,8 +456,9 @@ key A.
 **Check:** on the portal, the event's schedule shows the watch link for each prepared game (only
 once this Stream Manager is linked, B5 step 4).
 
-**Thumbnails.** Prepare also gives each video a thumbnail with both teams' logos (or initials) and
-the event banner. The preview shows their cost separately. They are extras: if the allowance would
+**Thumbnails.** Prepare also gives each video a thumbnail with both teams' logos (or just the
+team's name when it has no logo) and the event banner. The logo boxes are square or wide (2:1),
+whichever most of the event's logos on the portal are, so upload an event's logos all in one shape. The preview shows their cost separately. They are extras: if the allowance would
 otherwise run short of what the day's switches need, the log says "Game 12: thumbnail not uploaded
 — saving the allowance for switches" (Prepare) or, once, "Thumbnails not uploaded — saving the
 allowance for switches" (the 10-minute check), and the next Prepare, or a later check, tries again.

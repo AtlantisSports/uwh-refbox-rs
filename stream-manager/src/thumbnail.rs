@@ -1,6 +1,6 @@
 //! Draws each game's YouTube thumbnail in the "action" style (Black vs White): the event's
 //! portal banner in the background, the dark-cap team on a black half and the light-cap team on
-//! a white half, split by a slanted yellow line, with the game details along the bottom.
+//! a white half, split by a slanted Atlantis teal line, with the game details along the bottom.
 //!
 //! The look is set by the constants below. Change [`DESIGN_VERSION`] whenever the look changes,
 //! so that the next Prepare uploads the new design to videos that already have a thumbnail.
@@ -19,7 +19,7 @@ use tiny_skia::{
 use ttf_parser::{Face, GlyphId, OutlineBuilder, Tag};
 
 /// Bump this whenever the look changes.
-pub const DESIGN_VERSION: u32 = 1;
+pub const DESIGN_VERSION: u32 = 2;
 
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
@@ -28,7 +28,8 @@ const CENTER_X: f32 = WIDTH as f32 / 2.0;
 const MAX_BYTES: usize = 2 * 1024 * 1024;
 
 const FONT: &[u8] = include_bytes!("../../overlay/assets/BAHNSCHRIFT.TTF");
-const BRAND_LOGO: &[u8] = include_bytes!("../../overlay/assets/color/1080/Atlantis Logo.png");
+/// The overlay's white Atlantis Sports logo, without the "TM" mark.
+const BRAND_LOGO: &[u8] = include_bytes!("../assets/Atlantis Logo.png");
 
 // ---- Design ----
 
@@ -37,8 +38,10 @@ const BLACK: Rgb = [0, 0, 0];
 const WHITE: Rgb = [255, 255, 255];
 const INK: Rgb = [0x07, 0x09, 0x0c];
 const PAPER: Rgb = [0xf7, 0xf9, 0xfb];
-const YELLOW: Rgb = [0xff, 0xd2, 0x3f];
-const ORANGE: Rgb = [0xff, 0x8a, 0x00];
+/// Atlantis teal, from the light to the deep end of the logo's "A".
+const TEAL_LIGHT: Rgb = [0x47, 0xf0, 0xf3];
+const TEAL: Rgb = [0x21, 0x9c, 0xb4];
+const TEAL_DEEP: Rgb = [0x0b, 0x6c, 0x8f];
 
 /// The banner is softened a little so the game details stay readable on top of it.
 const BANNER_BLUR: f32 = 3.0;
@@ -61,17 +64,22 @@ const HALF_LIGHT: Rgb = [245, 248, 252];
 const SLASH_WIDTH: f32 = 18.0;
 const SLASH_ANGLE: f32 = 13.0;
 
-const BADGE_TOP: f32 = 120.0;
-const BADGE_RADIUS: f32 = 150.0;
+/// Height of the middle of the logo boxes, and of the name plate of a team without a logo.
+const BADGE_CENTER_Y: f32 = 288.0;
+/// Height of the middle of "VS": the middle of the picture.
+const MIDDLE_Y: f32 = HEIGHT as f32 / 2.0;
 const BADGE_BORDER: f32 = 8.0;
 const BADGE_RING: f32 = 6.0;
 /// Share of the badge the team logo fills.
-const LOGO_FILL: f32 = 0.82;
-const INITIALS_COLORS: [Rgb; 2] = [[0x1f, 0x6f, 0xb2], [0x0d, 0x3b, 0x66]];
+const LOGO_FILL: f32 = 0.88;
+/// A logo at least this many times wider than it is tall counts as wide.
+const WIDE_LOGO: f32 = 1.5;
 
 const NAME_SIZE: f32 = 42.0;
 const NAME_MAX_WIDTH: f32 = 440.0;
 const NAME_MAX_LINES: usize = 2;
+/// Narrower for the plate of a team without a logo, which sits beside "VS".
+const NAME_ONLY_MAX_WIDTH: f32 = 360.0;
 const SMALLEST_TEXT: f32 = 20.0;
 
 const BRAND_LEFT: f32 = 34.0;
@@ -79,48 +87,76 @@ const BRAND_TOP: f32 = 24.0;
 const BRAND_HEIGHT: f32 = 92.0;
 
 struct SideStyle {
-    label: &'static str,
     center_x: f32,
     border: Rgb,
     ring: Rgb,
     shadow: f32,
-    tag: [Rgb; 2],
     plate: [Rgb; 2],
 }
 
 const DARK_SIDE: SideStyle = SideStyle {
-    label: "DARK",
     center_x: 305.0,
     border: [0x11, 0x11, 0x11],
     ring: WHITE,
     shadow: 0.7,
-    tag: [WHITE, BLACK],
     plate: [INK, WHITE],
 };
 
 const LIGHT_SIDE: SideStyle = SideStyle {
-    label: "LIGHT",
     center_x: WIDTH as f32 - 305.0,
     border: WHITE,
     ring: [0x11, 0x11, 0x11],
     shadow: 0.5,
-    tag: [BLACK, WHITE],
     plate: [PAPER, INK],
 };
+
+/// The shape of the logo boxes, the same for every game of an event: square for events whose
+/// team logos are square (1:1), wide for events whose logos are wide (2:1), e.g. flags.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LogoShape {
+    Square,
+    Wide,
+}
+
+impl LogoShape {
+    /// The shape most of the event's logo pictures have (as uploaded, e.g. 1000×500 is wide);
+    /// square when the event has no logos.
+    pub fn of<'a>(logos: impl IntoIterator<Item = &'a DynamicImage>) -> Self {
+        let (mut wide, mut total) = (0, 0);
+        for logo in logos {
+            total += 1;
+            if logo.width() as f32 >= logo.height() as f32 * WIDE_LOGO {
+                wide += 1;
+            }
+        }
+        if wide * 2 > total {
+            Self::Wide
+        } else {
+            Self::Square
+        }
+    }
+
+    /// Half the box's width and height.
+    fn half(self) -> (f32, f32) {
+        match self {
+            Self::Square => (150.0, 150.0),
+            Self::Wide => (200.0, 100.0),
+        }
+    }
+}
 
 // ---- What gets drawn ----
 
 pub struct Team<'a> {
     pub name: &'a str,
-    /// False for placeholders like "Winner G52": they get a "?" instead of initials.
-    pub known: bool,
+    /// `None` shows the team's name in place of the logo.
     pub logo: Option<&'a DynamicImage>,
 }
 
 pub struct Game<'a> {
     pub number: &'a str,
     pub court: &'a str,
-    /// e.g. "Wed 5 Aug, 14:00".
+    /// e.g. "Wed 5 Aug, 2:00 PM".
     pub when: &'a str,
     pub dark: Team<'a>,
     pub light: Team<'a>,
@@ -152,10 +188,15 @@ impl std::error::Error for MissingGlyph {}
 pub struct Painter {
     base: Pixmap,
     font: Font,
+    shape: LogoShape,
 }
 
 impl Painter {
-    pub fn new(event_name: &str, banner: Option<&DynamicImage>) -> Result<Self, BoxError> {
+    pub fn new(
+        event_name: &str,
+        banner: Option<&DynamicImage>,
+        shape: LogoShape,
+    ) -> Result<Self, BoxError> {
         let font = Font::new()?;
         // Checked as drawn, in capitals: a letter's capital may be a different character.
         font.drawable(&event_name.to_uppercase(), true)?;
@@ -165,47 +206,29 @@ impl Painter {
         event_bar(&mut base, &font, event_name);
         vs(&mut base, &font);
         brand(&mut base)?;
-        Ok(Self { base, font })
+        Ok(Self { base, font, shape })
     }
 
     /// The finished thumbnail as a JPEG.
     pub fn render(&self, game: &Game) -> Result<Vec<u8>, BoxError> {
         for team in [&game.dark, &game.light] {
             self.font.drawable(&name_text(team), false)?;
-            if let Some(letters) = badge_text(team) {
-                self.font.drawable(&letters, false)?;
-            }
         }
         let (head, rest) = info_text(game);
         self.font.drawable(&head, false)?;
         self.font.drawable(&rest, false)?;
         let mut canvas = self.base.clone();
-        side(&mut canvas, &self.font, &game.dark, &DARK_SIDE);
-        side(&mut canvas, &self.font, &game.light, &LIGHT_SIDE);
+        side(&mut canvas, &self.font, &game.dark, &DARK_SIDE, self.shape);
+        side(
+            &mut canvas,
+            &self.font,
+            &game.light,
+            &LIGHT_SIDE,
+            self.shape,
+        );
         info_bar(&mut canvas, &self.font, game);
         encode_jpeg(&canvas)
     }
-}
-
-/// Up to two letters standing for a team without a logo: "Townsville Tigersharks B" → "TT".
-pub fn initials(name: &str) -> String {
-    let words: Vec<&str> = name
-        .split_whitespace()
-        .filter(|w| w.chars().next().is_some_and(char::is_alphanumeric))
-        .collect();
-    let letters: String = match words.as_slice() {
-        [] => String::new(),
-        [one] => one
-            .chars()
-            .filter(|c| c.is_alphanumeric())
-            .take(2)
-            .collect(),
-        [first, second, ..] => [first, second]
-            .iter()
-            .filter_map(|w| w.chars().next())
-            .collect(),
-    };
-    letters.to_uppercase()
 }
 
 // ---- Layers ----
@@ -302,18 +325,13 @@ fn slash(canvas: &mut Pixmap) {
     };
     let path = PathBuilder::from_rect(rect);
     let turn = Transform::from_rotate_at(SLASH_ANGLE, CENTER_X, HEIGHT as f32 / 2.0);
-    shadow(
-        canvas,
-        &path,
-        turn,
-        Glow::new(0.0, 40.0, [255, 190, 40], 0.9),
-    );
+    shadow(canvas, &path, turn, Glow::new(0.0, 40.0, TEAL_LIGHT, 0.8));
     let shader = LinearGradient::new(
         Point::from_xy(CENTER_X, top),
         Point::from_xy(CENTER_X, bottom),
         vec![
-            GradientStop::new(0.0, rgba(YELLOW, 1.0)),
-            GradientStop::new(1.0, rgba(ORANGE, 1.0)),
+            GradientStop::new(0.0, rgba(TEAL_LIGHT, 1.0)),
+            GradientStop::new(1.0, rgba(TEAL, 1.0)),
         ],
         SpreadMode::Pad,
         turn,
@@ -323,7 +341,7 @@ fn slash(canvas: &mut Pixmap) {
     }
 }
 
-/// The event name on a yellow bar at the top.
+/// The event name on a teal bar at the top.
 fn event_bar(canvas: &mut Pixmap, font: &Font, event_name: &str) {
     let spacing = 2.0;
     let (size, lines) = font.fit(&event_name.to_uppercase(), 28.0, spacing, 1000.0, 1);
@@ -335,31 +353,26 @@ fn event_bar(canvas: &mut Pixmap, font: &Font, event_name: &str) {
     if let Some(rect) = Rect::from_xywh(x, top, w, h) {
         let path = PathBuilder::from_rect(rect);
         shadow(canvas, &path, lean, Glow::new(6.0, 20.0, BLACK, 0.5));
-        fill(canvas, &path, solid(YELLOW, 1.0), lean);
+        fill(canvas, &path, solid(TEAL_DEEP, 1.0), lean);
     }
     let baseline = font.baseline(top + 8.0, size, line);
     if let Some(path) = font.path(&text, x + 34.0, baseline, size, spacing, 0.0) {
-        fill(canvas, &path, solid(BLACK, 1.0), Transform::identity());
+        fill(canvas, &path, solid(WHITE, 1.0), Transform::identity());
     }
 }
 
+/// "VS", in the middle of the picture.
 fn vs(canvas: &mut Pixmap, font: &Font) {
-    let (size, top) = (140.0, 210.0);
-    let line = font.normal_line(size);
+    let size = 140.0;
     let x = CENTER_X - font.width("VS", size, 0.0) / 2.0;
-    let baseline = font.baseline(top, size, line);
+    let baseline = MIDDLE_Y + font.cap_height(size) / 2.0;
     let Some(path) = font.path("VS", x, baseline, size, 0.0, ITALIC) else {
         return;
     };
-    let lean = slanted(top + line / 2.0);
-    shadow(
-        canvas,
-        &path,
-        lean,
-        Glow::new(0.0, 30.0, [255, 180, 0], 0.6),
-    );
+    let lean = slanted(MIDDLE_Y);
+    shadow(canvas, &path, lean, Glow::new(0.0, 30.0, TEAL_LIGHT, 0.5));
     shadow(canvas, &path, lean, Glow::new(6.0, 24.0, BLACK, 0.8));
-    fill(canvas, &path, solid(YELLOW, 1.0), lean);
+    fill(canvas, &path, solid(TEAL_LIGHT, 1.0), lean);
     let stroke = Stroke {
         width: 4.0,
         ..Stroke::default()
@@ -397,95 +410,74 @@ fn brand(canvas: &mut Pixmap) -> Result<(), BoxError> {
     Ok(())
 }
 
-/// One team: badge (logo or initials), DARK/LIGHT tag and name plate.
-fn side(canvas: &mut Pixmap, font: &Font, team: &Team, style: &SideStyle) {
-    let cx = style.center_x;
-    let outer = BADGE_RADIUS + BADGE_BORDER;
-    let cy = BADGE_TOP + outer;
+/// One team: its logo in a box with the name on a plate below, or just its name when it has
+/// no logo.
+fn side(canvas: &mut Pixmap, font: &Font, team: &Team, style: &SideStyle, shape: LogoShape) {
+    let Some(logo) = team.logo else {
+        name_only(canvas, font, team, style);
+        return;
+    };
+    let (cx, cy) = (style.center_x, BADGE_CENTER_Y);
+    let (hw, hh) = shape.half();
     let id = Transform::identity();
-
-    if let Some(circle) = PathBuilder::from_circle(cx, cy, outer) {
+    let outer = BADGE_BORDER;
+    if let Some(edge) = badge(cx, cy, hw + outer, hh + outer) {
         shadow(
             canvas,
-            &circle,
+            &edge,
             id,
             Glow::new(14.0, 40.0, BLACK, style.shadow),
         );
     }
-    if let Some(ring) = PathBuilder::from_circle(cx, cy, outer + BADGE_RING) {
+    let ring = outer + BADGE_RING;
+    if let Some(ring) = badge(cx, cy, hw + ring, hh + ring) {
         fill(canvas, &ring, solid(style.ring, 1.0), id);
     }
-    if let Some(border) = PathBuilder::from_circle(cx, cy, outer) {
+    if let Some(border) = badge(cx, cy, hw + outer, hh + outer) {
         fill(canvas, &border, solid(style.border, 1.0), id);
     }
-    if let Some(inner) = PathBuilder::from_circle(cx, cy, BADGE_RADIUS) {
-        match team.logo {
-            Some(logo) => {
-                let (logo, backdrop) = badge_logo(logo);
-                fill(canvas, &inner, solid(backdrop, 1.0), id);
-                team_logo(canvas, &logo, cx, cy, &inner);
-            }
-            None => {
-                let r = BADGE_RADIUS;
-                let gradient = css_gradient(
-                    (cx - r, cy - r, 2.0 * r, 2.0 * r),
-                    135.0,
-                    vec![
-                        GradientStop::new(0.0, rgba(INITIALS_COLORS[0], 1.0)),
-                        GradientStop::new(1.0, rgba(INITIALS_COLORS[1], 1.0)),
-                    ],
-                    id,
-                );
-                if let Some(shader) = gradient {
-                    fill(canvas, &inner, paint(shader), id);
-                }
-                let letters = badge_text(team).unwrap_or_default();
-                let (size, spacing) = (110.0, 2.0);
-                let line = font.normal_line(size);
-                let x = cx - font.width(&letters, size, spacing) / 2.0;
-                let baseline = font.baseline(cy - line / 2.0, size, line);
-                if let Some(path) = font.path(&letters, x, baseline, size, spacing, 0.0) {
-                    fill(canvas, &path, solid(WHITE, 1.0), id);
-                }
-            }
-        }
+    if let Some(inner) = badge(cx, cy, hw, hh) {
+        let (logo, backdrop) = badge_logo(logo);
+        fill(canvas, &inner, solid(backdrop, 1.0), id);
+        team_logo(canvas, &logo, (cx, cy), (hw, hh), &inner);
     }
 
-    // DARK / LIGHT tag.
-    let (size, spacing) = (24.0, 3.0);
-    let line = font.normal_line(size);
-    let tag_top = cy + outer + 18.0;
-    let (w, h) = (font.width(style.label, size, spacing) + 32.0, line + 8.0);
-    if let Some(tag) = rounded_rect(cx - w / 2.0, tag_top, w, h, 6.0) {
-        fill(canvas, &tag, solid(style.tag[0], 1.0), id);
-    }
-    let baseline = font.baseline(tag_top + 4.0, size, line);
-    if let Some(path) = font.path(
-        style.label,
-        cx - w / 2.0 + 16.0,
-        baseline,
-        size,
-        spacing,
-        0.0,
-    ) {
-        fill(canvas, &path, solid(style.tag[1], 1.0), id);
-    }
+    let top = cy + hh + ring + 22.0;
+    let fit = (NAME_SIZE, NAME_MAX_WIDTH, NAME_MAX_LINES);
+    name_plate(canvas, font, team, style, fit, |_| top);
+}
 
-    // Name plate.
-    let (size, lines) = font.fit(
-        &name_text(team),
-        NAME_SIZE,
-        0.0,
-        NAME_MAX_WIDTH,
-        NAME_MAX_LINES,
-    );
+/// A team without a logo (or a placeholder like "Winner G52"): the same name plate as under a
+/// logo, level with the middle of the other team's logo and a little narrower so it stays
+/// clear of "VS".
+fn name_only(canvas: &mut Pixmap, font: &Font, team: &Team, style: &SideStyle) {
+    let fit = (NAME_SIZE, NAME_ONLY_MAX_WIDTH, NAME_MAX_LINES);
+    name_plate(canvas, font, team, style, fit, |h| BADGE_CENTER_Y - h / 2.0);
+}
+
+/// The team's name on a slanted plate with a teal edge: as large as `largest` allows within
+/// `max_width` and `max_lines`, with its top where `top` puts it for the plate's height.
+fn name_plate(
+    canvas: &mut Pixmap,
+    font: &Font,
+    team: &Team,
+    style: &SideStyle,
+    (largest, max_width, max_lines): (f32, f32, usize),
+    top: impl FnOnce(f32) -> f32,
+) {
+    let cx = style.center_x;
+    let pad = 8.0;
+    let (size, lines) = font.fit(&name_text(team), largest, 0.0, max_width, max_lines);
     let line = size * 1.1;
     let text_width = lines
         .iter()
         .map(|l| font.width(l, size, 0.0))
         .fold(0.0, f32::max);
-    let top = tag_top + h + 10.0;
-    let (w, h) = (text_width + 52.0, 16.0 + line * lines.len() as f32 + 5.0);
+    let (w, h) = (
+        text_width + 52.0,
+        2.0 * pad + line * lines.len() as f32 + 5.0,
+    );
+    let top = top(h);
     let lean = slanted(top + h / 2.0);
     if let Some(plate) = Rect::from_xywh(cx - w / 2.0, top, w, h) {
         let plate = PathBuilder::from_rect(plate);
@@ -496,15 +488,20 @@ fn side(canvas: &mut Pixmap, font: &Font, team: &Team, style: &SideStyle) {
         fill(
             canvas,
             &PathBuilder::from_rect(edge),
-            solid(YELLOW, 1.0),
+            solid(TEAL, 1.0),
             lean,
         );
     }
     for (i, text) in lines.iter().enumerate() {
         let x = cx - font.width(text, size, 0.0) / 2.0;
-        let baseline = font.baseline(top + 8.0 + line * i as f32, size, line);
+        let baseline = font.baseline(top + pad + line * i as f32, size, line);
         if let Some(path) = font.path(text, x, baseline, size, 0.0, ITALIC) {
-            fill(canvas, &path, solid(style.plate[1], 1.0), id);
+            fill(
+                canvas,
+                &path,
+                solid(style.plate[1], 1.0),
+                Transform::identity(),
+            );
         }
     }
 }
@@ -514,13 +511,9 @@ fn name_text(team: &Team) -> String {
     team.name.to_uppercase()
 }
 
-/// The letters in the badge of a team without a logo.
-fn badge_text(team: &Team) -> Option<String> {
-    match (team.logo, team.known) {
-        (Some(_), _) => None,
-        (None, true) => Some(initials(team.name)),
-        (None, false) => Some("?".to_string()),
-    }
+/// A box centred on (`cx`, `cy`), reaching `hw` and `hh` from the middle.
+fn badge(cx: f32, cy: f32, hw: f32, hh: f32) -> Option<Path> {
+    Rect::from_xywh(cx - hw, cy - hh, 2.0 * hw, 2.0 * hh).map(PathBuilder::from_rect)
 }
 
 /// The logo to put in the badge and the colour to fill the badge with, so a logo on a solid
@@ -596,10 +589,16 @@ fn edge_color(logo: &DynamicImage) -> Option<Rgb> {
     (matching * 10 >= edge.len() * 9).then_some(mean)
 }
 
-/// A team logo, fitted inside the badge and cut to its circle.
-fn team_logo(canvas: &mut Pixmap, logo: &DynamicImage, cx: f32, cy: f32, circle: &Path) {
-    let space = 2.0 * BADGE_RADIUS * LOGO_FILL;
-    let scale = (space / logo.width().max(1) as f32).min(space / logo.height().max(1) as f32);
+/// A team logo, fitted inside its box and cut to it.
+fn team_logo(
+    canvas: &mut Pixmap,
+    logo: &DynamicImage,
+    (cx, cy): (f32, f32),
+    (hw, hh): (f32, f32),
+    badge: &Path,
+) {
+    let scale = (2.0 * hw * LOGO_FILL / logo.width().max(1) as f32)
+        .min(2.0 * hh * LOGO_FILL / logo.height().max(1) as f32);
     let w = ((logo.width() as f32 * scale).round() as u32).max(1);
     let h = ((logo.height() as f32 * scale).round() as u32).max(1);
     let Some(picture) = to_pixmap(&logo.resize_exact(w, h, FilterType::Lanczos3).to_rgba8()) else {
@@ -608,7 +607,7 @@ fn team_logo(canvas: &mut Pixmap, logo: &DynamicImage, cx: f32, cy: f32, circle:
     let Some(mut clip) = Mask::new(WIDTH, HEIGHT) else {
         return;
     };
-    clip.fill_path(circle, FillRule::Winding, true, Transform::identity());
+    clip.fill_path(badge, FillRule::Winding, true, Transform::identity());
     canvas.draw_pixmap(
         (cx - w as f32 / 2.0).round() as i32,
         (cy - h as f32 / 2.0).round() as i32,
@@ -619,7 +618,7 @@ fn team_logo(canvas: &mut Pixmap, logo: &DynamicImage, cx: f32, cy: f32, circle:
     );
 }
 
-/// "GAME 12   Court 1 · Wed 5 Aug, 14:00" on a dark bar at the bottom.
+/// "GAME 12   Court 1 · Wed 5 Aug, 2:00 PM" on a dark bar at the bottom.
 fn info_bar(canvas: &mut Pixmap, font: &Font, game: &Game) {
     let (head, rest) = info_text(game);
     let gap = 16.0;
@@ -641,7 +640,7 @@ fn info_bar(canvas: &mut Pixmap, font: &Font, game: &Game) {
             fill(
                 canvas,
                 &PathBuilder::from_rect(edge),
-                solid(YELLOW, 1.0),
+                solid(TEAL, 1.0),
                 lean,
             );
         }
@@ -649,7 +648,7 @@ fn info_bar(canvas: &mut Pixmap, font: &Font, game: &Game) {
     let baseline = font.baseline(top + 12.0, size, line);
     let x = x + 50.0;
     if let Some(path) = font.path(&head, x, baseline, size, 0.0, 0.0) {
-        fill(canvas, &path, solid(YELLOW, 1.0), Transform::identity());
+        fill(canvas, &path, solid(TEAL_LIGHT, 1.0), Transform::identity());
     }
     let x = x + font.width(&head, size, 0.0) + gap;
     if let Some(path) = font.path(&rest, x, baseline, size, 0.0, 0.0) {
@@ -746,6 +745,15 @@ impl Font {
     }
 
     /// Height of a line at the font's own line spacing.
+    /// Height of a capital letter.
+    fn cap_height(&self, size: f32) -> f32 {
+        let units = self
+            .face
+            .capital_height()
+            .map_or(f32::from(self.face.ascender()) * 0.7, f32::from);
+        units * self.scale(size)
+    }
+
     fn normal_line(&self, size: f32) -> f32 {
         let f = &self.face;
         (f32::from(f.ascender()) - f32::from(f.descender()) + f32::from(f.line_gap()))
@@ -814,17 +822,45 @@ impl Font {
 
     fn wrap(&self, text: &str, size: f32, spacing: f32, max_width: f32) -> Vec<String> {
         let mut lines: Vec<String> = Vec::new();
-        for word in text.split_whitespace() {
+        for word in unbreakable_words(text) {
             match lines.last_mut() {
                 Some(last) if self.width(&format!("{last} {word}"), size, spacing) <= max_width => {
                     last.push(' ');
-                    last.push_str(word);
+                    last.push_str(&word);
                 }
-                _ => lines.push(word.to_string()),
+                _ => lines.push(word),
             }
         }
         lines
     }
+}
+
+/// The words of `text`, with a single letter kept on the same line as the word after it
+/// ("A TEAM"), or the word before it when it comes last ("TEAM B").
+fn unbreakable_words(text: &str) -> Vec<String> {
+    let mut words: Vec<String> = Vec::new();
+    let mut letter: Option<String> = None;
+    for word in text.split_whitespace() {
+        let word = match letter.take() {
+            Some(letter) => format!("{letter} {word}"),
+            None => word.to_string(),
+        };
+        if word.chars().count() == 1 {
+            letter = Some(word);
+        } else {
+            words.push(word);
+        }
+    }
+    if let Some(letter) = letter {
+        match words.last_mut() {
+            Some(last) => {
+                last.push(' ');
+                last.push_str(&letter);
+            }
+            None => words.push(letter),
+        }
+    }
+    words
 }
 
 /// Turns a glyph's outline (font units, y up) into canvas coordinates (pixels, y down).
@@ -911,23 +947,6 @@ fn polygon(points: &[(f32, f32)]) -> Option<Path> {
     }
     builder.close();
     builder.finish()
-}
-
-fn rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
-    // How far along a corner's edge the curve's control points sit, for a near-perfect arc.
-    let k = r * 0.552;
-    let mut b = PathBuilder::new();
-    b.move_to(x + r, y);
-    b.line_to(x + w - r, y);
-    b.cubic_to(x + w - r + k, y, x + w, y + r - k, x + w, y + r);
-    b.line_to(x + w, y + h - r);
-    b.cubic_to(x + w, y + h - r + k, x + w - r + k, y + h, x + w - r, y + h);
-    b.line_to(x + r, y + h);
-    b.cubic_to(x + r - k, y + h, x, y + h - r + k, x, y + h - r);
-    b.line_to(x, y + r);
-    b.cubic_to(x, y + r - k, x + r - k, y, x + r, y);
-    b.close();
-    b.finish()
 }
 
 /// A CSS-style `linear-gradient(<angle>deg, …)` across the box `(x, y, width, height)`.
@@ -1023,7 +1042,7 @@ mod tests {
         Game {
             number: "12",
             court: "1",
-            when: "Wed 5 Aug, 14:00",
+            when: "Wed 5 Aug, 2:00 PM",
             dark,
             light,
         }
@@ -1106,11 +1125,26 @@ mod tests {
     }
 
     #[test]
-    fn initials_use_the_first_two_words() {
-        assert_eq!(initials("Townsville Tigersharks B"), "TT");
-        assert_eq!(initials("Brisbane"), "BR");
-        assert_eq!(initials("  (A) team"), "TE");
-        assert_eq!(initials(""), "");
+    fn the_logo_boxes_take_the_shape_most_of_the_event_logos_have() {
+        let logo =
+            |w, h| DynamicImage::ImageRgba8(RgbaImage::from_pixel(w, h, [9, 9, 9, 255].into()));
+        let (square, flag) = (logo(100, 100), logo(200, 100));
+        assert_eq!(LogoShape::of([]), LogoShape::Square);
+        assert_eq!(LogoShape::of([&square, &flag]), LogoShape::Square);
+        assert_eq!(LogoShape::of([&flag, &flag, &square]), LogoShape::Wide);
+        // A 3:2 flag counts as wide.
+        assert_eq!(LogoShape::of([&logo(150, 100)]), LogoShape::Wide);
+    }
+
+    #[test]
+    fn a_single_letter_stays_on_the_line_of_its_neighbour() {
+        assert_eq!(
+            unbreakable_words("CAIRNS CRAYS A TEAM"),
+            ["CAIRNS", "CRAYS", "A TEAM"]
+        );
+        assert_eq!(unbreakable_words("SYDNEY KINGS B"), ["SYDNEY", "KINGS B"]);
+        assert_eq!(unbreakable_words("A B"), ["A B"]);
+        assert_eq!(unbreakable_words("Q"), ["Q"]);
     }
 
     #[test]
@@ -1132,11 +1166,7 @@ mod tests {
     }
 
     fn team(name: &str) -> Team<'_> {
-        Team {
-            name,
-            known: true,
-            logo: None,
-        }
+        Team { name, logo: None }
     }
 
     fn missing(result: Result<impl Sized, BoxError>) -> MissingGlyph {
@@ -1166,7 +1196,7 @@ mod tests {
 
     #[test]
     fn a_team_name_the_font_cant_draw_skips_the_picture() {
-        let painter = Painter::new("Test Cup", None).unwrap();
+        let painter = Painter::new("Test Cup", None, LogoShape::Square).unwrap();
         let skipped = missing(painter.render(&game(team("東京 Sharks"), team("Sydney Kings A"))));
         assert_eq!(skipped.ch, '東');
         assert!(!skipped.in_event_name);
@@ -1185,7 +1215,7 @@ mod tests {
     fn names_are_checked_as_drawn_in_capitals() {
         // "ﬁ" is one ligature character the font lacks, but the name is drawn in capitals,
         // where it becomes the plain letters "FI".
-        let painter = Painter::new("Test Cup", None).unwrap();
+        let painter = Painter::new("Test Cup", None, LogoShape::Square).unwrap();
         let name = "Équipe ﬁnale";
         assert_eq!(Font::new().unwrap().covers(name), Err('ﬁ'));
         assert!(
@@ -1197,7 +1227,7 @@ mod tests {
 
     #[test]
     fn an_event_name_the_font_cant_draw_skips_every_picture() {
-        let skipped = missing(Painter::new("東京 Cup", None));
+        let skipped = missing(Painter::new("東京 Cup", None, LogoShape::Square));
         assert_eq!(skipped.ch, '東');
         assert!(skipped.in_event_name);
         assert_eq!(
@@ -1205,22 +1235,20 @@ mod tests {
             "the font has no \"東\" in the event name"
         );
         // Drawn in capitals: the ligature "ﬁ" becomes "FI", which the font has.
-        assert!(Painter::new("ﬁnals", None).is_ok());
+        assert!(Painter::new("ﬁnals", None, LogoShape::Square).is_ok());
     }
 
     #[test]
     fn renders_a_youtube_sized_jpeg_without_a_banner_or_logos() {
-        let painter = Painter::new("Test Cup", None).unwrap();
+        let painter = Painter::new("Test Cup", None, LogoShape::Square).unwrap();
         let jpeg = painter
             .render(&game(
                 Team {
                     name: "Sydney Kings A",
-                    known: true,
                     logo: None,
                 },
                 Team {
                     name: "Winner G52",
-                    known: false,
                     logo: None,
                 },
             ))

@@ -545,8 +545,8 @@ Made after a review of the PR against this ADR, and approved by Eric.
       is used then), can still make the portal refuse the whole update; the log then says to run
       Prepare again.
 14. **Each game's video gets a thumbnail** (Eric, 2026-10-12, programme decision D3): a picture
-    with both teams' logos (or their initials when there is no logo) and the event banner, drawn
-    by Prepare and uploaded with the video. Thumbnails are extras: one is uploaded only while
+    with both teams' logos (or just the team's name when there is no logo) and the event banner,
+    drawn by Prepare and uploaded with the video. Thumbnails are extras: one is uploaded only while
     what is left of the court's allowance, after paying for it, still covers the rest of the
     day's switches, and Prepare's preview shows their cost separately and warns when the work
     would use what the switches need. A thumbnail the font can't draw (e.g. a team name in a

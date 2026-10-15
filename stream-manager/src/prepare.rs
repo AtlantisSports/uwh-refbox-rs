@@ -10,14 +10,14 @@ use crate::{
     config::{Config, CourtConfig, StreamMode},
     portal::{EventPlan, PlannedGame, TeamArt, playlist_title, video_title},
     quota,
-    thumbnail::{self, DESIGN_VERSION, MissingGlyph, Painter},
+    thumbnail::{self, DESIGN_VERSION, LogoShape, MissingGlyph, Painter},
     youtube::{BroadcastSpec, Playlist, StreamInfo, THUMBNAIL_COST, YouTube, YouTubeAccess},
 };
 use image::DynamicImage;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs,
     io::{self, BufRead, Write},
     path::{Path, PathBuf},
@@ -378,11 +378,11 @@ pub async fn sync_video(
     Ok(true)
 }
 
-/// e.g. "Wed 5 Aug, 14:00", in the game's own time zone.
+/// e.g. "Wed 5 Aug, 2:00 PM", in the game's own time zone.
 fn when_text(game: &PlannedGame) -> String {
     game.start
         .format(format_description!(
-            "[weekday repr:short] [day padding:none] [month repr:short], [hour]:[minute]"
+            "[weekday repr:short] [day padding:none] [month repr:short], [hour repr:12 padding:none]:[minute] [period]"
         ))
         .unwrap_or_default()
 }
@@ -607,7 +607,7 @@ pub async fn upload_redrawn(
     Ok(Upload::Set)
 }
 
-/// A picture that takes longer than this to download is left out (logo → initials).
+/// A picture that takes longer than this to download is left out (logo → team name).
 const PICTURE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
 type Pictures = HashMap<String, Option<DynamicImage>>;
@@ -674,12 +674,30 @@ impl Thumbnails {
             if let Some(url) = &plan.banner_url {
                 self.banner_ok = self.fetch(url, log).await;
             }
+            // The logo boxes are the shape most of the event's logos have, so every game's
+            // thumbnail matches: all the logos are fetched before the first one is drawn.
+            let logo_urls: BTreeSet<&String> = plan
+                .games
+                .iter()
+                .flat_map(|g| [&g.dark_team, &g.light_team])
+                .flatten()
+                .filter_map(|art| art.logo_url.as_ref())
+                .collect();
+            for url in &logo_urls {
+                self.fetch(url, log).await;
+            }
+            let shape = LogoShape::of(
+                logo_urls
+                    .iter()
+                    .filter_map(|url| self.pictures.get(*url))
+                    .flatten(),
+            );
             let banner = plan
                 .banner_url
                 .as_ref()
                 .and_then(|url| self.pictures.get(url))
                 .and_then(Option::as_ref);
-            self.painter = Some(Painter::new(&plan.event_name, banner)?);
+            self.painter = Some(Painter::new(&plan.event_name, banner, shape)?);
         }
         let mut complete = self.banner_ok;
         for art in [&game.dark_team, &game.light_team].into_iter().flatten() {
@@ -724,7 +742,6 @@ fn team_picture<'a>(
 ) -> thumbnail::Team<'a> {
     thumbnail::Team {
         name,
-        known: art.is_some(),
         logo: art
             .as_ref()
             .and_then(|a| a.logo_url.as_ref())

@@ -305,7 +305,8 @@ page; vMix A/B handoff with single-connection mode as a per-court setting; the n
 message and description link; portal title sync; quota-aware behaviour with a per-court share;
 restart recovery; live status on the Stream Deck through Companion.
 
-**Follow-up (separate PRs, after this one):** filling each game's watch link on the portal. See
+**Follow-up (separate PRs, after this one):** filling each game's watch link on the portal. Built
+in the Stream Manager watch-links PR (stacked on #3521), together with the uwhportal PR. See
 "Amendments, 2026-10-07".
 
 **Out of scope for now (possible later):**
@@ -463,6 +464,7 @@ Tested at a practice session using **unlisted** videos and a small test event on
   `watchUrl` on the portal through the admin endpoint `POST /api/admin/update-games-watch-urls`,
   signing in with a saved portal admin email and password. It was taken out of this PR on
   review. See "Amendments, 2026-10-07".
+- **Portal watch links, built (2026-10-08):** none. Built as Amendment 9 describes.
 
 ## Amendments, 2026-10-07
 
@@ -499,6 +501,9 @@ Made after a review of the PR against this ADR, and approved by Eric.
      the meantime. Taking it out means this PR builds nothing that would later be thrown away:
      no stored admin login, and no password encryption through PowerShell (whose test failed on
      GitHub's Windows machines).
+   - **Built (2026-10-08):** in the Stream Manager watch-links PR (stacked on #3521), together
+     with the uwhportal PR. The Settings tab's **Portal watch links** box shows the ID and takes
+     the code. Changing the event or the portal forgets the key.
 10. **The control page answers only the mini PC it runs on, unless told otherwise; Stream Deck
     links use a button key, not the PIN.** A review showed that anyone on the venue network could
     find the 4-digit PIN in seconds by trying every PIN at once, because Companion's links carried
@@ -518,3 +523,11 @@ Made after a review of the PR against this ADR, and approved by Eric.
     playlist names from different tournaments. A very long event name is shortened with "…" so
     the title stays within YouTube's 150 characters and the day and court always show. Playlists
     made under the old names are not renamed; Prepare makes new ones.
+12. **An event not marked "Will be streamed" is explained, and the key is kept** (Eric,
+    2026-10-12): the portal refuses *setting* watch links (400 `NotStreamed`) while the event's
+    "Will be streamed" option is off. Prepare says so in plain words and keeps the saved key,
+    because the key is still good. Preview warns beforehand, from the "Will be streamed" setting
+    in the schedule it has already loaded (the portal's key check itself never refuses for
+    this). Clearing links, after videos are deleted, still works whatever the setting. A refused
+    key found by Preview is still forgotten (D4), but its warning now survives a YouTube failure
+    in the same preview, and Settings stops showing the event as linked straight away.

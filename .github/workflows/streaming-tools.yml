@@ -1,0 +1,71 @@
+name: Streaming tools
+
+# Builds the three Windows programs that run on each court's streaming mini PC, as one
+# download (`streaming-tools-windows`):
+#   - overlay.exe        (score overlay, NDI® output + overlay-bridge feed: `--features ndi,bridge`)
+#   - overlay-bridge.exe (game state and team names for the overlay and vMix)
+#   - stream-manager.exe (one YouTube live video per game)
+# See docs/streaming-setup.md. NDI® is a registered trademark of Vizrt NDI AB (https://ndi.video).
+#
+# It runs on pull requests and pushes to master that touch these programs, can be started by
+# hand (Actions → Streaming tools → Run workflow), and is called by release.yml so every release
+# carries the same zip.
+
+on:
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - "overlay/**"
+      - "overlay-bridge/**"
+      - "stream-manager/**"
+      - "uwh-common/**"
+      - "Cargo.lock"
+      - "docs/streaming-setup.md"
+      - ".github/workflows/streaming-tools.yml"
+      - ".github/actions/setup-ndi-windows/**"
+  push:
+    branches: [ "master" ]
+    paths:
+      - "overlay/**"
+      - "overlay-bridge/**"
+      - "stream-manager/**"
+      - "uwh-common/**"
+      - "Cargo.lock"
+      - "docs/streaming-setup.md"
+      - ".github/workflows/streaming-tools.yml"
+      - ".github/actions/setup-ndi-windows/**"
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build-windows:
+    name: Build the streaming tools for Windows
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v5
+    - uses: ./.github/actions/setup-ndi-windows
+    - uses: Swatinem/rust-cache@v2
+    - name: Versions
+      run: cargo --version && rustc --version
+    # Both features together: without `bridge` the overlay silently talks to the refbox
+    # directly and shows the wrong team names (docs/streaming-setup.md, A3).
+    - run: cargo build --release --locked -p overlay --features ndi,bridge
+    - run: cargo build --release --locked -p overlay-bridge
+    - run: cargo build --release --locked -p stream-manager
+    - name: Package
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory streaming-tools | Out-Null
+        Copy-Item target/release/overlay.exe, target/release/overlay-bridge.exe, `
+          target/release/stream-manager.exe, docs/streaming-setup.md streaming-tools/
+        @(
+          "overlay.exe sends its picture over NDI(R). NDI(R) is a registered trademark of Vizrt NDI AB.",
+          "Learn more and get NDI Tools (which includes the NDI runtime overlay.exe needs): https://ndi.video",
+          "",
+          "Setup instructions: streaming-setup.md"
+        ) | Set-Content streaming-tools/README.txt
+    - uses: actions/upload-artifact@v4
+      with:
+        name: streaming-tools-windows
+        path: streaming-tools

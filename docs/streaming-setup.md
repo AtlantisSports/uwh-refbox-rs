@@ -459,6 +459,11 @@ key A.
 - Press **Start day** when you want the stream to begin (e.g. 10 minutes before the first game).
 - After that, each game's video switches automatically **3:15 before the next game**, just before
   the overlay shows the rosters, so interviews stay in the previous game's video.
+  - **Breaks shorter than 3:15:** if a break starts between 3:15 and 3:02, the switch happens
+    straight away, so post-game interviews end up in the next game's video. If it starts at 3:01
+    or less (the rosters are already showing), the switch waits until they finish, at 0:29:
+    interviews stay in the previous game's video, but so do the rosters, and the next game's video
+    starts only 29 seconds before kick-off.
 - **Hold** stops the automatic switch (e.g. a long interview). **Switch now** switches
   immediately.
 - If a switch fails, the court shows a **red message** and goes to Hold. Fix the cause, then
@@ -480,6 +485,10 @@ key A.
 - **If Stream Manager or the mini PC restarts** during the day, it asks YouTube which video is live
   and carries on: the court's log shows "Resumed: Game 14 is live". Don't press Start day again.
   If it shows "Game 13 is also still live on YouTube", end that one in YouTube Studio.
+  - It only carries on from one of **today's** games. If the only live video is from another day
+    (for example a test video nobody ended, or a game still being played after midnight), the
+    log shows "Game 7 is still live on YouTube from another day". Stream Manager won't switch or
+    end that video. Once that game is over, end it in YouTube Studio, then press **Start day**.
   - It also starts that video's vMix destination again, because vMix's outputs are off after a
     reboot (not in practice mode). If the log says it couldn't, start the destination in vMix.
   - If the schedule couldn't load when it started (for example, the network wasn't up yet), this

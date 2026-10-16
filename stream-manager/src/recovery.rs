@@ -1,5 +1,6 @@
-//! Restart recovery (ADR 026 §9): after a restart, each court asks YouTube which of today's
-//! prepared videos is live, and carries on from there.
+//! Restart recovery (ADR 026 §9): after a restart, each court asks YouTube which of its
+//! prepared videos is live, and carries on from today's. A live video from another day is only
+//! reported, never carried on from.
 
 use crate::{BoxError, portal::EventPlan, prepare::EventState, quota, youtube::YouTube};
 use std::collections::HashMap;
@@ -8,57 +9,73 @@ use time::OffsetDateTime;
 /// YouTube takes at most this many video ids in one status check.
 const IDS_PER_CHECK: usize = 50;
 
-/// The court's games today that have a prepared video, in schedule order: (game, video id).
-pub fn todays_videos(
+/// The court's games on every day that have a prepared video, in schedule order: (game, video
+/// id, whether the game is today). Every day is asked about so that a video still live from
+/// another day is noticed, rather than a second one being put live by Start day.
+pub fn court_videos(
     plan: &EventPlan,
     state: &EventState,
     court: &str,
     now: OffsetDateTime,
-) -> Vec<(String, String)> {
-    let Some(day) = quota::todays_day(plan, court, now) else {
-        return Vec::new();
-    };
-    plan.court_games(court, day)
+) -> Vec<(String, String, bool)> {
+    let today = quota::todays_day(plan, court, now);
+    plan.games
+        .iter()
+        .filter(|g| g.court == court)
         .filter_map(|g| {
-            state
-                .videos
-                .get(&g.number)
-                .map(|video| (g.number.clone(), video.broadcast_id.clone()))
+            state.videos.get(&g.number).map(|video| {
+                (
+                    g.number.clone(),
+                    video.broadcast_id.clone(),
+                    Some(g.day) == today,
+                )
+            })
         })
         .collect()
 }
 
-/// From the court's games in order with each video's life cycle, the latest one that is live,
-/// plus any earlier ones that are also still live.
-pub fn pick_live(games_in_order: &[(&str, &str)]) -> (Option<String>, Vec<String>) {
-    let mut live: Vec<String> = games_in_order
+/// From the court's games in order with each video's life cycle and whether the game is today:
+/// the latest of today's that is live, plus every other one that is also still live (earlier
+/// today, or on another day).
+pub fn pick_live(games_in_order: &[(&str, &str, bool)]) -> (Option<String>, Vec<String>) {
+    let live: Vec<(&str, bool)> = games_in_order
         .iter()
-        .filter(|(_, life_cycle)| *life_cycle == "live")
-        .map(|(game, _)| game.to_string())
+        .filter(|(_, life_cycle, _)| *life_cycle == "live")
+        .map(|(game, _, today)| (*game, *today))
         .collect();
-    let latest = live.pop();
-    (latest, live)
+    let latest = live
+        .iter()
+        .rev()
+        .find(|(_, today)| *today)
+        .map(|(game, _)| game.to_string());
+    let others = live
+        .iter()
+        .map(|(game, _)| game.to_string())
+        .filter(|game| latest.as_ref() != Some(game))
+        .collect();
+    (latest, others)
 }
 
-/// Asks YouTube for the life cycle of `videos` (game, video id), 50 at a time, and picks the
-/// live one with [`pick_live`].
+/// Asks YouTube for the life cycle of `videos` (game, video id, today), 50 at a time, and
+/// picks the live one with [`pick_live`].
 pub async fn find_live(
     youtube: &mut YouTube,
-    videos: &[(String, String)],
+    videos: &[(String, String, bool)],
 ) -> Result<(Option<String>, Vec<String>), BoxError> {
     let mut life_cycles: HashMap<String, String> = HashMap::new();
     for chunk in videos.chunks(IDS_PER_CHECK) {
-        let ids: Vec<&str> = chunk.iter().map(|(_, id)| id.as_str()).collect();
+        let ids: Vec<&str> = chunk.iter().map(|(_, id, _)| id.as_str()).collect();
         for [id, _title, life_cycle, _privacy, _stream] in youtube.broadcast_statuses(&ids).await? {
             life_cycles.insert(id, life_cycle);
         }
     }
-    let in_order: Vec<(&str, &str)> = videos
+    let in_order: Vec<(&str, &str, bool)> = videos
         .iter()
-        .map(|(game, id)| {
+        .map(|(game, id, today)| {
             (
                 game.as_str(),
                 life_cycles.get(id).map_or("", String::as_str),
+                *today,
             )
         })
         .collect();
@@ -75,7 +92,11 @@ mod tests {
     fn no_live_video_resumes_nothing() {
         assert_eq!(pick_live(&[]), (None, vec![]));
         assert_eq!(
-            pick_live(&[("1", "complete"), ("3", "ready"), ("5", "testing")]),
+            pick_live(&[
+                ("1", "complete", true),
+                ("3", "ready", true),
+                ("5", "testing", true)
+            ]),
             (None, vec![])
         );
     }
@@ -83,7 +104,11 @@ mod tests {
     #[test]
     fn one_live_video_is_resumed() {
         assert_eq!(
-            pick_live(&[("12", "complete"), ("14", "live"), ("15", "ready")]),
+            pick_live(&[
+                ("12", "complete", true),
+                ("14", "live", true),
+                ("15", "ready", true)
+            ]),
             (Some("14".to_string()), vec![])
         );
     }
@@ -91,13 +116,42 @@ mod tests {
     #[test]
     fn with_two_live_videos_the_later_one_is_resumed_and_the_other_reported() {
         assert_eq!(
-            pick_live(&[("13", "live"), ("14", "live"), ("15", "ready")]),
+            pick_live(&[
+                ("13", "live", true),
+                ("14", "live", true),
+                ("15", "ready", true)
+            ]),
             (Some("14".to_string()), vec!["13".to_string()])
         );
     }
 
     #[test]
-    fn todays_videos_are_this_courts_prepared_games_today_in_order() {
+    fn a_live_video_from_another_day_is_reported_but_never_resumed() {
+        // Only another day's video is live: nothing is resumed, and it is reported.
+        assert_eq!(
+            pick_live(&[
+                ("7", "live", false),
+                ("12", "ready", true),
+                ("13", "ready", true)
+            ]),
+            (None, vec!["7".to_string()])
+        );
+        // Today's live video is resumed even when a later day's (e.g. a test event's) is live.
+        assert_eq!(
+            pick_live(&[
+                ("7", "live", false),
+                ("12", "live", true),
+                ("20", "live", false)
+            ]),
+            (
+                Some("12".to_string()),
+                vec!["7".to_string(), "20".to_string()]
+            )
+        );
+    }
+
+    #[test]
+    fn court_videos_are_this_courts_prepared_games_on_every_day_in_order() {
         let game = |number: &str, start: &str, court: &str| {
             format!(
                 r#"{{ "number": "{number}", "startsOn": "{start}", "court": "{court}",
@@ -130,28 +184,30 @@ mod tests {
         for (number, id) in [("1", "v1"), ("2", "v2"), ("5", "v5"), ("7", "v7")] {
             state.videos.insert(number.to_string(), video(id));
         }
-        let pairs = |list: &[(&str, &str)]| -> Vec<(String, String)> {
+        let rows = |list: &[(&str, &str, bool)]| -> Vec<(String, String, bool)> {
             list.iter()
-                .map(|(g, id)| (g.to_string(), id.to_string()))
+                .map(|(g, id, today)| (g.to_string(), id.to_string(), *today))
                 .collect()
         };
         let day_one = datetime!(2026-08-01 08:00 +10);
         assert_eq!(
-            todays_videos(&plan, &state, "1", day_one),
-            pairs(&[("1", "v1"), ("5", "v5")])
+            court_videos(&plan, &state, "1", day_one),
+            rows(&[("1", "v1", true), ("5", "v5", true), ("7", "v7", false)])
         );
         assert_eq!(
-            todays_videos(&plan, &state, "2", day_one),
-            pairs(&[("2", "v2")])
+            court_videos(&plan, &state, "2", day_one),
+            rows(&[("2", "v2", true)])
         );
         assert_eq!(
-            todays_videos(&plan, &state, "1", datetime!(2026-08-02 08:00 +10)),
-            pairs(&[("7", "v7")])
+            court_videos(&plan, &state, "1", datetime!(2026-08-02 08:00 +10)),
+            rows(&[("1", "v1", false), ("5", "v5", false), ("7", "v7", true)])
         );
-        // No games today.
+        // No games today: every video is still asked about, none as today's.
         assert_eq!(
-            todays_videos(&plan, &state, "1", datetime!(2026-08-05 08:00 +10)),
-            vec![]
+            court_videos(&plan, &state, "1", datetime!(2026-08-05 08:00 +10)),
+            rows(&[("1", "v1", false), ("5", "v5", false), ("7", "v7", false)])
         );
+        // A court with no prepared videos has nothing to ask about.
+        assert_eq!(court_videos(&plan, &state, "3", day_one), vec![]);
     }
 }

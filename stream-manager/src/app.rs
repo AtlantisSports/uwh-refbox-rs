@@ -708,7 +708,8 @@ impl App {
     // ----- Restart recovery -----
 
     /// After a restart, or when the courts change, asks YouTube which of each court's videos
-    /// today is live and carries on from it (ADR 026 §9). Without a schedule, prepared videos or
+    /// is live and carries on from today's (ADR 026 §9). A video still live from another day is
+    /// only reported, and the court waits for Start day. Without a schedule, prepared videos or
     /// a YouTube connection nothing changes, and the court waits for Start day.
     ///
     /// A court is looked at until YouTube has been asked about it once, or until its day is
@@ -757,9 +758,9 @@ impl App {
         };
         let now = OffsetDateTime::now_utc();
         for (i, court) in courts {
-            let videos = recovery::todays_videos(&plan, &state, &court.name, now);
+            let videos = recovery::court_videos(&plan, &state, &court.name, now);
             if videos.is_empty() {
-                // No video today, so none can be live.
+                // No prepared video on this court, so none can be live.
                 for_event(i, &mut |c, _| c.recovered = true);
                 continue;
             }
@@ -783,7 +784,10 @@ impl App {
                             .await;
                     }
                 }
-                Ok((None, _)) => for_event(i, &mut |c, _| c.recovered = true),
+                Ok((None, other_days)) => for_event(i, &mut |c, _| {
+                    c.recovered = true;
+                    report_other_days_live(c, &other_days);
+                }),
                 Err(e) => warn!(
                     "[Court {}] Couldn't check which video is live: {e}",
                     court.name
@@ -1414,6 +1418,17 @@ fn resume_court(court: &mut CourtRuntime, live: &str, also_live: &[String]) -> b
     true
 }
 
+/// Reports the court's videos still live from another day when none of today's is: they are
+/// not carried on from, so nothing switches or ends them.
+fn report_other_days_live(court: &mut CourtRuntime, live: &[String]) {
+    for game in live {
+        court.note(format!(
+            "⚠ Game {game} is still live on YouTube from another day; Stream Manager won't switch \
+             or end it. End it in YouTube Studio once that game is over"
+        ));
+    }
+}
+
 /// Logs a switching decision and, unless in practice mode, hands it to the court's worker.
 fn dispatch(
     court: &mut CourtRuntime,
@@ -1641,6 +1656,25 @@ mod tests {
     }
 
     #[test]
+    fn another_days_live_video_is_reported_with_its_own_warning() {
+        let rules = rules_of(&Config::default());
+        let mut court = CourtRuntime::new(Config::default().courts.remove(0), rules);
+        report_other_days_live(&mut court, &["7".to_string()]);
+        let status = court.switcher.status();
+        assert!(!status.day_running);
+        assert_eq!(status.live, None);
+        let log: Vec<&String> = court.log.iter().collect();
+        assert_eq!(log.len(), 1);
+        assert!(
+            log[0].ends_with(
+                " ⚠ Game 7 is still live on YouTube from another day; Stream Manager won't switch \
+                 or end it. End it in YouTube Studio once that game is over"
+            ),
+            "{log:?}"
+        );
+    }
+
+    #[test]
     fn a_refbox_silent_during_the_break_shows_as_not_responding_until_it_sends_again() {
         let app = temp_app("silent");
         let generation = app.inner().generation;
@@ -1758,7 +1792,7 @@ mod tests {
         app.recover_live_videos().await;
         assert_eq!(pending(&app), [0]);
 
-        // With a schedule but no video for today, nothing can be live: the court is covered.
+        // With a schedule but no prepared video, nothing can be live: the court is covered.
         app.inner().plan =
             Some(parse_event_plan(r#"{ "event": { "name": "Test Cup" }, "games": [] }"#).unwrap());
         app.recover_live_videos().await;

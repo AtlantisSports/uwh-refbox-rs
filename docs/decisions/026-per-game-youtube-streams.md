@@ -290,9 +290,12 @@ happens today: the current video keeps running longer than it should.
   operator retries with Switch now once it recovers.
 - **Refbox connection lost:** automatic switching pauses; the operator uses Switch now.
 - **Program crashes or restarts:** on start, each court asks YouTube which of its prepared videos
-  is live (one status check), and carries on from there. The page shows "Resumed: Game 14 is
+  is live (one status check per 50 videos), and carries on from there. The page shows "Resumed: Game 14 is
   live", and the operator does not press Start day again. If none is live, the court waits for
-  Start day as usual. The A/B key in use follows from the live video's stream.
+  Start day as usual. The A/B key in use follows from the live video's stream. Every day's
+  videos are asked about, but it only carries on from one of today's games: a video still live
+  from another day is reported ("still live on YouTube from another day"), nothing switches or
+  ends it, and the court waits for Start day.
 
 ### Scope
 

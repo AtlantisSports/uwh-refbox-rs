@@ -34,7 +34,7 @@ mod game_stats;
 use game_stats::*;
 
 mod live_details;
-pub use live_details::{EnginePenalty, LiveDetails};
+pub use live_details::{EnginePenalty, LiveDetails, TeamTimeout};
 
 pub(crate) mod placement;
 mod time_jump;
@@ -3390,15 +3390,22 @@ impl TournamentManager {
             }
         }
 
-        let team_timeout_running = match &self.timeout_state {
-            Some(TimeoutState::Team(_, cs)) => Some(cs.is_running()),
+        let team_timeout = match &self.timeout_state {
+            Some(TimeoutState::Team(_, cs)) => Some(TeamTimeout {
+                running: cs.is_running(),
+                // A countdown past zero has no clock time: 0 left, never the snapshot's
+                // `u16::MAX` stand-in.
+                seconds_left: cs
+                    .clock_time(now)
+                    .map_or(0, |t| t.as_secs().try_into().unwrap_or(u16::MAX)),
+            }),
             _ => None,
         };
 
         Some(LiveDetails {
             recent_goal,
             penalties,
-            team_timeout_running,
+            team_timeout,
         })
     }
 
@@ -12558,26 +12565,64 @@ mod test {
         let start = Instant::now();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(500));
         tm.start_game_clock(start);
-        assert_eq!(tm.live_details(start).unwrap().team_timeout_running, None);
+        assert_eq!(tm.live_details(start).unwrap().team_timeout, None);
 
         let to_at = start + Duration::from_secs(5);
         tm.start_team_timeout(Color::White, to_at).unwrap();
+        let length: u16 = tm
+            .config
+            .team_timeout_duration
+            .as_secs()
+            .try_into()
+            .unwrap();
         assert_eq!(
-            tm.live_details(to_at).unwrap().team_timeout_running,
-            Some(true)
+            tm.live_details(to_at).unwrap().team_timeout,
+            Some(TeamTimeout {
+                running: true,
+                seconds_left: length,
+            })
         );
 
         let stopped_at = to_at + Duration::from_secs(5);
         tm.stop_clock(stopped_at).unwrap();
         assert_eq!(
-            tm.live_details(stopped_at).unwrap().team_timeout_running,
-            Some(false)
+            tm.live_details(stopped_at).unwrap().team_timeout,
+            Some(TeamTimeout {
+                running: false,
+                seconds_left: length - 5,
+            })
         );
 
         let ended_at = stopped_at + Duration::from_secs(1);
         tm.end_timeout(ended_at).unwrap();
         let ref_at = ended_at + Duration::from_secs(1);
         tm.start_ref_timeout(ref_at).unwrap();
-        assert_eq!(tm.live_details(ref_at).unwrap().team_timeout_running, None);
+        assert_eq!(tm.live_details(ref_at).unwrap().team_timeout, None);
+    }
+
+    #[test]
+    fn live_details_team_timeout_past_zero_reports_zero() {
+        // A countdown past zero has no clock time, and the timeout ends only at the next
+        // update. The snapshot stands in `u16::MAX` for that; the live read must say 0.
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(500));
+        tm.start_game_clock(start);
+        tm.start_team_timeout(Color::White, start).unwrap();
+
+        let past = start + tm.config.team_timeout_duration + Duration::from_secs(2);
+        assert_eq!(
+            tm.live_details(past).unwrap().team_timeout,
+            Some(TeamTimeout {
+                running: true,
+                seconds_left: 0,
+            })
+        );
+        // The case is real: no update has ended the timeout, and the snapshot holds the stand-in.
+        assert_eq!(
+            tm.generate_snapshot(past).unwrap().timeout,
+            Some(TimeoutSnapshot::White(u16::MAX))
+        );
     }
 }

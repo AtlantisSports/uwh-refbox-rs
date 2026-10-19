@@ -5,7 +5,7 @@ against refbox `origin/master` @ 701ea226. Where the build departs from this tex
 says so.
 
 **v3 note (2026-10-19, `feat/uwh-common/live-updates-v3`):** this document describes v2 and is left as written. v3
-adds three body fields: `lastGoal`, `penalties`, and `timeoutSeconds` / `timeoutRunning` for a White or Black team
+adds four body fields: `lastGoal`, `penalties`, and `timeoutSeconds` / `timeoutRunning` for a White or Black team
 timeout. So the `timeout` row below ("the kind only, no seconds"), "Nothing else" under the body table, "a timeout
 timer" among the non-goals, and any statement that penalties are not sent no longer hold for a v3 refbox. The fields,
 their sources and their send-at-once rules are in the agreement's v3 section:

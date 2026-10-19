@@ -13,8 +13,17 @@ pub struct LiveDetails {
     pub recent_goal: Option<(Color, u8, u32)>,
     /// EVERY penalty the engine holds, served ones included, Black's in list order then White's.
     pub penalties: Vec<EnginePenalty>,
-    /// `Some` only during a White/Black team timeout: whether its clock is running.
-    pub team_timeout_running: Option<bool>,
+    /// `Some` only during a White/Black team timeout: its clock.
+    pub team_timeout: Option<TeamTimeout>,
+}
+
+/// The clock of a White/Black team timeout, read from the engine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TeamTimeout {
+    pub running: bool,
+    /// Whole seconds left: 0 once the countdown has passed zero (the timeout ends only at the
+    /// next update), saturating at `u16::MAX` only for a real reading that large.
+    pub seconds_left: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

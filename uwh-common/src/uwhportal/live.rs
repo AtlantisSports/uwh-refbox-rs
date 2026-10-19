@@ -62,18 +62,12 @@ pub enum LiveTimeout {
 }
 
 impl LiveTimeout {
-    /// `team_clock_running` is used only for a White/Black timeout: `Some(r)` gives
-    /// `Some(TeamTimeoutClock { seconds_left: <snapshot secs>, running: r })`, `None` gives no clock.
-    pub fn from_snapshot(t: TimeoutSnapshot, team_clock_running: Option<bool>) -> Self {
-        let clock = |seconds_left| {
-            team_clock_running.map(|running| TeamTimeoutClock {
-                seconds_left,
-                running,
-            })
-        };
+    /// `team_clock` is used as-is, and only for a White/Black timeout; Ref/PenaltyShot ignore it.
+    /// The snapshot's seconds are never read: past zero they hold a `u16::MAX` stand-in.
+    pub fn from_snapshot(t: TimeoutSnapshot, team_clock: Option<TeamTimeoutClock>) -> Self {
         match t {
-            TimeoutSnapshot::White(secs) => Self::White(clock(secs)),
-            TimeoutSnapshot::Black(secs) => Self::Black(clock(secs)),
+            TimeoutSnapshot::White(_) => Self::White(team_clock),
+            TimeoutSnapshot::Black(_) => Self::Black(team_clock),
             TimeoutSnapshot::Ref(_) => Self::Ref,
             TimeoutSnapshot::PenaltyShot(_) => Self::PenaltyShot,
         }
@@ -281,8 +275,13 @@ mod tests {
 
     #[test]
     fn ref_and_penalty_shot_carry_no_timeout_seconds() {
-        for timeout in [None, Some(LiveTimeout::Ref), Some(LiveTimeout::PenaltyShot)] {
+        for (timeout, name) in [
+            (None, "null"),
+            (Some(LiveTimeout::Ref), r#""Ref""#),
+            (Some(LiveTimeout::PenaltyShot), r#""PenaltyShot""#),
+        ] {
             let body = body(&base(timeout));
+            assert!(body.contains(&format!(r#""timeout":{name},"#)), "{body}");
             assert!(body.contains(r#""timeoutSeconds":null"#), "{body}");
             assert!(body.contains(r#""timeoutRunning":null"#), "{body}");
         }
@@ -321,19 +320,21 @@ mod tests {
 
     #[test]
     fn from_snapshot_fills_team_clock_only() {
+        let clock = TeamTimeoutClock {
+            seconds_left: 0,
+            running: true,
+        };
+        // The given clock wins over the snapshot's seconds (here the past-zero stand-in).
         assert_eq!(
-            LiveTimeout::from_snapshot(TimeoutSnapshot::White(10), Some(true)),
-            LiveTimeout::White(Some(TeamTimeoutClock {
-                seconds_left: 10,
-                running: true,
-            }))
+            LiveTimeout::from_snapshot(TimeoutSnapshot::White(u16::MAX), Some(clock)),
+            LiveTimeout::White(Some(clock))
         );
         assert_eq!(
             LiveTimeout::from_snapshot(TimeoutSnapshot::Black(20), None),
             LiveTimeout::Black(None)
         );
         assert_eq!(
-            LiveTimeout::from_snapshot(TimeoutSnapshot::Ref(5), Some(true)),
+            LiveTimeout::from_snapshot(TimeoutSnapshot::Ref(5), Some(clock)),
             LiveTimeout::Ref
         );
         assert_eq!(

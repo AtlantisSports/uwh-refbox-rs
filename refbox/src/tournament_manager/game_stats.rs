@@ -126,7 +126,9 @@ impl GameStats {
         for color in [Color::Black, Color::White] {
             events.extend(running[color].iter().map(|pen| penalty_event(pen, color)));
         }
-        events.sort_unstable_by_key(|event| match event {
+        // Stable sort: events with the same `occurredOn` keep their insertion order, so the
+        // key does not flip between builds of an unchanged list.
+        events.sort_by_key(|event| match event {
             Event::Goal { occurred_on, .. } => *occurred_on,
             Event::Penalty { occurred_on, .. } => *occurred_on,
             Event::Foul { occurred_on, .. } => *occurred_on,

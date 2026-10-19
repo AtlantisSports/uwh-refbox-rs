@@ -3976,6 +3976,27 @@ mod test {
     }
 
     #[test]
+    fn running_stats_keeps_a_goal_taken_back_by_a_score_edit() {
+        let (mut tm, g) = running_stats_game();
+        let s = Duration::from_secs;
+
+        tm.add_score(Color::Black, 4, g + s(10));
+        let before = tm.running_stats();
+        assert_eq!(tm.get_scores().black, 1);
+
+        // The operator's score edit lowers Black back to 0; the recorded goal is not removed.
+        tm.set_scores(BlackWhiteBundle { black: 0, white: 0 }, g + s(20));
+        assert_eq!(tm.get_scores().black, 0);
+
+        let after = tm.running_stats();
+        let events = running_events(&after);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["$type"], "goal");
+        assert_eq!(events[0]["playerCapNumber"], 4);
+        assert_eq!(after.key, before.key);
+    }
+
+    #[test]
     fn running_stats_key_changes_on_goal_penalty_edit_delete() {
         let (mut tm, g) = running_stats_game();
         let s = Duration::from_secs;

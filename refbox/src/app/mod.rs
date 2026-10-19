@@ -1,5 +1,9 @@
 use self::infraction::InfractionDetails;
 use super::{APP_NAME, fl};
+use crate::live_updates::{
+    LiveFrame, LiveInputs, live_frame,
+    sender::{LIVE_TIMING, spawn_live_sender},
+};
 use crate::panic_text::panic_reason;
 use crate::portal_manager::link_session::NoteSite;
 use crate::tournament_manager::placement::ScheduledGame;
@@ -8,7 +12,8 @@ use crate::{
     config::{Config, CustomSite, GameSource, Mode, RemoteSource},
     penalty_editor::*,
     portal_manager::{
-        ItemId, PortalEvent, PortalManager, SelectedEventId, SharedAccessKeys, UwhPortalIo,
+        ItemId, PortalEvent, PortalManager, SelectedEventId, SharedAccessKeys,
+        SharedUwhPortalClient, UwhPortalIo,
     },
     sound_controller::*,
     tournament_manager::{penalty::*, *},
@@ -36,7 +41,7 @@ use std::{
     },
 };
 use tokio::{
-    sync::mpsc,
+    sync::{mpsc, watch},
     time::{Duration, Instant, sleep, sleep_until, timeout_at},
 };
 use tokio_serial::SerialPortBuilder;
@@ -180,6 +185,10 @@ pub struct RefBoxApp {
     portal_event_id: SelectedEventId,
     /// Published to the background uploader so it can resolve a key per queued item.
     portal_access_keys: SharedAccessKeys,
+    /// The newest live-update frame, read by the live sender. Refreshed after every message by
+    /// [`RefBoxApp::refresh_live_frame`]. Present even on a degraded start with no sender, when
+    /// its frames simply go nowhere.
+    live_frames: watch::Sender<Option<LiveFrame>>,
     /// Where `uwhportal_client` actually points, kept in step with every
     /// rebuild. Read to decide whether an Apply would repoint the refbox at a
     /// different site (and so needs the clock and queue guards).
@@ -467,6 +476,63 @@ struct SiteTarget {
     /// address?" rather than only "is this a different host?" — editing just
     /// the event in the URL must meet the same guards as editing the host.
     address: SiteAddress,
+}
+
+/// The site string the access-key store is published under. The live sender skips any frame
+/// whose site differs from the store's, so the key store and the live frame must both take their
+/// site from here -- byte for byte the same expression, never two that could drift apart.
+fn published_site(target: &SiteTarget) -> String {
+    target.base_url.expose().to_string()
+}
+
+/// Everything [`live_frame`] needs, gathered from the app's state. Pure, so the decision can be
+/// tested without building the whole app.
+fn live_inputs<'a>(
+    config: &Config,
+    source: GameSource,
+    site: &'a str,
+    event: Option<&'a EventId>,
+    snapshot: &'a GameSnapshot,
+    game_clock_running: bool,
+) -> LiveInputs<'a> {
+    LiveInputs {
+        stored_enabled: config.live_updates,
+        mode: config.mode,
+        source,
+        site,
+        event,
+        snapshot,
+        game_clock_running,
+    }
+}
+
+/// Hand `frame` to the live sender only when it differs from the one already there, so an
+/// unchanged frame never wakes it. Returns whether anything changed.
+fn publish_live_frame(tx: &watch::Sender<Option<LiveFrame>>, frame: Option<LiveFrame>) -> bool {
+    tx.send_if_modified(|current| {
+        if *current == frame {
+            false
+        } else {
+            *current = frame;
+            true
+        }
+    })
+}
+
+/// Start the live sender when there is a portal client to send with. On a degraded start there
+/// is none: no sender runs, and the frames the app still publishes go nowhere.
+fn spawn_live_sender_if_client(
+    client: Option<&SharedUwhPortalClient>,
+    keys: &SharedAccessKeys,
+    frames: watch::Receiver<Option<LiveFrame>>,
+) -> Option<tokio::task::JoinHandle<()>> {
+    let client = client?;
+    Some(spawn_live_sender(
+        frames,
+        Arc::clone(client),
+        Arc::clone(keys),
+        LIVE_TIMING,
+    ))
 }
 
 /// What the game feed publishes as the site the refbox is using, or `None` when there is nothing
@@ -927,6 +993,7 @@ pub(crate) enum PageEntrySnapshot {
         confirm_score: bool,
         hide_time: bool,
         audible_countdown: bool,
+        live_updates: bool,
     },
     Display {
         white_on_right: bool,
@@ -987,6 +1054,7 @@ impl PageEntrySnapshot {
                 confirm_score,
                 hide_time,
                 audible_countdown,
+                live_updates,
             } => {
                 edited.source = source;
                 edited.current_event_id = current_event_id;
@@ -1000,6 +1068,7 @@ impl PageEntrySnapshot {
                 edited.confirm_score = confirm_score;
                 edited.hide_time = hide_time;
                 edited.audible_countdown = audible_countdown;
+                edited.live_updates = live_updates;
             }
             PageEntrySnapshot::Display {
                 white_on_right,
@@ -1962,7 +2031,7 @@ impl RefBoxApp {
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             *client = new_client;
             keys.publish(
-                self.current_site.base_url.expose().to_string(),
+                published_site(&self.current_site),
                 self.config.access_keys.clone(),
             );
         }
@@ -1989,7 +2058,7 @@ impl RefBoxApp {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .publish(
-                self.current_site.base_url.expose().to_string(),
+                published_site(&self.current_site),
                 self.config.access_keys.clone(),
             );
     }
@@ -2582,7 +2651,7 @@ impl RefBoxApp {
             self.portal_access_keys
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .publish(self.current_site.base_url.expose().to_string(), scrambled);
+                .publish(published_site(&self.current_site), scrambled);
             warn!(
                 "UWH_PORTAL_SCRAMBLE_TOKEN: background key view scrambled after event linked \
                  (settings row still reads the real config; republished on the next repoint)"
@@ -3516,6 +3585,7 @@ impl RefBoxApp {
                 confirm_score: edited.confirm_score,
                 hide_time: edited.hide_time,
                 audible_countdown: edited.audible_countdown,
+                live_updates: edited.live_updates,
             },
             ConfigPage::Display => PageEntrySnapshot::Display {
                 white_on_right: edited.white_on_right,
@@ -3615,6 +3685,7 @@ impl RefBoxApp {
             show_behind_schedule_time: self.config.show_behind_schedule_time,
             confirm_score: self.config.confirm_score,
             audible_countdown: self.config.audible_countdown,
+            live_updates: self.config.live_updates,
             pending_language: None,
             original_language: None,
             beep_test_levels: None,
@@ -3761,6 +3832,15 @@ impl RefBoxApp {
         let portal_event_id: SelectedEventId = Arc::new(Mutex::new(None));
         let portal_access_keys: SharedAccessKeys = Arc::new(Mutex::new(Default::default()));
 
+        // The live sender runs until `live_frames` is dropped with the app, so its handle is not
+        // kept.
+        let (live_frames, live_frames_rx) = watch::channel(None);
+        let _ = spawn_live_sender_if_client(
+            uwhportal_client.as_ref(),
+            &portal_access_keys,
+            live_frames_rx,
+        );
+
         let tm = SharedGame::new(tm);
 
         let has_led_panel = !serial_ports.is_empty();
@@ -3892,6 +3972,7 @@ impl RefBoxApp {
             uwhportal_client,
             portal_event_id,
             portal_access_keys,
+            live_frames,
             current_site,
             site_generation: 0,
             require_https,
@@ -4093,7 +4174,33 @@ impl RefBoxApp {
         }
     }
 
+    /// Handle one message, then bring the live-update frame up to date. The refresh runs after
+    /// EVERY message rather than at a list of call sites: no tick runs while the game clock is
+    /// stopped, so a score, timeout, time edit or settings apply made then must refresh the frame
+    /// itself, and a list of call sites would miss the next one added.
     pub(super) fn update(&mut self, message: Message) -> Task<Message> {
+        let task = self.handle_message(message);
+        self.refresh_live_frame();
+        task
+    }
+
+    /// Publish the live-update frame for the app's current state. Reads the snapshot the last
+    /// handler applied; never generates one, because generating has side effects.
+    fn refresh_live_frame(&mut self) {
+        let site = published_site(&self.current_site);
+        let game_clock_running = self.tm.lock().game_clock_running();
+        let frame = live_frame(&live_inputs(
+            &self.config,
+            self.source,
+            &site,
+            self.current_event_id.as_ref(),
+            &self.snapshot,
+            game_clock_running,
+        ));
+        publish_live_frame(&self.live_frames, frame);
+    }
+
+    fn handle_message(&mut self, message: Message) -> Task<Message> {
         trace!("Handling message: {message:?}");
 
         if !message.is_repeatable() && (message == self.last_message) {
@@ -6124,6 +6231,7 @@ impl RefBoxApp {
                             BoolGameParameter::AudibleCountdown => {
                                 edited_settings.audible_countdown ^= true
                             }
+                            BoolGameParameter::LiveUpdates => edited_settings.live_updates ^= true,
                             BoolGameParameter::ManualAlarmEnabled => {
                                 edited_settings.sound.manual_alarm_enabled ^= true
                             }
@@ -7413,6 +7521,7 @@ impl RefBoxApp {
                     show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     audible_countdown: self.config.audible_countdown,
+                    live_updates: self.config.live_updates,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
                     beep_test_levels: None,
@@ -7466,6 +7575,7 @@ impl RefBoxApp {
                     show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     audible_countdown: self.config.audible_countdown,
+                    live_updates: self.config.live_updates,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
                     beep_test_levels: None,
@@ -7558,6 +7668,7 @@ impl RefBoxApp {
                     show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     audible_countdown: self.config.audible_countdown,
+                    live_updates: self.config.live_updates,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
                     beep_test_levels: None,
@@ -7658,6 +7769,7 @@ impl RefBoxApp {
                     show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     audible_countdown: self.config.audible_countdown,
+                    live_updates: self.config.live_updates,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
                     beep_test_levels: Some(self.config.beep_test.levels.clone()),
@@ -8461,7 +8573,7 @@ mod link_selection_tests {
     }
 }
 
-/// Copy the seven plain `Config` toggles owned by the App Options page out of the
+/// Copy the eight plain `Config` toggles owned by the App Options page out of the
 /// staged edits. Returns `true` when `hide_time` changed, which the live Apply
 /// path has to report to the update server.
 ///
@@ -8483,6 +8595,7 @@ fn commit_app_toggles(config: &mut Config, edited: &EditableSettings) -> bool {
     config.show_behind_schedule_time = edited.show_behind_schedule_time;
     config.confirm_score = edited.confirm_score;
     config.audible_countdown = edited.audible_countdown;
+    config.live_updates = edited.live_updates;
     let hide_time_changed = config.hide_time != edited.hide_time;
     config.hide_time = edited.hide_time;
     hide_time_changed
@@ -8503,6 +8616,7 @@ mod commit_app_toggles_tests {
             audible_countdown: true,
             hide_time: true,
             force_keypad_numbers: true,
+            live_updates: false,
             ..Default::default()
         }
     }
@@ -8520,6 +8634,7 @@ mod commit_app_toggles_tests {
         assert!(config.audible_countdown);
         assert!(config.hide_time);
         assert!(config.force_keypad_numbers);
+        assert!(!config.live_updates);
     }
 
     #[test]
@@ -8538,6 +8653,7 @@ mod commit_app_toggles_tests {
         config.audible_countdown = true;
         config.hide_time = true;
         config.force_keypad_numbers = true;
+        config.live_updates = true;
         let edited = EditableSettings::default();
 
         commit_app_toggles(&mut config, &edited);
@@ -8555,6 +8671,7 @@ mod commit_app_toggles_tests {
         assert_eq!(config.audible_countdown, edited.audible_countdown);
         assert_eq!(config.hide_time, edited.hide_time);
         assert_eq!(config.force_keypad_numbers, edited.force_keypad_numbers);
+        assert_eq!(config.live_updates, edited.live_updates);
     }
 
     #[test]
@@ -8623,6 +8740,7 @@ mod commit_app_toggles_tests {
         expected.audible_countdown = edited.audible_countdown;
         expected.hide_time = edited.hide_time;
         expected.force_keypad_numbers = edited.force_keypad_numbers;
+        expected.live_updates = edited.live_updates;
 
         commit_app_toggles(&mut config, &edited);
 
@@ -11004,5 +11122,171 @@ mod snapshot_transition_tests {
             None,
             "reading the marker must clear it, so the next tick is not marked too"
         );
+    }
+}
+
+#[cfg(test)]
+mod live_updates_wiring_tests {
+    use super::*;
+    use crate::live_updates::LiveFrame;
+    use crate::portal_manager::SiteAccessKeys;
+    use tokio::sync::watch;
+    use uwh_common::bundles::BlackWhiteBundle;
+
+    fn event() -> EventId {
+        EventId::from_partial("1889-B")
+    }
+
+    /// A game in progress, clock stopped, on a real game number.
+    fn in_game(black: u8) -> GameSnapshot {
+        GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            secs_in_period: 600,
+            scores: BlackWhiteBundle { black, white: 1 },
+            game_number: "12".to_string(),
+            next_game_number: "13".to_string(),
+            ..Default::default()
+        }
+    }
+
+    fn hockey_config() -> Config {
+        Config {
+            mode: Mode::Hockey6V6,
+            ..Default::default()
+        }
+    }
+
+    fn frame_for(
+        config: &Config,
+        source: GameSource,
+        snapshot: &GameSnapshot,
+        running: bool,
+    ) -> Option<LiveFrame> {
+        let event = event();
+        live_frame(&live_inputs(
+            config,
+            source,
+            "https://uwhportal.example",
+            Some(&event),
+            snapshot,
+            running,
+        ))
+    }
+
+    /// The sender skips any frame whose site is not the key store's, so the
+    /// two must be built by the same expression, byte for byte.
+    #[test]
+    fn live_frame_site_matches_published_keys() {
+        let target = portal_target(Mode::Hockey6V6, true);
+        let mut keys = SiteAccessKeys::default();
+        keys.publish(published_site(&target), Vec::new());
+
+        let site = published_site(&target);
+        let event = event();
+        let snapshot = in_game(2);
+        let frame = live_frame(&live_inputs(
+            &hockey_config(),
+            GameSource::Portal,
+            &site,
+            Some(&event),
+            &snapshot,
+            false,
+        ))
+        .expect("portal hockey with an event must publish a frame");
+
+        assert_eq!(frame.site, keys.site());
+    }
+
+    #[test]
+    fn portal_hockey_linked_publishes_a_frame() {
+        let frame = frame_for(&hockey_config(), GameSource::Portal, &in_game(2), true)
+            .expect("portal hockey, linked, must publish");
+        assert_eq!(frame.event, event());
+        assert_eq!(frame.game, "12");
+        assert!(frame.state.clock_running);
+    }
+
+    #[test]
+    fn custom_source_publishes_nothing() {
+        assert_eq!(
+            frame_for(&hockey_config(), GameSource::Custom, &in_game(2), true),
+            None
+        );
+    }
+
+    #[test]
+    fn live_inputs_give_none_when_setting_off() {
+        let config = Config {
+            live_updates: false,
+            ..hockey_config()
+        };
+        assert_eq!(
+            frame_for(&config, GameSource::Portal, &in_game(2), true),
+            None
+        );
+    }
+
+    /// A goal recorded while the clock is stopped changes the frame at once:
+    /// no tick is needed, because the refresh reads the snapshot the score
+    /// handler applied.
+    #[test]
+    fn score_while_stopped_updates_frame() {
+        let (tx, mut rx) = watch::channel(None);
+        let config = hockey_config();
+
+        assert!(publish_live_frame(
+            &tx,
+            frame_for(&config, GameSource::Portal, &in_game(2), false)
+        ));
+        rx.borrow_and_update();
+
+        assert!(publish_live_frame(
+            &tx,
+            frame_for(&config, GameSource::Portal, &in_game(3), false)
+        ));
+        assert!(rx.has_changed().unwrap());
+        let scores = rx.borrow_and_update().as_ref().unwrap().state.scores;
+        assert_eq!(scores.map(|s| s.black), Some(3));
+    }
+
+    /// Applying settings with live updates off clears the frame immediately,
+    /// with the clock stopped and so no tick to carry it.
+    #[test]
+    fn turning_off_clears_frame_without_a_tick() {
+        let (tx, mut rx) = watch::channel(None);
+        let on = hockey_config();
+        let off = Config {
+            live_updates: false,
+            ..hockey_config()
+        };
+
+        publish_live_frame(&tx, frame_for(&on, GameSource::Portal, &in_game(2), false));
+        assert!(rx.borrow_and_update().is_some());
+
+        assert!(publish_live_frame(
+            &tx,
+            frame_for(&off, GameSource::Portal, &in_game(2), false)
+        ));
+        assert!(rx.has_changed().unwrap());
+        assert!(rx.borrow_and_update().is_none());
+    }
+
+    #[test]
+    fn unchanged_frame_does_not_wake_sender() {
+        let (tx, mut rx) = watch::channel(None);
+        let frame = frame_for(&hockey_config(), GameSource::Portal, &in_game(2), true);
+
+        assert!(publish_live_frame(&tx, frame.clone()));
+        rx.borrow_and_update();
+
+        assert!(!publish_live_frame(&tx, frame));
+        assert!(!rx.has_changed().unwrap());
+    }
+
+    #[test]
+    fn no_client_means_no_sender() {
+        let keys: SharedAccessKeys = Arc::new(Mutex::new(SiteAccessKeys::default()));
+        let (_tx, rx) = watch::channel(None);
+        assert!(spawn_live_sender_if_client(None, &keys, rx).is_none());
     }
 }

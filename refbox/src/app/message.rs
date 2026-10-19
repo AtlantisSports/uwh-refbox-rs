@@ -989,6 +989,9 @@ pub enum BoolGameParameter {
     /// staged `force_keypad_numbers`; the button is greyed, and so emits
     /// nothing, while TRACK CAP NUMBER is off.
     ForceKeypadNumbers,
+    /// Emitted by LIVE UPDATES on the App options page. Toggles the staged
+    /// `live_updates`.
+    LiveUpdates,
     ManualAlarmEnabled,
 }
 

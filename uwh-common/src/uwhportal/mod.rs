@@ -1,5 +1,6 @@
 use crate::bundles::BlackWhiteBundle;
 use core::{cell::OnceCell, time::Duration};
+use live::LiveGameState;
 use log::{debug, info, warn};
 use rand::{Rng, SeedableRng};
 use reqwest::{
@@ -13,6 +14,7 @@ use std::{
     error::Error,
 };
 
+pub mod live;
 pub mod schedule;
 
 // --- Coin-flip portal types (used by scoresheet generation / coin-flip resolution) ---
@@ -407,6 +409,74 @@ impl UwhPortalClient {
                 Err(Box::new(ApiError::new(body)))?
             }
         }
+    }
+
+    /// Build the live-game `PUT` without sending it.
+    ///
+    /// Authenticates with `access_key`, never with this client's own stored
+    /// key, and leaves that stored key untouched. The game number is pushed as
+    /// a single URL path segment, so a space or slash in it is escaped.
+    pub fn live_game_request(
+        &self,
+        access_key: &str,
+        event_id: &EventId,
+        game_number: &GameNumber,
+        state: &LiveGameState,
+        timeout: Duration,
+    ) -> Result<reqwest::Request, Box<dyn Error>> {
+        let auth_header = build_auth_header(access_key)?;
+
+        let mut url = reqwest::Url::parse(&format!(
+            "{}/api/events/{}/live-games",
+            self.base_url,
+            event_id.partial(),
+        ))?;
+        url.path_segments_mut()
+            .map_err(|()| {
+                ApiError::new(format!("portal URL cannot take a path: {}", self.base_url))
+            })?
+            .push(game_number);
+
+        let request = self
+            .client
+            .request(Method::PUT, url)
+            .header(AUTHORIZATION, auth_header)
+            .timeout(timeout)
+            .json(state)
+            .build()?;
+        Ok(request)
+    }
+
+    /// Send one live-game update.
+    ///
+    /// The request is built before this returns, so a caller holding a lock on
+    /// this client can drop it before awaiting the send. `Ok(())` on any 2xx
+    /// reply; otherwise an error carrying the status and the reply body.
+    pub fn put_live_game(
+        &self,
+        access_key: &str,
+        event_id: &EventId,
+        game_number: &GameNumber,
+        state: &LiveGameState,
+        timeout: Duration,
+    ) -> Result<impl std::future::Future<Output = Result<(), Box<dyn Error>>> + use<>, Box<dyn Error>>
+    {
+        let request = self.live_game_request(access_key, event_id, game_number, state, timeout)?;
+        let client_ = self.client.clone();
+
+        Ok(async move {
+            let response = client_.execute(request).await?;
+            let status = response.status();
+
+            if status.is_success() {
+                debug!("portal live game update successful");
+                Ok(())
+            } else {
+                warn!("portal live game update failed, status: {status}");
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(format!("{status}: {body}"))))?
+            }
+        })
     }
 
     pub fn get_event_schedule_privileged(
@@ -1243,5 +1313,101 @@ mod token_response_tests {
         let back: PortalTokenResponse = serde_json::from_str(&json).expect("deserialises");
         let round_tripped = serde_json::to_string(&back).expect("re-serialises");
         assert_eq!(round_tripped, json);
+    }
+}
+
+#[cfg(test)]
+mod live_request_tests {
+    use super::live::LiveScores;
+    use super::*;
+    use crate::game_snapshot::GamePeriod;
+    use reqwest::header::CONTENT_TYPE;
+
+    fn client() -> UwhPortalClient {
+        UwhPortalClient::new(
+            "https://api.example.test/",
+            None,
+            true,
+            Duration::from_secs(10),
+        )
+        .unwrap()
+    }
+
+    fn state() -> LiveGameState {
+        LiveGameState {
+            period: GamePeriod::SecondHalf,
+            clock_seconds: 462,
+            clock_running: true,
+            timeout: None,
+            scores: Some(LiveScores { black: 1, white: 3 }),
+        }
+    }
+
+    #[test]
+    fn live_request_shape() {
+        let client = client();
+        let request = client
+            .live_game_request(
+                "KEY-1",
+                &EventId::from_full("events/1889-B").unwrap(),
+                &"SF 1".to_string(),
+                &state(),
+                Duration::from_secs(3),
+            )
+            .unwrap();
+        assert_eq!(request.method(), Method::PUT);
+        assert_eq!(
+            request.url().as_str(),
+            "https://api.example.test/api/events/1889-B/live-games/SF%201"
+        );
+        assert_eq!(
+            request.headers().get(AUTHORIZATION).unwrap(),
+            "Bearer KEY-1"
+        );
+        assert_eq!(
+            request.headers().get(CONTENT_TYPE).unwrap(),
+            "application/json"
+        );
+        assert_eq!(request.timeout(), Some(&Duration::from_secs(3)));
+        assert_eq!(
+            request.body().unwrap().as_bytes().unwrap(),
+            serde_json::to_vec(&state()).unwrap().as_slice()
+        );
+    }
+
+    #[test]
+    fn live_request_leaves_client_token_alone() {
+        let client = client();
+        client
+            .live_game_request(
+                "KEY-1",
+                &EventId::from_full("events/1889-B").unwrap(),
+                &"SF 1".to_string(),
+                &state(),
+                Duration::from_secs(3),
+            )
+            .unwrap();
+        assert!(!client.has_token());
+    }
+
+    #[test]
+    fn live_request_refuses_an_unsendable_key() {
+        let client = client();
+        let result = client.live_game_request(
+            "abc\n123",
+            &EventId::from_full("events/1889-B").unwrap(),
+            &"SF 1".to_string(),
+            &state(),
+            Duration::from_secs(3),
+        );
+        assert!(result.is_err());
+        let result = client.put_live_game(
+            "abc\n123",
+            &EventId::from_full("events/1889-B").unwrap(),
+            &"SF 1".to_string(),
+            &state(),
+            Duration::from_secs(3),
+        );
+        assert!(result.is_err());
     }
 }

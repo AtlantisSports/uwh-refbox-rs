@@ -72,10 +72,13 @@ force-keypad-numbers = FORZAR TECLADO
 track-fouls-and-warnings = REGISTRAR FALTAS
     Y ADVERTENCIAS
 show-behind-schedule-time = MOSTRAR RETRASO
-show-countdown-for-last-10-seconds = MOSTRAR CUENTA ATRÁS
+show-countdown-for-last-10-seconds = CUENTA ATRÁS VISUAL
 audible-countdown-for-last-10-seconds = CUENTA ATRÁS SONORA
 last-10-seconds-countdown = CUENTA ATRÁS
     ÚLTIMOS 10 S
+last-10-seconds-countdown-title = CUENTA ATRÁS ÚLTIMOS 10 S
+countdown-visual-value = VISUAL: { $value }
+countdown-audio-value = SONIDO: { $value }
 live-updates = ACTUALIZACIÓN EN VIVO
 delay = RETRASO
 event = EVENTO:

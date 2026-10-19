@@ -75,10 +75,13 @@ event = ETKİNLİK:
 track-fouls-and-warnings = FAUL VE
     UYARILARI TAKİP ET
 show-behind-schedule-time = GECİKMEYİ GÖSTER
-show-countdown-for-last-10-seconds = GERİ SAYIMI GÖSTER
+show-countdown-for-last-10-seconds = GÖRSEL GERİ SAYIM
 audible-countdown-for-last-10-seconds = SESLİ GERİ SAYIM
 last-10-seconds-countdown = SON 10 SANİYE
     GERİ SAYIMI
+last-10-seconds-countdown-title = SON 10 SANİYE GERİ SAYIMI
+countdown-visual-value = GÖRSEL: { $value }
+countdown-audio-value = SES: { $value }
 live-updates = CANLI GÜNCELLEME
 delay = GECİKME
 court = SAHA:

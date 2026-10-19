@@ -75,10 +75,13 @@ event = 大会:
 track-fouls-and-warnings = 反則・
     警告の記録
 show-behind-schedule-time = 遅延を表示
-show-countdown-for-last-10-seconds = カウントダウン表示
+show-countdown-for-last-10-seconds = 表示カウントダウン
 audible-countdown-for-last-10-seconds = 音声カウントダウン
 last-10-seconds-countdown = 残り10秒の
     カウントダウン
+last-10-seconds-countdown-title = 残り10秒のカウントダウン
+countdown-visual-value = 表示: { $value }
+countdown-audio-value = 音声: { $value }
 live-updates = ライブ更新
 delay = 遅延
 court = コート:

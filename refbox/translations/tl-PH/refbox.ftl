@@ -75,10 +75,13 @@ event = KAGANAPAN:
 track-fouls-and-warnings = SUBAYBAYAN ANG POUL
     AT BABALA
 show-behind-schedule-time = IPAKITA PAGKAHULI
-show-countdown-for-last-10-seconds = IPAKITA COUNTDOWN
+show-countdown-for-last-10-seconds = VISUAL NA COUNTDOWN
 audible-countdown-for-last-10-seconds = COUNTDOWN NA TUNOG
 last-10-seconds-countdown = COUNTDOWN SA
     HULING 10 SEGUNDO
+last-10-seconds-countdown-title = COUNTDOWN SA HULING 10 SEGUNDO
+countdown-visual-value = VISUAL: { $value }
+countdown-audio-value = TUNOG: { $value }
 live-updates = LIVE NA UPDATE
 delay = ANTALA
 court = KORTE:

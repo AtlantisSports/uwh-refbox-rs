@@ -505,6 +505,25 @@ pub fn effective_keypad_numbers_forced(
     force_keypad_numbers || !collect_scorer_cap_num
 }
 
+/// Whether live updates can be sent at all in this mode and game source.
+///
+/// Only hockey games run from the official Portal: the portal's live-game
+/// feed knows nothing of a custom site, a manual game has no portal game to
+/// name, and Rugby and the beep test have no live view on the portal.
+pub fn live_updates_possible(mode: Mode, source: GameSource) -> bool {
+    source == GameSource::Portal && matches!(mode, Mode::Hockey6V6 | Mode::Hockey3V3)
+}
+
+/// Whether live updates are actually sent: the operator's stored preference,
+/// and only where [`live_updates_possible`] allows it.
+///
+/// Like [`effective_fouls_tracked`], this is computed and never stored: a
+/// stored YES waits untouched in the config while the mode or source rules
+/// live updates out, and returns the moment they allow it again.
+pub fn effective_live_updates(stored: bool, mode: Mode, source: GameSource) -> bool {
+    stored && live_updates_possible(mode, source)
+}
+
 impl Config {
     /// The court count as the app may act on it: the settings file is editable
     /// by hand, and the Game Number page offers only 1 to [`MAX_COURTS`]. Use
@@ -1815,6 +1834,36 @@ mod effective_value_tests {
         assert!(!effective_fouls_tracked(false, true));
         assert!(!effective_fouls_tracked(true, false));
         assert!(!effective_fouls_tracked(false, false));
+    }
+
+    /// Live updates exist only for hockey games run from the official Portal.
+    #[test]
+    fn live_updates_possible_only_for_portal_hockey() {
+        for mode in [
+            Mode::Hockey6V6,
+            Mode::Hockey3V3,
+            Mode::Rugby,
+            Mode::BeepTest,
+        ] {
+            for source in [GameSource::Manual, GameSource::Portal, GameSource::Custom] {
+                let expected = source == GameSource::Portal
+                    && matches!(mode, Mode::Hockey6V6 | Mode::Hockey3V3);
+                assert_eq!(
+                    live_updates_possible(mode, source),
+                    expected,
+                    "{mode:?} / {source:?}"
+                );
+                assert_eq!(
+                    effective_live_updates(true, mode, source),
+                    expected,
+                    "stored on, {mode:?} / {source:?}"
+                );
+                assert!(
+                    !effective_live_updates(false, mode, source),
+                    "stored off, {mode:?} / {source:?}"
+                );
+            }
+        }
     }
 
     /// Cap numbers off forces the 0-9 pad: penalties still name a player

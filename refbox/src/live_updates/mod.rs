@@ -1,6 +1,8 @@
 //! The rules that decide which live update, if any, this refbox sends to the
 //! portal. Pure: no I/O here, only the decision.
 
+pub mod sender;
+
 use crate::config::{GameSource, Mode, effective_live_updates};
 use uwh_common::{
     game_snapshot::{GamePeriod, GameSnapshot},

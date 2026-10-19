@@ -31,6 +31,7 @@ pub mod infraction;
 use infraction::*;
 
 mod game_stats;
+pub use game_stats::RunningStats;
 use game_stats::*;
 
 mod live_details;
@@ -3360,6 +3361,12 @@ impl TournamentManager {
         })
     }
 
+    /// Read-only. The in-play list of goals and penalties (served or still running) and its
+    /// change key. Only meaningful while a game is in play: see `GameStats::running_list`.
+    pub fn running_stats(&self) -> RunningStats {
+        self.current_game_stats.running_list(&self.penalties)
+    }
+
     /// Read-only. `None` when the game clock time or any penalty's time cannot be computed (the
     /// same failures that make `generate_snapshot` return `None`).
     pub fn live_details(&self, now: Instant) -> Option<LiveDetails> {
@@ -3802,6 +3809,246 @@ mod test {
 
         assert!(matches!(kind, TickKind::NewSnapshot));
         assert_eq!(snapshot.current_period, GamePeriod::FirstHalf);
+    }
+
+    /// A FirstHalf game with a 900 s half, started at the returned instant.
+    fn running_stats_game() -> (TournamentManager, Instant) {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let g = Instant::now();
+        tm.start_play_now(g).unwrap();
+        (tm, g)
+    }
+
+    /// Stop the first half at `at` and start the second half one second later, which culls
+    /// every penalty served by then.
+    fn running_stats_to_second_half(tm: &mut TournamentManager, at: Instant) {
+        tm.stop_clock(at).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::HalfTime, Duration::from_secs(60));
+        tm.start_play_now(at + Duration::from_secs(1)).unwrap();
+        assert_eq!(tm.current_period(), GamePeriod::SecondHalf);
+    }
+
+    fn running_events(stats: &RunningStats) -> Vec<serde_json::Value> {
+        serde_json::from_str(&stats.body).unwrap()
+    }
+
+    #[test]
+    fn running_stats_lists_goals_and_given_penalties_without_fouls() {
+        let (mut tm, g) = running_stats_game();
+        let s = Duration::from_secs;
+
+        tm.start_penalty(
+            Color::Black,
+            3,
+            PenaltyKind::TwoMinute,
+            g + s(10),
+            Infraction::Unknown,
+        )
+        .unwrap();
+        tm.add_score(Color::White, 9, g + s(20));
+        tm.add_foul(
+            Some(Color::White),
+            Some(7),
+            Infraction::Obstruction,
+            g + s(30),
+        )
+        .unwrap();
+        // The TwoMinute is long served by the end of the half, so this cull moves it into
+        // the game's record.
+        running_stats_to_second_half(&mut tm, g + s(700));
+        assert!(tm.penalties.black.is_empty(), "precondition: the cull ran");
+        tm.start_penalty(
+            Color::White,
+            4,
+            PenaltyKind::OneMinute,
+            g + s(720),
+            Infraction::Unknown,
+        )
+        .unwrap();
+        tm.start_penalty(
+            Color::Black,
+            5,
+            PenaltyKind::TotalDismissal,
+            g + s(730),
+            Infraction::Unknown,
+        )
+        .unwrap();
+
+        let events = running_events(&tm.running_stats());
+        assert_eq!(events.len(), 4, "{events:?}");
+        assert!(events.iter().all(|e| e["$type"] != "foul"));
+
+        let types: Vec<&str> = events
+            .iter()
+            .map(|e| e["$type"].as_str().unwrap())
+            .collect();
+        assert_eq!(types, ["penalty", "goal", "penalty", "penalty"]);
+        let caps: Vec<u64> = events
+            .iter()
+            .map(|e| e["playerCapNumber"].as_u64().unwrap())
+            .collect();
+        assert_eq!(caps, [3, 9, 4, 5]);
+        let sides: Vec<&str> = events.iter().map(|e| e["side"].as_str().unwrap()).collect();
+        assert_eq!(sides, ["dark", "light", "light", "dark"]);
+
+        let pens: Vec<&serde_json::Value> =
+            events.iter().filter(|e| e["$type"] == "penalty").collect();
+        assert_eq!(pens[0]["duration"], 120);
+        assert_eq!(pens[1]["duration"], 60);
+        assert!(pens[2]["duration"].is_null());
+        assert_eq!(pens[0]["isTotalDismissal"], false);
+        assert_eq!(pens[1]["isTotalDismissal"], false);
+        assert_eq!(pens[2]["isTotalDismissal"], true);
+
+        let times: Vec<OffsetDateTime> = events
+            .iter()
+            .map(|e| {
+                OffsetDateTime::parse(
+                    e["occurredOn"].as_str().unwrap(),
+                    &time::format_description::well_known::Iso8601::DEFAULT,
+                )
+                .unwrap()
+            })
+            .collect();
+        assert!(
+            times.windows(2).all(|w| w[0] <= w[1]),
+            "not in occurredOn order: {times:?}"
+        );
+    }
+
+    #[test]
+    fn running_stats_empty_list_at_game_start() {
+        let (tm, _) = running_stats_game();
+        assert_eq!(tm.running_stats().body, "[]");
+    }
+
+    #[test]
+    fn running_stats_key_ignores_wall_clock_jitter() {
+        let (mut tm, g) = running_stats_game();
+        let s = Duration::from_secs;
+        tm.add_score(Color::Black, 2, g + s(5));
+        tm.start_penalty(
+            Color::White,
+            6,
+            PenaltyKind::OneMinute,
+            g + s(15),
+            Infraction::Unknown,
+        )
+        .unwrap();
+
+        let first = tm.running_stats();
+        // Each call re-reads the wall clock for every timestamp, so give it time to move.
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let second = tm.running_stats();
+        assert_eq!(first.key, second.key);
+        assert!(!first.key.contains("occurredOn"));
+    }
+
+    #[test]
+    fn running_stats_key_unchanged_across_cull() {
+        let (mut tm, g) = running_stats_game();
+        let s = Duration::from_secs;
+        tm.start_penalty(
+            Color::Black,
+            3,
+            PenaltyKind::TwoMinute,
+            g + s(10),
+            Infraction::Unknown,
+        )
+        .unwrap();
+        tm.add_score(Color::White, 9, g + s(20));
+
+        tm.stop_clock(g + s(700)).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::HalfTime, Duration::from_secs(60));
+        let before = tm.running_stats();
+        assert_eq!(tm.penalties.black.len(), 1, "precondition: not yet culled");
+
+        tm.start_play_now(g + s(701)).unwrap();
+        assert!(tm.penalties.black.is_empty(), "precondition: the cull ran");
+        let after = tm.running_stats();
+
+        assert_eq!(before.key, after.key);
+    }
+
+    #[test]
+    fn running_stats_key_changes_on_goal_penalty_edit_delete() {
+        let (mut tm, g) = running_stats_game();
+        let s = Duration::from_secs;
+        let k0 = tm.running_stats().key;
+
+        tm.add_score(Color::Black, 2, g + s(5));
+        let k1 = tm.running_stats().key;
+        assert_ne!(k0, k1, "a goal must change the key");
+
+        tm.start_penalty(
+            Color::White,
+            6,
+            PenaltyKind::OneMinute,
+            g + s(15),
+            Infraction::Unknown,
+        )
+        .unwrap();
+        let k2 = tm.running_stats().key;
+        assert_ne!(k1, k2, "a penalty must change the key");
+
+        tm.edit_penalty(
+            Color::White,
+            0,
+            Color::White,
+            8,
+            PenaltyKind::TwoMinute,
+            Infraction::Unknown,
+        )
+        .unwrap();
+        let k3 = tm.running_stats().key;
+        assert_ne!(k2, k3, "an edited penalty must change the key");
+
+        tm.delete_penalty(Color::White, 0).unwrap();
+        let k4 = tm.running_stats().key;
+        assert_ne!(k3, k4, "a deleted penalty must change the key");
+        assert_eq!(k1, k4, "deleting the only penalty leaves the goal alone");
+    }
+
+    #[test]
+    fn running_stats_penalty_listed_once() {
+        let (mut tm, g) = running_stats_game();
+        let s = Duration::from_secs;
+        let penalties = |tm: &TournamentManager| -> usize {
+            running_events(&tm.running_stats())
+                .iter()
+                .filter(|e| e["$type"] == "penalty")
+                .count()
+        };
+
+        tm.start_penalty(
+            Color::Black,
+            3,
+            PenaltyKind::TwoMinute,
+            g + s(10),
+            Infraction::Unknown,
+        )
+        .unwrap();
+        assert_eq!(penalties(&tm), 1, "once while running");
+
+        running_stats_to_second_half(&mut tm, g + s(700));
+        assert!(tm.penalties.black.is_empty(), "precondition: the cull ran");
+        assert_eq!(penalties(&tm), 1, "once after the cull");
+
+        // End the game the way `end_game_sends_only_fully_attributed_fouls` does, then
+        // start the next one: it must begin with an empty list.
+        tm.add_score(Color::White, 9, g + s(710));
+        let end = g + s(720);
+        tm.stop_clock(end).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(end);
+        tm.start_play_now(end + s(1)).unwrap();
+        assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
+        assert_eq!(tm.running_stats().body, "[]");
     }
 
     #[test]

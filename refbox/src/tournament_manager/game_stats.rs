@@ -1,6 +1,6 @@
 use super::{
-    Color, Duration, GamePeriod, Infraction, InfractionDetails, Instant, OffsetDateTime, Penalty,
-    PenaltyKind,
+    BlackWhiteBundle, Color, Duration, GamePeriod, Infraction, InfractionDetails, Instant,
+    OffsetDateTime, Penalty, PenaltyKind,
 };
 use serde::Serialize;
 use std::cmp::Ordering;
@@ -85,22 +85,7 @@ impl GameStats {
     }
 
     pub(crate) fn add_penalty(&mut self, penalty: &Penalty, color: Color) {
-        let event = Event::Penalty {
-            player_cap_number: penalty.player_number,
-            side: match color {
-                Color::Black => "dark".to_string(),
-                Color::White => "light".to_string(),
-            },
-            game_period: penalty.start_period,
-            period_time: penalty.start_time.as_secs_f32(),
-            occurred_on: calculate_timestamp(penalty.start_instant),
-            duration: match penalty.kind {
-                PenaltyKind::TotalDismissal => None,
-                _ => Some(penalty.kind.as_duration().unwrap().as_secs()),
-            },
-            is_total_dismissal: penalty.kind == PenaltyKind::TotalDismissal,
-        };
-        self.events.push(event);
+        self.events.push(penalty_event(penalty, color));
     }
 
     pub(crate) fn add_foul(&mut self, details: &InfractionDetails, color: Option<Color>) {
@@ -123,6 +108,78 @@ impl GameStats {
             Event::Foul { occurred_on, .. } => *occurred_on,
         });
         serde_json::to_string(&events).unwrap()
+    }
+
+    /// The in-play list: every goal and every served penalty already recorded, plus each
+    /// penalty still `running`, ordered by `occurredOn` as `as_json` orders them. Fouls are
+    /// left out: they are end-of-game only.
+    ///
+    /// Only meaningful while a game is in play. `end_game` copies the running penalties into
+    /// the record without clearing them, so between games they would be listed twice.
+    pub(crate) fn running_list(&self, running: &BlackWhiteBundle<Vec<Penalty>>) -> RunningStats {
+        let mut events: Vec<Event> = self
+            .events
+            .iter()
+            .filter(|event| !matches!(event, Event::Foul { .. }))
+            .cloned()
+            .collect();
+        for color in [Color::Black, Color::White] {
+            events.extend(running[color].iter().map(|pen| penalty_event(pen, color)));
+        }
+        events.sort_unstable_by_key(|event| match event {
+            Event::Goal { occurred_on, .. } => *occurred_on,
+            Event::Penalty { occurred_on, .. } => *occurred_on,
+            Event::Foul { occurred_on, .. } => *occurred_on,
+        });
+
+        // As in `as_json`: these events hold only strings, numbers, booleans and
+        // timestamps, which serde_json always serialises, so neither call can fail.
+        let body = serde_json::to_string(&events).unwrap();
+        let without_times: Vec<serde_json::Value> = events
+            .iter()
+            .map(|event| {
+                let mut value = serde_json::to_value(event).unwrap();
+                if let serde_json::Value::Object(fields) = &mut value {
+                    fields.remove("occurredOn");
+                }
+                value
+            })
+            .collect();
+        let key = serde_json::to_string(&without_times).unwrap();
+        RunningStats { body, key }
+    }
+}
+
+/// The running list of goals and penalties sent during play, and its change key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunningStats {
+    /// The PUT body: JSON array, ordered by occurredOn.
+    pub body: String,
+    /// The same list with every `occurredOn` removed, serialised: equal keys = same list.
+    ///
+    /// `occurredOn` is left out because it is recomputed from the wall clock on every call,
+    /// so the same list gives a slightly different body each time.
+    pub key: String,
+}
+
+/// The one way a penalty becomes an event, shared by the final upload (`add_penalty`) and the
+/// in-play list (`running_list`) so the two can never describe a penalty differently.
+fn penalty_event(penalty: &Penalty, color: Color) -> Event {
+    Event::Penalty {
+        player_cap_number: penalty.player_number,
+        side: match color {
+            Color::Black => "dark".to_string(),
+            Color::White => "light".to_string(),
+        },
+        game_period: penalty.start_period,
+        period_time: penalty.start_time.as_secs_f32(),
+        occurred_on: calculate_timestamp(penalty.start_instant),
+        duration: match penalty.kind {
+            PenaltyKind::TotalDismissal => None,
+            // Cannot panic: `as_duration` is `None` only for `TotalDismissal`, matched above.
+            _ => Some(penalty.kind.as_duration().unwrap().as_secs()),
+        },
+        is_total_dismissal: penalty.kind == PenaltyKind::TotalDismissal,
     }
 }
 

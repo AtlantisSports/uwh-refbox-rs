@@ -72,7 +72,7 @@ async fn run(
                 Ok(send) => send.await.map_err(|why| classify(why.as_ref())),
                 Err(skip) => Err(skip),
             };
-            match log.record(outcome) {
+            match log.record(outcome, Instant::now()) {
                 Some(LogLine::Warn(text)) => warn!("{text}"),
                 Some(LogLine::Info(text)) => info!("{text}"),
                 None => {}
@@ -229,25 +229,45 @@ pub enum LogLine {
     Info(String),
 }
 
-/// Logs each distinct failure once, and the recovery once, instead of every heartbeat.
+/// The shortest gap between two log lines about the same kind of failure, or between two
+/// recovery lines. A link that flaps all day logs a few lines an hour, not one every heartbeat.
+pub const LOG_QUIET_WINDOW: Duration = Duration::from_secs(600);
+
+/// Logs each kind of failure the first time it is seen and then at most once per
+/// [`LOG_QUIET_WINDOW`], and the recovery at most once per window, instead of every heartbeat.
 #[derive(Debug, Default)]
 pub struct FailureLog {
-    /// The kind of the failure last logged, while sends are failing.
-    failing: Option<FailureKind>,
+    /// When each kind of failure was last logged.
+    logged: Vec<(FailureKind, Instant)>,
+    /// Sends that failed since the last recovery line.
+    dropped: u32,
+    /// When the last recovery line was logged.
+    last_recovery: Option<Instant>,
 }
 
 impl FailureLog {
-    pub fn record(&mut self, outcome: Result<(), Failure>) -> Option<LogLine> {
+    pub fn record(&mut self, outcome: Result<(), Failure>, now: Instant) -> Option<LogLine> {
+        let quiet = |since: Instant| now.saturating_duration_since(since) < LOG_QUIET_WINDOW;
         match outcome {
-            Ok(()) => self.failing.take().map(|_| {
-                LogLine::Info("live updates to the portal are getting through again".to_string())
-            }),
-            Err(failure) => {
-                let kind = failure.kind();
-                if self.failing.as_ref() == Some(&kind) {
+            Ok(()) => {
+                if self.dropped == 0 || self.last_recovery.is_some_and(quiet) {
                     return None;
                 }
-                self.failing = Some(kind);
+                let dropped = std::mem::take(&mut self.dropped);
+                self.last_recovery = Some(now);
+                Some(LogLine::Info(format!(
+                    "live updates to the portal are getting through again \
+                     ({dropped} live updates dropped)"
+                )))
+            }
+            Err(failure) => {
+                self.dropped = self.dropped.saturating_add(1);
+                let kind = failure.kind();
+                match self.logged.iter_mut().find(|(k, _)| *k == kind) {
+                    Some((_, at)) if quiet(*at) => return None,
+                    Some((_, at)) => *at = now,
+                    None => self.logged.push((kind, now)),
+                }
                 Some(LogLine::Warn(format!(
                     "live update to the portal failed, and is dropped: {}",
                     failure.describe()
@@ -288,6 +308,8 @@ mod tests {
     enum Reply {
         /// Answer `204 No Content` after holding the request this long.
         After(Duration),
+        /// Answer at once with this status line and a short body.
+        Status(&'static str),
         /// Never answer.
         Hang,
     }
@@ -411,19 +433,20 @@ mod tests {
                 authorization,
                 body: String::from_utf8(body).unwrap(),
             });
-            match reply(index) {
-                Reply::Hang => std::future::pending::<()>().await,
-                Reply::After(hold) => tokio::time::sleep(hold).await,
-            }
+            let answer = match reply(index) {
+                Reply::Hang => std::future::pending::<String>().await,
+                Reply::After(hold) => {
+                    tokio::time::sleep(hold).await;
+                    "HTTP/1.1 204 No Content\r\n\r\n".to_string()
+                }
+                Reply::Status(status) => {
+                    format!("HTTP/1.1 {status}\r\ncontent-length: 4\r\n\r\nboom")
+                }
+            };
             // Out of flight before the answer is written, so the client cannot start its next
             // request while this one still counts.
             in_flight.fetch_sub(1, Ordering::SeqCst);
-            if stream
-                .get_mut()
-                .write_all(b"HTTP/1.1 204 No Content\r\n\r\n")
-                .await
-                .is_err()
-            {
+            if stream.get_mut().write_all(answer.as_bytes()).await.is_err() {
                 return;
             }
         }
@@ -641,42 +664,132 @@ mod tests {
 
     #[test]
     fn failure_log_reports_each_distinct_failure_once() {
+        let now = Instant::now();
         let rejected = |body: &str| Failure::Rejected {
             status: "500 Internal Server Error".to_string(),
             body: body.to_string(),
         };
         let mut log = FailureLog::default();
         let lines: Vec<_> = (0..10)
-            .filter_map(|i| log.record(Err(rejected(&format!("trace {i}")))))
+            .filter_map(|i| log.record(Err(rejected(&format!("trace {i}"))), now))
             .collect();
         assert_eq!(lines.len(), 1, "same status, varying body: one line");
         assert!(matches!(lines[0], LogLine::Warn(_)));
 
         assert!(matches!(
-            log.record(Err(Failure::Timeout)),
+            log.record(Err(Failure::Timeout), now),
             Some(LogLine::Warn(_))
         ));
-        assert_eq!(log.record(Err(Failure::Timeout)), None);
+        assert_eq!(log.record(Err(Failure::Timeout), now), None);
         assert!(matches!(
-            log.record(Err(Failure::NoKey)),
+            log.record(Err(Failure::NoKey), now),
             Some(LogLine::Warn(_))
         ));
-        assert!(matches!(log.record(Ok(())), Some(LogLine::Info(_))));
-        assert_eq!(log.record(Ok(())), None);
+        let Some(LogLine::Info(text)) = log.record(Ok(()), now) else {
+            panic!("expected the recovery line");
+        };
+        assert!(text.contains("(13 live updates dropped)"), "{text}");
+        assert_eq!(log.record(Ok(()), now), None);
     }
 
     #[test]
     fn first_success_logs_nothing_and_long_bodies_are_bounded() {
+        let now = Instant::now();
         let mut log = FailureLog::default();
-        assert_eq!(log.record(Ok(())), None);
-        let line = log.record(Err(Failure::Rejected {
-            status: "400 Bad Request".to_string(),
-            body: "x".repeat(5000),
-        }));
+        assert_eq!(log.record(Ok(()), now), None);
+        let line = log.record(
+            Err(Failure::Rejected {
+                status: "400 Bad Request".to_string(),
+                body: "x".repeat(5000),
+            }),
+            now,
+        );
         let Some(LogLine::Warn(text)) = line else {
             panic!("expected a warning, got {line:?}");
         };
         assert!(text.contains("400 Bad Request"));
         assert!(text.len() < 400, "{} characters logged", text.len());
+    }
+
+    /// A link flapping between two kinds of failure, one attempt every 5 s.
+    #[test]
+    fn flapping_kinds_log_each_kind_once_per_window() {
+        let start = Instant::now();
+        let mut log = FailureLog::default();
+        let warns = (0..20)
+            .filter_map(|i| {
+                let failure = if i % 2 == 0 {
+                    Failure::Timeout
+                } else {
+                    Failure::Connect
+                };
+                log.record(Err(failure), start + Duration::from_secs(5 * i))
+            })
+            .inspect(|line| assert!(matches!(line, LogLine::Warn(_)), "{line:?}"))
+            .count();
+        assert_eq!(warns, 2);
+    }
+
+    /// Sends alternately failing and succeeding, one attempt every 5 s.
+    #[test]
+    fn flapping_fail_succeed_logs_once_per_window() {
+        let start = Instant::now();
+        let mut log = FailureLog::default();
+        let lines: Vec<_> = (0..20)
+            .filter_map(|i| {
+                let outcome = if i % 2 == 0 {
+                    Err(Failure::Timeout)
+                } else {
+                    Ok(())
+                };
+                log.record(outcome, start + Duration::from_secs(5 * i))
+            })
+            .collect();
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(matches!(lines[0], LogLine::Warn(_)));
+        let LogLine::Info(text) = &lines[1] else {
+            panic!("expected the recovery line, got {lines:?}");
+        };
+        assert!(text.contains("(1 live updates dropped)"), "{text}");
+    }
+
+    #[test]
+    fn kind_relogged_after_window() {
+        let start = Instant::now();
+        let mut log = FailureLog::default();
+        assert!(log.record(Err(Failure::Timeout), start).is_some());
+        assert_eq!(
+            log.record(Err(Failure::Timeout), start + Duration::from_secs(599)),
+            None
+        );
+        assert!(matches!(
+            log.record(Err(Failure::Timeout), start + Duration::from_secs(601)),
+            Some(LogLine::Warn(_))
+        ));
+    }
+
+    #[test]
+    fn classify_reads_status_from_rejection() {
+        let why: Box<dyn Error> = "500 Internal Server Error: boom".into();
+        assert_eq!(
+            classify(why.as_ref()),
+            Failure::Rejected {
+                status: "500 Internal Server Error".to_string(),
+                body: "boom".to_string(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn rejected_send_waits_for_heartbeat() {
+        let mut portal = portal(|_| Reply::Status("500 Internal Server Error")).await;
+        let (_tx, _task) = start(&portal, Some(frame(&portal.site, 2)), timing(500, 300));
+        let first = portal.next(WAIT).await.expect("a first request");
+        let second = portal.next(WAIT).await.expect("a second request");
+        let gap = second.at - first.at;
+        assert!(
+            gap >= Duration::from_millis(400),
+            "a rejected send was retried {gap:?} later; the heartbeat is 500 ms"
+        );
     }
 }

@@ -65,6 +65,7 @@ pub(in super::super) struct EditableSettings {
     pub show_behind_schedule_time: bool,
     pub confirm_score: bool,
     pub audible_countdown: bool,
+    pub live_updates: bool,
     pub pending_language: Option<Language>,
     pub original_language: Option<Language>,
     /// Staged copy of `config.beep_test.levels` used by the BeepTest
@@ -322,6 +323,7 @@ pub(in super::super) fn page_has_changes(
                 confirm_score,
                 hide_time,
                 audible_countdown,
+                live_updates,
             },
         ) => {
             edited.source != *source
@@ -336,6 +338,7 @@ pub(in super::super) fn page_has_changes(
                 || edited.confirm_score != *confirm_score
                 || edited.hide_time != *hide_time
                 || edited.audible_countdown != *audible_countdown
+                || edited.live_updates != *live_updates
         }
         (
             ConfigPage::Display,
@@ -3404,6 +3407,7 @@ mod tests {
             confirm_score: false,
             hide_time: false,
             audible_countdown: false,
+            live_updates: false,
         };
         let edited = EditableSettings {
             hide_time: true,
@@ -3431,6 +3435,7 @@ mod tests {
             confirm_score: false,
             hide_time: false,
             audible_countdown: false,
+            live_updates: false,
         };
         let edited = EditableSettings {
             force_keypad_numbers: true,
@@ -3472,6 +3477,38 @@ mod tests {
         assert!(!settings.keypad_numbers_forced());
     }
 
+    /// Without its line in `page_has_changes`, LIVE UPDATES would toggle on
+    /// screen while APPLY stayed greyed out, and the choice would be lost.
+    #[test]
+    fn app_page_has_changes_when_live_updates_toggled() {
+        let mut edited = EditableSettings {
+            live_updates: true,
+            ..Default::default()
+        };
+        let snap = PageEntrySnapshot::App {
+            source: edited.source,
+            current_event_id: edited.current_event_id.clone(),
+            current_court: edited.current_court.clone(),
+            schedule: edited.schedule.clone(),
+            mode: edited.mode,
+            collect_scorer_cap_num: edited.collect_scorer_cap_num,
+            track_fouls_and_warnings: edited.track_fouls_and_warnings,
+            force_keypad_numbers: edited.force_keypad_numbers,
+            show_behind_schedule_time: edited.show_behind_schedule_time,
+            confirm_score: edited.confirm_score,
+            hide_time: edited.hide_time,
+            audible_countdown: edited.audible_countdown,
+            live_updates: edited.live_updates,
+        };
+        assert!(
+            !page_has_changes(ConfigPage::App, &edited, Some(&snap)),
+            "nothing changed yet"
+        );
+
+        edited.live_updates = false;
+        assert!(page_has_changes(ConfigPage::App, &edited, Some(&snap)));
+    }
+
     #[test]
     fn app_detects_audible_countdown_change() {
         let snap = PageEntrySnapshot::App {
@@ -3487,6 +3524,7 @@ mod tests {
             confirm_score: false,
             hide_time: false,
             audible_countdown: false,
+            live_updates: false,
         };
         let edited = EditableSettings {
             audible_countdown: true,
@@ -3647,6 +3685,7 @@ mod tests {
             confirm_score: edited.confirm_score,
             hide_time: false,
             audible_countdown: false,
+            live_updates: false,
         };
 
         edited.source = GameSource::Manual;
@@ -3658,6 +3697,7 @@ mod tests {
         edited.confirm_score = true;
         edited.hide_time = true;
         edited.audible_countdown = true;
+        edited.live_updates = true;
         edited.game_number = "99".to_string();
 
         snap.revert_into(&mut edited);
@@ -3672,6 +3712,7 @@ mod tests {
         assert!(!edited.confirm_score);
         assert!(!edited.hide_time);
         assert!(!edited.audible_countdown);
+        assert!(!edited.live_updates);
 
         // Game-slice field NOT restored by the App snapshot.
         assert_eq!(edited.game_number, "99");

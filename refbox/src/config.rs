@@ -424,6 +424,12 @@ pub struct Config {
     pub confirm_score: bool,
     #[serde(default)]
     pub audible_countdown: bool,
+    /// The operator's stored preference to push live game state to the
+    /// portal. Defaults ON. Read through [`effective_live_updates`] anywhere
+    /// the answer drives behaviour: only Portal hockey games send anything.
+    #[serde(default = "default_live_updates")]
+    #[derivative(Default(value = "true"))]
+    pub live_updates: bool,
     #[serde(default)]
     pub source: GameSource,
     #[serde(default)]
@@ -556,6 +562,7 @@ impl Config {
             mut show_behind_schedule_time,
             mut confirm_score,
             mut audible_countdown,
+            mut live_updates,
             mut source,
             mut remembered_remote,
             mut courts,
@@ -593,6 +600,7 @@ impl Config {
         );
         get_boolean_value(old, "confirm_score", &mut confirm_score);
         get_boolean_value(old, "audible_countdown", &mut audible_countdown);
+        get_boolean_value(old, "live_updates", &mut live_updates);
         if let Some(old_source) = old.get("source") {
             if let Some(old_source) = old_source.as_str() {
                 if let Ok(old_source) = old_source.parse() {
@@ -652,6 +660,7 @@ impl Config {
             show_behind_schedule_time,
             confirm_score,
             audible_countdown,
+            live_updates,
             source,
             remembered_remote,
             courts,
@@ -763,6 +772,12 @@ macro_attr! {
 /// The largest court count the Game Number page offers, and so the largest the
 /// rest of the app will act on.
 pub const MAX_COURTS: u8 = 4;
+
+/// Live updates default ON, including for every settings file written before
+/// the setting existed. Not a plain `#[serde(default)]`: that yields `false`.
+fn default_live_updates() -> bool {
+    true
+}
 
 /// One court -- the behaviour every settings file written before the court
 /// count existed must keep.
@@ -1818,6 +1833,35 @@ mod test {
             !parsed.force_keypad_numbers,
             "an existing settings file must keep the pre-setting behaviour: grid where there is a roster"
         );
+    }
+
+    /// Live updates default ON (PO decision): every settings file written
+    /// before the setting existed must load with it on, whether it parses as
+    /// the current format or falls through to `Config::migrate`.
+    #[test]
+    fn live_updates_defaults_true_when_absent() {
+        let parsed: Config = toml::from_str(&config_toml_without("live_updates")).unwrap();
+        assert!(parsed.live_updates, "current-format file without the key");
+
+        let old: Table = Default::default();
+        assert!(
+            Config::migrate(&old).live_updates,
+            "old-format file without the key"
+        );
+    }
+
+    #[test]
+    fn live_updates_false_round_trips() {
+        let config = Config {
+            live_updates: false,
+            ..Default::default()
+        };
+        let parsed: Config = toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+        assert!(!parsed.live_updates);
+
+        let mut old: Table = Default::default();
+        old.insert("live_updates".to_string(), toml::Value::Boolean(false));
+        assert!(!Config::migrate(&old).live_updates);
     }
 }
 

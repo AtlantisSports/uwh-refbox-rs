@@ -74,10 +74,13 @@ event = กิจกรรม:
 track-fouls-and-warnings = บันทึกฟาวล์
     และการเตือน
 show-behind-schedule-time = แสดงเวลาล่าช้า
-show-countdown-for-last-10-seconds = แสดงนับถอยหลัง
+show-countdown-for-last-10-seconds = นับถอยหลังแบบภาพ
 audible-countdown-for-last-10-seconds = นับถอยหลังด้วยเสียง
 last-10-seconds-countdown = นับถอยหลัง
     10 วินาทีสุดท้าย
+last-10-seconds-countdown-title = นับถอยหลัง 10 วินาทีสุดท้าย
+countdown-visual-value = ภาพ: { $value }
+countdown-audio-value = เสียง: { $value }
 live-updates = อัปเดตสด
 delay = ล่าช้า
 court = สนาม:

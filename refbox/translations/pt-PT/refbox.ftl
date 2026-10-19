@@ -75,10 +75,13 @@ event = EVENTO:
 track-fouls-and-warnings = REGISTAR FALTAS
     E AVISOS
 show-behind-schedule-time = MOSTRAR ATRASO
-show-countdown-for-last-10-seconds = MOSTRAR CONTAGEM DECRESCENTE
+show-countdown-for-last-10-seconds = CONTAGEM DECRESCENTE VISUAL
 audible-countdown-for-last-10-seconds = CONTAGEM DECRESCENTE SONORA
 last-10-seconds-countdown = CONTAGEM DECRESCENTE
     ÚLTIMOS 10 S
+last-10-seconds-countdown-title = CONTAGEM DECRESCENTE ÚLTIMOS 10 S
+countdown-visual-value = VISUAL: { $value }
+countdown-audio-value = SOM: { $value }
 live-updates = ATUALIZAÇÕES EM DIRETO
 delay = ATRASO
 court = CAMPO:

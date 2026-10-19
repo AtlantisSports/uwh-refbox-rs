@@ -75,10 +75,13 @@ event = ACARA:
 track-fouls-and-warnings = REKOD KESALAHAN
     DAN AMARAN
 show-behind-schedule-time = TUNJUK KELEWATAN
-show-countdown-for-last-10-seconds = TUNJUK KIRA DETIK
+show-countdown-for-last-10-seconds = KIRA DETIK VISUAL
 audible-countdown-for-last-10-seconds = KIRA DETIK BUNYI
 last-10-seconds-countdown = KIRA DETIK
     10 SAAT TERAKHIR
+last-10-seconds-countdown-title = KIRA DETIK 10 SAAT TERAKHIR
+countdown-visual-value = VISUAL: { $value }
+countdown-audio-value = BUNYI: { $value }
 live-updates = KEMAS KINI LANGSUNG
 delay = LEWAT
 court = GELANGGANG:

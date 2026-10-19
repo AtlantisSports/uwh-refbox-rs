@@ -74,10 +74,13 @@ event = EVENEMENT:
 track-fouls-and-warnings = OVERTREDINGEN
     EN WAARSCHUWINGEN
 show-behind-schedule-time = ACHTERSTAND TONEN
-show-countdown-for-last-10-seconds = AFTELLING TONEN
+show-countdown-for-last-10-seconds = VISUELE AFTELLING
 audible-countdown-for-last-10-seconds = HOORBARE AFTELLING
 last-10-seconds-countdown = AFTELLING LAATSTE
     10 SECONDEN
+last-10-seconds-countdown-title = AFTELLING LAATSTE 10 SECONDEN
+countdown-visual-value = VISUEEL: { $value }
+countdown-audio-value = GELUID: { $value }
 live-updates = LIVE-UPDATES
 delay = VERTRAGING
 court = BAAN:

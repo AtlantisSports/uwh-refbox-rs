@@ -1,4 +1,4 @@
-use super::fit_text::fit_text;
+use super::fit_text::{fit_text, fit_text_lines};
 use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
 use crate::app::EventStore;
 use crate::app::PageEntrySnapshot;
@@ -1342,9 +1342,7 @@ fn make_app_config_page<'a>(
                     BoolGameParameter::ScorerCapNum,
                 )),
             ),
-            make_tile_button(fl!("last-10-seconds-countdown"))
-                .style(light_gray_button)
-                .on_press(Message::EditCountdown),
+            make_countdown_tile(settings),
         ]
         .spacing(SPACING)
         .height(Length::Fill),
@@ -1413,6 +1411,50 @@ fn live_updates_tile(settings: &EditableSettings) -> (bool, Option<Message>) {
         live_updates_possible(settings.mode, settings.source)
             .then_some(Message::ToggleBoolParameter(BoolGameParameter::LiveUpdates)),
     )
+}
+
+/// The (visual, audio) values the LAST 10 SECONDS COUNTDOWN tile shows, from
+/// the staged settings. SHOW COUNTDOWN is stored inverted, as `hide_time`, so
+/// this is the same mapping `countdown_editor_for` uses to seed the countdown
+/// page.
+fn countdown_tile_values(settings: &EditableSettings) -> (bool, bool) {
+    (!settings.hide_time, settings.audible_countdown)
+}
+
+/// The LAST 10 SECONDS COUNTDOWN tile on App Options. Built like
+/// `make_value_button` with `(false, true)` -- same style, padding, label size
+/// and placement -- except that the value is two right-aligned lines, VISUAL
+/// and AUDIO, at `SMALL_PLUS_TEXT`: two lines at `MEDIUM_TEXT` do not fit the
+/// tile's height. See `make_value_button` for why the row fills the button and
+/// why its children are `Shrink` height.
+fn make_countdown_tile<'a>(settings: &EditableSettings) -> Element<'a, Message> {
+    let (visual, audio) = countdown_tile_values(settings);
+    button(
+        row![
+            fit_text(fl!("last-10-seconds-countdown"))
+                .size(SMALL_TEXT)
+                .align_x(Horizontal::Left)
+                .width(Length::FillPortion(3))
+                .height(Length::Shrink),
+            fit_text_lines(
+                fl!("countdown-visual-value", value = bool_string(visual)),
+                fl!("countdown-audio-value", value = bool_string(audio)),
+            )
+            .size(SMALL_PLUS_TEXT)
+            .align_x(Horizontal::Right)
+            .width(Length::FillPortion(2))
+            .height(Length::Shrink),
+        ]
+        .spacing(SPACING)
+        .align_y(Alignment::Center)
+        .height(Length::Fill)
+        .padding(PADDING),
+    )
+    .height(Length::Fill)
+    .width(Length::Fill)
+    .style(light_gray_button)
+    .on_press(Message::EditCountdown)
+    .into()
 }
 
 /// The embedded preview picture matching a staged layout + starting-side.
@@ -2307,22 +2349,24 @@ fn countdown_edit_has_changes(
     show_countdown == settings.hide_time || audible_countdown != settings.audible_countdown
 }
 
-/// One YES / NO row of the LAST 10 SECONDS COUNTDOWN page, in the style of
-/// the TWO HALVES / ONE PERIOD selector: the current choice is blue and its
-/// press does nothing, the other is gray and flips the staged value.
+/// One YES / NO row of the LAST 10 SECONDS COUNTDOWN page: three equal
+/// columns, a plain-text label then the two choices. The label sits where a
+/// value tile's label does -- `SMALL_TEXT`, left-aligned, inset by `PADDING`,
+/// vertically centred. The choices fill the row's height like the App Options
+/// tiles, in the style of the TWO HALVES / ONE PERIOD selector: the current
+/// choice is blue and its press does nothing, the other is gray and flips the
+/// staged value.
 fn make_countdown_choice_row<'a>(
     label: String,
     value: bool,
     param: BoolGameParameter,
 ) -> Element<'a, Message> {
     let choice = |label: String, chosen: bool| {
-        let b = make_chrome_button(label)
-            .width(Length::Fill)
-            .style(if chosen {
-                blue_selected_button
-            } else {
-                light_gray_button
-            });
+        let b = make_tile_button(label).style(if chosen {
+            blue_selected_button
+        } else {
+            light_gray_button
+        });
         if chosen {
             b.on_press(Message::NoAction)
         } else {
@@ -2330,20 +2374,32 @@ fn make_countdown_choice_row<'a>(
         }
     };
     row![
-        text(label)
-            .size(MEDIUM_TEXT)
-            .width(Length::Fill)
-            .align_y(Vertical::Center),
+        // As in `make_value_button`: the text is `Shrink` height and the row
+        // around it fills and centres it, rather than `align_y(Center)` on a
+        // `Fill`-height text.
+        row![
+            fit_text(label)
+                .size(SMALL_TEXT)
+                .align_x(Horizontal::Left)
+                .width(Length::Fill)
+                .height(Length::Shrink),
+        ]
+        .align_y(Alignment::Center)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(PADDING),
         choice(fl!("yes"), value),
         choice(fl!("no"), !value),
     ]
     .spacing(SPACING)
-    .align_y(Alignment::Center)
+    .height(Length::Fill)
     .into()
 }
 
-/// The LAST 10 SECONDS COUNTDOWN page, reached from App Options. Built like
-/// the Half Length editor, without its help button. APPLY stages the two
+/// The LAST 10 SECONDS COUNTDOWN page, reached from App Options. Laid out like
+/// App Options itself: four content rows of equal height between the game-time
+/// bar and the footer -- a one-line title, the two YES / NO rows, and an empty
+/// row -- so its rows line up with the App Options tiles. APPLY stages the two
 /// switches into the App page's edit; App Options' own APPLY saves them.
 pub(in super::super) fn build_countdown_editor<'a>(
     data: ViewData<'_, '_>,
@@ -2371,9 +2427,13 @@ pub(in super::super) fn build_countdown_editor<'a>(
             portal_indicator,
             None
         ),
-        text(fl!("last-10-seconds-countdown"))
+        // One line, always: `no_wrap` shrinks a long translation instead of
+        // breaking it. (iced 0.13's own `Wrapping::None` is accepted but never
+        // applied -- see `fit_text`.) The default `Fill` width and height centre
+        // it in its row both ways.
+        fit_text(fl!("last-10-seconds-countdown-title"))
             .size(MEDIUM_TEXT)
-            .align_x(Horizontal::Center),
+            .no_wrap(),
         make_countdown_choice_row(
             fl!("show-countdown-for-last-10-seconds"),
             show_countdown,
@@ -2384,7 +2444,7 @@ pub(in super::super) fn build_countdown_editor<'a>(
             audible_countdown,
             BoolGameParameter::AudibleCountdown,
         ),
-        vertical_space(),
+        row![].height(Length::Fill),
         row![
             make_chrome_button(cancel_or_back_label(has_changes))
                 .style(red_button)
@@ -2401,7 +2461,6 @@ pub(in super::super) fn build_countdown_editor<'a>(
         .spacing(SPACING),
     ]
     .spacing(SPACING)
-    .align_x(Alignment::Center)
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
@@ -4423,5 +4482,32 @@ mod tests {
         assert!(!countdown_edit_has_changes(&settings, false, false));
         assert!(countdown_edit_has_changes(&settings, true, false));
         assert!(countdown_edit_has_changes(&settings, false, true));
+    }
+
+    /// The App Options tile reads VISUAL from the inverted `hide_time` and
+    /// AUDIO straight from `audible_countdown` -- the same values the countdown
+    /// page opens on, so the tile and the page never disagree.
+    #[test]
+    fn countdown_tile_values_follow_the_staged_settings() {
+        for (hide_time, audible_countdown, expected) in [
+            (false, false, (true, false)),
+            (false, true, (true, true)),
+            (true, false, (false, false)),
+            (true, true, (false, true)),
+        ] {
+            let settings = EditableSettings {
+                hide_time,
+                audible_countdown,
+                ..Default::default()
+            };
+            assert_eq!(countdown_tile_values(&settings), expected);
+            assert!(matches!(
+                crate::app::countdown_editor_for(&settings),
+                crate::app::AppState::CountdownEditor {
+                    show_countdown,
+                    audible_countdown,
+                } if (show_countdown, audible_countdown) == expected
+            ));
+        }
     }
 }

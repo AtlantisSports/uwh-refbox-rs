@@ -79,6 +79,9 @@ show-countdown-for-last-10-seconds = 显示倒计时
 audible-countdown-for-last-10-seconds = 声音倒计时
 last-10-seconds-countdown = 最后10秒
     倒计时
+last-10-seconds-countdown-title = 最后10秒倒计时
+countdown-visual-value = 显示: { $value }
+countdown-audio-value = 声音: { $value }
 live-updates = 即时更新
 delay = 延误
 court = 球场：

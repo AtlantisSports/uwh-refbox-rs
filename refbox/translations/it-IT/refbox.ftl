@@ -75,10 +75,13 @@ event = EVENTO:
 track-fouls-and-warnings = TRACCIA FALLI
     E AMMONIZIONI
 show-behind-schedule-time = MOSTRA RITARDO
-show-countdown-for-last-10-seconds = MOSTRA CONTO ALLA ROVESCIA
+show-countdown-for-last-10-seconds = CONTO ALLA ROVESCIA VISIVO
 audible-countdown-for-last-10-seconds = CONTO ALLA ROVESCIA SONORO
 last-10-seconds-countdown = CONTO ALLA ROVESCIA
     ULTIMI 10 S
+last-10-seconds-countdown-title = CONTO ALLA ROVESCIA ULTIMI 10 S
+countdown-visual-value = VISIVO: { $value }
+countdown-audio-value = AUDIO: { $value }
 live-updates = AGGIORNAMENTI IN DIRETTA
 delay = RITARDO
 court = CAMPO:

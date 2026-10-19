@@ -74,10 +74,13 @@ event = ACARA:
 track-fouls-and-warnings = LACAK PELANGGARAN
     DAN PERINGATAN
 show-behind-schedule-time = TAMPILKAN KELEWATAN
-show-countdown-for-last-10-seconds = TAMPILKAN HITUNG MUNDUR
+show-countdown-for-last-10-seconds = HITUNG MUNDUR VISUAL
 audible-countdown-for-last-10-seconds = HITUNG MUNDUR SUARA
 last-10-seconds-countdown = HITUNG MUNDUR
     10 DETIK TERAKHIR
+last-10-seconds-countdown-title = HITUNG MUNDUR 10 DETIK TERAKHIR
+countdown-visual-value = VISUAL: { $value }
+countdown-audio-value = SUARA: { $value }
 live-updates = PEMBARUAN LANGSUNG
 delay = TERLAMBAT
 court = LAPANGAN:

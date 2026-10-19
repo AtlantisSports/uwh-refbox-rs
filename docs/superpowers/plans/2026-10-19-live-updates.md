@@ -357,3 +357,8 @@ Rulings made during execution (2026-10-19). Each names what changed against the 
    applied snapshot. `generate_snapshot`'s only side effect is clearing an expired recent goal, which every tick does
    anyway. This supersedes the code-read in item 5. The sender tests' timing margins were also widened so slow CI
    runners cannot fail them.
+10. **PO walkthrough changes to the countdown screens.** The App Options tile now shows a small two-line label with
+    `VISUAL: YES/NO` and `AUDIO: YES/NO` on the right (one text size down, to fit two lines). The countdown page uses
+    App Options' four equal rows, small labels, a one-line centred title (new key `last-10-seconds-countdown-title`,
+    which supersedes item 7), and its first row reads `VISUAL COUNTDOWN`. Three new keys and one re-worded key in all
+    15 locales; the 14 non-English ones are still unchecked.

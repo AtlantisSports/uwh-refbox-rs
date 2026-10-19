@@ -77,10 +77,13 @@ event = 대회:
 track-fouls-and-warnings = 반칙 및
     경고 추적
 show-behind-schedule-time = 지연 표시
-show-countdown-for-last-10-seconds = 카운트다운 표시
+show-countdown-for-last-10-seconds = 표시 카운트다운
 audible-countdown-for-last-10-seconds = 음성 카운트다운
 last-10-seconds-countdown = 마지막 10초
     카운트다운
+last-10-seconds-countdown-title = 마지막 10초 카운트다운
+countdown-visual-value = 표시: { $value }
+countdown-audio-value = 음성: { $value }
 live-updates = 생중계 업데이트
 delay = 지연
 court = 코트:

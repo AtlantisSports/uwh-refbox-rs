@@ -73,10 +73,13 @@ event = EVENT:
 track-fouls-and-warnings = TRACK FOULS
     AND WARNINGS
 show-behind-schedule-time = SHOW BEHIND TIME/DELAY
-show-countdown-for-last-10-seconds = SHOW COUNTDOWN
+show-countdown-for-last-10-seconds = VISUAL COUNTDOWN
 audible-countdown-for-last-10-seconds = AUDIBLE COUNTDOWN
 last-10-seconds-countdown = LAST 10 SECONDS
     COUNTDOWN
+last-10-seconds-countdown-title = LAST 10 SECONDS COUNTDOWN
+countdown-visual-value = VISUAL: { $value }
+countdown-audio-value = AUDIO: { $value }
 live-updates = LIVE UPDATES
 delay = DELAY
 court = COURT:

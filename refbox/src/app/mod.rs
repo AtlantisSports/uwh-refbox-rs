@@ -11643,7 +11643,7 @@ mod live_updates_wiring_tests {
         let details = LiveDetails {
             recent_goal: Some((Color::Black, 7, 300)),
             penalties: Vec::new(),
-            team_timeout_running: None,
+            team_timeout: None,
         };
         let applied = in_game(2);
 

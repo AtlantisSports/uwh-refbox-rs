@@ -203,4 +203,8 @@ In `refresh_live_frame`, when `snapshot` is `None` (the fallback to `self.snapsh
 
 ## Deviations
 
-(none yet)
+- Task 3 also edited `refbox/src/live_updates/sender.rs` test helpers (compile-only, `penalty_key: vec![]`).
+- `portal_rule_violations` lives once as `#[cfg(test)] pub(crate)` in `live_updates`, and the app tests reuse it.
+- Task 4 added `LiveEngineRead::snapshot_and_details`, so the rule that a fallback snapshot drops its details is tested in isolation.
+- The Task 2 and Task 3 commits carry clippy `dead_code` for `live_details` (no caller until Task 4). The branch tip is clean. No `#[allow]` was added (rust.md).
+- Final review: the team-timeout seconds now come from `LiveDetails.team_timeout` (the team clock's `clock_time(now)`, 0 past zero), never from the snapshot's `u16::MAX` stand-in. `LiveTimeout::from_snapshot` takes the clock rather than a running flag.

@@ -15,7 +15,7 @@ use uwh_common::{
     uwhportal::{
         live::{
             LiveGameState, LiveGoal, LivePenalty, LivePenaltyTime, LiveScores, LiveTimeout,
-            TimedPenaltyLength,
+            TeamTimeoutClock, TimedPenaltyLength,
         },
         schedule::{EventId, GameNumber},
     },
@@ -149,9 +149,13 @@ pub fn live_frame(i: &LiveInputs) -> Option<LiveFrame> {
             // list from an older read would look plausible and be wrong.
             let mut penalty_key = vec![];
             if let Some(details) = i.details {
+                let team_clock = details.team_timeout.map(|t| TeamTimeoutClock {
+                    seconds_left: t.seconds_left,
+                    running: t.running,
+                });
                 state.timeout = snapshot
                     .timeout
-                    .map(|t| LiveTimeout::from_snapshot(t, details.team_timeout_running));
+                    .map(|t| LiveTimeout::from_snapshot(t, team_clock));
                 state.last_goal = details
                     .recent_goal
                     .map(|(team, cap, clock_seconds)| LiveGoal {
@@ -345,10 +349,8 @@ pub(crate) fn portal_rule_violations(body: &serde_json::Value) -> Vec<&'static s
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uwh_common::{
-        bundles::BlackWhiteBundle, game_snapshot::TimeoutSnapshot,
-        uwhportal::live::TeamTimeoutClock,
-    };
+    use crate::tournament_manager::TeamTimeout;
+    use uwh_common::{bundles::BlackWhiteBundle, game_snapshot::TimeoutSnapshot};
 
     const SITE: &str = "https://uwhportal.example";
 
@@ -886,7 +888,7 @@ mod tests {
         let details = LiveDetails {
             recent_goal: Some((Color::White, 7, 470)),
             penalties: penalties.clone(),
-            team_timeout_running: None,
+            team_timeout: None,
         };
         let snap = snapshot(GamePeriod::SecondHalf, "5", "6", 462);
         let got = in_play_with(Some(&details), &snap);
@@ -945,7 +947,7 @@ mod tests {
                     101,
                 ),
             ],
-            team_timeout_running: None,
+            team_timeout: None,
         };
         let snap = snapshot(GamePeriod::FirstHalf, "5", "6", 300);
         let got = in_play_with(Some(&details), &snap);
@@ -979,7 +981,7 @@ mod tests {
                     )
                 })
                 .collect(),
-            team_timeout_running: None,
+            team_timeout: None,
         };
         let snap = snapshot(GamePeriod::FirstHalf, "5", "6", 300);
         let got = in_play_with(Some(&details), &snap);
@@ -996,7 +998,7 @@ mod tests {
         let details = LiveDetails {
             recent_goal: None,
             penalties: vec![],
-            team_timeout_running: None,
+            team_timeout: None,
         };
         let snap = snapshot(GamePeriod::FirstHalf, "5", "6", 300);
         let got = in_play_with(Some(&details), &snap);
@@ -1028,7 +1030,10 @@ mod tests {
                     300,
                 ),
             ],
-            team_timeout_running: Some(true),
+            team_timeout: Some(TeamTimeout {
+                running: true,
+                seconds_left: 41,
+            }),
         };
         let ev = event();
         for (current, next, heartbeat) in [("5", "6", true), ("12", "", false)] {
@@ -1068,10 +1073,14 @@ mod tests {
         let details = LiveDetails {
             recent_goal: None,
             penalties: vec![],
-            team_timeout_running: Some(false),
+            team_timeout: Some(TeamTimeout {
+                running: false,
+                seconds_left: 0,
+            }),
         };
+        // The snapshot's past-zero stand-in must not reach the wire.
         let snap = GameSnapshot {
-            timeout: Some(TimeoutSnapshot::Black(0)),
+            timeout: Some(TimeoutSnapshot::Black(u16::MAX)),
             ..snapshot(GamePeriod::SecondHalf, "5", "6", 462)
         };
         let got = in_play_with(Some(&details), &snap);
@@ -1103,8 +1112,28 @@ mod tests {
         ];
         let timeouts = [
             (None, None),
-            (Some(TimeoutSnapshot::White(41)), Some(true)),
-            (Some(TimeoutSnapshot::Black(0)), Some(false)),
+            (
+                Some(TimeoutSnapshot::White(41)),
+                Some(TeamTimeout {
+                    running: true,
+                    seconds_left: 41,
+                }),
+            ),
+            (
+                Some(TimeoutSnapshot::Black(0)),
+                Some(TeamTimeout {
+                    running: false,
+                    seconds_left: 0,
+                }),
+            ),
+            // Past zero: the snapshot holds `u16::MAX`, the engine read says 0.
+            (
+                Some(TimeoutSnapshot::White(u16::MAX)),
+                Some(TeamTimeout {
+                    running: true,
+                    seconds_left: 0,
+                }),
+            ),
             (Some(TimeoutSnapshot::Ref(12)), None),
             (Some(TimeoutSnapshot::PenaltyShot(5)), None),
         ];
@@ -1153,12 +1182,12 @@ mod tests {
                     let full = LiveDetails {
                         recent_goal: Some((Color::White, 255, 470)),
                         penalties: every_kind.clone(),
-                        team_timeout_running: running,
+                        team_timeout: running,
                     };
                     let empty = LiveDetails {
                         recent_goal: None,
                         penalties: vec![],
-                        team_timeout_running: running,
+                        team_timeout: running,
                     };
                     for details in [None, Some(&empty), Some(&full)] {
                         let snap = GameSnapshot {
@@ -1182,7 +1211,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(checked, 10 * 2 * 5 * 3, "every situation built a frame");
+        assert_eq!(checked, 10 * 2 * 6 * 3, "every situation built a frame");
     }
 
     // ---- v3 send-at-once rules -------------------------------------------

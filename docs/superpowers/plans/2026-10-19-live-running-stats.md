@@ -135,4 +135,9 @@ The loop keeps `accepted: Option<StatsFrame>`. It reads the newest frame. On `No
 
 ## Deviations
 
-(none yet)
+- Task 1 shares the live-games URL and reply code through private helpers (`live_game_url`, `live_put`, `send_live_put`). The live-games request is unchanged apart from checking the URL before the key.
+- Task 2: the plan's Review Focus 3 premise is FALSE on one path. A same-game sleep catch-up (`place_at_schedule_position`) re-enters play without a reset and lists a penalty twice. It is pre-existing (the final upload double-records too), was left for a separate branch, and is recorded in the refbox known-bugs list. The PR must name it.
+- Task 3 also extracted `keyed_send` and `write_log`, gave `FailureLog` a `LogWording` (LIVE text unchanged), moved the fake portal to `live_updates/test_portal.rs`, and routed the v2 send conditions through one `send_event` helper.
+- Task 4: on a FALLBACK engine read the stats frame is left as it was, not set to `None` (a ruling: `None` would drop a pending retry and resend an accepted list). The plan's test `fallback_snapshot_drops_running_stats` became `fallback_read_leaves_the_stats_frame_alone`. The site guard is a separate `stats_frame_for_site`. The Live-Updates-off `None` publish is read-verified only and is covered by a leg-3 step.
+- Tasks 2 and 3 commits carry clippy `dead_code` until Task 4 adds the callers. The branch tip is clean. No `#[allow]`.
+- Final review: added the goal-taken-back test, made the running list's sort stable, and corrected the design note's retry clause.

@@ -15,7 +15,7 @@ team-timeout countdown".
 
 **Running stats note (2026-10-19, `feat/uwh-common/live-running-stats`):** while a game is in play, a v3 refbox also
 PUTs its list of goals and penalties (served or still running; no fouls) to `…/live-games/{n}/stats` when the list
-changes, retrying a failed send every 15 s until the portal accepts it. It is a separate send from the live-games PUT
+changes, retrying a failed send every 15 s until the portal accepts it, a newer list replaces it, or the game ends. It is a separate send from the live-games PUT
 above and from the end-of-game upload, which it does not touch, and nothing about it is saved to disk. The rules are in
 the same agreement, under "Running stats during play".
 

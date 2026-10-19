@@ -479,6 +479,8 @@ mod tests {
             clock_running: true,
             timeout: None,
             scores: Some(LiveScores { black, white: 1 }),
+            last_goal: None,
+            penalties: None,
         }
     }
 

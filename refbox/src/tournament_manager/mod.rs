@@ -33,6 +33,9 @@ use infraction::*;
 mod game_stats;
 use game_stats::*;
 
+mod live_details;
+pub use live_details::{EnginePenalty, LiveDetails};
+
 pub(crate) mod placement;
 mod time_jump;
 
@@ -40,6 +43,19 @@ use crate::penalty_editor::IterHelp;
 
 const MAX_TIME_VAL: Duration = Duration::from_secs(MAX_LONG_STRINGABLE_SECS as u64);
 const RECENT_GOAL_TIME: Duration = Duration::from_secs(15);
+
+/// Whether a goal scored at `goal_time` in `goal_period` is still being shown as the recent goal.
+/// The one rule for both `generate_snapshot`'s expiry and `live_details`, so they cannot disagree.
+/// It assumes a clock counting down, so on sudden death's count-up clock only a period change
+/// clears the goal (existing behaviour, see `end_confirm_pause`).
+fn recent_goal_showing(
+    goal_period: GamePeriod,
+    goal_time: Duration,
+    current_period: GamePeriod,
+    cur_time: Duration,
+) -> bool {
+    goal_period == current_period && goal_time.saturating_sub(cur_time) <= RECENT_GOAL_TIME
+}
 
 /// How many times the tick will try to build a snapshot before giving up.
 ///
@@ -3307,9 +3323,7 @@ impl TournamentManager {
         trace!("Got fouls");
 
         if let Some((_, _, goal_per, goal_time)) = self.recent_goal {
-            if (goal_per != self.current_period)
-                | (goal_time.saturating_sub(cur_time) > RECENT_GOAL_TIME)
-            {
+            if !recent_goal_showing(goal_per, goal_time, self.current_period, cur_time) {
                 self.recent_goal = None;
             }
         }
@@ -3343,6 +3357,48 @@ impl TournamentManager {
             recent_goal: self.recent_goal.map(|(c, n, _, _)| (c, n)),
             next_period_len_secs,
             conf_pause_time,
+        })
+    }
+
+    /// Read-only. `None` when the game clock time or any penalty's time cannot be computed (the
+    /// same failures that make `generate_snapshot` return `None`).
+    pub fn live_details(&self, now: Instant) -> Option<LiveDetails> {
+        let cur_time = self.game_clock_time(now)?;
+
+        let recent_goal = match self.recent_goal {
+            Some((color, cap, goal_per, goal_time))
+                if recent_goal_showing(goal_per, goal_time, self.current_period, cur_time) =>
+            {
+                Some((color, cap, goal_time.as_secs().try_into().ok()?))
+            }
+            _ => None,
+        };
+
+        let mut penalties = Vec::new();
+        for color in [Color::Black, Color::White] {
+            for p in &self.penalties[color] {
+                let snapshot = p
+                    .as_snapshot(self.current_period, cur_time, &self.config)
+                    .ok()?;
+                penalties.push(EnginePenalty {
+                    team: color,
+                    cap: p.player_number,
+                    kind: p.kind,
+                    time: snapshot.time,
+                    given: (p.start_period, p.start_time),
+                });
+            }
+        }
+
+        let team_timeout_running = match &self.timeout_state {
+            Some(TimeoutState::Team(_, cs)) => Some(cs.is_running()),
+            _ => None,
+        };
+
+        Some(LiveDetails {
+            recent_goal,
+            penalties,
+            team_timeout_running,
         })
     }
 
@@ -12377,5 +12433,151 @@ mod test {
         tm.set_no_next_game();
         tm.set_period_and_game_clock_time(GamePeriod::HalfTime, Duration::from_secs(15));
         assert!(tm.start_play_now(Instant::now()).is_ok());
+    }
+
+    // Live Updates v3: the read of what the snapshot does not carry.
+
+    #[test]
+    fn live_details_lists_every_penalty_with_kind_and_time() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(500));
+        tm.start_game_clock(start);
+        let inf = Infraction::Unknown;
+        tm.start_penalty(Color::Black, 4, PenaltyKind::TwoMinute, start, inf)
+            .unwrap();
+        tm.start_penalty(Color::Black, 5, PenaltyKind::TotalDismissal, start, inf)
+            .unwrap();
+        tm.start_penalty(Color::White, 11, PenaltyKind::ThirtySecond, start, inf)
+            .unwrap();
+
+        let later = start + Duration::from_secs(40);
+        let given = (GamePeriod::FirstHalf, Duration::from_secs(500));
+        let details = tm.live_details(later).unwrap();
+        assert_eq!(
+            details.penalties,
+            vec![
+                EnginePenalty {
+                    team: Color::Black,
+                    cap: 4,
+                    kind: PenaltyKind::TwoMinute,
+                    time: PenaltyTime::Seconds(80),
+                    given,
+                },
+                EnginePenalty {
+                    team: Color::Black,
+                    cap: 5,
+                    kind: PenaltyKind::TotalDismissal,
+                    time: PenaltyTime::TotalDismissal,
+                    given,
+                },
+                EnginePenalty {
+                    team: Color::White,
+                    cap: 11,
+                    kind: PenaltyKind::ThirtySecond,
+                    time: PenaltyTime::Seconds(0),
+                    given,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn live_details_goal_carries_clock_and_expires_with_the_stream() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(480));
+        tm.start_game_clock(start);
+        let goal_at = start + Duration::from_secs(10); // clock 470
+        tm.add_score(Color::White, 7, goal_at);
+
+        assert_eq!(
+            tm.live_details(goal_at).unwrap().recent_goal,
+            Some((Color::White, 7, 470))
+        );
+
+        for (secs_later, showing) in [(14, true), (16, false)] {
+            let t = goal_at + Duration::from_secs(secs_later);
+            // Read before `generate_snapshot`, which clears the stored goal on expiry: the
+            // live read must not depend on that having run.
+            let live = tm.live_details(t).unwrap().recent_goal;
+            assert_eq!(live.is_some(), showing, "live_details at +{secs_later} s");
+            if showing {
+                assert_eq!(live, Some((Color::White, 7, 470)));
+            }
+            assert_eq!(
+                tm.generate_snapshot(t).unwrap().recent_goal.is_some(),
+                live.is_some(),
+                "generate_snapshot disagrees with live_details at +{secs_later} s"
+            );
+            assert_eq!(tm.live_details(t).unwrap().recent_goal, live);
+        }
+    }
+
+    #[test]
+    fn live_details_goal_survives_a_stopped_clock() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(480));
+        tm.start_game_clock(start);
+        let goal_at = start + Duration::from_secs(10);
+        tm.add_score(Color::White, 7, goal_at);
+        tm.stop_clock(goal_at).unwrap();
+
+        let later = goal_at + Duration::from_secs(60);
+        assert_eq!(
+            tm.live_details(later).unwrap().recent_goal,
+            Some((Color::White, 7, 470))
+        );
+    }
+
+    #[test]
+    fn live_details_goal_cleared_by_next_period() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(5));
+        tm.start_game_clock(start);
+        let goal_at = start + Duration::from_secs(1); // clock 4
+        tm.add_score(Color::Black, 3, goal_at);
+        assert!(tm.live_details(goal_at).unwrap().recent_goal.is_some());
+
+        let later = start + Duration::from_secs(6);
+        tm.update(later).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::HalfTime);
+        assert_eq!(tm.live_details(later).unwrap().recent_goal, None);
+    }
+
+    #[test]
+    fn live_details_team_timeout_running_reports_team_clock() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(500));
+        tm.start_game_clock(start);
+        assert_eq!(tm.live_details(start).unwrap().team_timeout_running, None);
+
+        let to_at = start + Duration::from_secs(5);
+        tm.start_team_timeout(Color::White, to_at).unwrap();
+        assert_eq!(
+            tm.live_details(to_at).unwrap().team_timeout_running,
+            Some(true)
+        );
+
+        let stopped_at = to_at + Duration::from_secs(5);
+        tm.stop_clock(stopped_at).unwrap();
+        assert_eq!(
+            tm.live_details(stopped_at).unwrap().team_timeout_running,
+            Some(false)
+        );
+
+        let ended_at = stopped_at + Duration::from_secs(1);
+        tm.end_timeout(ended_at).unwrap();
+        let ref_at = ended_at + Duration::from_secs(1);
+        tm.start_ref_timeout(ref_at).unwrap();
+        assert_eq!(tm.live_details(ref_at).unwrap().team_timeout_running, None);
     }
 }

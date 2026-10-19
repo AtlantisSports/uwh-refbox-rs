@@ -2,10 +2,13 @@
 //! portal. Pure: no I/O here, only the decision.
 
 pub mod sender;
+pub mod stats_sender;
+#[cfg(test)]
+mod test_portal;
 
 use crate::{
     config::{GameSource, Mode, effective_live_updates},
-    tournament_manager::{EnginePenalty, LiveDetails, penalty::PenaltyKind},
+    tournament_manager::{EnginePenalty, LiveDetails, RunningStats, penalty::PenaltyKind},
 };
 use std::{num::NonZeroU16, time::Duration};
 use uwh_common::{
@@ -37,6 +40,27 @@ pub struct LiveFrame {
     /// `None` when the engine read failed: the penalties are unknown, which is
     /// not the same as none.
     pub penalty_key: Option<Vec<PenaltyIdentity>>,
+}
+
+/// One in-play stats list ready to send: where it goes and what it says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatsFrame {
+    pub site: String,
+    pub event: EventId,
+    /// Always the game in play, never the next one.
+    pub game: GameNumber,
+    pub list: RunningStats,
+}
+
+impl StatsFrame {
+    /// Whether `other` is the same list for the same game. Compares the list's key, never its
+    /// body, whose `occurredOn` times differ on every build.
+    pub fn same_list(&self, other: &StatsFrame) -> bool {
+        self.site == other.site
+            && self.event == other.event
+            && self.game == other.game
+            && self.list.key == other.list.key
+    }
 }
 
 /// What makes a penalty the same penalty from one frame to the next. Its time
@@ -103,6 +127,33 @@ fn penalty_identity(p: &EnginePenalty) -> PenaltyIdentity {
     }
 }
 
+/// The event to send for, or `None` when the v2 send conditions do not hold: Live Updates on, a
+/// source and mode that send, and an event. Both [`live_frame`] and [`stats_frame`] start here.
+fn send_event<'a>(i: &LiveInputs<'a>) -> Option<&'a EventId> {
+    if !effective_live_updates(i.stored_enabled, i.mode, i.source) {
+        return None;
+    }
+    i.event
+}
+
+/// The in-play stats list this refbox should be sending now, or `None` when it should send none:
+/// only under [`live_frame`]'s send conditions, only while a game is in play (never
+/// `BetweenGames`), and only for a real raw `game_number` -- the game in play.
+pub fn stats_frame(i: &LiveInputs, stats: Option<&RunningStats>) -> Option<StatsFrame> {
+    let event = send_event(i)?;
+    let list = stats?;
+    let game = &i.snapshot.game_number;
+    if i.snapshot.current_period == GamePeriod::BetweenGames || !is_real(game) {
+        return None;
+    }
+    Some(StatsFrame {
+        site: i.site.to_string(),
+        event: event.clone(),
+        game: game.clone(),
+        list: list.clone(),
+    })
+}
+
 /// A game number names a real game when it is neither blank nor `"0"`.
 fn is_real(number: &str) -> bool {
     !number.is_empty() && number != "0"
@@ -115,10 +166,7 @@ fn is_real(number: &str) -> bool {
 /// `GameSnapshot::game_number()`, which substitutes the next number between
 /// games.
 pub fn live_frame(i: &LiveInputs) -> Option<LiveFrame> {
-    if !effective_live_updates(i.stored_enabled, i.mode, i.source) {
-        return None;
-    }
-    let event = i.event?;
+    let event = send_event(i)?;
     let snapshot = i.snapshot;
     let current = &snapshot.game_number;
     let next = &snapshot.next_game_number;
@@ -622,6 +670,161 @@ mod tests {
             ..inputs(&snap, &ev)
         };
         assert_eq!(live_frame(&no_event), None, "no event");
+    }
+
+    fn list(key: &str, body: &str) -> RunningStats {
+        RunningStats {
+            body: body.to_string(),
+            key: key.to_string(),
+        }
+    }
+
+    #[test]
+    fn stats_frame_none_when_off_manual_custom_rugby_beeptest_or_no_event() {
+        let snap = snapshot(GamePeriod::FirstHalf, "5", "6", 300);
+        let ev = event();
+        let stats = list("[]", "[]");
+        let base = || inputs(&snap, &ev);
+        assert!(
+            stats_frame(&base(), Some(&stats)).is_some(),
+            "baseline sends"
+        );
+        assert_eq!(stats_frame(&base(), None), None, "no list");
+
+        let cases = [
+            (
+                LiveInputs {
+                    stored_enabled: false,
+                    ..base()
+                },
+                "setting off",
+            ),
+            (
+                LiveInputs {
+                    source: GameSource::Manual,
+                    ..base()
+                },
+                "manual source",
+            ),
+            (
+                LiveInputs {
+                    source: GameSource::Custom,
+                    ..base()
+                },
+                "custom site",
+            ),
+            (
+                LiveInputs {
+                    mode: Mode::Rugby,
+                    ..base()
+                },
+                "rugby",
+            ),
+            (
+                LiveInputs {
+                    mode: Mode::BeepTest,
+                    ..base()
+                },
+                "beep test",
+            ),
+            (
+                LiveInputs {
+                    event: None,
+                    ..base()
+                },
+                "no event",
+            ),
+        ];
+        for (i, why) in cases {
+            assert_eq!(stats_frame(&i, Some(&stats)), None, "{why}");
+        }
+    }
+
+    #[test]
+    fn stats_frame_none_between_games() {
+        let ev = event();
+        let stats = list("[]", "[]");
+        // A real current and next game both: the break still sends no list.
+        let snap = snapshot(GamePeriod::BetweenGames, "5", "6", 120);
+        assert_eq!(stats_frame(&inputs(&snap, &ev), Some(&stats)), None);
+        let snap = snapshot(GamePeriod::BetweenGames, "5", "", 120);
+        assert_eq!(stats_frame(&inputs(&snap, &ev), Some(&stats)), None);
+    }
+
+    #[test]
+    fn stats_frame_none_for_unreal_game_number() {
+        let ev = event();
+        let stats = list("[]", "[]");
+        for current in ["", "0"] {
+            // A real next number must not stand in for the game in play.
+            let snap = snapshot(GamePeriod::FirstHalf, current, "6", 300);
+            assert_eq!(
+                stats_frame(&inputs(&snap, &ev), Some(&stats)),
+                None,
+                "game number {current:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn stats_frame_names_current_game() {
+        let ev = event();
+        let stats = list("[{\"k\":1}]", "[{\"k\":1,\"t\":\"x\"}]");
+        for period in [
+            GamePeriod::FirstHalf,
+            GamePeriod::HalfTime,
+            GamePeriod::SecondHalf,
+            GamePeriod::SuddenDeath,
+        ] {
+            let snap = snapshot(period, "5", "6", 300);
+            assert_eq!(
+                stats_frame(&inputs(&snap, &ev), Some(&stats)),
+                Some(StatsFrame {
+                    site: SITE.to_string(),
+                    event: event(),
+                    game: "5".to_string(),
+                    list: stats.clone(),
+                }),
+                "{period:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn same_list_ignores_body() {
+        let base = StatsFrame {
+            site: SITE.to_string(),
+            event: event(),
+            game: "5".to_string(),
+            list: list("K", "body one"),
+        };
+        let other_body = StatsFrame {
+            list: list("K", "body two"),
+            ..base.clone()
+        };
+        assert!(base.same_list(&other_body), "same key, different body");
+
+        let different = [
+            StatsFrame {
+                list: list("K2", "body one"),
+                ..base.clone()
+            },
+            StatsFrame {
+                game: "6".to_string(),
+                ..base.clone()
+            },
+            StatsFrame {
+                event: EventId::from_partial("1890-C"),
+                ..base.clone()
+            },
+            StatsFrame {
+                site: "https://other.example".to_string(),
+                ..base.clone()
+            },
+        ];
+        for d in &different {
+            assert!(!base.same_list(d), "{d:?}");
+        }
     }
 
     #[test]

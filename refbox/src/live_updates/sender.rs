@@ -13,6 +13,7 @@ use crate::portal_manager::{SharedAccessKeys, SharedUwhPortalClient};
 use log::{debug, info, warn};
 use std::{error::Error, future::Future, time::Duration};
 use tokio::{sync::watch, time::Instant};
+use uwh_common::uwhportal::{UwhPortalClient, schedule::EventId};
 
 /// How often an unchanged frame is re-sent, and how long one send may take.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +47,7 @@ async fn run(
     // completes -- success, failure or skip alike -- so a failure waits for a change or the next
     // heartbeat rather than being retried at once, and a skip does not spin the loop.
     let mut last_sent: Option<(LiveFrame, Instant)> = None;
-    let mut log = FailureLog::default();
+    let mut log = FailureLog::new(LogWording::LIVE);
 
     loop {
         // Cloned out at once: the borrow holds the channel's lock and must not cross an await.
@@ -72,12 +73,7 @@ async fn run(
                 Ok(send) => send.await.map_err(|why| classify(why.as_ref())),
                 Err(skip) => Err(skip),
             };
-            match log.record(outcome, Instant::now()) {
-                Some(LogLine::Warn(text)) => warn!("{text}"),
-                Some(LogLine::Info(text)) => info!("{text}"),
-                Some(LogLine::Debug(text)) => debug!("{text}"),
-                None => {}
-            }
+            write_log(log.record(outcome, Instant::now()));
             last_sent = Some((frame, started));
             continue;
         }
@@ -95,36 +91,61 @@ async fn run(
     }
 }
 
+/// Write a line the failure log asked for, at its level.
+pub(super) fn write_log(line: Option<LogLine>) {
+    match line {
+        Some(LogLine::Warn(text)) => warn!("{text}"),
+        Some(LogLine::Info(text)) => info!("{text}"),
+        Some(LogLine::Debug(text)) => debug!("{text}"),
+        None => {}
+    }
+}
+
 /// Build the send for `frame`, or say why it cannot be sent.
-///
-/// Both locks are taken keys first, then client -- the order `UwhPortalIo::request_for` and
-/// `repoint_client` use, which keeps the pair free of deadlock and keeps a departing site's key
-/// off the client now pointing at the new one. Both guards drop when this returns, before the
-/// send is awaited.
 fn build_send(
     client: &SharedUwhPortalClient,
     keys: &SharedAccessKeys,
     frame: &LiveFrame,
     timeout: Duration,
 ) -> Result<impl Future<Output = Result<(), Box<dyn Error>>> + use<>, Failure> {
+    keyed_send(client, keys, &frame.site, &frame.event, |client, key| {
+        client.put_live_game(key, &frame.event, &frame.game, &frame.state, timeout)
+    })
+}
+
+/// Look up the access key for `event` on `site`, and build a request with it through `f`, or say
+/// why it cannot be built.
+///
+/// Both locks are taken keys first, then client -- the order `UwhPortalIo::request_for` and
+/// `repoint_client` use, which keeps the pair free of deadlock and keeps a departing site's key
+/// off the client now pointing at the new one. Both guards drop when this returns, so `f` must
+/// only build the request; whatever it returns is awaited after the locks are released.
+pub(super) fn keyed_send<F, T>(
+    client: &SharedUwhPortalClient,
+    keys: &SharedAccessKeys,
+    site: &str,
+    event: &EventId,
+    f: F,
+) -> Result<T, Failure>
+where
+    F: FnOnce(&UwhPortalClient, &str) -> Result<T, Box<dyn Error>>,
+{
     // why this cannot panic: `unwrap_or_else(into_inner)` keeps the task alive even if a writer
     // panicked while holding either lock.
     let keys = keys.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    if keys.site() != frame.site {
+    if keys.site() != site {
         return Err(Failure::SiteChanged);
     }
-    let key = keys.key_for(&frame.event).ok_or(Failure::NoKey)?;
+    let key = keys.key_for(event).ok_or(Failure::NoKey)?;
     let client = client
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    client
-        .put_live_game(key, &frame.event, &frame.game, &frame.state, timeout)
-        .map_err(|why| Failure::Unbuildable(bounded(&why.to_string())))
+    f(&client, key).map_err(|why| Failure::Unbuildable(bounded(&why.to_string())))
 }
 
 /// Turn a send's error into an owned [`Failure`], so nothing borrowed or unsendable outlives the
 /// await that produced it.
-fn classify(why: &(dyn Error + 'static)) -> Failure {
+pub(super) fn classify(why: &(dyn Error + 'static)) -> Failure {
     if let Some(transport) = why.downcast_ref::<reqwest::Error>() {
         if transport.is_timeout() {
             Failure::Timeout
@@ -236,10 +257,42 @@ pub enum LogLine {
 /// recovery lines. A link that flaps all day logs a few lines an hour, not one every heartbeat.
 pub const LOG_QUIET_WINDOW: Duration = Duration::from_secs(600);
 
+/// What a [`FailureLog`]'s lines say, so each sender names what it sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogWording {
+    /// Starts the warning, before ": {why}".
+    failed: &'static str,
+    /// Starts the recovery line, before " ({n} {counted})".
+    recovered: &'static str,
+    /// What the recovery line's count counts.
+    counted: &'static str,
+    /// Starts the line for a send condition not met, before ": {why}".
+    skipped: &'static str,
+}
+
+impl LogWording {
+    /// The live-games sender: a failed send is dropped.
+    pub const LIVE: Self = Self {
+        failed: "live update to the portal failed, and is dropped",
+        recovered: "live updates to the portal are getting through again",
+        counted: "live updates dropped",
+        skipped: "live update to the portal not sent",
+    };
+
+    /// The in-play stats sender: a failed send is retried.
+    pub const STATS: Self = Self {
+        failed: "in-play stats to the portal failed, and will be retried",
+        recovered: "in-play stats to the portal are getting through again",
+        counted: "failed attempts",
+        skipped: "in-play stats to the portal not sent",
+    };
+}
+
 /// Logs each kind of failure the first time it is seen and then at most once per
 /// [`LOG_QUIET_WINDOW`], and the recovery at most once per window, instead of every heartbeat.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct FailureLog {
+    wording: LogWording,
     /// When each kind of failure was last logged.
     logged: Vec<(FailureKind, Instant)>,
     /// Sends that failed since the last recovery line.
@@ -249,6 +302,15 @@ pub struct FailureLog {
 }
 
 impl FailureLog {
+    pub fn new(wording: LogWording) -> Self {
+        Self {
+            wording,
+            logged: Vec::new(),
+            dropped: 0,
+            last_recovery: None,
+        }
+    }
+
     pub fn record(&mut self, outcome: Result<(), Failure>, now: Instant) -> Option<LogLine> {
         let quiet = |since: Instant| now.saturating_duration_since(since) < LOG_QUIET_WINDOW;
         match outcome {
@@ -259,14 +321,15 @@ impl FailureLog {
                 let dropped = std::mem::take(&mut self.dropped);
                 self.last_recovery = Some(now);
                 Some(LogLine::Info(format!(
-                    "live updates to the portal are getting through again \
-                     ({dropped} live updates dropped)"
+                    "{} ({dropped} {})",
+                    self.wording.recovered, self.wording.counted
                 )))
             }
             // A send condition not met is not a failure: it is neither warned about nor counted
             // as dropped.
             Err(skip @ (Failure::SiteChanged | Failure::NoKey)) => Some(LogLine::Debug(format!(
-                "live update to the portal not sent: {}",
+                "{}: {}",
+                self.wording.skipped,
                 skip.describe()
             ))),
             Err(failure) => {
@@ -278,7 +341,8 @@ impl FailureLog {
                     None => self.logged.push((kind, now)),
                 }
                 Some(LogLine::Warn(format!(
-                    "live update to the portal failed, and is dropped: {}",
+                    "{}: {}",
+                    self.wording.failed,
                     failure.describe()
                 )))
             }
@@ -288,189 +352,15 @@ impl FailureLog {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_portal::{Portal, Reply, answer_at_once, event, portal, shared};
     use super::*;
-    use crate::config::AccessKey;
-    use crate::portal_manager::SiteAccessKeys;
-    use std::sync::{
-        Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
-    };
-    use tokio::{
-        io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-        net::{TcpListener, TcpStream},
-        sync::mpsc,
-        time::Instant,
-    };
+    use std::sync::{Arc, atomic::Ordering};
+    use tokio::time::Instant;
     use uwh_common::{
         bundles::BlackWhiteBundle,
         game_snapshot::GamePeriod,
-        uwhportal::{
-            UwhPortalClient,
-            live::{LiveGameState, LiveScores},
-            schedule::EventId,
-        },
+        uwhportal::live::{LiveGameState, LiveScores},
     };
-
-    const KEY: &str = "KEY-LIVE";
-
-    /// How the fake portal answers the request with this index (0-based).
-    #[derive(Clone, Copy)]
-    enum Reply {
-        /// Answer `204 No Content` after holding the request this long.
-        After(Duration),
-        /// Answer at once with this status line and a short body.
-        Status(&'static str),
-        /// Never answer.
-        Hang,
-    }
-
-    struct Recorded {
-        at: Instant,
-        method: String,
-        path: String,
-        authorization: Option<String>,
-        body: String,
-    }
-
-    struct Portal {
-        site: String,
-        requests: mpsc::UnboundedReceiver<Recorded>,
-        max_in_flight: Arc<AtomicUsize>,
-    }
-
-    impl Portal {
-        /// The next request, if one arrives within `within`.
-        async fn next(&mut self, within: Duration) -> Option<Recorded> {
-            tokio::time::timeout(within, self.requests.recv())
-                .await
-                .ok()
-                .flatten()
-        }
-
-        /// Every request that arrives within `within`.
-        async fn all_within(&mut self, within: Duration) -> Vec<Recorded> {
-            let deadline = Instant::now() + within;
-            let mut got = Vec::new();
-            while let Ok(Some(r)) = tokio::time::timeout_at(deadline, self.requests.recv()).await {
-                got.push(r);
-            }
-            got
-        }
-    }
-
-    /// A fake portal on a loopback port. `reply` decides, per request (its index and path), how it
-    /// answers.
-    async fn portal(reply: impl Fn(usize, &str) -> Reply + Send + Sync + 'static) -> Portal {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let site = format!("http://{}", listener.local_addr().unwrap());
-        let (tx, requests) = mpsc::unbounded_channel();
-        let max_in_flight = Arc::new(AtomicUsize::new(0));
-        let in_flight = Arc::new(AtomicUsize::new(0));
-        let count = Arc::new(AtomicUsize::new(0));
-        let reply = Arc::new(reply);
-        let max = max_in_flight.clone();
-        tokio::spawn(async move {
-            loop {
-                let Ok((stream, _)) = listener.accept().await else {
-                    return;
-                };
-                let (tx, reply, count, in_flight, max) = (
-                    tx.clone(),
-                    reply.clone(),
-                    count.clone(),
-                    in_flight.clone(),
-                    max.clone(),
-                );
-                tokio::spawn(async move {
-                    serve(stream, tx, reply, count, in_flight, max).await;
-                });
-            }
-        });
-        Portal {
-            site,
-            requests,
-            max_in_flight,
-        }
-    }
-
-    /// Serve one connection, request after request (the client keeps connections open).
-    async fn serve(
-        stream: TcpStream,
-        tx: mpsc::UnboundedSender<Recorded>,
-        reply: Arc<impl Fn(usize, &str) -> Reply>,
-        count: Arc<AtomicUsize>,
-        in_flight: Arc<AtomicUsize>,
-        max: Arc<AtomicUsize>,
-    ) {
-        let mut stream = BufReader::new(stream);
-        loop {
-            let mut request_line = String::new();
-            if stream.read_line(&mut request_line).await.unwrap_or(0) == 0 {
-                return;
-            }
-            let mut parts = request_line.split_whitespace();
-            let method = parts.next().unwrap_or_default().to_string();
-            let path = parts.next().unwrap_or_default().to_string();
-            let mut length = 0;
-            let mut authorization = None;
-            loop {
-                let mut line = String::new();
-                if stream.read_line(&mut line).await.unwrap_or(0) == 0 {
-                    return;
-                }
-                let line = line.trim_end();
-                if line.is_empty() {
-                    break;
-                }
-                if let Some((name, value)) = line.split_once(':') {
-                    let value = value.trim().to_string();
-                    match name.to_ascii_lowercase().as_str() {
-                        "content-length" => length = value.parse().unwrap(),
-                        "authorization" => authorization = Some(value),
-                        _ => {}
-                    }
-                }
-            }
-            let mut body = vec![0; length];
-            stream.read_exact(&mut body).await.unwrap();
-
-            let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
-            max.fetch_max(now, Ordering::SeqCst);
-            let index = count.fetch_add(1, Ordering::SeqCst);
-            let reply = reply(index, &path);
-            let _ = tx.send(Recorded {
-                at: Instant::now(),
-                method,
-                path,
-                authorization,
-                body: String::from_utf8(body).unwrap(),
-            });
-            let answer = match reply {
-                Reply::Hang => std::future::pending::<String>().await,
-                Reply::After(hold) => {
-                    tokio::time::sleep(hold).await;
-                    "HTTP/1.1 204 No Content\r\n\r\n".to_string()
-                }
-                Reply::Status(status) => {
-                    format!("HTTP/1.1 {status}\r\ncontent-length: 4\r\n\r\nboom")
-                }
-            };
-            // Out of flight before the answer is written, so the client cannot start its next
-            // request while this one still counts.
-            in_flight.fetch_sub(1, Ordering::SeqCst);
-            if stream.get_mut().write_all(answer.as_bytes()).await.is_err() {
-                return;
-            }
-        }
-    }
-
-    fn answer_at_once(_: usize, _: &str) -> Reply {
-        Reply::After(Duration::ZERO)
-    }
-
-    fn event() -> EventId {
-        EventId::from_partial("1889-B")
-    }
 
     fn state(black: u8) -> LiveGameState {
         LiveGameState {
@@ -500,21 +390,6 @@ mod tests {
             heartbeat: Duration::from_millis(heartbeat_ms),
             request_timeout: Duration::from_millis(timeout_ms),
         }
-    }
-
-    /// The shared client and key store, pointed at `site`, holding a key for `key_site`.
-    fn shared(site: &str, key_site: &str) -> (SharedUwhPortalClient, SharedAccessKeys) {
-        let client = UwhPortalClient::new(site, None, false, Duration::from_secs(10)).unwrap();
-        let mut keys = SiteAccessKeys::default();
-        keys.publish(
-            key_site.to_string(),
-            vec![AccessKey {
-                site: key_site.to_string(),
-                event: event(),
-                key: KEY.to_string(),
-            }],
-        );
-        (Arc::new(Mutex::new(client)), Arc::new(Mutex::new(keys)))
     }
 
     /// Start a sender against `portal` with `first` as its frame.
@@ -708,7 +583,7 @@ mod tests {
             status: "500 Internal Server Error".to_string(),
             body: body.to_string(),
         };
-        let mut log = FailureLog::default();
+        let mut log = FailureLog::new(LogWording::LIVE);
         let lines: Vec<_> = (0..10)
             .filter_map(|i| log.record(Err(rejected(&format!("trace {i}"))), now))
             .collect();
@@ -730,7 +605,7 @@ mod tests {
     #[test]
     fn first_success_logs_nothing_and_long_bodies_are_bounded() {
         let now = Instant::now();
-        let mut log = FailureLog::default();
+        let mut log = FailureLog::new(LogWording::LIVE);
         assert_eq!(log.record(Ok(()), now), None);
         let line = log.record(
             Err(Failure::Rejected {
@@ -750,7 +625,7 @@ mod tests {
     #[test]
     fn flapping_kinds_log_each_kind_once_per_window() {
         let start = Instant::now();
-        let mut log = FailureLog::default();
+        let mut log = FailureLog::new(LogWording::LIVE);
         let warns = (0..20)
             .filter_map(|i| {
                 let failure = if i % 2 == 0 {
@@ -769,7 +644,7 @@ mod tests {
     #[test]
     fn flapping_fail_succeed_logs_once_per_window() {
         let start = Instant::now();
-        let mut log = FailureLog::default();
+        let mut log = FailureLog::new(LogWording::LIVE);
         let lines: Vec<_> = (0..20)
             .filter_map(|i| {
                 let outcome = if i % 2 == 0 {
@@ -791,7 +666,7 @@ mod tests {
     #[test]
     fn kind_relogged_after_window() {
         let start = Instant::now();
-        let mut log = FailureLog::default();
+        let mut log = FailureLog::new(LogWording::LIVE);
         assert!(log.record(Err(Failure::Timeout), start).is_some());
         assert_eq!(
             log.record(Err(Failure::Timeout), start + Duration::from_secs(599)),
@@ -801,6 +676,57 @@ mod tests {
             log.record(Err(Failure::Timeout), start + Duration::from_secs(601)),
             Some(LogLine::Warn(_))
         ));
+    }
+
+    /// The live wording, line for line, and the stats wording saying a failure is retried.
+    #[test]
+    fn stats_wording_says_retried() {
+        let now = Instant::now();
+        let lines = |wording| {
+            let mut log = FailureLog::new(wording);
+            [
+                log.record(Err(Failure::NoKey), now),
+                log.record(Err(Failure::Timeout), now),
+                log.record(Ok(()), now),
+            ]
+        };
+        assert_eq!(
+            lines(LogWording::LIVE),
+            [
+                Some(LogLine::Debug(
+                    "live update to the portal not sent: no access key is held for this event"
+                        .to_string()
+                )),
+                Some(LogLine::Warn(
+                    "live update to the portal failed, and is dropped: \
+                     the portal did not answer in time"
+                        .to_string()
+                )),
+                Some(LogLine::Info(
+                    "live updates to the portal are getting through again \
+                     (1 live updates dropped)"
+                        .to_string()
+                )),
+            ]
+        );
+        assert_eq!(
+            lines(LogWording::STATS),
+            [
+                Some(LogLine::Debug(
+                    "in-play stats to the portal not sent: no access key is held for this event"
+                        .to_string()
+                )),
+                Some(LogLine::Warn(
+                    "in-play stats to the portal failed, and will be retried: \
+                     the portal did not answer in time"
+                        .to_string()
+                )),
+                Some(LogLine::Info(
+                    "in-play stats to the portal are getting through again (1 failed attempts)"
+                        .to_string()
+                )),
+            ]
+        );
     }
 
     #[test]
@@ -835,7 +761,7 @@ mod tests {
     #[test]
     fn missing_key_is_not_logged_as_a_failure() {
         let now = Instant::now();
-        let mut log = FailureLog::default();
+        let mut log = FailureLog::new(LogWording::LIVE);
         for skip in [Failure::NoKey, Failure::SiteChanged, Failure::NoKey] {
             let line = log.record(Err(skip), now);
             assert!(matches!(line, Some(LogLine::Debug(_))), "{line:?}");

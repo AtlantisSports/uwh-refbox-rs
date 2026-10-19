@@ -75,10 +75,11 @@ event = VERANSTALTUNG:
 track-fouls-and-warnings = FOULS UND
     VERWARNUNGEN ERFASSEN
 show-behind-schedule-time = VERZÖGERUNG ANZEIGEN
-show-countdown-for-last-10-seconds = COUNTDOWN DER
-    LETZTEN 10 SEKUNDEN
+show-countdown-for-last-10-seconds = COUNTDOWN ANZEIGEN
 audible-countdown-for-last-10-seconds = AKUSTISCHER COUNTDOWN
-    10 SEKUNDEN
+last-10-seconds-countdown = COUNTDOWN DER
+    LETZTEN 10 SEKUNDEN
+live-updates = LIVE-UPDATES
 delay = VERZÖGERUNG
 court = FELD:
 court-count = {$count ->

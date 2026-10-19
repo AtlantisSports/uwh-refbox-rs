@@ -74,9 +74,10 @@ track-fouls-and-warnings = TRACK FOULS
     AND WARNINGS
 show-behind-schedule-time = SHOW BEHIND TIME/DELAY
 show-countdown-for-last-10-seconds = SHOW COUNTDOWN
-    FOR LAST 10 SECONDS
 audible-countdown-for-last-10-seconds = AUDIBLE COUNTDOWN
-    FOR LAST 10 SECONDS
+last-10-seconds-countdown = LAST 10 SECONDS
+    COUNTDOWN
+live-updates = LIVE UPDATES
 delay = DELAY
 court = COURT:
 court-count = {$count ->

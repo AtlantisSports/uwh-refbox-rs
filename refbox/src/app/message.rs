@@ -155,6 +155,10 @@ pub enum Message {
     CancelConfigPage(ConfigPage),
     ConfigEditComplete,
     EditParameter(LengthParameter),
+    /// Open the LAST 10 SECONDS COUNTDOWN page from App Options. It stages
+    /// SHOW COUNTDOWN and AUDIBLE COUNTDOWN, and `ParameterEditComplete` closes
+    /// it, like the length editors.
+    EditCountdown,
     SelectParameter(ListableParameter),
     ParameterEditComplete {
         canceled: bool,
@@ -448,6 +452,7 @@ impl Message {
             | Self::CancelConfigPage(_)
             | Self::ConfigEditComplete
             | Self::EditParameter(_)
+            | Self::EditCountdown
             | Self::SelectParameter(_)
             | Self::ParameterEditComplete { .. }
             | Self::ParameterSelected(_, _)
@@ -549,6 +554,7 @@ impl PartialEq for Message {
             | (Self::PortalRetryAll, Self::PortalRetryAll)
             | (Self::ShowWarnings, Self::ShowWarnings)
             | (Self::ShowParameterHelp, Self::ShowParameterHelp)
+            | (Self::EditCountdown, Self::EditCountdown)
             | (Self::CloseParameterHelp, Self::CloseParameterHelp)
             | (Self::EditGameConfig, Self::EditGameConfig)
             | (Self::ConfigEditComplete, Self::ConfigEditComplete)
@@ -805,6 +811,7 @@ impl PartialEq for Message {
             | (Self::CancelConfigPage(_), _)
             | (Self::ConfigEditComplete, _)
             | (Self::EditParameter(_), _)
+            | (Self::EditCountdown, _)
             | (Self::SelectParameter(_), _)
             | (Self::ParameterEditComplete { .. }, _)
             | (Self::ParameterSelected(_, _), _)

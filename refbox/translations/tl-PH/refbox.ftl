@@ -76,9 +76,10 @@ track-fouls-and-warnings = SUBAYBAYAN ANG POUL
     AT BABALA
 show-behind-schedule-time = IPAKITA PAGKAHULI
 show-countdown-for-last-10-seconds = IPAKITA COUNTDOWN
-    HULING 10 SEGUNDO
 audible-countdown-for-last-10-seconds = COUNTDOWN NA TUNOG
+last-10-seconds-countdown = COUNTDOWN SA
     HULING 10 SEGUNDO
+live-updates = LIVE NA UPDATE
 delay = ANTALA
 court = KORTE:
 court-count = {$count} KORTE

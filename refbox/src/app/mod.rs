@@ -353,6 +353,13 @@ enum AppState {
     // it commits on Done and is discarded on Cancel, like the edited Duration.
     ParameterEditor(LengthParameter, Duration, bool),
     ParameterEditorHelp(LengthParameter, Duration, bool),
+    /// The LAST 10 SECONDS COUNTDOWN page, reached from App Options. Holds the
+    /// two switches it stages: they reach the App page's edit on APPLY and are
+    /// dropped on CANCEL, like a length editor's Duration.
+    CountdownEditor {
+        show_countdown: bool,
+        audible_countdown: bool,
+    },
     ParameterList(ListableParameter, usize),
     ConfirmationPage(ConfirmationKind),
     ConfirmScores(BlackWhiteBundle<u8>),
@@ -5866,6 +5873,17 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
+            Message::EditCountdown => {
+                // why this cannot panic: EditCountdown is sent only by a tile on
+                // App Options, which is drawn from `edited_settings`.
+                //
+                // The App page's entry snapshot is deliberately left alone, here
+                // and on the way back: it is what APPLY on App Options compares
+                // against to see the staged countdown change.
+                self.app_state = countdown_editor_for(self.edited_settings.as_ref().unwrap());
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
             Message::SelectParameter(param) => {
                 let index = match param {
                     ListableParameter::Event => Some(0),
@@ -5962,6 +5980,14 @@ impl RefBoxApp {
                                 .expect("PortalLogin keypad reachable only with a linked event");
                             task = self.request_uwhportal_token(&event_id, code);
                         }
+                        AppState::CountdownEditor {
+                            show_countdown,
+                            audible_countdown,
+                        } => stage_countdown_edit(
+                            self.edited_settings.as_mut().unwrap(),
+                            show_countdown,
+                            audible_countdown,
+                        ),
                         _ => unreachable!(),
                     }
                 }
@@ -5978,6 +6004,11 @@ impl RefBoxApp {
                     AppState::ParameterEditor(_, _, _) => {
                         AppState::EditGameConfig(ConfigPage::Game)
                     }
+                    // Set directly, not through a page change: re-capturing the
+                    // App page's entry snapshot here would make the staged
+                    // countdown change look like no change, and APPLY would
+                    // never enable.
+                    AppState::CountdownEditor { .. } => AppState::EditGameConfig(ConfigPage::App),
                     AppState::KeypadPage(KeypadPage::GameNumber(_), _) => {
                         AppState::EditGameConfig(ConfigPage::Game)
                     }
@@ -6165,6 +6196,16 @@ impl RefBoxApp {
                         } else {
                             unreachable!()
                         }
+                        trace!("AppState changed to {:?}", self.app_state)
+                    }
+
+                    // Staged inside the LAST 10 SECONDS COUNTDOWN page, like
+                    // SingleHalf below: they commit on its APPLY and are
+                    // discarded on its CANCEL. That page is their only sender.
+                    BoolGameParameter::HideTime | BoolGameParameter::AudibleCountdown
+                        if matches!(self.app_state, AppState::CountdownEditor { .. }) =>
+                    {
+                        toggle_countdown_editor(&mut self.app_state, param);
                         trace!("AppState changed to {:?}", self.app_state)
                     }
 
@@ -8135,6 +8176,15 @@ impl RefBoxApp {
             AppState::ParameterEditorHelp(param, dur, single_half) => {
                 build_parameter_help_page(data, param, dur, single_half)
             }
+            AppState::CountdownEditor {
+                show_countdown,
+                audible_countdown,
+            } => build_countdown_editor(
+                data,
+                show_countdown,
+                audible_countdown,
+                self.edited_settings.as_ref().unwrap(),
+            ),
             AppState::ParameterList(param, index) => build_list_selector_page(
                 data,
                 param,
@@ -8745,6 +8795,183 @@ mod commit_app_toggles_tests {
         commit_app_toggles(&mut config, &edited);
 
         assert_eq!(config, expected);
+    }
+}
+
+/// The LAST 10 SECONDS COUNTDOWN page, opened on the App page's staged
+/// values so it shows what the operator has already chosen. SHOW COUNTDOWN is
+/// stored inverted, as `hide_time`.
+fn countdown_editor_for(edited: &EditableSettings) -> AppState {
+    AppState::CountdownEditor {
+        show_countdown: !edited.hide_time,
+        audible_countdown: edited.audible_countdown,
+    }
+}
+
+/// Flip one of the countdown page's staged switches. Returns `false`, and
+/// changes nothing, when `state` is not that page or `param` is not one of its
+/// two switches.
+fn toggle_countdown_editor(state: &mut AppState, param: BoolGameParameter) -> bool {
+    let AppState::CountdownEditor {
+        show_countdown,
+        audible_countdown,
+    } = state
+    else {
+        return false;
+    };
+    match param {
+        BoolGameParameter::HideTime => *show_countdown ^= true,
+        BoolGameParameter::AudibleCountdown => *audible_countdown ^= true,
+        _ => return false,
+    }
+    true
+}
+
+/// The countdown page's APPLY: write its two switches into the App page's
+/// staged edit. Never into `Config` -- the App page's own APPLY saves them.
+fn stage_countdown_edit(
+    edited: &mut EditableSettings,
+    show_countdown: bool,
+    audible_countdown: bool,
+) {
+    edited.hide_time = !show_countdown;
+    edited.audible_countdown = audible_countdown;
+}
+
+#[cfg(test)]
+mod countdown_editor_tests {
+    use super::*;
+
+    /// The App page's entry snapshot, as `capture_snapshot_for` takes it.
+    fn app_entry(edited: &EditableSettings) -> PageEntrySnapshot {
+        PageEntrySnapshot::App {
+            source: edited.source,
+            current_event_id: edited.current_event_id.clone(),
+            current_court: edited.current_court.clone(),
+            schedule: edited.schedule.clone(),
+            mode: edited.mode,
+            collect_scorer_cap_num: edited.collect_scorer_cap_num,
+            track_fouls_and_warnings: edited.track_fouls_and_warnings,
+            force_keypad_numbers: edited.force_keypad_numbers,
+            show_behind_schedule_time: edited.show_behind_schedule_time,
+            confirm_score: edited.confirm_score,
+            hide_time: edited.hide_time,
+            audible_countdown: edited.audible_countdown,
+            live_updates: edited.live_updates,
+        }
+    }
+
+    fn staged(state: &AppState) -> (bool, bool) {
+        match *state {
+            AppState::CountdownEditor {
+                show_countdown,
+                audible_countdown,
+            } => (show_countdown, audible_countdown),
+            ref other => panic!("not the countdown editor: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn countdown_editor_opens_on_the_staged_values() {
+        // SHOW COUNTDOWN is stored inverted, as `hide_time`.
+        for (hide_time, audible_countdown) in
+            [(false, false), (false, true), (true, false), (true, true)]
+        {
+            let edited = EditableSettings {
+                hide_time,
+                audible_countdown,
+                ..Default::default()
+            };
+            assert_eq!(
+                staged(&countdown_editor_for(&edited)),
+                (!hide_time, audible_countdown)
+            );
+        }
+    }
+
+    #[test]
+    fn countdown_editor_apply_stages_into_app_page() {
+        let config = Config::default();
+        let mut edited = EditableSettings {
+            hide_time: config.hide_time,
+            audible_countdown: config.audible_countdown,
+            ..Default::default()
+        };
+        // Taken when App Options opened; returning from the editor must not
+        // re-take it, or APPLY on App Options never enables.
+        let entry = app_entry(&edited);
+
+        let mut state = countdown_editor_for(&edited);
+        assert!(toggle_countdown_editor(
+            &mut state,
+            BoolGameParameter::AudibleCountdown
+        ));
+        // The toggle is staged in the editor, not yet in the App page's edit.
+        assert_eq!(edited.audible_countdown, config.audible_countdown);
+
+        let (show_countdown, audible_countdown) = staged(&state);
+        stage_countdown_edit(&mut edited, show_countdown, audible_countdown);
+
+        assert_eq!(edited.audible_countdown, !config.audible_countdown);
+        assert_eq!(edited.hide_time, config.hide_time);
+        assert_eq!(config, Config::default(), "APPLY here never saves");
+        assert!(page_has_changes(ConfigPage::App, &edited, Some(&entry)));
+    }
+
+    #[test]
+    fn countdown_editor_show_is_written_inverted() {
+        let mut edited = EditableSettings {
+            hide_time: false,
+            ..Default::default()
+        };
+        let entry = app_entry(&edited);
+        let mut state = countdown_editor_for(&edited);
+        assert!(toggle_countdown_editor(
+            &mut state,
+            BoolGameParameter::HideTime
+        ));
+        assert!(!staged(&state).0, "SHOW COUNTDOWN now NO");
+
+        let (show_countdown, audible_countdown) = staged(&state);
+        stage_countdown_edit(&mut edited, show_countdown, audible_countdown);
+
+        assert!(edited.hide_time);
+        assert!(page_has_changes(ConfigPage::App, &edited, Some(&entry)));
+    }
+
+    #[test]
+    fn countdown_editor_cancel_discards() {
+        let edited = EditableSettings {
+            hide_time: true,
+            audible_countdown: false,
+            ..Default::default()
+        };
+        let before = edited.clone();
+        let entry = app_entry(&edited);
+
+        let mut state = countdown_editor_for(&edited);
+        assert!(toggle_countdown_editor(
+            &mut state,
+            BoolGameParameter::HideTime
+        ));
+        assert!(toggle_countdown_editor(
+            &mut state,
+            BoolGameParameter::AudibleCountdown
+        ));
+        // CANCEL stages nothing: both toggles lived only in the editor state.
+
+        assert_eq!(edited, before);
+        assert!(!page_has_changes(ConfigPage::App, &edited, Some(&entry)));
+    }
+
+    #[test]
+    fn countdown_toggle_outside_the_editor_is_refused() {
+        let mut state = AppState::EditGameConfig(ConfigPage::App);
+        assert!(!toggle_countdown_editor(
+            &mut state,
+            BoolGameParameter::AudibleCountdown
+        ));
+        assert!(matches!(state, AppState::EditGameConfig(ConfigPage::App)));
     }
 }
 

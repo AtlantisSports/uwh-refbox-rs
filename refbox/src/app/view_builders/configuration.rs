@@ -3,7 +3,10 @@ use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
 use crate::app::EventStore;
 use crate::app::PageEntrySnapshot;
 use crate::app::languages::Language;
-use crate::config::{CustomSite, GameSource, Level, Mode, RemoteSource};
+use crate::config::{
+    CustomSite, GameSource, Level, Mode, RemoteSource, effective_live_updates,
+    live_updates_possible,
+};
 use crate::portal_manager::PortalIndicatorState;
 use crate::sim_frame::FrontDisplayLayout;
 use crate::sound_controller::*;
@@ -1277,8 +1280,6 @@ fn make_app_config_page<'a>(
         collect_scorer_cap_num,
         show_behind_schedule_time,
         confirm_score,
-        hide_time,
-        audible_countdown,
         ..
     } = settings;
 
@@ -1299,6 +1300,10 @@ fn make_app_config_page<'a>(
     // behaviour the app is not performing -- which for TRACK FOULS AND WARNINGS
     // would read as "fouls are being recorded" while none were.
     let cap_num_gated = |message: Message| (*collect_scorer_cap_num).then_some(message);
+
+    // LIVE UPDATES follows the same rule for the same reason: see
+    // `live_updates_tile`.
+    let (live_updates_value, live_updates_message) = live_updates_tile(settings);
 
     column![
         make_game_time_button(
@@ -1337,14 +1342,9 @@ fn make_app_config_page<'a>(
                     BoolGameParameter::ScorerCapNum,
                 )),
             ),
-            make_value_button(
-                // Internally still `hide_time`; the button shows the INVERSE:
-                // YES = the final 10-second countdown IS shown on the scoreboard.
-                fl!("show-countdown-for-last-10-seconds"),
-                bool_string(!*hide_time),
-                (false, true),
-                Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime)),
-            ),
+            make_tile_button(fl!("last-10-seconds-countdown"))
+                .style(light_gray_button)
+                .on_press(Message::EditCountdown),
         ]
         .spacing(SPACING)
         .height(Length::Fill),
@@ -1359,11 +1359,11 @@ fn make_app_config_page<'a>(
                 )),
             ),
             make_value_button(
-                fl!("audible-countdown-for-last-10-seconds"),
-                bool_string(*audible_countdown),
+                fl!("show-behind-schedule-time"),
+                bool_string(*show_behind_schedule_time),
                 (false, true),
                 Some(Message::ToggleBoolParameter(
-                    BoolGameParameter::AudibleCountdown,
+                    BoolGameParameter::ShowBehindScheduleTime,
                 )),
             ),
         ]
@@ -1380,12 +1380,10 @@ fn make_app_config_page<'a>(
                 )),
             ),
             make_value_button(
-                fl!("show-behind-schedule-time"),
-                bool_string(*show_behind_schedule_time),
+                fl!("live-updates"),
+                bool_string(live_updates_value),
                 (false, true),
-                Some(Message::ToggleBoolParameter(
-                    BoolGameParameter::ShowBehindScheduleTime,
-                )),
+                live_updates_message,
             ),
         ]
         .spacing(SPACING)
@@ -1400,6 +1398,21 @@ fn make_app_config_page<'a>(
     .spacing(SPACING)
     .height(Length::Fill)
     .into()
+}
+
+/// What the LIVE UPDATES tile on App Options shows, and what tapping it sends.
+///
+/// Like TRACK FOULS AND WARNINGS, it shows the value IN FORCE: where live
+/// updates cannot work (a Manual or Custom game source, or Rugby or Beep Test)
+/// it reads NO and is greyed -- `None` is how `make_value_button` greys a
+/// button -- while the operator's stored YES waits untouched for the conditions
+/// to return.
+fn live_updates_tile(settings: &EditableSettings) -> (bool, Option<Message>) {
+    (
+        effective_live_updates(settings.live_updates, settings.mode, settings.source),
+        live_updates_possible(settings.mode, settings.source)
+            .then_some(Message::ToggleBoolParameter(BoolGameParameter::LiveUpdates)),
+    )
 }
 
 /// The embedded preview picture matching a staged layout + starting-side.
@@ -2282,6 +2295,116 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
             .spacing(SPACING),
         )
         .into()
+}
+
+/// Whether the LAST 10 SECONDS COUNTDOWN page holds anything the App page's
+/// edit does not. SHOW COUNTDOWN is stored inverted, as `hide_time`.
+fn countdown_edit_has_changes(
+    settings: &EditableSettings,
+    show_countdown: bool,
+    audible_countdown: bool,
+) -> bool {
+    show_countdown == settings.hide_time || audible_countdown != settings.audible_countdown
+}
+
+/// One YES / NO row of the LAST 10 SECONDS COUNTDOWN page, in the style of
+/// the TWO HALVES / ONE PERIOD selector: the current choice is blue and its
+/// press does nothing, the other is gray and flips the staged value.
+fn make_countdown_choice_row<'a>(
+    label: String,
+    value: bool,
+    param: BoolGameParameter,
+) -> Element<'a, Message> {
+    let choice = |label: String, chosen: bool| {
+        let b = make_chrome_button(label)
+            .width(Length::Fill)
+            .style(if chosen {
+                blue_selected_button
+            } else {
+                light_gray_button
+            });
+        if chosen {
+            b.on_press(Message::NoAction)
+        } else {
+            b.on_press(Message::ToggleBoolParameter(param))
+        }
+    };
+    row![
+        text(label)
+            .size(MEDIUM_TEXT)
+            .width(Length::Fill)
+            .align_y(Vertical::Center),
+        choice(fl!("yes"), value),
+        choice(fl!("no"), !value),
+    ]
+    .spacing(SPACING)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+/// The LAST 10 SECONDS COUNTDOWN page, reached from App Options. Built like
+/// the Half Length editor, without its help button. APPLY stages the two
+/// switches into the App page's edit; App Options' own APPLY saves them.
+pub(in super::super) fn build_countdown_editor<'a>(
+    data: ViewData<'_, '_>,
+    show_countdown: bool,
+    audible_countdown: bool,
+    settings: &EditableSettings,
+) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        portal_indicator,
+        ..
+    } = data;
+
+    let has_changes = countdown_edit_has_changes(settings, show_countdown, audible_countdown);
+
+    column![
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator,
+            None
+        ),
+        text(fl!("last-10-seconds-countdown"))
+            .size(MEDIUM_TEXT)
+            .align_x(Horizontal::Center),
+        make_countdown_choice_row(
+            fl!("show-countdown-for-last-10-seconds"),
+            show_countdown,
+            BoolGameParameter::HideTime,
+        ),
+        make_countdown_choice_row(
+            fl!("audible-countdown-for-last-10-seconds"),
+            audible_countdown,
+            BoolGameParameter::AudibleCountdown,
+        ),
+        vertical_space(),
+        row![
+            make_chrome_button(cancel_or_back_label(has_changes))
+                .style(red_button)
+                .width(Length::Fill)
+                .on_press(Message::ParameterEditComplete { canceled: true }),
+            horizontal_space(),
+            make_chrome_button(fl!("apply"))
+                .style(green_button)
+                .width(Length::Fill)
+                .on_press_maybe(
+                    has_changes.then_some(Message::ParameterEditComplete { canceled: false }),
+                ),
+        ]
+        .spacing(SPACING),
+    ]
+    .spacing(SPACING)
+    .align_x(Alignment::Center)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
 }
 
 pub(in super::super) fn build_parameter_help_page<'a>(
@@ -4241,5 +4364,64 @@ mod tests {
             ..base.clone()
         };
         assert_eq!(game_block_validity(&ok), GameBlockValidity::Ok);
+    }
+
+    /// LIVE UPDATES shows the value in force and can only be tapped where live
+    /// updates can work: hockey run from the official Portal. Elsewhere it is
+    /// greyed and reads NO, while a stored YES waits untouched.
+    #[test]
+    fn live_updates_tile_greyed_and_no_outside_portal_hockey() {
+        let toggle = Some(Message::ToggleBoolParameter(BoolGameParameter::LiveUpdates));
+        let cases = [
+            (Mode::Hockey6V6, GameSource::Manual),
+            (Mode::Hockey6V6, GameSource::Custom),
+            (Mode::Rugby, GameSource::Portal),
+            (Mode::BeepTest, GameSource::Portal),
+        ];
+        for (mode, source) in cases {
+            for stored in [true, false] {
+                let settings = EditableSettings {
+                    mode,
+                    source,
+                    live_updates: stored,
+                    ..Default::default()
+                };
+                assert_eq!(
+                    live_updates_tile(&settings),
+                    (false, None),
+                    "{mode:?} / {source:?}, stored {stored}"
+                );
+            }
+        }
+
+        for mode in [Mode::Hockey6V6, Mode::Hockey3V3] {
+            for stored in [true, false] {
+                let settings = EditableSettings {
+                    mode,
+                    source: GameSource::Portal,
+                    live_updates: stored,
+                    ..Default::default()
+                };
+                assert_eq!(
+                    live_updates_tile(&settings),
+                    (stored, toggle.clone()),
+                    "{mode:?} / Portal, stored {stored}"
+                );
+            }
+        }
+    }
+
+    /// CANCEL reads BACK until the countdown editor's staged values differ
+    /// from the App page's edit, and APPLY is enabled only then.
+    #[test]
+    fn countdown_editor_has_changes_only_when_a_value_differs() {
+        let settings = EditableSettings {
+            hide_time: true,
+            audible_countdown: false,
+            ..Default::default()
+        };
+        assert!(!countdown_edit_has_changes(&settings, false, false));
+        assert!(countdown_edit_has_changes(&settings, true, false));
+        assert!(countdown_edit_has_changes(&settings, false, true));
     }
 }

@@ -75,10 +75,11 @@ event = 赛事：
 track-fouls-and-warnings = 追踪犯规
     和警告
 show-behind-schedule-time = 显示落后时间
-show-countdown-for-last-10-seconds = 显示最后10秒
+show-countdown-for-last-10-seconds = 显示倒计时
+audible-countdown-for-last-10-seconds = 声音倒计时
+last-10-seconds-countdown = 最后10秒
     倒计时
-audible-countdown-for-last-10-seconds = 最后10秒
-    声音倒计时
+live-updates = 即时更新
 delay = 延误
 court = 球场：
 court-count = {$count} 球场

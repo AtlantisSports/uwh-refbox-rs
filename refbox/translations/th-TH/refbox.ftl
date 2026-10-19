@@ -75,9 +75,10 @@ track-fouls-and-warnings = บันทึกฟาวล์
     และการเตือน
 show-behind-schedule-time = แสดงเวลาล่าช้า
 show-countdown-for-last-10-seconds = แสดงนับถอยหลัง
-    10 วินาทีสุดท้าย
 audible-countdown-for-last-10-seconds = นับถอยหลังด้วยเสียง
-    10 วินาที
+last-10-seconds-countdown = นับถอยหลัง
+    10 วินาทีสุดท้าย
+live-updates = อัปเดตสด
 delay = ล่าช้า
 court = สนาม:
 court-count = {$count} สนาม

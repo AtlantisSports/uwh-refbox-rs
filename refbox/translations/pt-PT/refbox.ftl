@@ -75,10 +75,11 @@ event = EVENTO:
 track-fouls-and-warnings = REGISTAR FALTAS
     E AVISOS
 show-behind-schedule-time = MOSTRAR ATRASO
-show-countdown-for-last-10-seconds = MOSTRAR CONTAGEM
-    DECRESCENTE 10 S
-audible-countdown-for-last-10-seconds = CONTAGEM DECRESCENTE
-    SONORA 10 S
+show-countdown-for-last-10-seconds = MOSTRAR CONTAGEM DECRESCENTE
+audible-countdown-for-last-10-seconds = CONTAGEM DECRESCENTE SONORA
+last-10-seconds-countdown = CONTAGEM DECRESCENTE
+    ÚLTIMOS 10 S
+live-updates = ATUALIZAÇÕES EM DIRETO
 delay = ATRASO
 court = CAMPO:
 court-count = {$count ->

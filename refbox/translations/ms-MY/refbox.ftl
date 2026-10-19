@@ -76,9 +76,10 @@ track-fouls-and-warnings = REKOD KESALAHAN
     DAN AMARAN
 show-behind-schedule-time = TUNJUK KELEWATAN
 show-countdown-for-last-10-seconds = TUNJUK KIRA DETIK
-    10 SAAT
 audible-countdown-for-last-10-seconds = KIRA DETIK BUNYI
-    10 SAAT
+last-10-seconds-countdown = KIRA DETIK
+    10 SAAT TERAKHIR
+live-updates = KEMAS KINI LANGSUNG
 delay = LEWAT
 court = GELANGGANG:
 court-count = {$count} GELANGGANG

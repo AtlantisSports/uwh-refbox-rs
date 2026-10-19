@@ -73,9 +73,10 @@ track-fouls-and-warnings = REGISTRAR FALTAS
     Y ADVERTENCIAS
 show-behind-schedule-time = MOSTRAR RETRASO
 show-countdown-for-last-10-seconds = MOSTRAR CUENTA ATRÁS
-    ÚLTIMOS 10 S
 audible-countdown-for-last-10-seconds = CUENTA ATRÁS SONORA
+last-10-seconds-countdown = CUENTA ATRÁS
     ÚLTIMOS 10 S
+live-updates = ACTUALIZACIÓN EN VIVO
 delay = RETRASO
 event = EVENTO:
 court = CANCHA:

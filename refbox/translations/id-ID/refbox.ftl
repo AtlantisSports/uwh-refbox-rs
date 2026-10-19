@@ -74,10 +74,11 @@ event = ACARA:
 track-fouls-and-warnings = LACAK PELANGGARAN
     DAN PERINGATAN
 show-behind-schedule-time = TAMPILKAN KELEWATAN
-show-countdown-for-last-10-seconds = TAMPILKAN HITUNG
-    MUNDUR 10 DETIK
+show-countdown-for-last-10-seconds = TAMPILKAN HITUNG MUNDUR
 audible-countdown-for-last-10-seconds = HITUNG MUNDUR SUARA
-    10 DETIK
+last-10-seconds-countdown = HITUNG MUNDUR
+    10 DETIK TERAKHIR
+live-updates = PEMBARUAN LANGSUNG
 delay = TERLAMBAT
 court = LAPANGAN:
 court-count = {$count} LAPANGAN

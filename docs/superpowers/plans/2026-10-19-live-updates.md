@@ -320,3 +320,33 @@ TRACK FOULS       | LIVE UPDATES: <effective YES/NO>  (greyed — message None �
   then App APPLY), the greyed NO in Manual/Custom/Rugby, and (once deployed) a live game on the dev Portal's Schedule
   tab.
 - [ ] Record any deviation in a "Deviations" section at the foot of this plan (no separate deviation commits).
+
+## Deviations
+
+Rulings made during execution (2026-10-19). Each names what changed against the text above.
+
+1. **`BoolGameParameter::LiveUpdates` moved from Task 5 to Task 4.** Task 4's own tests needed the toggle; Task 5
+   only renders the tile.
+2. **Failed live sends log at `debug!` inside `uwh-common`.** Task 1's brief said `warn!` on every non-2xx; that
+   would have logged every 5 s. All user-visible failure logging lives in the refbox sender.
+3. **The failure log is rate-limited, not just de-duplicated.** Each failure kind is logged at most once per
+   10 minutes, and the "getting through again" line at most once per 10 minutes, with a count of dropped sends.
+   Remembering only the last kind would still have logged every 5 s on a flapping link.
+4. **Intermediate commits failed `just lint` on dead code** until Task 5 rendered the tile. No `#[allow]` was added.
+   The finished branch is lint-clean.
+5. **Task 4's app-level tests were replaced by pure seams.** No test can construct `RefBoxApp` (`RefBoxApp::new`
+   starts audio, writes the real settings file and opens sockets). Instead: `published_site` is shared by every
+   key-store publish and the live frame, so the two site strings cannot differ; `live_inputs`, `publish_live_frame`
+   and `spawn_live_sender_if_client` are tested on their own; and every operator action possible while the clock is
+   stopped was code-read and found to refresh the snapshot. The `update` → `refresh_live_frame` wrapper itself is
+   proven by review and by the walkthrough, not by a test.
+6. **Final-review fixes:**
+   - A frame is published only when the current site serves the current game source.
+   - A missing access key or a site change is a send condition not met, not a failure, so it is logged at debug only.
+   - With Live Updates off, the per-message refresh returns before any work.
+   - The missing proof that a stalled live send does not delay a score post was added as a test.
+7. **The countdown page title shows on two lines.** It reuses the tile's key (`LAST 10 SECONDS` / `COUNTDOWN`), while
+   the approved mockup drew it on one line. Left for the PO's walkthrough.
+8. **Translations.** de, nl, tr, ja, ko and zh were re-worded rather than trimmed. ko `생중계 업데이트` and zh `即时更新`
+   were chosen because the subset font lacks the more usual `실시간` / `实时`. None of the 14 non-English locales has
+   been checked by a native speaker.

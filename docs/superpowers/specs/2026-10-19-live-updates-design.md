@@ -1,6 +1,8 @@
 # Live Updates — refbox design
 
-Status: DRAFT 2026-10-19, written with the PO (Eric). Not built. Read against refbox `origin/master` @ 701ea226.
+Status: APPROVED by the PO (Eric) 2026-10-19 and built on `feat/uwh-common/live-updates` (not yet merged). Read
+against refbox `origin/master` @ 701ea226. Where the build departs from this text, the plan's "Deviations" section
+says so.
 
 ## Why
 

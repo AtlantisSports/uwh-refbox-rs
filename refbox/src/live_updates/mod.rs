@@ -380,6 +380,33 @@ mod tests {
     }
 
     #[test]
+    fn only_period_change_is_a_change() {
+        let last = frame("5", running_state(300));
+        let next = frame(
+            "5",
+            LiveGameState {
+                period: GamePeriod::SecondHalf,
+                ..running_state(300)
+            },
+        );
+        assert!(needs_send_now(Some(&last), &next));
+    }
+
+    /// The operator pressing STOP: nothing else changes, not even the seconds.
+    #[test]
+    fn only_clock_running_change_is_a_change() {
+        let last = frame("5", running_state(300));
+        let next = frame(
+            "5",
+            LiveGameState {
+                clock_running: false,
+                ..running_state(300)
+            },
+        );
+        assert!(needs_send_now(Some(&last), &next));
+    }
+
+    #[test]
     fn game_number_change_is_a_change() {
         let last = frame("5", running_state(300));
         let next = frame("6", running_state(299));

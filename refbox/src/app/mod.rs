@@ -9,7 +9,7 @@ use crate::portal_manager::link_session::NoteSite;
 use crate::tournament_manager::placement::ScheduledGame;
 use crate::{
     beep_test::{cadence::TournamentManager as BeepTestManager, snapshot::BeepTestSnapshot},
-    config::{Config, CustomSite, GameSource, Mode, RemoteSource},
+    config::{Config, CustomSite, GameSource, Mode, RemoteSource, effective_live_updates},
     penalty_editor::*,
     portal_manager::{
         ItemId, PortalEvent, PortalManager, SelectedEventId, SharedAccessKeys,
@@ -511,6 +511,16 @@ fn live_inputs<'a>(
         snapshot,
         game_clock_running,
     }
+}
+
+/// The live frame for `inputs`, or `None` when the client's site does not serve the current
+/// source -- the guard the fetch paths use. Without it, a Portal source with the client still on a
+/// custom site would send the custom site the Portal event's id and that site's key.
+fn live_frame_for_site(kind: SiteKind, inputs: &LiveInputs) -> Option<LiveFrame> {
+    if !site_serves(kind, inputs.source) {
+        return None;
+    }
+    live_frame(inputs)
 }
 
 /// Hand `frame` to the live sender only when it differs from the one already there, so an
@@ -4194,16 +4204,25 @@ impl RefBoxApp {
     /// Publish the live-update frame for the app's current state. Reads the snapshot the last
     /// handler applied; never generates one, because generating has side effects.
     fn refresh_live_frame(&mut self) {
+        // Off (or not possible here): nothing to publish, so skip the lock and the allocation that
+        // every message would otherwise pay for.
+        if !effective_live_updates(self.config.live_updates, self.config.mode, self.source) {
+            publish_live_frame(&self.live_frames, None);
+            return;
+        }
         let site = published_site(&self.current_site);
         let game_clock_running = self.tm.lock().game_clock_running();
-        let frame = live_frame(&live_inputs(
-            &self.config,
-            self.source,
-            &site,
-            self.current_event_id.as_ref(),
-            &self.snapshot,
-            game_clock_running,
-        ));
+        let frame = live_frame_for_site(
+            self.current_site.kind,
+            &live_inputs(
+                &self.config,
+                self.source,
+                &site,
+                self.current_event_id.as_ref(),
+                &self.snapshot,
+                game_clock_running,
+            ),
+        );
         publish_live_frame(&self.live_frames, frame);
     }
 
@@ -5984,6 +6003,10 @@ impl RefBoxApp {
                             show_countdown,
                             audible_countdown,
                         } => stage_countdown_edit(
+                            // why this cannot panic: the countdown page is opened
+                            // only by `EditCountdown`, from App Options, while
+                            // `edited_settings` is populated; every path that
+                            // clears it also moves `app_state` off this page.
                             self.edited_settings.as_mut().unwrap(),
                             show_countdown,
                             audible_countdown,
@@ -8183,6 +8206,9 @@ impl RefBoxApp {
                 data,
                 show_countdown,
                 audible_countdown,
+                // why this cannot panic: see the countdown page's APPLY in
+                // `ParameterEditComplete` -- this page is only ever shown while
+                // `edited_settings` is populated.
                 self.edited_settings.as_ref().unwrap(),
             ),
             AppState::ParameterList(param, index) => build_list_selector_page(
@@ -11431,6 +11457,25 @@ mod live_updates_wiring_tests {
         assert_eq!(frame.event, event());
         assert_eq!(frame.game, "12");
         assert!(frame.state.clock_running);
+    }
+
+    /// A Portal source while the client still points at a custom site sends nothing, even with
+    /// everything else in place; the same inputs on the Portal's own site do send.
+    #[test]
+    fn portal_source_on_custom_site_publishes_nothing() {
+        let event = event();
+        let snapshot = in_game(2);
+        let config = hockey_config();
+        let inputs = live_inputs(
+            &config,
+            GameSource::Portal,
+            "https://uwhportal.example",
+            Some(&event),
+            &snapshot,
+            true,
+        );
+        assert!(live_frame_for_site(SiteKind::Portal, &inputs).is_some());
+        assert_eq!(live_frame_for_site(SiteKind::Custom, &inputs), None);
     }
 
     #[test]

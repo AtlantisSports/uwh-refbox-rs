@@ -10,7 +10,7 @@
 
 use super::{LiveFrame, needs_send_now};
 use crate::portal_manager::{SharedAccessKeys, SharedUwhPortalClient};
-use log::{info, warn};
+use log::{debug, info, warn};
 use std::{error::Error, future::Future, time::Duration};
 use tokio::{sync::watch, time::Instant};
 
@@ -44,7 +44,7 @@ async fn run(
 ) {
     // The frame last attempted, and when that attempt started. Set together, after each attempt
     // completes -- success, failure or skip alike -- so a failure waits for a change or the next
-    // heartbeat rather than being retried at once.
+    // heartbeat rather than being retried at once, and a skip does not spin the loop.
     let mut last_sent: Option<(LiveFrame, Instant)> = None;
     let mut log = FailureLog::default();
 
@@ -75,6 +75,7 @@ async fn run(
             match log.record(outcome, Instant::now()) {
                 Some(LogLine::Warn(text)) => warn!("{text}"),
                 Some(LogLine::Info(text)) => info!("{text}"),
+                Some(LogLine::Debug(text)) => debug!("{text}"),
                 None => {}
             }
             last_sent = Some((frame, started));
@@ -205,9 +206,9 @@ impl Failure {
     fn describe(&self) -> String {
         match self {
             Self::SiteChanged => {
-                "not sent: the access keys belong to a different site than the game".to_string()
+                "the access keys belong to a different site than the game".to_string()
             }
-            Self::NoKey => "not sent: no access key is held for this event".to_string(),
+            Self::NoKey => "no access key is held for this event".to_string(),
             Self::Unbuildable(why) => format!("the request could not be built: {}", bounded(why)),
             Self::Rejected { status, body } if body.is_empty() => {
                 format!("the portal answered {}", bounded(status))
@@ -227,6 +228,8 @@ impl Failure {
 pub enum LogLine {
     Warn(String),
     Info(String),
+    /// A send condition not met (no key, or the site changed): not a failure.
+    Debug(String),
 }
 
 /// The shortest gap between two log lines about the same kind of failure, or between two
@@ -260,6 +263,12 @@ impl FailureLog {
                      ({dropped} live updates dropped)"
                 )))
             }
+            // A send condition not met is not a failure: it is neither warned about nor counted
+            // as dropped.
+            Err(skip @ (Failure::SiteChanged | Failure::NoKey)) => Some(LogLine::Debug(format!(
+                "live update to the portal not sent: {}",
+                skip.describe()
+            ))),
             Err(failure) => {
                 self.dropped = self.dropped.saturating_add(1);
                 let kind = failure.kind();
@@ -293,6 +302,7 @@ mod tests {
         time::Instant,
     };
     use uwh_common::{
+        bundles::BlackWhiteBundle,
         game_snapshot::GamePeriod,
         uwhportal::{
             UwhPortalClient,
@@ -348,8 +358,9 @@ mod tests {
         }
     }
 
-    /// A fake portal on a loopback port. `reply` decides, per request, how it answers.
-    async fn portal(reply: impl Fn(usize) -> Reply + Send + Sync + 'static) -> Portal {
+    /// A fake portal on a loopback port. `reply` decides, per request (its index and path), how it
+    /// answers.
+    async fn portal(reply: impl Fn(usize, &str) -> Reply + Send + Sync + 'static) -> Portal {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let site = format!("http://{}", listener.local_addr().unwrap());
         let (tx, requests) = mpsc::unbounded_channel();
@@ -386,7 +397,7 @@ mod tests {
     async fn serve(
         stream: TcpStream,
         tx: mpsc::UnboundedSender<Recorded>,
-        reply: Arc<impl Fn(usize) -> Reply>,
+        reply: Arc<impl Fn(usize, &str) -> Reply>,
         count: Arc<AtomicUsize>,
         in_flight: Arc<AtomicUsize>,
         max: Arc<AtomicUsize>,
@@ -426,6 +437,7 @@ mod tests {
             let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
             max.fetch_max(now, Ordering::SeqCst);
             let index = count.fetch_add(1, Ordering::SeqCst);
+            let reply = reply(index, &path);
             let _ = tx.send(Recorded {
                 at: Instant::now(),
                 method,
@@ -433,7 +445,7 @@ mod tests {
                 authorization,
                 body: String::from_utf8(body).unwrap(),
             });
-            let answer = match reply(index) {
+            let answer = match reply {
                 Reply::Hang => std::future::pending::<String>().await,
                 Reply::After(hold) => {
                     tokio::time::sleep(hold).await;
@@ -452,7 +464,7 @@ mod tests {
         }
     }
 
-    fn answer_at_once(_: usize) -> Reply {
+    fn answer_at_once(_: usize, _: &str) -> Reply {
         Reply::After(Duration::ZERO)
     }
 
@@ -540,6 +552,13 @@ mod tests {
             "an unchanged frame is re-sent every heartbeat"
         );
         assert_eq!(rest[0].body, first.body);
+        // The heartbeat sets the data cost: at 300 ms, a 750 ms window holds 2 resends, so more
+        // than 3 means it is resending faster than the heartbeat.
+        assert!(
+            rest.len() <= 3,
+            "{} resends in 750 ms; the heartbeat is 300 ms",
+            rest.len()
+        );
     }
 
     #[tokio::test]
@@ -560,7 +579,7 @@ mod tests {
 
     #[tokio::test]
     async fn stalled_server_is_abandoned_and_next_send_proceeds() {
-        let mut portal = portal(|i| {
+        let mut portal = portal(|i, _| {
             if i == 0 {
                 Reply::Hang
             } else {
@@ -583,7 +602,7 @@ mod tests {
 
     #[tokio::test]
     async fn never_two_in_flight() {
-        let mut portal = portal(|_| Reply::After(Duration::from_millis(600))).await;
+        let mut portal = portal(|_, _| Reply::After(Duration::from_millis(600))).await;
         let (tx, _task) = start(&portal, Some(frame(&portal.site, 0)), timing(300, 2000));
         portal.next(WAIT).await.expect("a first request");
         // Changes (all within the first 600 ms hold) and overdue heartbeats pile up while each
@@ -681,14 +700,10 @@ mod tests {
             Some(LogLine::Warn(_))
         ));
         assert_eq!(log.record(Err(Failure::Timeout), now), None);
-        assert!(matches!(
-            log.record(Err(Failure::NoKey), now),
-            Some(LogLine::Warn(_))
-        ));
         let Some(LogLine::Info(text)) = log.record(Ok(()), now) else {
             panic!("expected the recovery line");
         };
-        assert!(text.contains("(13 live updates dropped)"), "{text}");
+        assert!(text.contains("(12 live updates dropped)"), "{text}");
         assert_eq!(log.record(Ok(()), now), None);
     }
 
@@ -782,7 +797,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejected_send_waits_for_heartbeat() {
-        let mut portal = portal(|_| Reply::Status("500 Internal Server Error")).await;
+        let mut portal = portal(|_, _| Reply::Status("500 Internal Server Error")).await;
         let (_tx, _task) = start(&portal, Some(frame(&portal.site, 2)), timing(500, 300));
         let first = portal.next(WAIT).await.expect("a first request");
         let second = portal.next(WAIT).await.expect("a second request");
@@ -791,5 +806,80 @@ mod tests {
             gap >= Duration::from_millis(400),
             "a rejected send was retried {gap:?} later; the heartbeat is 500 ms"
         );
+    }
+
+    /// A missing key, or keys for another site, is a send condition not met: logged at debug
+    /// every time, never warned about, and never counted as a dropped update.
+    #[test]
+    fn missing_key_is_not_logged_as_a_failure() {
+        let now = Instant::now();
+        let mut log = FailureLog::default();
+        for skip in [Failure::NoKey, Failure::SiteChanged, Failure::NoKey] {
+            let line = log.record(Err(skip), now);
+            assert!(matches!(line, Some(LogLine::Debug(_))), "{line:?}");
+        }
+        assert_eq!(log.record(Ok(()), now), None, "nothing was dropped");
+
+        assert!(matches!(
+            log.record(Err(Failure::Timeout), now),
+            Some(LogLine::Warn(_))
+        ));
+        assert!(matches!(
+            log.record(Err(Failure::NoKey), now),
+            Some(LogLine::Debug(_))
+        ));
+        let Some(LogLine::Info(text)) = log.record(Ok(()), now) else {
+            panic!("expected the recovery line");
+        };
+        assert!(text.contains("(1 live updates dropped)"), "{text}");
+    }
+
+    /// Anti-goal #1: a live send stuck on the portal must not hold up a score post made through
+    /// the same shared client. Multi-threaded, and the post's lock taken on a blocking thread, so
+    /// that a sender holding the client lock across its send shows up as a timeout here rather
+    /// than as a hung test.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stalled_live_send_does_not_delay_score_post() {
+        let mut portal = portal(|_, path| {
+            if path.contains("/live-games/") {
+                Reply::Hang
+            } else {
+                // `post_game_scores` accepts exactly 200.
+                Reply::Status("200 OK")
+            }
+        })
+        .await;
+        let (client, keys) = shared(&portal.site, &portal.site);
+        let (_tx, rx) = watch::channel(Some(frame(&portal.site, 2)));
+        let _task = spawn_live_sender(rx, Arc::clone(&client), keys, timing(5000, 3000));
+        let live = portal.next(WAIT).await.expect("the live PUT");
+        assert!(live.path.contains("/live-games/"), "{}", live.path);
+
+        // The live PUT is now hung, and will be for 3 s.
+        let started = Instant::now();
+        let posting = tokio::task::spawn_blocking(move || {
+            let guard = client
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            guard.post_game_scores(
+                &event(),
+                &"5".to_string(),
+                BlackWhiteBundle { black: 2, white: 1 },
+                false,
+            )
+        });
+        let posted = tokio::time::timeout(Duration::from_secs(1), async {
+            posting.await.expect("the lock is taken").await
+        })
+        .await;
+        let elapsed = started.elapsed();
+        assert!(
+            matches!(posted, Ok(Ok(()))),
+            "the score post did not complete within 1 s of a hung live send: {:?}",
+            posted.map(|r| r.map_err(|e| e.to_string()))
+        );
+        assert!(elapsed < Duration::from_secs(1), "{elapsed:?}");
+        let post = portal.next(WAIT).await.expect("the score post");
+        assert!(post.path.contains("/scores"), "{}", post.path);
     }
 }

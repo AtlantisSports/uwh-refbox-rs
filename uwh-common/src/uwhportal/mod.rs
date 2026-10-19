@@ -1340,6 +1340,8 @@ mod live_request_tests {
             clock_running: true,
             timeout: None,
             scores: Some(LiveScores { black: 1, white: 3 }),
+            last_goal: None,
+            penalties: None,
         }
     }
 

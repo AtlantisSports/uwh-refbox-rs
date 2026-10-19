@@ -7,7 +7,7 @@ use crate::config::{GameSource, Mode, effective_live_updates};
 use uwh_common::{
     game_snapshot::{GamePeriod, GameSnapshot},
     uwhportal::{
-        live::{LiveGameState, LiveScores},
+        live::{LiveGameState, LiveScores, LiveTimeout},
         schedule::{EventId, GameNumber},
     },
 };
@@ -61,8 +61,12 @@ pub fn live_frame(i: &LiveInputs) -> Option<LiveFrame> {
         period: snapshot.current_period,
         clock_seconds: snapshot.secs_in_period,
         clock_running: i.game_clock_running,
-        timeout: snapshot.timeout.map(Into::into),
+        timeout: snapshot
+            .timeout
+            .map(|t| LiveTimeout::from_snapshot(t, None)),
         scores,
+        last_goal: None,
+        penalties: None,
     };
 
     let (game, state, heartbeat) = if snapshot.current_period != GamePeriod::BetweenGames {
@@ -83,6 +87,8 @@ pub fn live_frame(i: &LiveInputs) -> Option<LiveFrame> {
             clock_running: false,
             timeout: None,
             scores: None,
+            last_goal: None,
+            penalties: None,
         };
         (current.clone(), state, false)
     } else {
@@ -169,6 +175,8 @@ mod tests {
             clock_running: true,
             timeout: None,
             scores: Some(LiveScores { black: 0, white: 0 }),
+            last_goal: None,
+            penalties: None,
         }
     }
 
@@ -232,6 +240,8 @@ mod tests {
                     clock_running: true,
                     timeout: None,
                     scores: Some(LiveScores { black: 2, white: 1 }),
+                    last_goal: None,
+                    penalties: None,
                 },
                 heartbeat: true,
             }
@@ -282,6 +292,8 @@ mod tests {
                 clock_running: false,
                 timeout: None,
                 scores: None,
+                last_goal: None,
+                penalties: None,
             }
         );
         assert!(!got.heartbeat);
@@ -363,7 +375,7 @@ mod tests {
             "5",
             LiveGameState {
                 clock_running: false,
-                timeout: Some(LiveTimeout::White),
+                timeout: Some(LiveTimeout::White(None)),
                 ..running_state(300)
             },
         );

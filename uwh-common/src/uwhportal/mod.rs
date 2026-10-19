@@ -472,7 +472,7 @@ impl UwhPortalClient {
                 debug!("portal live game update successful");
                 Ok(())
             } else {
-                warn!("portal live game update failed, status: {status}");
+                debug!("portal live game update failed, status: {status}");
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(format!("{status}: {body}"))))?
             }

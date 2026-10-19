@@ -257,6 +257,14 @@ impl TournamentManager {
         }
     }
 
+    /// Whether the GAME clock is running -- unlike [`Self::clock_is_running`],
+    /// which reports the timeout clock whenever a timeout exists. False while
+    /// the score-confirmation pause is open, since that pause holds the game
+    /// clock. Read-only.
+    pub fn game_clock_running(&self) -> bool {
+        self.clock_state.is_running() && self.time_pause_confirmation.is_none()
+    }
+
     pub fn add_score(&mut self, color: Color, player_num: u8, now: Instant) {
         let clock_time = self.game_clock_time(now);
         self.add_score_at(color, player_num, clock_time, now);
@@ -9748,6 +9756,62 @@ mod test {
 
         tm.timeout_state = None;
         assert_eq!(Err(TMErr::InvalidState), tm.halt_clock(next_time, false));
+    }
+
+    /// `clock_is_running()` reports the timeout clock whenever a timeout exists;
+    /// `game_clock_running()` must report the game clock alone.
+    #[test]
+    fn game_clock_running_ignores_timeout_clock() {
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config());
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        assert!(tm.game_clock_running());
+
+        // A ref timeout started while play runs stops the game clock and runs
+        // the timeout clock instead.
+        tm.start_ref_timeout(start + Duration::from_secs(5))
+            .unwrap();
+        assert!(tm.clock_is_running(), "the timeout clock is running");
+        assert!(!tm.game_clock_running(), "the game clock is not");
+    }
+
+    /// The score-confirmation pause holds the game clock, so it must never be
+    /// reported as running while that pause is open.
+    #[test]
+    fn game_clock_running_false_during_score_confirmation() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            pre_sudden_death_duration: Duration::from_secs(12),
+            pre_overtime_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let game_end = start + Duration::from_secs(30);
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
+        tm.set_game_start(start);
+        tm.start_game_clock(start);
+        assert!(tm.game_clock_running());
+
+        tm.pause_for_confirm(game_end).unwrap();
+        assert!(tm.in_score_confirm_pause());
+        assert!(!tm.game_clock_running());
+
+        // Even if the game clock state were running, an open confirmation
+        // pause still means the game clock is held.
+        tm.clock_state = ClockState::CountingDown {
+            start_time: game_end,
+            time_remaining_at_start: Duration::from_secs(10),
+        };
+        assert!(tm.clock_state.is_running());
+        assert!(!tm.game_clock_running());
     }
 
     #[test]

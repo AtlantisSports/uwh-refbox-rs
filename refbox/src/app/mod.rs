@@ -492,14 +492,42 @@ fn published_site(target: &SiteTarget) -> String {
     target.base_url.expose().to_string()
 }
 
-/// The engine's snapshot and game-clock flag, read together so a live frame never pairs a
-/// snapshot with a flag from a different moment. `None` for the snapshot when the engine cannot
-/// produce one; the caller then falls back to the app's last applied snapshot.
+/// The engine's snapshot, game-clock flag and live details, read together so a live frame never
+/// pairs a snapshot with a flag or details from a different moment. `None` for the snapshot when
+/// the engine cannot produce one; the caller then falls back to the app's last applied snapshot.
+struct LiveEngineRead {
+    snapshot: Option<GameSnapshot>,
+    game_clock_running: bool,
+    details: Option<LiveDetails>,
+}
+
+impl LiveEngineRead {
+    /// The snapshot to build the frame from, and the details that go with it. When this read gave
+    /// no snapshot, `fallback` (the app's last applied one) is used and the details are dropped:
+    /// they describe this read's moment, not the fallback's, so the v3 fields go out null.
+    fn snapshot_and_details<'a>(
+        &'a self,
+        fallback: &'a GameSnapshot,
+    ) -> (&'a GameSnapshot, Option<&'a LiveDetails>) {
+        match &self.snapshot {
+            Some(snapshot) => (snapshot, self.details.as_ref()),
+            None => (fallback, None),
+        }
+    }
+}
+
+/// One read of the engine for a live frame, every value at the same `now` under the caller's one
+/// lock.
 ///
 /// `generate_snapshot`'s only side effect is clearing an expired recent goal, which every tick
-/// does anyway. The snapshot is used for the frame only, never applied to the app's own.
-fn live_engine_read(tm: &mut TournamentManager, now: Instant) -> (Option<GameSnapshot>, bool) {
-    (tm.generate_snapshot(now), tm.game_clock_running())
+/// does anyway; `live_details` applies the same recent-goal rule, so the order of the reads does
+/// not matter. The snapshot is used for the frame only, never applied to the app's own.
+fn live_engine_read(tm: &mut TournamentManager, now: Instant) -> LiveEngineRead {
+    LiveEngineRead {
+        snapshot: tm.generate_snapshot(now),
+        game_clock_running: tm.game_clock_running(),
+        details: tm.live_details(now),
+    }
 }
 
 /// Everything [`live_frame`] needs, gathered from the app's state. Pure, so the decision can be
@@ -511,6 +539,7 @@ fn live_inputs<'a>(
     event: Option<&'a EventId>,
     snapshot: &'a GameSnapshot,
     game_clock_running: bool,
+    details: Option<&'a LiveDetails>,
 ) -> LiveInputs<'a> {
     LiveInputs {
         stored_enabled: config.live_updates,
@@ -520,7 +549,7 @@ fn live_inputs<'a>(
         event,
         snapshot,
         game_clock_running,
-        details: None,
+        details,
     }
 }
 
@@ -4225,8 +4254,8 @@ impl RefBoxApp {
         // One lock, one read: `self.snapshot` can lag the engine (a message that changes the
         // engine without applying a snapshot), so pairing it with a live clock flag could send a
         // frame no game was ever in.
-        let (fresh, game_clock_running) = live_engine_read(&mut self.tm.lock(), Instant::now());
-        let snapshot = fresh.as_ref().unwrap_or(&self.snapshot);
+        let read = live_engine_read(&mut self.tm.lock(), Instant::now());
+        let (snapshot, details) = read.snapshot_and_details(&self.snapshot);
         let frame = live_frame_for_site(
             self.current_site.kind,
             &live_inputs(
@@ -4235,7 +4264,8 @@ impl RefBoxApp {
                 &site,
                 self.current_event_id.as_ref(),
                 snapshot,
-                game_clock_running,
+                read.game_clock_running,
+                details,
             ),
         );
         publish_live_frame(&self.live_frames, frame);
@@ -11438,6 +11468,7 @@ mod live_updates_wiring_tests {
             Some(&event),
             snapshot,
             running,
+            None,
         ))
     }
 
@@ -11459,6 +11490,7 @@ mod live_updates_wiring_tests {
             Some(&event),
             &snapshot,
             false,
+            None,
         ))
         .expect("portal hockey with an event must publish a frame");
 
@@ -11488,6 +11520,7 @@ mod live_updates_wiring_tests {
             Some(&event),
             &snapshot,
             true,
+            None,
         );
         assert!(live_frame_for_site(SiteKind::Portal, &inputs).is_some());
         assert_eq!(live_frame_for_site(SiteKind::Custom, &inputs), None);
@@ -11507,15 +11540,16 @@ mod live_updates_wiring_tests {
     fn live_engine_read_follows_the_engine_not_a_stale_snapshot() {
         let mut tm = TournamentManager::new(GameConfig::default());
         let start = Instant::now();
-        let (before, running) = live_engine_read(&mut tm, start);
-        let stale = before.expect("a fresh engine has a snapshot");
+        let before = live_engine_read(&mut tm, start);
+        let stale = before.snapshot.expect("a fresh engine has a snapshot");
         assert_eq!(stale.current_period, GamePeriod::BetweenGames);
-        assert!(!running);
+        assert!(!before.game_clock_running);
 
         // The engine moves on; the app's snapshot (`stale`) does not.
         tm.start_play_now(start).expect("play starts");
-        let (fresh, running) = live_engine_read(&mut tm, start);
-        let fresh = fresh.expect("a running game has a snapshot");
+        let read = live_engine_read(&mut tm, start);
+        let running = read.game_clock_running;
+        let fresh = read.snapshot.expect("a running game has a snapshot");
         assert_eq!(fresh.current_period, GamePeriod::FirstHalf);
         assert!(running);
         let frame = frame_for(&hockey_config(), GameSource::Portal, &fresh, running)
@@ -11526,10 +11560,125 @@ mod live_updates_wiring_tests {
         // A halt: the flag and the seconds come from the same read.
         let later = start + Duration::from_secs(3);
         tm.stop_clock(later).expect("clock stops");
-        let (halted, running) = live_engine_read(&mut tm, later + Duration::from_secs(5));
-        let halted = halted.expect("a halted game has a snapshot");
-        assert!(!running);
+        let read = live_engine_read(&mut tm, later + Duration::from_secs(5));
+        let halted = read.snapshot.expect("a halted game has a snapshot");
+        assert!(!read.game_clock_running);
         assert_eq!(halted.secs_in_period, fresh.secs_in_period - 3);
+    }
+
+    /// The whole v3 path from a real engine: a goal and a penalty recorded in the engine reach
+    /// the live frame, and the body sent passes every portal rule.
+    #[test]
+    fn live_frame_from_engine_carries_penalty_and_goal() {
+        use crate::live_updates::portal_rule_violations;
+        use uwh_common::color::Color;
+        use uwh_common::uwhportal::live::LiveGoal;
+
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let start = Instant::now();
+        tm.start_play_now(start).expect("play starts");
+        let goal_at = start + Duration::from_secs(2);
+        tm.add_score(Color::Black, 7, goal_at);
+        let goal_clock = tm
+            .generate_snapshot(goal_at)
+            .expect("a running game has a snapshot")
+            .secs_in_period;
+        tm.start_penalty(
+            Color::White,
+            4,
+            PenaltyKind::OneMinute,
+            goal_at,
+            Infraction::Unknown,
+        )
+        .expect("penalty starts");
+
+        let now = goal_at + Duration::from_secs(1);
+        let read = live_engine_read(&mut tm, now);
+        let snapshot = read
+            .snapshot
+            .as_ref()
+            .expect("a running game has a snapshot");
+        assert!(read.game_clock_running);
+        let event = event();
+        let frame = live_frame(&live_inputs(
+            &hockey_config(),
+            GameSource::Portal,
+            "https://uwhportal.example",
+            Some(&event),
+            snapshot,
+            read.game_clock_running,
+            read.details.as_ref(),
+        ))
+        .expect("portal hockey, linked, must publish");
+
+        assert_eq!(
+            frame.state.last_goal,
+            Some(LiveGoal {
+                team: Color::Black,
+                cap: 7,
+                clock_seconds: goal_clock,
+            })
+        );
+        let penalties = frame
+            .state
+            .penalties
+            .as_ref()
+            .expect("in play, penalties are sent as a list");
+        assert_eq!(penalties.len(), 1);
+        assert_eq!(penalties[0].team, Color::White);
+        assert_eq!(penalties[0].cap, 4);
+        assert_eq!(frame.penalty_key.len(), 1);
+
+        let body = serde_json::to_value(&frame.state).expect("the body serialises");
+        assert_eq!(portal_rule_violations(&body), Vec::<&str>::new(), "{body}");
+    }
+
+    /// When the engine read gives no snapshot, the frame falls back to the app's last snapshot.
+    /// Details from this read describe a different moment, so they are dropped: the v3 fields
+    /// then go out null rather than pairing a penalty list with a snapshot it does not match.
+    #[test]
+    fn fallback_snapshot_drops_details() {
+        use uwh_common::color::Color;
+
+        let details = LiveDetails {
+            recent_goal: Some((Color::Black, 7, 300)),
+            penalties: Vec::new(),
+            team_timeout_running: None,
+        };
+        let applied = in_game(2);
+
+        let failed = LiveEngineRead {
+            snapshot: None,
+            game_clock_running: false,
+            details: Some(details.clone()),
+        };
+        let (snapshot, got) = failed.snapshot_and_details(&applied);
+        assert_eq!(snapshot, &applied);
+        assert_eq!(got, None);
+        let event = event();
+        let frame = live_frame(&live_inputs(
+            &hockey_config(),
+            GameSource::Portal,
+            "https://uwhportal.example",
+            Some(&event),
+            snapshot,
+            false,
+            got,
+        ))
+        .expect("portal hockey, linked, must publish");
+        assert_eq!(frame.state.last_goal, None);
+        assert_eq!(frame.state.penalties, None);
+
+        // With a fresh snapshot, the details from the same read go with it.
+        let fresh = in_game(3);
+        let ok = LiveEngineRead {
+            snapshot: Some(fresh.clone()),
+            game_clock_running: true,
+            details: Some(details.clone()),
+        };
+        let (snapshot, got) = ok.snapshot_and_details(&applied);
+        assert_eq!(snapshot, &fresh);
+        assert_eq!(got, Some(&details));
     }
 
     #[test]

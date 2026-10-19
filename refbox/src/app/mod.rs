@@ -1,8 +1,10 @@
 use self::infraction::InfractionDetails;
 use super::{APP_NAME, fl};
 use crate::live_updates::{
-    LiveFrame, LiveInputs, live_frame,
+    LiveFrame, LiveInputs, StatsFrame, live_frame,
     sender::{LIVE_TIMING, spawn_live_sender},
+    stats_frame,
+    stats_sender::{STATS_TIMING, spawn_stats_sender},
 };
 use crate::panic_text::panic_reason;
 use crate::portal_manager::link_session::NoteSite;
@@ -189,6 +191,9 @@ pub struct RefBoxApp {
     /// [`RefBoxApp::refresh_live_frame`]. Present even on a degraded start with no sender, when
     /// its frames simply go nowhere.
     live_frames: watch::Sender<Option<LiveFrame>>,
+    /// The newest in-play stats list, read by the stats sender. Refreshed alongside
+    /// `live_frames` from the same engine read, and present on a degraded start as that is.
+    stats_frames: watch::Sender<Option<StatsFrame>>,
     /// Where `uwhportal_client` actually points, kept in step with every
     /// rebuild. Read to decide whether an Apply would repoint the refbox at a
     /// different site (and so needs the clock and queue guards).
@@ -492,13 +497,15 @@ fn published_site(target: &SiteTarget) -> String {
     target.base_url.expose().to_string()
 }
 
-/// The engine's snapshot, game-clock flag and live details, read together so a live frame never
-/// pairs a snapshot with a flag or details from a different moment. `None` for the snapshot when
-/// the engine cannot produce one; the caller then falls back to the app's last applied snapshot.
+/// The engine's snapshot, game-clock flag, live details and running stats, read together so a
+/// live or stats frame never pairs a snapshot with values from a different moment. `None` for the
+/// snapshot when the engine cannot produce one; the caller then falls back to the app's last
+/// applied snapshot.
 struct LiveEngineRead {
     snapshot: Option<GameSnapshot>,
     game_clock_running: bool,
     details: Option<LiveDetails>,
+    running_stats: RunningStats,
 }
 
 impl LiveEngineRead {
@@ -514,6 +521,12 @@ impl LiveEngineRead {
             None => (fallback, None),
         }
     }
+
+    /// This read's running stats, or `None` when it gave no snapshot. `None` means "no new stats
+    /// frame": the caller leaves the stats channel as it was (see [`refresh_stats_frame`]).
+    fn fresh_stats(&self) -> Option<&RunningStats> {
+        self.snapshot.as_ref().map(|_| &self.running_stats)
+    }
 }
 
 /// One read of the engine for a live frame, every value at the same `now` under the caller's one
@@ -527,6 +540,7 @@ fn live_engine_read(tm: &mut TournamentManager, now: Instant) -> LiveEngineRead 
         snapshot: tm.generate_snapshot(now),
         game_clock_running: tm.game_clock_running(),
         details: tm.live_details(now),
+        running_stats: tm.running_stats(),
     }
 }
 
@@ -563,6 +577,54 @@ fn live_frame_for_site(kind: SiteKind, inputs: &LiveInputs) -> Option<LiveFrame>
     live_frame(inputs)
 }
 
+/// The stats frame for `inputs`, or `None` when the client's site does not serve the current
+/// source -- the same guard as [`live_frame_for_site`], for the same reason.
+fn stats_frame_for_site(
+    kind: SiteKind,
+    inputs: &LiveInputs,
+    stats: &RunningStats,
+) -> Option<StatsFrame> {
+    if !site_serves(kind, inputs.source) {
+        return None;
+    }
+    stats_frame(inputs, Some(stats))
+}
+
+/// Hand `frame` to the stats sender only when it is a different list (or appears or goes away),
+/// compared by [`StatsFrame::same_list`], never `==`: the body's `occurredOn` times differ on
+/// every build, and waking the sender for them would hit a failing portal on every message
+/// instead of every retry. Returns whether anything changed.
+fn publish_stats_frame(tx: &watch::Sender<Option<StatsFrame>>, frame: Option<StatsFrame>) -> bool {
+    tx.send_if_modified(|current| {
+        let same = match (current.as_ref(), frame.as_ref()) {
+            (None, None) => true,
+            (Some(old), Some(new)) => old.same_list(new),
+            _ => false,
+        };
+        if same {
+            false
+        } else {
+            *current = frame;
+            true
+        }
+    })
+}
+
+/// Bring the stats channel up to date from one engine read. `stats` is `None` when that read gave
+/// no fresh snapshot: the channel is then left exactly as it was, because publishing `None` would
+/// clear the sender's accepted list and drop a pending retry. Returns whether anything changed.
+fn refresh_stats_frame(
+    tx: &watch::Sender<Option<StatsFrame>>,
+    kind: SiteKind,
+    inputs: &LiveInputs,
+    stats: Option<&RunningStats>,
+) -> bool {
+    let Some(stats) = stats else {
+        return false;
+    };
+    publish_stats_frame(tx, stats_frame_for_site(kind, inputs, stats))
+}
+
 /// Hand `frame` to the live sender only when it differs from the one already there, so an
 /// unchanged frame never wakes it. Returns whether anything changed.
 fn publish_live_frame(tx: &watch::Sender<Option<LiveFrame>>, frame: Option<LiveFrame>) -> bool {
@@ -589,6 +651,22 @@ fn spawn_live_sender_if_client(
         Arc::clone(client),
         Arc::clone(keys),
         LIVE_TIMING,
+    ))
+}
+
+/// Start the stats sender when there is a portal client to send with. On a degraded start there
+/// is none: no sender runs, as for [`spawn_live_sender_if_client`].
+fn spawn_stats_sender_if_client(
+    client: Option<&SharedUwhPortalClient>,
+    keys: &SharedAccessKeys,
+    frames: watch::Receiver<Option<StatsFrame>>,
+) -> Option<tokio::task::JoinHandle<()>> {
+    let client = client?;
+    Some(spawn_stats_sender(
+        frames,
+        Arc::clone(client),
+        Arc::clone(keys),
+        STATS_TIMING,
     ))
 }
 
@@ -3890,12 +3968,18 @@ impl RefBoxApp {
         let portal_access_keys: SharedAccessKeys = Arc::new(Mutex::new(Default::default()));
 
         // The live sender runs until `live_frames` is dropped with the app, so its handle is not
-        // kept.
+        // kept. The same goes for the stats sender and `stats_frames`.
         let (live_frames, live_frames_rx) = watch::channel(None);
         let _ = spawn_live_sender_if_client(
             uwhportal_client.as_ref(),
             &portal_access_keys,
             live_frames_rx,
+        );
+        let (stats_frames, stats_frames_rx) = watch::channel(None);
+        let _ = spawn_stats_sender_if_client(
+            uwhportal_client.as_ref(),
+            &portal_access_keys,
+            stats_frames_rx,
         );
 
         let tm = SharedGame::new(tm);
@@ -4030,6 +4114,7 @@ impl RefBoxApp {
             portal_event_id,
             portal_access_keys,
             live_frames,
+            stats_frames,
             current_site,
             site_generation: 0,
             require_https,
@@ -4241,13 +4326,15 @@ impl RefBoxApp {
         task
     }
 
-    /// Publish the live-update frame for the game as the engine has it now: one engine read per
-    /// call (see [`live_engine_read`]), falling back to the snapshot the last handler applied.
+    /// Publish the live-update frame and the in-play stats frame for the game as the engine has
+    /// it now: one engine read per call (see [`live_engine_read`]), falling back to the snapshot
+    /// the last handler applied. On that fallback the stats frame is left as it was.
     fn refresh_live_frame(&mut self) {
         // Off (or not possible here): nothing to publish, so skip the lock and the allocation that
         // every message would otherwise pay for.
         if !effective_live_updates(self.config.live_updates, self.config.mode, self.source) {
             publish_live_frame(&self.live_frames, None);
+            publish_stats_frame(&self.stats_frames, None);
             return;
         }
         let site = published_site(&self.current_site);
@@ -4256,19 +4343,23 @@ impl RefBoxApp {
         // frame no game was ever in.
         let read = live_engine_read(&mut self.tm.lock(), Instant::now());
         let (snapshot, details) = read.snapshot_and_details(&self.snapshot);
-        let frame = live_frame_for_site(
-            self.current_site.kind,
-            &live_inputs(
-                &self.config,
-                self.source,
-                &site,
-                self.current_event_id.as_ref(),
-                snapshot,
-                read.game_clock_running,
-                details,
-            ),
+        let inputs = live_inputs(
+            &self.config,
+            self.source,
+            &site,
+            self.current_event_id.as_ref(),
+            snapshot,
+            read.game_clock_running,
+            details,
         );
+        let frame = live_frame_for_site(self.current_site.kind, &inputs);
         publish_live_frame(&self.live_frames, frame);
+        refresh_stats_frame(
+            &self.stats_frames,
+            self.current_site.kind,
+            &inputs,
+            read.fresh_stats(),
+        );
     }
 
     fn handle_message(&mut self, message: Message) -> Task<Message> {
@@ -11426,7 +11517,7 @@ mod snapshot_transition_tests {
 #[cfg(test)]
 mod live_updates_wiring_tests {
     use super::*;
-    use crate::live_updates::LiveFrame;
+    use crate::live_updates::{LiveFrame, StatsFrame};
     use crate::portal_manager::SiteAccessKeys;
     use tokio::sync::watch;
     use uwh_common::bundles::BlackWhiteBundle;
@@ -11651,6 +11742,7 @@ mod live_updates_wiring_tests {
             snapshot: None,
             game_clock_running: false,
             details: Some(details.clone()),
+            running_stats: stats("[]", "[]"),
         };
         let (snapshot, got) = failed.snapshot_and_details(&applied);
         assert_eq!(snapshot, &applied);
@@ -11675,6 +11767,7 @@ mod live_updates_wiring_tests {
             snapshot: Some(fresh.clone()),
             game_clock_running: true,
             details: Some(details.clone()),
+            running_stats: stats("[]", "[]"),
         };
         let (snapshot, got) = ok.snapshot_and_details(&applied);
         assert_eq!(snapshot, &fresh);
@@ -11755,5 +11848,227 @@ mod live_updates_wiring_tests {
         let keys: SharedAccessKeys = Arc::new(Mutex::new(SiteAccessKeys::default()));
         let (_tx, rx) = watch::channel(None);
         assert!(spawn_live_sender_if_client(None, &keys, rx).is_none());
+    }
+
+    /// A degraded start (no client) runs no stats sender either.
+    #[test]
+    fn no_client_means_no_stats_sender() {
+        let keys: SharedAccessKeys = Arc::new(Mutex::new(SiteAccessKeys::default()));
+        let (_tx, rx) = watch::channel(None);
+        assert!(spawn_stats_sender_if_client(None, &keys, rx).is_none());
+    }
+
+    fn stats(body: &str, key: &str) -> RunningStats {
+        RunningStats {
+            body: body.to_string(),
+            key: key.to_string(),
+        }
+    }
+
+    fn stats_frame_of(list: RunningStats) -> StatsFrame {
+        StatsFrame {
+            site: "https://uwhportal.example".to_string(),
+            event: event(),
+            game: "12".to_string(),
+            list,
+        }
+    }
+
+    /// The whole in-play stats path from a real engine: a goal and a still-running penalty
+    /// recorded in the engine reach the stats frame, read in the same lock as the live frame.
+    #[test]
+    fn stats_frame_from_engine_carries_goal_and_running_penalty() {
+        use uwh_common::color::Color;
+
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("12");
+        let start = Instant::now();
+        tm.start_play_now(start).expect("play starts");
+        let goal_at = start + Duration::from_secs(2);
+        tm.add_score(Color::Black, 7, goal_at);
+        tm.start_penalty(
+            Color::White,
+            4,
+            PenaltyKind::OneMinute,
+            goal_at + Duration::from_secs(1),
+            Infraction::Unknown,
+        )
+        .expect("penalty starts");
+
+        let now = goal_at + Duration::from_secs(5);
+        let read = live_engine_read(&mut tm, now);
+        let snapshot = read
+            .snapshot
+            .as_ref()
+            .expect("a running game has a snapshot");
+        let event = event();
+        let config = hockey_config();
+        let inputs = live_inputs(
+            &config,
+            GameSource::Portal,
+            "https://uwhportal.example",
+            Some(&event),
+            snapshot,
+            read.game_clock_running,
+            read.details.as_ref(),
+        );
+        let list = read
+            .fresh_stats()
+            .expect("a fresh read carries its running stats");
+        let frame = stats_frame_for_site(SiteKind::Portal, &inputs, list)
+            .expect("portal hockey, linked, in play, must publish a stats frame");
+
+        // Starting play from between games moves the engine on to the next game: the frame names
+        // the game now in play.
+        assert_eq!(frame.game, snapshot.game_number);
+        assert_eq!(frame.game, "13");
+        assert_eq!(frame.event, event);
+        let events: Vec<serde_json::Value> =
+            serde_json::from_str(&frame.list.body).expect("the body is a JSON array");
+        let types: Vec<&str> = events
+            .iter()
+            .map(|e| e["$type"].as_str().expect("every event has a type"))
+            .collect();
+        assert_eq!(types, ["goal", "penalty"], "{events:?}");
+        let caps: Vec<u64> = events
+            .iter()
+            .map(|e| {
+                e["playerCapNumber"]
+                    .as_u64()
+                    .expect("every event has a cap")
+            })
+            .collect();
+        assert_eq!(caps, [7, 4]);
+    }
+
+    /// When the engine read gives no snapshot, the stats channel is left exactly as it was:
+    /// publishing `None` would clear the sender's accepted list and drop a pending retry, and a
+    /// new frame would pair this read's list with a snapshot from another moment.
+    #[test]
+    fn fallback_read_leaves_the_stats_frame_alone() {
+        let applied = in_game(2);
+        let failed = LiveEngineRead {
+            snapshot: None,
+            game_clock_running: false,
+            details: None,
+            running_stats: stats("[new]", "new"),
+        };
+        assert_eq!(failed.fresh_stats(), None);
+
+        let (tx, mut rx) = watch::channel(Some(stats_frame_of(stats("[old]", "old"))));
+        rx.borrow_and_update();
+
+        let (snapshot, details) = failed.snapshot_and_details(&applied);
+        let event = event();
+        let config = hockey_config();
+        let inputs = live_inputs(
+            &config,
+            GameSource::Portal,
+            "https://uwhportal.example",
+            Some(&event),
+            snapshot,
+            failed.game_clock_running,
+            details,
+        );
+        assert!(!refresh_stats_frame(
+            &tx,
+            SiteKind::Portal,
+            &inputs,
+            failed.fresh_stats()
+        ));
+        assert!(!rx.has_changed().unwrap());
+        assert_eq!(
+            rx.borrow().as_ref().map(|f| f.list.key.as_str()),
+            Some("old")
+        );
+
+        // With a fresh snapshot, the list from the same read is published.
+        let ok = LiveEngineRead {
+            snapshot: Some(in_game(3)),
+            game_clock_running: true,
+            details: None,
+            running_stats: stats("[new]", "new"),
+        };
+        let fresh = ok.fresh_stats();
+        assert_eq!(fresh, Some(&stats("[new]", "new")));
+        let (snapshot, details) = ok.snapshot_and_details(&applied);
+        let inputs = live_inputs(
+            &config,
+            GameSource::Portal,
+            "https://uwhportal.example",
+            Some(&event),
+            snapshot,
+            ok.game_clock_running,
+            details,
+        );
+        assert!(refresh_stats_frame(&tx, SiteKind::Portal, &inputs, fresh));
+        assert!(rx.has_changed().unwrap());
+        assert_eq!(
+            rx.borrow_and_update().as_ref().map(|f| f.list.key.as_str()),
+            Some("new")
+        );
+    }
+
+    /// The body's `occurredOn` times differ on every build, so a body-only change must not wake
+    /// the sender: it would hit a failing portal on every message instead of every 15 s.
+    #[test]
+    fn publish_stats_frame_ignores_body_only_change() {
+        let (tx, mut rx) = watch::channel(None);
+
+        assert!(publish_stats_frame(
+            &tx,
+            Some(stats_frame_of(stats("[t1]", "k")))
+        ));
+        rx.borrow_and_update();
+
+        assert!(!publish_stats_frame(
+            &tx,
+            Some(stats_frame_of(stats("[t2]", "k")))
+        ));
+        assert!(!rx.has_changed().unwrap());
+
+        // A changed list does wake it.
+        assert!(publish_stats_frame(
+            &tx,
+            Some(stats_frame_of(stats("[t3]", "k2")))
+        ));
+        assert!(rx.has_changed().unwrap());
+        assert_eq!(
+            rx.borrow_and_update().as_ref().map(|f| f.list.key.as_str()),
+            Some("k2")
+        );
+
+        // Some -> None and None -> Some are changes; None -> None is not.
+        assert!(publish_stats_frame(&tx, None));
+        assert!(rx.has_changed().unwrap());
+        rx.borrow_and_update();
+        assert!(!publish_stats_frame(&tx, None));
+        assert!(!rx.has_changed().unwrap());
+        assert!(publish_stats_frame(
+            &tx,
+            Some(stats_frame_of(stats("[t3]", "k2")))
+        ));
+        assert!(rx.has_changed().unwrap());
+    }
+
+    /// A Portal source while the client still points at a custom site sends no stats, even with
+    /// everything else in place; the same inputs on the Portal's own site do.
+    #[test]
+    fn stats_frame_blocked_when_site_does_not_serve_source() {
+        let event = event();
+        let snapshot = in_game(2);
+        let config = hockey_config();
+        let inputs = live_inputs(
+            &config,
+            GameSource::Portal,
+            "https://uwhportal.example",
+            Some(&event),
+            &snapshot,
+            true,
+            None,
+        );
+        let list = stats("[]", "[]");
+        assert!(stats_frame_for_site(SiteKind::Portal, &inputs, &list).is_some());
+        assert_eq!(stats_frame_for_site(SiteKind::Custom, &inputs, &list), None);
     }
 }

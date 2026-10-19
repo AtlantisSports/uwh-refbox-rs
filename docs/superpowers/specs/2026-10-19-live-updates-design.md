@@ -13,6 +13,12 @@ their sources and their send-at-once rules are in the refbox/portal live-updates
 committed to either repo), under "v3 (PROPOSED by refbox 2026-10-19, portal-reviewed): last goal, active penalties,
 team-timeout countdown".
 
+**Running stats note (2026-10-19, `feat/uwh-common/live-running-stats`):** while a game is in play, a v3 refbox also
+PUTs its list of goals and penalties (served or still running; no fouls) to `…/live-games/{n}/stats` when the list
+changes, retrying a failed send every 15 s until the portal accepts it. It is a separate send from the live-games PUT
+above and from the end-of-game upload, which it does not touch, and nothing about it is saved to disk. The rules are in
+the same agreement, under "Running stats during play".
+
 ## Why
 
 The public event Schedule tab on uwhportal will show games in progress: a LIVE marker, the score, the part of the

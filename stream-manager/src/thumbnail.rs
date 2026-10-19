@@ -19,7 +19,7 @@ use tiny_skia::{
 use ttf_parser::{Face, GlyphId, OutlineBuilder, Tag};
 
 /// Bump this whenever the look changes.
-pub const DESIGN_VERSION: u32 = 2;
+pub const DESIGN_VERSION: u32 = 3;
 
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
@@ -64,11 +64,12 @@ const HALF_LIGHT: Rgb = [245, 248, 252];
 const SLASH_WIDTH: f32 = 18.0;
 const SLASH_ANGLE: f32 = 13.0;
 
-/// Height of the middle of the logo boxes, and of the name plate of a team without a logo.
-const BADGE_CENTER_Y: f32 = 288.0;
-/// Height of the middle of "VS": the middle of the picture.
+/// Height of the middle of "VS", of the logo boxes and of the name plate of a team without a
+/// logo: the middle of the picture.
 const MIDDLE_Y: f32 = HEIGHT as f32 / 2.0;
 const BADGE_BORDER: f32 = 8.0;
+/// Space between a logo box and its name plate.
+const PLATE_GAP: f32 = 22.0;
 const BADGE_RING: f32 = 6.0;
 /// Share of the badge the team logo fills.
 const LOGO_FILL: f32 = 0.88;
@@ -218,13 +219,31 @@ impl Painter {
         self.font.drawable(&head, false)?;
         self.font.drawable(&rest, false)?;
         let mut canvas = self.base.clone();
-        side(&mut canvas, &self.font, &game.dark, &DARK_SIDE, self.shape);
+        // A logo and its name plate are centred together; both logos sit at the same height,
+        // set by the taller of the two name plates.
+        let plate = [&game.dark, &game.light]
+            .iter()
+            .filter(|t| t.logo.is_some())
+            .map(|t| plate_height(&self.font, t))
+            .fold(0.0, f32::max);
+        let (_, hh) = self.shape.half();
+        let block = 2.0 * (hh + BADGE_BORDER + BADGE_RING) + PLATE_GAP + plate;
+        let cy = MIDDLE_Y - block / 2.0 + hh + BADGE_BORDER + BADGE_RING;
+        side(
+            &mut canvas,
+            &self.font,
+            &game.dark,
+            &DARK_SIDE,
+            self.shape,
+            cy,
+        );
         side(
             &mut canvas,
             &self.font,
             &game.light,
             &LIGHT_SIDE,
             self.shape,
+            cy,
         );
         info_bar(&mut canvas, &self.font, game);
         encode_jpeg(&canvas)
@@ -412,12 +431,19 @@ fn brand(canvas: &mut Pixmap) -> Result<(), BoxError> {
 
 /// One team: its logo in a box with the name on a plate below, or just its name when it has
 /// no logo.
-fn side(canvas: &mut Pixmap, font: &Font, team: &Team, style: &SideStyle, shape: LogoShape) {
+fn side(
+    canvas: &mut Pixmap,
+    font: &Font,
+    team: &Team,
+    style: &SideStyle,
+    shape: LogoShape,
+    cy: f32,
+) {
     let Some(logo) = team.logo else {
         name_only(canvas, font, team, style);
         return;
     };
-    let (cx, cy) = (style.center_x, BADGE_CENTER_Y);
+    let cx = style.center_x;
     let (hw, hh) = shape.half();
     let id = Transform::identity();
     let outer = BADGE_BORDER;
@@ -442,7 +468,7 @@ fn side(canvas: &mut Pixmap, font: &Font, team: &Team, style: &SideStyle, shape:
         team_logo(canvas, &logo, (cx, cy), (hw, hh), &inner);
     }
 
-    let top = cy + hh + ring + 22.0;
+    let top = cy + hh + ring + PLATE_GAP;
     let fit = (NAME_SIZE, NAME_MAX_WIDTH, NAME_MAX_LINES);
     name_plate(canvas, font, team, style, fit, |_| top);
 }
@@ -452,11 +478,23 @@ fn side(canvas: &mut Pixmap, font: &Font, team: &Team, style: &SideStyle, shape:
 /// clear of "VS".
 fn name_only(canvas: &mut Pixmap, font: &Font, team: &Team, style: &SideStyle) {
     let fit = (NAME_SIZE, NAME_ONLY_MAX_WIDTH, NAME_MAX_LINES);
-    name_plate(canvas, font, team, style, fit, |h| BADGE_CENTER_Y - h / 2.0);
+    name_plate(canvas, font, team, style, fit, |h| MIDDLE_Y - h / 2.0);
 }
 
 /// The team's name on a slanted plate with a teal edge: as large as `largest` allows within
 /// `max_width` and `max_lines`, with its top where `top` puts it for the plate's height.
+/// Height of the name plate under a logo.
+fn plate_height(font: &Font, team: &Team) -> f32 {
+    let (size, lines) = font.fit(
+        &name_text(team),
+        NAME_SIZE,
+        0.0,
+        NAME_MAX_WIDTH,
+        NAME_MAX_LINES,
+    );
+    2.0 * 8.0 + size * 1.1 * lines.len() as f32 + 5.0
+}
+
 fn name_plate(
     canvas: &mut Pixmap,
     font: &Font,

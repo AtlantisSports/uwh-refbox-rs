@@ -4,6 +4,14 @@ Status: APPROVED by the PO (Eric) 2026-10-19 and built on `feat/uwh-common/live-
 against refbox `origin/master` @ 701ea226. Where the build departs from this text, the plan's "Deviations" section
 says so.
 
+**v3 note (2026-10-19, `feat/uwh-common/live-updates-v3`):** this document describes v2 and is left as written. v3
+adds three body fields: `lastGoal`, `penalties`, and `timeoutSeconds` / `timeoutRunning` for a White or Black team
+timeout. So the `timeout` row below ("the kind only, no seconds"), "Nothing else" under the body table, "a timeout
+timer" among the non-goals, and any statement that penalties are not sent no longer hold for a v3 refbox. The fields,
+their sources and their send-at-once rules are in the agreement's v3 section:
+`uwh-portal-live-schedule/docs/superpowers/specs/2026-10-19-live-schedule-refbox-live-updates-agreement.md`, under
+"v3 (PROPOSED by refbox 2026-10-19, portal-reviewed): last goal, active penalties, team-timeout countdown".
+
 ## Why
 
 The public event Schedule tab on uwhportal will show games in progress: a LIVE marker, the score, the part of the

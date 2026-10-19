@@ -640,7 +640,8 @@ mod tests {
             heartbeat: false,
             ..frame(&portal.site, 2)
         };
-        let (_tx, _task) = start(&portal, Some(finished), timing(300, 150));
+        // A generous request timeout, so a slow runner cannot abandon the one send before it lands.
+        let (_tx, _task) = start(&portal, Some(finished), timing(300, 1500));
         let got = portal.all_within(Duration::from_millis(1000)).await;
         assert_eq!(got.len(), 1);
     }

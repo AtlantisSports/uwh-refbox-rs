@@ -4211,8 +4211,8 @@ impl RefBoxApp {
         task
     }
 
-    /// Publish the live-update frame for the app's current state. Reads the snapshot the last
-    /// handler applied; never generates one, because generating has side effects.
+    /// Publish the live-update frame for the game as the engine has it now: one engine read per
+    /// call (see [`live_engine_read`]), falling back to the snapshot the last handler applied.
     fn refresh_live_frame(&mut self) {
         // Off (or not possible here): nothing to publish, so skip the lock and the allocation that
         // every message would otherwise pay for.

@@ -350,3 +350,10 @@ Rulings made during execution (2026-10-19). Each names what changed against the 
 8. **Translations.** de, nl, tr, ja, ko and zh were re-worded rather than trimmed. ko `생중계 업데이트` and zh `即时更新`
    were chosen because the subset font lacks the more usual `실시간` / `实时`. None of the 14 non-English locales has
    been checked by a native speaker.
+9. **Pre-PR code-review fixes: the live frame now reads the engine itself.** The plan said the refresh must never
+   call `generate_snapshot`. But the app's applied snapshot can lag the engine (a score confirmation starts play
+   without applying one), and pairing it with the engine's live clock flag sent a frame no game was ever in. Each
+   refresh now takes the snapshot and the flag from the engine under one lock (`live_engine_read`), falling back to the
+   applied snapshot. `generate_snapshot`'s only side effect is clearing an expired recent goal, which every tick does
+   anyway. This supersedes the code-read in item 5. The sender tests' timing margins were also widened so slow CI
+   runners cannot fail them.

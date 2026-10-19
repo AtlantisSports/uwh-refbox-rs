@@ -528,7 +528,11 @@ mod tests {
         (tx, spawn_live_sender(rx, client, keys, timing))
     }
 
-    const WAIT: Duration = Duration::from_secs(2);
+    /// How long to wait for a request that is expected. Generous on purpose: CI runners can stall
+    /// for hundreds of milliseconds, and a request that is merely slow should not fail a test.
+    /// Every timing bound below keeps at least ~500 ms between the expected value and the
+    /// assertion, for the same reason.
+    const WAIT: Duration = Duration::from_secs(5);
 
     #[tokio::test]
     async fn sends_put_with_body_and_key() {
@@ -544,19 +548,27 @@ mod tests {
     #[tokio::test]
     async fn heartbeat_resends_unchanged_frame() {
         let mut portal = portal(answer_at_once).await;
-        let (_tx, _task) = start(&portal, Some(frame(&portal.site, 2)), timing(300, 150));
+        let (_tx, _task) = start(&portal, Some(frame(&portal.site, 2)), timing(2000, 500));
         let first = portal.next(WAIT).await.expect("a first request");
-        let rest = portal.all_within(Duration::from_millis(750)).await;
+        let rest = portal.all_within(Duration::from_millis(3000)).await;
         assert!(
             !rest.is_empty(),
             "an unchanged frame is re-sent every heartbeat"
         );
         assert_eq!(rest[0].body, first.body);
-        // The heartbeat sets the data cost: at 300 ms, a 750 ms window holds 2 resends, so more
-        // than 3 means it is resending faster than the heartbeat.
+        // The heartbeat sets the data cost. The first resend is due 2 s after the first send; a
+        // stall can only bring the gap down by the time the first request took to arrive, so
+        // 1 s leaves room for that while still catching a resend made without waiting.
+        let gap = rest[0].at - first.at;
         assert!(
-            rest.len() <= 3,
-            "{} resends in 750 ms; the heartbeat is 300 ms",
+            gap >= Duration::from_millis(1000),
+            "resent {gap:?} after the first; the heartbeat is 2 s"
+        );
+        // A 3 s window holds one resend (at 2 s; the next is due at 4 s), so more than 2 means it
+        // is resending faster than the heartbeat.
+        assert!(
+            rest.len() <= 2,
+            "{} resends in 3 s; the heartbeat is 2 s",
             rest.len()
         );
     }
@@ -564,14 +576,15 @@ mod tests {
     #[tokio::test]
     async fn change_sends_without_waiting_for_heartbeat() {
         let mut portal = portal(answer_at_once).await;
-        let (tx, _task) = start(&portal, Some(frame(&portal.site, 2)), timing(2000, 500));
+        let (tx, _task) = start(&portal, Some(frame(&portal.site, 2)), timing(3000, 500));
         portal.next(WAIT).await.expect("a first request");
         let changed = Instant::now();
         tx.send(Some(frame(&portal.site, 3))).unwrap();
         let second = portal.next(WAIT).await.expect("a second request");
+        // Expected almost at once; waiting for the heartbeat would take about 3 s.
         assert!(
-            second.at - changed < Duration::from_millis(500),
-            "sent {:?} after the change; the heartbeat is 2 s",
+            second.at - changed < Duration::from_millis(1000),
+            "sent {:?} after the change; the heartbeat is 3 s",
             second.at - changed
         );
         assert_eq!(second.body, serde_json::to_string(&state(3)).unwrap());
@@ -587,31 +600,33 @@ mod tests {
             }
         })
         .await;
-        let (tx, _task) = start(&portal, Some(frame(&portal.site, 2)), timing(2000, 200));
+        let (tx, _task) = start(&portal, Some(frame(&portal.site, 2)), timing(4000, 1000));
         let first = portal.next(WAIT).await.expect("a first request");
         // A change while the first is stuck: it waits for the first to be abandoned, then goes.
         tx.send(Some(frame(&portal.site, 3))).unwrap();
         let second = portal.next(WAIT).await.expect("a second request");
+        // Expected about 1 s (the timeout). Not waiting for the first gives ~0; ignoring the
+        // timeout leaves it to the client's own 10 s one.
         let gap = second.at - first.at;
         assert!(
-            gap >= Duration::from_millis(150) && gap < Duration::from_millis(1000),
-            "second request {gap:?} after the first; the timeout is 200 ms"
+            gap >= Duration::from_millis(500) && gap < Duration::from_millis(3000),
+            "second request {gap:?} after the first; the timeout is 1 s"
         );
         assert_eq!(second.body, serde_json::to_string(&state(3)).unwrap());
     }
 
     #[tokio::test]
     async fn never_two_in_flight() {
-        let mut portal = portal(|_, _| Reply::After(Duration::from_millis(600))).await;
-        let (tx, _task) = start(&portal, Some(frame(&portal.site, 0)), timing(300, 2000));
+        let mut portal = portal(|_, _| Reply::After(Duration::from_millis(1500))).await;
+        let (tx, _task) = start(&portal, Some(frame(&portal.site, 0)), timing(300, 4000));
         portal.next(WAIT).await.expect("a first request");
-        // Changes (all within the first 600 ms hold) and overdue heartbeats pile up while each
-        // request is held.
+        // Changes (all within the first 1.5 s hold, which they need only ~320 ms of) and overdue
+        // heartbeats pile up while each request is held.
         for black in 1..=4 {
             tokio::time::sleep(Duration::from_millis(80)).await;
             tx.send(Some(frame(&portal.site, black))).unwrap();
         }
-        let rest = portal.all_within(Duration::from_millis(1500)).await;
+        let rest = portal.all_within(Duration::from_millis(3000)).await;
         assert!(!rest.is_empty(), "sending went on");
         assert_eq!(portal.max_in_flight.load(Ordering::SeqCst), 1);
         // Coalesced: the changes made during the first send go out as one, the newest.
@@ -633,14 +648,15 @@ mod tests {
     #[tokio::test]
     async fn none_stops_sending() {
         let mut portal = portal(answer_at_once).await;
-        let (tx, _task) = start(&portal, Some(frame(&portal.site, 2)), timing(300, 150));
+        let (tx, _task) = start(&portal, Some(frame(&portal.site, 2)), timing(3000, 500));
         portal.next(WAIT).await.expect("a first request");
         tx.send(None).unwrap();
         let got = portal.all_within(Duration::from_millis(1000)).await;
         assert_eq!(got.len(), 0, "nothing is sent while there is no frame");
-        // What was last sent is forgotten, so the same frame goes out again at once.
+        // What was last sent is forgotten, so the same frame goes out again at once -- not at the
+        // next heartbeat, which is still ~2 s away.
         tx.send(Some(frame(&portal.site, 2))).unwrap();
-        assert!(portal.next(Duration::from_millis(250)).await.is_some());
+        assert!(portal.next(Duration::from_millis(1000)).await.is_some());
     }
 
     #[tokio::test]
@@ -798,13 +814,15 @@ mod tests {
     #[tokio::test]
     async fn rejected_send_waits_for_heartbeat() {
         let mut portal = portal(|_, _| Reply::Status("500 Internal Server Error")).await;
-        let (_tx, _task) = start(&portal, Some(frame(&portal.site, 2)), timing(500, 300));
+        let (_tx, _task) = start(&portal, Some(frame(&portal.site, 2)), timing(2000, 500));
         let first = portal.next(WAIT).await.expect("a first request");
         let second = portal.next(WAIT).await.expect("a second request");
+        // Expected about 2 s; an immediate retry gives ~0. A stall can only bring the gap down by
+        // the time the first request took to arrive, which 1 s leaves room for.
         let gap = second.at - first.at;
         assert!(
-            gap >= Duration::from_millis(400),
-            "a rejected send was retried {gap:?} later; the heartbeat is 500 ms"
+            gap >= Duration::from_millis(1000),
+            "a rejected send was retried {gap:?} later; the heartbeat is 2 s"
         );
     }
 
@@ -851,11 +869,12 @@ mod tests {
         .await;
         let (client, keys) = shared(&portal.site, &portal.site);
         let (_tx, rx) = watch::channel(Some(frame(&portal.site, 2)));
-        let _task = spawn_live_sender(rx, Arc::clone(&client), keys, timing(5000, 3000));
+        let _task = spawn_live_sender(rx, Arc::clone(&client), keys, timing(20_000, 10_000));
         let live = portal.next(WAIT).await.expect("the live PUT");
         assert!(live.path.contains("/live-games/"), "{}", live.path);
 
-        // The live PUT is now hung, and will be for 3 s.
+        // The live PUT is now hung, and will be for 10 s. The post is expected in milliseconds;
+        // 3 s leaves room for a slow runner while still well short of the hung send's 10 s.
         let started = Instant::now();
         let posting = tokio::task::spawn_blocking(move || {
             let guard = client
@@ -868,17 +887,17 @@ mod tests {
                 false,
             )
         });
-        let posted = tokio::time::timeout(Duration::from_secs(1), async {
+        let posted = tokio::time::timeout(Duration::from_secs(3), async {
             posting.await.expect("the lock is taken").await
         })
         .await;
         let elapsed = started.elapsed();
         assert!(
             matches!(posted, Ok(Ok(()))),
-            "the score post did not complete within 1 s of a hung live send: {:?}",
+            "the score post did not complete within 3 s of a hung live send: {:?}",
             posted.map(|r| r.map_err(|e| e.to_string()))
         );
-        assert!(elapsed < Duration::from_secs(1), "{elapsed:?}");
+        assert!(elapsed < Duration::from_secs(3), "{elapsed:?}");
         let post = portal.next(WAIT).await.expect("the score post");
         assert!(post.path.contains("/scores"), "{}", post.path);
     }

@@ -492,6 +492,16 @@ fn published_site(target: &SiteTarget) -> String {
     target.base_url.expose().to_string()
 }
 
+/// The engine's snapshot and game-clock flag, read together so a live frame never pairs a
+/// snapshot with a flag from a different moment. `None` for the snapshot when the engine cannot
+/// produce one; the caller then falls back to the app's last applied snapshot.
+///
+/// `generate_snapshot`'s only side effect is clearing an expired recent goal, which every tick
+/// does anyway. The snapshot is used for the frame only, never applied to the app's own.
+fn live_engine_read(tm: &mut TournamentManager, now: Instant) -> (Option<GameSnapshot>, bool) {
+    (tm.generate_snapshot(now), tm.game_clock_running())
+}
+
 /// Everything [`live_frame`] needs, gathered from the app's state. Pure, so the decision can be
 /// tested without building the whole app.
 fn live_inputs<'a>(
@@ -2807,7 +2817,7 @@ impl RefBoxApp {
             LinkCommit::Leave => None,
         };
 
-        // Committed here, while `edited` is still borrowed, so the seven toggles
+        // Committed here, while `edited` is still borrowed, so the eight toggles
         // need no per-field locals. `config` and `edited_settings` are disjoint
         // fields, so this mutable borrow and the immutable one above coexist.
         let hide_time_changed = commit_app_toggles(&mut self.config, edited);
@@ -4211,7 +4221,11 @@ impl RefBoxApp {
             return;
         }
         let site = published_site(&self.current_site);
-        let game_clock_running = self.tm.lock().game_clock_running();
+        // One lock, one read: `self.snapshot` can lag the engine (a message that changes the
+        // engine without applying a snapshot), so pairing it with a live clock flag could send a
+        // frame no game was ever in.
+        let (fresh, game_clock_running) = live_engine_read(&mut self.tm.lock(), Instant::now());
+        let snapshot = fresh.as_ref().unwrap_or(&self.snapshot);
         let frame = live_frame_for_site(
             self.current_site.kind,
             &live_inputs(
@@ -4219,7 +4233,7 @@ impl RefBoxApp {
                 self.source,
                 &site,
                 self.current_event_id.as_ref(),
-                &self.snapshot,
+                snapshot,
                 game_clock_running,
             ),
         );
@@ -8681,7 +8695,7 @@ fn commit_app_toggles(config: &mut Config, edited: &EditableSettings) -> bool {
 mod commit_app_toggles_tests {
     use super::*;
 
-    /// All seven toggles set to the opposite of their `Config` default, so a
+    /// All eight toggles set to the opposite of their `Config` default, so a
     /// missing assignment cannot pass by coincidence.
     fn all_flipped() -> EditableSettings {
         EditableSettings {
@@ -8716,10 +8730,10 @@ mod commit_app_toggles_tests {
     #[test]
     fn all_seven_toggles_are_copied_the_other_way() {
         // Guards against a hardcoded assignment rather than a copy: the same
-        // seven fields driven back in the opposite direction. All seven start
+        // eight fields driven back in the opposite direction. All eight start
         // `true` so that committing an all-default (all-false) EditableSettings
         // has to change every one of them — starting from `all_flipped()` would
-        // leave three already false, and their assertions would then pass even
+        // leave four already false, and their assertions would then pass even
         // with the assignment deleted.
         let mut config = Config::default();
         config.collect_scorer_cap_num = true;
@@ -11484,6 +11498,37 @@ mod live_updates_wiring_tests {
             frame_for(&hockey_config(), GameSource::Custom, &in_game(2), true),
             None
         );
+    }
+
+    /// The frame is built from the engine as it is now, not from a snapshot the app has not yet
+    /// caught up to: a message can start or stop play without applying a snapshot.
+    #[test]
+    fn live_engine_read_follows_the_engine_not_a_stale_snapshot() {
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let start = Instant::now();
+        let (before, running) = live_engine_read(&mut tm, start);
+        let stale = before.expect("a fresh engine has a snapshot");
+        assert_eq!(stale.current_period, GamePeriod::BetweenGames);
+        assert!(!running);
+
+        // The engine moves on; the app's snapshot (`stale`) does not.
+        tm.start_play_now(start).expect("play starts");
+        let (fresh, running) = live_engine_read(&mut tm, start);
+        let fresh = fresh.expect("a running game has a snapshot");
+        assert_eq!(fresh.current_period, GamePeriod::FirstHalf);
+        assert!(running);
+        let frame = frame_for(&hockey_config(), GameSource::Portal, &fresh, running)
+            .expect("portal hockey, linked, must publish");
+        assert!(frame.state.clock_running);
+        assert_eq!(frame.state.period, GamePeriod::FirstHalf);
+
+        // A halt: the flag and the seconds come from the same read.
+        let later = start + Duration::from_secs(3);
+        tm.stop_clock(later).expect("clock stops");
+        let (halted, running) = live_engine_read(&mut tm, later + Duration::from_secs(5));
+        let halted = halted.expect("a halted game has a snapshot");
+        assert!(!running);
+        assert_eq!(halted.secs_in_period, fresh.secs_in_period - 3);
     }
 
     #[test]

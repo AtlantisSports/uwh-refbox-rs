@@ -520,6 +520,7 @@ fn live_inputs<'a>(
         event,
         snapshot,
         game_clock_running,
+        details: None,
     }
 }
 

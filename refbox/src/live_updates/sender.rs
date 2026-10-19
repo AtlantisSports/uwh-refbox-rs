@@ -491,6 +491,7 @@ mod tests {
             game: "5".to_string(),
             state: state(black),
             heartbeat: true,
+            penalty_key: vec![],
         }
     }
 

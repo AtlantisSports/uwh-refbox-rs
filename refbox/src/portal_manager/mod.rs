@@ -101,8 +101,13 @@ impl SiteAccessKeys {
         self.keys = keys;
     }
 
-    fn key_for(&self, event: &uwh_common::uwhportal::schedule::EventId) -> Option<&str> {
+    pub(crate) fn key_for(&self, event: &uwh_common::uwhportal::schedule::EventId) -> Option<&str> {
         crate::config::access_key_in(&self.keys, &self.site, event)
+    }
+
+    /// The site these keys belong to.
+    pub(crate) fn site(&self) -> &str {
+        &self.site
     }
 }
 

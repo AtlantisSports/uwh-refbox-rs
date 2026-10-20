@@ -896,8 +896,8 @@ async fn download_picture(http: &reqwest::Client, url: &str) -> Result<DynamicIm
 }
 
 /// Whether a [`download_picture`] failure would happen again: the picture was refused (HTTP
-/// 4xx other than 408 and 429) or isn't one that can be read. Anything else (a timeout, no connection, a server error)
-/// might not.
+/// 4xx other than 408 and 429) or isn't one that can be read. Anything else (a timeout, no
+/// connection, a server error) might not.
 fn is_final(e: &BoxError) -> bool {
     e.downcast_ref::<reqwest::Error>()
         .and_then(reqwest::Error::status)

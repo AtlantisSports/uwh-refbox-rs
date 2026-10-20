@@ -39,10 +39,10 @@ const KEEPALIVE_IDLE: Duration = Duration::from_secs(5);
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(3);
 /// How many unanswered probes the OS sends before giving up on the connection.
 const KEEPALIVE_RETRIES: u32 = 3;
-/// How long one connection attempt may take. Without it, an attempt during a network outage can
-/// hang about 21 s on Windows and about 2 min on Linux before the next try, delaying recovery
-/// once the network is back.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+/// How long one connection attempt may take. Long enough for Windows' first SYN retransmit (after
+/// its 3 s initial timeout) to happen inside one attempt, yet it still avoids the hang of about
+/// 21 s on Windows and about 2 min on Linux, which would delay recovery once the network is back.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Configures TCP keepalive on `stream` so a refbox that silently disappears -- Wi-Fi drop, power
 /// cycle -- is noticed by the OS and reported as a read error, instead of the read waiting

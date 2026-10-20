@@ -103,6 +103,11 @@ impl CourtSwitcher {
         self.rules = rules;
     }
 
+    /// Whether any refbox snapshot has reached this switcher yet in this run.
+    pub fn has_report(&self) -> bool {
+        self.last.is_some()
+    }
+
     pub fn status(&self) -> Status {
         let phase = self.last.as_ref().map_or(Phase::Unknown, phase_of);
         let (secs_until_switch, secs_until_rosters) = match &phase {

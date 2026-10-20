@@ -656,8 +656,7 @@ async fn link_portal(
         LinkError::Other(e) => bad(format!("Couldn't link: {e}")),
     })?;
     // The key is for the event and portal the code was swapped for; never save it for others.
-    let now = app.config();
-    if now.portal_url != config.portal_url || now.event_slug != config.event_slug {
+    if !app.is_current(&config.portal_url, &config.event_slug) {
         return Err(bad(
             "The event or portal changed while linking. Link again.",
         ));
@@ -800,6 +799,25 @@ fn preview_error_body(message: &str, key_check: &watch_links::KeyCheck) -> Value
     json!({ "error": message, "portal_links": portal_links, "key_forgotten": key_forgotten })
 }
 
+/// The schedule Prepare's preview uses: the one just fetched from `portal_url` for
+/// `event_slug`, which also replaces the loaded one, or `cached` if the fetch failed or took
+/// too long.
+fn plan_for_preview(
+    app: &App,
+    portal_url: &str,
+    event_slug: &str,
+    cached: EventPlan,
+    fetched: Result<Result<EventPlan, crate::BoxError>, tokio::time::error::Elapsed>,
+) -> EventPlan {
+    match fetched {
+        Ok(Ok(fresh)) => {
+            app.set_plan(portal_url, event_slug, fresh.clone());
+            fresh
+        }
+        _ => cached,
+    }
+}
+
 async fn prepare_preview(
     State(app): State<AppState>,
     headers: HeaderMap,
@@ -826,14 +844,19 @@ async fn prepare_preview(
             crate::portal::fetch_event_plan(&config.portal_url, &config.event_slug)
         )
     );
-    // The portal accepts an empty update whatever the event's "Will be streamed" setting, so
-    // the schedule says whether links can be set. It is read afresh, because the organiser may
-    // have just turned it on as the warning asks; the loaded copy answers if that fails.
-    let will_be_streamed = match fresh_plan {
-        Ok(Ok(fresh)) => fresh.will_be_streamed,
-        _ => plan.will_be_streamed,
-    };
-    let key_check = watch_links::with_streaming(key_check, will_be_streamed);
+    // The schedule is read afresh, because the organiser may have just changed it or turned on
+    // "Will be streamed" as the warning asks. The fresh copy replaces the loaded one, so the
+    // preview and the Create that follows it use the same games; the loaded copy answers if
+    // the read fails. The portal accepts an empty update whatever the event's "Will be
+    // streamed" setting, so the schedule says whether links can be set.
+    let plan = plan_for_preview(
+        &app,
+        &config.portal_url,
+        &config.event_slug,
+        plan,
+        fresh_plan,
+    );
+    let key_check = watch_links::with_streaming(key_check, plan.will_be_streamed);
     // From here a failure still says what the key check found: it may have just forgotten a
     // refused key, and this is the only time the operator is told.
     let failed = |error: crate::BoxError| {
@@ -871,25 +894,24 @@ async fn prepare_run(
     Json(selection): Json<Selection>,
 ) -> ApiResult {
     authorize(&app, &headers)?;
+    // Worked out once, before the job starts, so the videos are made and the links go out for
+    // this job's event even if the settings change meanwhile.
+    let config = app.config();
+    let state_file = app.state_file().map_err(|e| bad(e.to_string()))?;
     let plan = app
         .plan()
         .ok_or_else(|| bad("The schedule isn't loaded yet"))?;
+    if !app.is_current(&config.portal_url, &config.event_slug) {
+        return Err(bad(
+            "The settings changed since the preview. Preview again.",
+        ));
+    }
     app.begin_job("Create videos").map_err(bad)?;
     let job_app = Arc::clone(&app);
     tokio::spawn(async move {
         let app = job_app;
-        let config = app.config();
         let log_app = Arc::clone(&app);
         let mut log = move |line: String| log_app.job_log(line);
-        // Worked out once, so the links go out for this job's event even if the settings
-        // change meanwhile.
-        let state_file = match app.state_file() {
-            Ok(state_file) => state_file,
-            Err(e) => {
-                app.end_job(Some(e.to_string()));
-                return;
-            }
-        };
         let result = async {
             let lookups = prepare::lookups(&mut app.youtube()?).await?;
             // Takes each court's lock one game at a time, so switches carry on meanwhile.
@@ -1128,13 +1150,11 @@ async fn cleanup(
         .await;
         // Also after a failure: the videos deleted before it still get their links cleared.
         // The loaded schedule is used only while it is still this job's event and portal.
-        let current = app.config();
-        let loaded_plan =
-            if current.event_slug == config.event_slug && current.portal_url == config.portal_url {
-                app.plan()
-            } else {
-                None
-            };
+        let loaded_plan = if app.is_current(&config.portal_url, &config.event_slug) {
+            app.plan()
+        } else {
+            None
+        };
         watch_links::publish_after_cleanup(
             &app.link_file(),
             &config,
@@ -2082,6 +2102,69 @@ mod tests {
             assert_eq!(portal_links.unwrap()["warning"], false, "{check:?}");
             assert!(!key_forgotten, "{check:?}");
         }
+    }
+
+    /// An app whose settings name `portal_url` and `cup-2026`, with `cached` loaded.
+    fn app_with_plan(name: &str, portal_url: &str, cached: &EventPlan) -> Arc<App> {
+        let dir =
+            std::env::temp_dir().join(format!("stream-manager-web-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = Config {
+            portal_url: portal_url.into(),
+            event_slug: "cup-2026".into(),
+            ..Config::default()
+        };
+        let app = App::new(dir.join("config.toml"), config);
+        app.set_plan(portal_url, "cup-2026", cached.clone());
+        assert_eq!(app.plan().as_ref(), Some(cached));
+        app
+    }
+
+    fn event_plan(name: &str, will_be_streamed: Option<bool>) -> EventPlan {
+        EventPlan {
+            event_name: name.into(),
+            games: Vec::new(),
+            will_be_streamed,
+        }
+    }
+
+    #[test]
+    fn a_preview_keeps_the_schedule_it_fetched() {
+        let portal = "https://portal.example";
+        let cached = event_plan("Cup (loaded)", None);
+        let fetched = event_plan("Cup (fetched)", Some(true));
+        let app = app_with_plan("pp-keeps", portal, &cached);
+        let used = plan_for_preview(&app, portal, "cup-2026", cached, Ok(Ok(fetched.clone())));
+        assert_eq!(used, fetched);
+        assert_eq!(app.plan(), Some(fetched));
+    }
+
+    #[tokio::test]
+    async fn a_preview_whose_schedule_fetch_fails_keeps_the_cached_one() {
+        let portal = "https://portal.example";
+        let cached = event_plan("Cup (loaded)", Some(false));
+        let app = app_with_plan("pp-fails", portal, &cached);
+
+        let used = plan_for_preview(
+            &app,
+            portal,
+            "cup-2026",
+            cached.clone(),
+            Ok(Err("portal returned 500".into())),
+        );
+        assert_eq!(used, cached);
+        assert_eq!(app.plan().as_ref(), Some(&cached));
+
+        let timed_out = tokio::time::timeout(
+            std::time::Duration::ZERO,
+            std::future::pending::<Result<EventPlan, crate::BoxError>>(),
+        )
+        .await;
+        assert!(timed_out.is_err());
+        let used = plan_for_preview(&app, portal, "cup-2026", cached.clone(), timed_out);
+        assert_eq!(used, cached);
+        assert_eq!(app.plan(), Some(cached));
     }
 
     #[test]

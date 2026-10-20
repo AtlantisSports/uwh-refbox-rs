@@ -633,7 +633,9 @@ async function previewPrepare() {
       $('prep-preview').innerHTML = `${portal}<div class="summary-box"><ul>${lists}</ul><b class="ok-text">Everything is already up to date on YouTube.</b></div>`;
       return;
     }
-    previewed = sel;
+    // Create sends back the event and portal this preview was made for, so a preview from
+    // before a settings change can't make another event's videos.
+    previewed = { ...sel, portal_url: r.portal_url, event_slug: r.event_slug };
     $('prep-preview').innerHTML = `${portal}<div class="summary-box"><ul>${lists}</ul>
       This will create <b>${w.playlists_to_create}</b> playlist(s) and <b>${w.videos_to_create}</b> video(s),
       update <b>${w.videos_to_update}</b>, link <b>${w.binds}</b> to stream keys, add <b>${w.playlist_adds}</b> to playlists
@@ -830,6 +832,7 @@ async function saveSettings() {
       !confirm('Make NEW videos and playlists PUBLIC? (Existing ones keep their current privacy.)')) return;
   try {
     const r = await api('/api/settings', { method: 'POST', body });
+    clearPreview(); // a preview made under the old settings no longer applies
     $('s-saved').innerHTML = '<span class="ok-text">Saved ✓</span>';
     if (r.restart_needed) $('s-restart').classList.remove('hidden');
     setTimeout(() => $('s-saved').textContent = '', 3000);

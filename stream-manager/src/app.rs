@@ -554,7 +554,7 @@ impl App {
                     court.note("Refbox responding again".into());
                 }
                 if let Some(action) = court.switcher.on_snapshot(&snapshot) {
-                    dispatch(court, executors.get(i), plan.as_ref(), action, practice);
+                    dispatch(court, executors.get(i), plan.as_ref(), action, practice, "");
                 }
             }
         }
@@ -609,12 +609,24 @@ impl App {
             court.recovered = true;
         }
         if let Some(action) = result {
-            let mut message = describe_action(plan.as_ref(), &action, practice);
-            if no_data && command == Command::SwitchNow {
-                message =
-                    format!("Refbox not connected: switched using its last report. {message}");
-            }
-            dispatch(court, executors.get(i), plan.as_ref(), action, practice);
+            // The same words go in the court log and the reply, as one line.
+            let prefix = if no_data && command == Command::SwitchNow {
+                "Refbox not connected: switched using its last report. "
+            } else {
+                ""
+            };
+            let message = format!(
+                "{prefix}{}",
+                describe_action(plan.as_ref(), &action, practice)
+            );
+            dispatch(
+                court,
+                executors.get(i),
+                plan.as_ref(),
+                action,
+                practice,
+                prefix,
+            );
             return Ok(message);
         }
         let message = match command {
@@ -1462,8 +1474,12 @@ fn dispatch(
     plan: Option<&EventPlan>,
     action: Action,
     practice: bool,
+    prefix: &str,
 ) {
-    court.note(describe_action(plan, &action, practice));
+    court.note(format!(
+        "{prefix}{}",
+        describe_action(plan, &action, practice)
+    ));
     if practice {
         return;
     }
@@ -1732,6 +1748,17 @@ mod tests {
         assert!(
             message.starts_with("Refbox not connected: switched using its last report."),
             "{message}"
+        );
+        let status = app.inner().courts[0].switcher.status();
+        assert!(!status.hold);
+        let log = app.inner().courts[0]
+            .log
+            .front()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            log.contains("Refbox not connected: switched using its last report"),
+            "{log}"
         );
         let _ = std::fs::remove_dir_all(&app.config_dir);
     }

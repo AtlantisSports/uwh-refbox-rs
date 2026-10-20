@@ -11627,7 +11627,7 @@ mod live_updates_wiring_tests {
         assert_eq!(penalties.len(), 1);
         assert_eq!(penalties[0].team, Color::White);
         assert_eq!(penalties[0].cap, 4);
-        assert_eq!(frame.penalty_key.len(), 1);
+        assert_eq!(frame.penalty_key.map(|k| k.len()), Some(1));
 
         let body = serde_json::to_value(&frame.state).expect("the body serialises");
         assert_eq!(portal_rule_violations(&body), Vec::<&str>::new(), "{body}");

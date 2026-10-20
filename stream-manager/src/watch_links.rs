@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, path::Path, time::Duration};
 
-/// The file, next to the settings, holding the access key for the linked portal event.
+/// The file, next to the settings, holding the access key for each linked portal event.
 pub const LINK_FILE: &str = "portal-watch-links.json";
 
 /// How much of a portal reply goes into an error message.
@@ -33,25 +33,49 @@ pub struct PortalLink {
     pub access_key: String,
 }
 
-/// The saved link, if there is one for this portal and event. A missing, unreadable or
-/// unparsable file, or one for another portal or event, is `None`.
-pub fn link_for(path: &Path, portal_url: &str, event_slug: &str) -> Option<PortalLink> {
-    let text = std::fs::read_to_string(path).ok()?;
-    let link: PortalLink = serde_json::from_str(&text).ok()?;
-    (link.portal_url == portal_url && link.event_slug == event_slug).then_some(link)
+/// Every saved link. A missing, unreadable or unparsable file is no links.
+fn saved_links(path: &Path) -> Vec<PortalLink> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
 }
 
-/// Saves the link with `prepare::write_atomically`.
-pub fn save(path: &Path, link: &PortalLink) -> Result<(), BoxError> {
-    prepare::write_atomically(path, &serde_json::to_string_pretty(link)?)
-}
-
-/// Deletes the file; a file that isn't there is fine.
-pub fn forget(path: &Path) -> Result<(), BoxError> {
-    match std::fs::remove_file(path) {
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
-        _ => Ok(()),
+/// Writes `links` with `prepare::write_atomically`, or deletes the file when there are none
+/// left; a file that isn't there is fine.
+fn write_links(path: &Path, links: &[PortalLink]) -> Result<(), BoxError> {
+    if links.is_empty() {
+        return match std::fs::remove_file(path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+            _ => Ok(()),
+        };
     }
+    prepare::write_atomically(path, &serde_json::to_string_pretty(links)?)
+}
+
+/// The saved link, if there is one for this portal and event. A missing, unreadable or
+/// unparsable file, or one with no link for this portal and event, is `None`.
+pub fn link_for(path: &Path, portal_url: &str, event_slug: &str) -> Option<PortalLink> {
+    saved_links(path)
+        .into_iter()
+        .find(|link| link.portal_url == portal_url && link.event_slug == event_slug)
+}
+
+/// Saves the link, replacing any saved for the same portal and event and keeping the others.
+pub fn save(path: &Path, link: &PortalLink) -> Result<(), BoxError> {
+    let mut links = saved_links(path);
+    links
+        .retain(|saved| saved.portal_url != link.portal_url || saved.event_slug != link.event_slug);
+    links.push(link.clone());
+    write_links(path, &links)
+}
+
+/// Forgets the link for this portal and event and keeps the others. When none are left the
+/// file is deleted; a file that isn't there is fine.
+pub fn forget(path: &Path, portal_url: &str, event_slug: &str) -> Result<(), BoxError> {
+    let mut links = saved_links(path);
+    links.retain(|saved| saved.portal_url != portal_url || saved.event_slug != event_slug);
+    write_links(path, &links)
 }
 
 /// Why the portal didn't give a key for a code.
@@ -108,12 +132,26 @@ pub async fn exchange_code(
 /// Why the portal didn't take the links.
 #[derive(Debug, PartialEq, Eq)]
 pub enum SendError {
-    /// The portal no longer accepts the key (401 or 403).
+    /// The portal no longer accepts the key: 401 or 403 with an empty body, the portal's own
+    /// refusal. A 401 or 403 with a page (a Wi-Fi sign-in page, say) is `Other`.
     KeyRefused,
     /// The event isn't marked "Will be streamed" on the portal. The key is still good.
     NotStreamed,
     /// Anything else, as text a person can read.
     Other(String),
+}
+
+impl std::fmt::Display for SendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SendError::KeyRefused => write!(f, "the portal refused the key"),
+            SendError::NotStreamed => write!(
+                f,
+                "the portal said the event isn't marked \"Will be streamed\""
+            ),
+            SendError::Other(text) => write!(f, "{text}"),
+        }
+    }
 }
 
 /// One PUT of `links` (game number → link, `None` clears it).
@@ -152,13 +190,17 @@ async fn put_watch_urls(
     if status.is_success() {
         return Ok(());
     }
-    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
-        return Err(SendError::KeyRefused);
-    }
     let text = response
         .text()
         .await
         .map_err(|e| SendError::Other(unreachable_text(e)))?;
+    // The portal refuses a key with an empty body. A 401 or 403 with a page came from
+    // something else in the way (a Wi-Fi sign-in page, say), so the key is kept.
+    if (status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN)
+        && text.trim().is_empty()
+    {
+        return Err(SendError::KeyRefused);
+    }
     if status == StatusCode::BAD_REQUEST && reason_of(&text).as_deref() == Some("NotStreamed") {
         return Err(SendError::NotStreamed);
     }
@@ -237,13 +279,10 @@ pub async fn publish(
         }
         // The key is still good: only the event's "Will be streamed" setting is off.
         (Err(SendError::NotStreamed), Purpose::Set) => log("Portal: watch links weren't set: the event isn't marked \"Will be streamed\" on the portal. Turn that on for the event, then run Prepare again.".to_string()),
-        (Err(SendError::NotStreamed), Purpose::Clear) => log(
-            "Portal: watch links weren't cleared: the portal said the event isn't marked \"Will be streamed\"".to_string(),
-        ),
         (Err(SendError::Other(error)), Purpose::Set) => log(format!(
             "Portal: watch links weren't set: {error}. Run Prepare again to send them."
         )),
-        (Err(SendError::Other(error)), Purpose::Clear) => {
+        (Err(error), Purpose::Clear) => {
             log(format!("Portal: watch links weren't cleared: {error}"))
         }
     }
@@ -333,8 +372,7 @@ async fn check_key_within(link_file: &Path, config: &Config, timeout: Duration) 
             forget_refused(link_file, &link);
             KeyCheck::Refused
         }
-        Ok(Err(SendError::NotStreamed)) => KeyCheck::NotStreamed,
-        Ok(Err(SendError::Other(error))) => KeyCheck::Unknown(error),
+        Ok(Err(error)) => KeyCheck::Unknown(error.to_string()),
     }
 }
 
@@ -345,7 +383,7 @@ fn forget_refused(link_file: &Path, refused: &PortalLink) {
         .is_some_and(|saved| saved.access_key == refused.access_key);
     if still_saved {
         // If the file can't be removed, the next run is refused again and says so again.
-        let _ = forget(link_file);
+        let _ = forget(link_file, &refused.portal_url, &refused.event_slug);
     }
 }
 
@@ -685,9 +723,11 @@ mod tests {
     #[tokio::test]
     async fn sending_links_maps_the_portals_refusals_without_showing_the_key() {
         for status in [401, 403] {
-            let portal = MockPortal::start(status, "").await;
-            let result = send_watch_urls(portal.base_url(), "cup-2026", KEY, &links()).await;
-            assert_eq!(result, Err(SendError::KeyRefused), "{status}");
+            for body in ["", "  \n"] {
+                let portal = MockPortal::start(status, body).await;
+                let result = send_watch_urls(portal.base_url(), "cup-2026", KEY, &links()).await;
+                assert_eq!(result, Err(SendError::KeyRefused), "{status} {body:?}");
+            }
         }
         for status in [400, 404, 500] {
             let portal = MockPortal::start(status, r#"{"reason":"UnknownGame"}"#).await;
@@ -1056,14 +1096,45 @@ mod tests {
     #[tokio::test]
     async fn the_key_check_warns_about_and_forgets_a_refused_key() {
         for status in [401, 403] {
-            let portal = MockPortal::start(status, "").await;
-            let publishing = Publishing::new("check-refused", &portal, Some("cup-2026"));
+            for body in ["", "  \n"] {
+                let portal = MockPortal::start(status, body).await;
+                let publishing = Publishing::new("check-refused", &portal, Some("cup-2026"));
+                let check = check_key(&publishing.link_file, &publishing.config).await;
+                assert_eq!(check, KeyCheck::Refused, "{status} {body:?}");
+                let (warning, text) = check.notice().unwrap();
+                assert!(warning);
+                assert!(text.contains("Link it again in Settings first"), "{text}");
+                assert!(!publishing.link_file.exists(), "{status} {body:?}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_403_with_a_page_is_not_the_portal_refusing_the_key() {
+        for (status, body) in [
+            (403, "<html>Sign in to the Wi-Fi</html>"),
+            (401, "<html>x</html>"),
+        ] {
+            let portal = MockPortal::start(status, body).await;
+            match send_watch_urls(portal.base_url(), "cup-2026", KEY, &links()).await {
+                Err(SendError::Other(text)) => {
+                    assert!(
+                        text.starts_with(&format!("The portal said {status}")),
+                        "{text}"
+                    );
+                    assert!(!text.contains(KEY), "{text}");
+                }
+                other => panic!("{status}: {other:?}"),
+            }
+            let publishing = Publishing::new("check-page", &portal, Some("cup-2026"));
             let check = check_key(&publishing.link_file, &publishing.config).await;
-            assert_eq!(check, KeyCheck::Refused, "{status}");
-            let (warning, text) = check.notice().unwrap();
-            assert!(warning);
-            assert!(text.contains("Link it again in Settings first"), "{text}");
-            assert!(!publishing.link_file.exists(), "{status}");
+            assert!(matches!(check, KeyCheck::Unknown(_)), "{status}: {check:?}");
+            assert_eq!(
+                link_for(&publishing.link_file, portal.base_url(), "cup-2026")
+                    .map(|link| link.access_key),
+                Some(KEY.to_string()),
+                "{status}"
+            );
         }
     }
 
@@ -1336,13 +1407,57 @@ mod tests {
     }
 
     #[test]
-    fn forgetting_removes_the_file_and_a_missing_file_is_fine() {
+    fn keys_for_two_events_are_kept_side_by_side() {
+        let dir = temp_dir("two-events");
+        let path = dir.join(LINK_FILE);
+        let link = |event_slug: &str, access_key: &str| PortalLink {
+            portal_url: "https://portal.example".into(),
+            event_slug: event_slug.into(),
+            access_key: access_key.into(),
+        };
+        save(&path, &link("a", "k1")).unwrap();
+        save(&path, &link("b", "k2")).unwrap();
+        assert_eq!(
+            link_for(&path, "https://portal.example", "a"),
+            Some(link("a", "k1"))
+        );
+        assert_eq!(
+            link_for(&path, "https://portal.example", "b"),
+            Some(link("b", "k2"))
+        );
+        save(&path, &link("a", "k3")).unwrap();
+        assert_eq!(
+            link_for(&path, "https://portal.example", "a"),
+            Some(link("a", "k3"))
+        );
+        assert_eq!(
+            link_for(&path, "https://portal.example", "b"),
+            Some(link("b", "k2"))
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn forgetting_one_event_keeps_the_others() {
         let dir = temp_dir("forget");
         let path = dir.join(LINK_FILE);
-        assert!(forget(&path).is_ok());
-        std::fs::write(&path, "{}").unwrap();
-        forget(&path).unwrap();
+        assert!(forget(&path, "https://portal.example", "a").is_ok());
+        let link = |event_slug: &str, access_key: &str| PortalLink {
+            portal_url: "https://portal.example".into(),
+            event_slug: event_slug.into(),
+            access_key: access_key.into(),
+        };
+        save(&path, &link("a", "k1")).unwrap();
+        save(&path, &link("b", "k2")).unwrap();
+        forget(&path, "https://portal.example", "a").unwrap();
+        assert_eq!(link_for(&path, "https://portal.example", "a"), None);
+        assert_eq!(
+            link_for(&path, "https://portal.example", "b"),
+            Some(link("b", "k2"))
+        );
+        forget(&path, "https://portal.example", "b").unwrap();
         assert!(!path.exists());
+        assert!(forget(&path, "https://portal.example", "b").is_ok());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1365,9 +1480,15 @@ mod tests {
 
     #[tokio::test]
     async fn the_key_check_warns_about_an_event_not_marked_will_be_streamed_and_keeps_the_key() {
+        // The portal only says NotStreamed when a link is set, never to the key check's empty
+        // update, so such a reply is only "couldn't check". The warning comes from the
+        // schedule's "Will be streamed" setting instead.
         let portal = MockPortal::start(400, r#"{"reason":"NotStreamed"}"#).await;
         let publishing = Publishing::new("check-not-streamed", &portal, Some("cup-2026"));
         let check = check_key(&publishing.link_file, &publishing.config).await;
+        assert!(matches!(check, KeyCheck::Unknown(_)), "{check:?}");
+        assert!(publishing.link_file.exists());
+        let check = with_streaming(check, Some(false));
         assert_eq!(check, KeyCheck::NotStreamed);
         let (warning, text) = check.notice().unwrap();
         assert!(warning);

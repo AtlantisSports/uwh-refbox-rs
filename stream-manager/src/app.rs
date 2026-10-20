@@ -1027,11 +1027,9 @@ impl App {
             if event_changed {
                 inner.plan = None;
                 inner.plan_error = None;
-                // A key for the old event or portal must never be sent for the new one.
-                // `link_for` refuses it anyway, so failing to delete it is only a warning.
-                if let Err(e) = watch_links::forget(&self.link_file()) {
-                    warn!("Couldn't delete the portal watch links key: {e}");
-                }
+                // Portal watch-link keys are kept: `link_for` matches each key to its own
+                // portal and event, so the old event's key is never sent for the new one, and
+                // it is there again when the old event is chosen again.
             }
             let rules = rules_of(&new);
             if courts_changed {
@@ -2197,6 +2195,34 @@ mod tests {
         drop(again);
         let all = tokio::time::timeout(wait(1_000), app.lock_all_courts()).await;
         assert_eq!(all.map(|guards| guards.len()).ok(), Some(1));
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[tokio::test]
+    async fn changing_the_event_and_back_keeps_its_portal_key() {
+        let app = temp_app("event-and-back-key");
+        let mut first = app.config();
+        first.event_slug = "first-cup".to_string();
+        app.apply_settings(first.clone()).unwrap();
+        let link = watch_links::PortalLink {
+            portal_url: first.portal_url.clone(),
+            event_slug: first.event_slug.clone(),
+            access_key: "first-cup-key".to_string(),
+        };
+        watch_links::save(&app.link_file(), &link).unwrap();
+
+        let mut other = app.config();
+        other.event_slug = "other-cup".to_string();
+        app.apply_settings(other).unwrap();
+        assert_eq!(
+            watch_links::link_for(&app.link_file(), &first.portal_url, "other-cup"),
+            None
+        );
+        app.apply_settings(first.clone()).unwrap();
+        assert_eq!(
+            watch_links::link_for(&app.link_file(), &first.portal_url, &first.event_slug),
+            Some(link)
+        );
         let _ = std::fs::remove_dir_all(&app.config_dir);
     }
 

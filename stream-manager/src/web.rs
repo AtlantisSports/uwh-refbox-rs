@@ -673,10 +673,13 @@ async fn link_portal(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// Forgets the key. The portal isn't told: the organiser removes the Stream Manager there.
+/// Forgets the key for the event and portal in use; keys for other events are kept. The
+/// portal isn't told: the organiser removes the Stream Manager there.
 async fn unlink_portal(State(app): State<AppState>, headers: HeaderMap) -> ApiResult {
     authorize(&app, &headers)?;
-    watch_links::forget(&app.link_file()).map_err(|e| bad(format!("Couldn't unlink: {e}")))?;
+    let config = app.config();
+    watch_links::forget(&app.link_file(), &config.portal_url, &config.event_slug)
+        .map_err(|e| bad(format!("Couldn't unlink: {e}")))?;
     info!("Unlinked from the portal");
     Ok(Json(json!({ "ok": true })))
 }
@@ -2007,7 +2010,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn changing_the_event_forgets_the_key_but_other_changes_keep_it() {
+    async fn changing_the_event_unlinks_but_keeps_the_events_key() {
         let portal = MockPortal::start(404, "").await;
         let (base, dir, client, cookie) = linking_server("pl-event", &portal, "cup-2026").await;
         save_link(&dir, &portal, "cup-2026");
@@ -2032,8 +2035,15 @@ mod tests {
 
         settings["event_slug"] = json!("other-cup");
         assert_eq!(save(settings).await.unwrap().status(), StatusCode::OK);
-        assert!(!dir.join(watch_links::LINK_FILE).exists());
         assert_eq!(portal_linked(&client, &base, &cookie).await, false);
+        assert!(
+            watch_links::link_for(
+                &dir.join(watch_links::LINK_FILE),
+                portal.base_url(),
+                "cup-2026"
+            )
+            .is_some()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

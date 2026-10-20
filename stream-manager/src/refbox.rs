@@ -39,6 +39,10 @@ const KEEPALIVE_IDLE: Duration = Duration::from_secs(5);
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(3);
 /// How many unanswered probes the OS sends before giving up on the connection.
 const KEEPALIVE_RETRIES: u32 = 3;
+/// How long one connection attempt may take. Without it, an attempt during a network outage can
+/// hang about 21 s on Windows and about 2 min on Linux before the next try, delaying recovery
+/// once the network is back.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Configures TCP keepalive on `stream` so a refbox that silently disappears -- Wi-Fi drop, power
 /// cycle -- is noticed by the OS and reported as a read error, instead of the read waiting
@@ -75,7 +79,10 @@ async fn follow_refbox_with(
     silence: Duration,
 ) {
     loop {
-        let mut stream = match TcpStream::connect((ip, port)).await {
+        let attempt = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect((ip, port)))
+            .await
+            .unwrap_or_else(|_| Err(io::Error::new(io::ErrorKind::TimedOut, "timed out")));
+        let mut stream = match attempt {
             Ok(stream) => stream,
             Err(e) => {
                 debug!("Refbox at {ip}:{port} not reachable ({e}), retrying");

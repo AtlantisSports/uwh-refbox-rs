@@ -34,7 +34,9 @@ pub struct LiveFrame {
     /// Every penalty the engine holds, served ones included, in the engine's
     /// order. Compared by [`needs_send_now`] so that a penalty added, edited or
     /// removed sends at once, while one running out (same key) does not.
-    pub penalty_key: Vec<PenaltyIdentity>,
+    /// `None` when the engine read failed: the penalties are unknown, which is
+    /// not the same as none.
+    pub penalty_key: Option<Vec<PenaltyIdentity>>,
 }
 
 /// What makes a penalty the same penalty from one frame to the next. Its time
@@ -147,7 +149,7 @@ pub fn live_frame(i: &LiveInputs) -> Option<LiveFrame> {
             let mut state = state_from_snapshot(Some(scores));
             // Without details (the engine read failed) the v3 fields stay null: a
             // list from an older read would look plausible and be wrong.
-            let mut penalty_key = vec![];
+            let mut penalty_key = None;
             if let Some(details) = i.details {
                 let team_clock = details.team_timeout.map(|t| TeamTimeoutClock {
                     seconds_left: t.seconds_left,
@@ -164,11 +166,11 @@ pub fn live_frame(i: &LiveInputs) -> Option<LiveFrame> {
                         clock_seconds,
                     });
                 state.penalties = Some(details.penalties.iter().filter_map(live_penalty).collect());
-                penalty_key = details.penalties.iter().map(penalty_identity).collect();
+                penalty_key = Some(details.penalties.iter().map(penalty_identity).collect());
             }
             (current.clone(), state, true, penalty_key)
         } else if is_real(next) {
-            (next.clone(), state_from_snapshot(None), true, vec![])
+            (next.clone(), state_from_snapshot(None), true, Some(vec![]))
         } else if is_real(current) {
             let state = LiveGameState {
                 period: GamePeriod::BetweenGames,
@@ -179,7 +181,7 @@ pub fn live_frame(i: &LiveInputs) -> Option<LiveFrame> {
                 last_goal: None,
                 penalties: None,
             };
-            (current.clone(), state, false, vec![])
+            (current.clone(), state, false, Some(vec![]))
         } else {
             return None;
         };
@@ -221,6 +223,11 @@ fn timeout_changed(last: Option<LiveTimeout>, next: Option<LiveTimeout>) -> bool
 /// `last_goal` and `penalties` are deliberately not compared: a penalty running
 /// out and a goal expiring wait for the heartbeat (agreement, "Timing
 /// additions").
+///
+/// A failed engine read (`penalty_key` is `None`) is not a change: the
+/// penalties and the team clock are unknown, not removed, so only a different
+/// timeout kind or team counts. The first good read after one that was sent
+/// sends at once, so the real values replace the nulls.
 pub fn needs_send_now(last_sent: Option<&LiveFrame>, next: &LiveFrame) -> bool {
     let Some(last) = last_sent else {
         return true;
@@ -229,11 +236,26 @@ pub fn needs_send_now(last_sent: Option<&LiveFrame>, next: &LiveFrame) -> bool {
         || last.event != next.event
         || last.game != next.game
         || last.state.period != next.state.period
-        || timeout_changed(last.state.timeout, next.state.timeout)
         || last.state.clock_running != next.state.clock_running
         || last.state.scores != next.state.scores
         || (!next.state.clock_running && last.state.clock_seconds != next.state.clock_seconds)
-        || last.penalty_key != next.penalty_key
+        || match (&last.penalty_key, &next.penalty_key) {
+            (Some(a), Some(b)) => a != b || timeout_changed(last.state.timeout, next.state.timeout),
+            (_, None) => timeout_changed(
+                last.state.timeout.map(without_team_clock),
+                next.state.timeout.map(without_team_clock),
+            ),
+            (None, Some(_)) => true,
+        }
+}
+
+/// The timeout with any team clock dropped, for comparing kind and team only.
+fn without_team_clock(t: LiveTimeout) -> LiveTimeout {
+    match t {
+        LiveTimeout::White(_) => LiveTimeout::White(None),
+        LiveTimeout::Black(_) => LiveTimeout::Black(None),
+        other => other,
+    }
 }
 
 /// The portal's v3 validation rules (agreement, "Portal review of the field
@@ -389,7 +411,7 @@ mod tests {
             game: game.to_string(),
             state,
             heartbeat: true,
-            penalty_key: vec![],
+            penalty_key: Some(vec![]),
         }
     }
 
@@ -623,7 +645,7 @@ mod tests {
                     penalties: None,
                 },
                 heartbeat: true,
-                penalty_key: vec![],
+                penalty_key: None,
             }
         );
     }
@@ -921,7 +943,7 @@ mod tests {
         // The served one is not sent but is still part of the key.
         assert_eq!(
             got.penalty_key,
-            penalties.iter().map(identity).collect::<Vec<_>>()
+            Some(penalties.iter().map(identity).collect::<Vec<_>>())
         );
     }
 
@@ -962,7 +984,7 @@ mod tests {
                 },
             }])
         );
-        assert_eq!(got.penalty_key.len(), 2);
+        assert_eq!(got.penalty_key.map(|k| k.len()), Some(2));
     }
 
     /// The LED panel's limit of 3 per team must not leak in (Review Focus 2).
@@ -1046,7 +1068,7 @@ mod tests {
             assert_eq!(got.heartbeat, heartbeat, "{current}/{next}");
             assert_eq!(got.state.last_goal, None, "{current}/{next}");
             assert_eq!(got.state.penalties, None, "{current}/{next}");
-            assert_eq!(got.penalty_key, vec![], "{current}/{next}");
+            assert_eq!(got.penalty_key, Some(vec![]), "{current}/{next}");
         }
     }
 
@@ -1063,7 +1085,7 @@ mod tests {
         assert_eq!(got.state.last_goal, None);
         assert_eq!(got.state.penalties, None);
         assert_eq!(got.state.timeout, Some(LiveTimeout::White(None)));
-        assert_eq!(got.penalty_key, vec![]);
+        assert_eq!(got.penalty_key, None);
         let body = serde_json::to_value(&got.state).unwrap();
         assert_eq!(portal_rule_violations(&body), Vec::<&str>::new());
     }
@@ -1218,7 +1240,7 @@ mod tests {
 
     fn keyed(key: Vec<EnginePenalty>, state: LiveGameState) -> LiveFrame {
         LiveFrame {
-            penalty_key: key.iter().map(identity).collect(),
+            penalty_key: Some(key.iter().map(identity).collect()),
             ..frame("5", state)
         }
     }
@@ -1388,5 +1410,66 @@ mod tests {
             },
         );
         assert!(needs_send_now(Some(&with), &black));
+    }
+
+    // ---- a failed engine read is unknown, not removed ----------------------
+
+    fn unknown(state: LiveGameState) -> LiveFrame {
+        LiveFrame {
+            penalty_key: None,
+            ..frame("5", state)
+        }
+    }
+
+    /// The clock passes 0:00 a moment before the period changes; a read in
+    /// that gap fails. The penalties are unknown, not gone, so nothing is
+    /// sent at once.
+    #[test]
+    fn failed_read_does_not_drop_penalties_at_once() {
+        let last = keyed(vec![two_minute(Color::Black)], running_state(1));
+        assert!(!needs_send_now(Some(&last), &unknown(running_state(0))));
+    }
+
+    #[test]
+    fn failed_read_does_not_drop_the_team_clock_at_once() {
+        let last = frame("5", team_timeout(40, true));
+        let next = unknown(LiveGameState {
+            timeout: Some(LiveTimeout::White(None)),
+            ..team_timeout(40, true)
+        });
+        assert!(!needs_send_now(Some(&last), &next));
+    }
+
+    /// Unknown penalties do not hide a change that was read: the timeout's
+    /// team, the score and the period still send at once.
+    #[test]
+    fn failed_read_still_sends_other_changes() {
+        let last = frame("5", team_timeout(40, true));
+        let other_team = unknown(LiveGameState {
+            timeout: Some(LiveTimeout::Black(None)),
+            ..team_timeout(40, true)
+        });
+        assert!(needs_send_now(Some(&last), &other_team));
+        let scored = unknown(LiveGameState {
+            scores: Some(LiveScores { black: 9, white: 9 }),
+            ..running_state(299)
+        });
+        assert!(needs_send_now(
+            Some(&keyed(vec![], running_state(300))),
+            &scored
+        ));
+    }
+
+    /// If a frame from a failed read did go out (its nulls on the portal), the
+    /// next good read sends at once to put the real values back.
+    #[test]
+    fn good_read_after_a_sent_failed_one_sends_at_once() {
+        let last = unknown(running_state(300));
+        let next = keyed(vec![two_minute(Color::Black)], running_state(299));
+        assert!(needs_send_now(Some(&last), &next));
+        assert!(needs_send_now(
+            Some(&last),
+            &keyed(vec![], running_state(299))
+        ));
     }
 }

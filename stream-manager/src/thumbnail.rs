@@ -12,7 +12,6 @@ use image::{
     imageops::{self, FilterType},
 };
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use tiny_skia::{
     Color, ColorU8, FillRule, GradientStop, LinearGradient, Mask, MaskType, Paint, Path,
     PathBuilder, Pixmap, PixmapPaint, Point, Rect, Shader, SpreadMode, Stroke, Transform,
@@ -20,7 +19,7 @@ use tiny_skia::{
 use ttf_parser::{Face, GlyphId, OutlineBuilder, Tag};
 
 /// Bump this whenever the look changes.
-pub const DESIGN_VERSION: u32 = 3;
+pub const DESIGN_VERSION: u32 = 4;
 
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
@@ -68,52 +67,49 @@ const SLASH_ANGLE: f32 = 13.0;
 /// Height of the middle of "VS", of the logo boxes and of the name plate of a team without a
 /// logo: the middle of the picture.
 const MIDDLE_Y: f32 = HEIGHT as f32 / 2.0;
-const BADGE_BORDER: f32 = 8.0;
-/// Space between a logo box and its name plate.
-const PLATE_GAP: f32 = 22.0;
+/// Space between a logo and its name plate.
+const PLATE_GAP: f32 = 12.0;
 /// A name plate's padding above and below its text.
 const PLATE_PAD: f32 = 8.0;
 /// A name plate's line spacing, as a multiple of the text size.
 const PLATE_LINE_SPACING: f32 = 1.1;
 /// The height of a name plate's teal edge.
 const PLATE_EDGE: f32 = 5.0;
-const BADGE_RING: f32 = 6.0;
-/// Share of the badge the team logo fills.
-const LOGO_FILL: f32 = 0.88;
 /// A logo at least this many times wider than it is tall counts as wide.
 const WIDE_LOGO: f32 = 1.5;
 
-const NAME_SIZE: f32 = 42.0;
+const NAME_SIZE: f32 = 36.0;
 const NAME_MAX_WIDTH: f32 = 440.0;
 const NAME_MAX_LINES: usize = 2;
 /// Narrower for the plate of a team without a logo, which sits beside "VS".
 const NAME_ONLY_MAX_WIDTH: f32 = 360.0;
 const SMALLEST_TEXT: f32 = 20.0;
 
+/// The band YouTube always shows: on an upcoming video's page in a wide window (about 3:1) it
+/// crops the picture's top and bottom to fill the player, so everything that matters is
+/// drawn between these heights and only the background reaches the edges.
+const SAFE_TOP: f32 = 145.0;
+const SAFE_BOTTOM: f32 = 575.0;
+
 const BRAND_LEFT: f32 = 34.0;
-const BRAND_TOP: f32 = 24.0;
-const BRAND_HEIGHT: f32 = 92.0;
+const BRAND_TOP: f32 = SAFE_TOP;
+const BRAND_HEIGHT: f32 = 70.0;
 
 struct SideStyle {
     center_x: f32,
-    border: Rgb,
-    ring: Rgb,
+    /// How dark the shadow behind the logo is.
     shadow: f32,
     plate: [Rgb; 2],
 }
 
 const DARK_SIDE: SideStyle = SideStyle {
     center_x: 305.0,
-    border: [0x11, 0x11, 0x11],
-    ring: WHITE,
     shadow: 0.7,
     plate: [INK, WHITE],
 };
 
 const LIGHT_SIDE: SideStyle = SideStyle {
     center_x: WIDTH as f32 - 305.0,
-    border: WHITE,
-    ring: [0x11, 0x11, 0x11],
     shadow: 0.5,
     plate: [PAPER, INK],
 };
@@ -161,8 +157,8 @@ impl LogoShape {
     /// Half the box's width and height.
     fn half(self) -> (f32, f32) {
         match self {
-            Self::Square => (150.0, 150.0),
-            Self::Wide => (200.0, 100.0),
+            Self::Square => (94.0, 94.0),
+            Self::Wide => (174.0, 94.0),
         }
     }
 }
@@ -248,8 +244,8 @@ impl Painter {
             .map(|t| plate_height(&self.font, t))
             .fold(0.0, f32::max);
         let (_, hh) = self.shape.half();
-        let block = 2.0 * (hh + BADGE_BORDER + BADGE_RING) + PLATE_GAP + plate;
-        let cy = MIDDLE_Y - block / 2.0 + hh + BADGE_BORDER + BADGE_RING;
+        let block = 2.0 * hh + PLATE_GAP + plate;
+        let cy = MIDDLE_Y - block / 2.0 + hh;
         side(
             &mut canvas,
             &self.font,
@@ -388,7 +384,7 @@ fn event_bar(canvas: &mut Pixmap, font: &Font, event_name: &str) {
     let text = lines.join(" ");
     let line = font.normal_line(size);
     let (w, h) = (font.width(&text, size, spacing) + 68.0, line + 16.0);
-    let (x, top) = (CENTER_X - w / 2.0, 26.0);
+    let (x, top) = (CENTER_X - w / 2.0, SAFE_TOP);
     let lean = slanted(top + h / 2.0);
     if let Some(rect) = Rect::from_xywh(x, top, w, h) {
         let path = PathBuilder::from_rect(rect);
@@ -403,7 +399,7 @@ fn event_bar(canvas: &mut Pixmap, font: &Font, event_name: &str) {
 
 /// "VS", in the middle of the picture.
 fn vs(canvas: &mut Pixmap, font: &Font) {
-    let size = 140.0;
+    let size = 120.0;
     let x = CENTER_X - font.width("VS", size, 0.0) / 2.0;
     let baseline = MIDDLE_Y + font.cap_height(size) / 2.0;
     let Some(path) = font.path("VS", x, baseline, size, 0.0, ITALIC) else {
@@ -466,30 +462,9 @@ fn side(
     };
     let cx = style.center_x;
     let (hw, hh) = shape.half();
-    let id = Transform::identity();
-    let outer = BADGE_BORDER;
-    if let Some(edge) = badge(cx, cy, hw + outer, hh + outer) {
-        shadow(
-            canvas,
-            &edge,
-            id,
-            Glow::new(14.0, 40.0, BLACK, style.shadow),
-        );
-    }
-    let ring = outer + BADGE_RING;
-    if let Some(ring) = badge(cx, cy, hw + ring, hh + ring) {
-        fill(canvas, &ring, solid(style.ring, 1.0), id);
-    }
-    if let Some(border) = badge(cx, cy, hw + outer, hh + outer) {
-        fill(canvas, &border, solid(style.border, 1.0), id);
-    }
-    if let Some(inner) = badge(cx, cy, hw, hh) {
-        let (logo, backdrop) = badge_logo(logo);
-        fill(canvas, &inner, solid(backdrop, 1.0), id);
-        team_logo(canvas, &logo, (cx, cy), (hw, hh), &inner);
-    }
+    team_logo(canvas, logo, (cx, cy), (hw, hh), style.shadow);
 
-    let top = cy + hh + ring + PLATE_GAP;
+    let top = cy + hh + PLATE_GAP;
     let fit = (NAME_SIZE, NAME_MAX_WIDTH, NAME_MAX_LINES);
     name_plate(canvas, font, team, style, fit, |_| top);
 }
@@ -572,110 +547,38 @@ fn name_text(team: &Team) -> String {
     team.name.to_uppercase()
 }
 
-/// A box centred on (`cx`, `cy`), reaching `hw` and `hh` from the middle.
-fn badge(cx: f32, cy: f32, hw: f32, hh: f32) -> Option<Path> {
-    Rect::from_xywh(cx - hw, cy - hh, 2.0 * hw, 2.0 * hh).map(PathBuilder::from_rect)
-}
-
-/// The logo to put in the badge and the colour to fill the badge with, so a logo on a solid
-/// background blends in instead of leaving white gaps:
-/// - a plain frame or margin around the artwork is cut away if what's left has a solid edge
-///   (e.g. a yellow rectangle saved on white fills the badge yellow);
-/// - otherwise a logo whose own edge is one solid colour fills the badge with it (e.g. black);
-/// - anything else stays on a white badge.
-fn badge_logo(logo: &DynamicImage) -> (Cow<'_, DynamicImage>, Rgb) {
-    let trimmed = trim_margin(logo);
-    if let Some(color) = edge_color(&trimmed) {
-        return (Cow::Owned(trimmed), color);
-    }
-    (Cow::Borrowed(logo), edge_color(logo).unwrap_or(WHITE))
-}
-
-/// The logo without the plain frame or empty margin around it (the colour of its top-left
-/// corner, or see-through).
-fn trim_margin(logo: &DynamicImage) -> DynamicImage {
-    let rgba = logo.to_rgba8();
-    let Some(corner) = rgba.pixels().next().map(|p| p.0) else {
-        return logo.clone();
-    };
-    let is_margin = |p: [u8; 4]| {
-        if corner[3] < 250 {
-            p[3] < 16
-        } else {
-            p[3] >= 250 && (0..3).all(|c| p[c].abs_diff(corner[c]) <= 24)
-        }
-    };
-    let (mut left, mut top, mut right, mut bottom) = (u32::MAX, u32::MAX, 0, 0);
-    for (x, y, p) in rgba.enumerate_pixels() {
-        if !is_margin(p.0) {
-            left = left.min(x);
-            top = top.min(y);
-            right = right.max(x);
-            bottom = bottom.max(y);
-        }
-    }
-    if left > right || top > bottom {
-        return logo.clone();
-    }
-    DynamicImage::ImageRgba8(
-        imageops::crop_imm(&rgba, left, top, right - left + 1, bottom - top + 1).to_image(),
-    )
-}
-
-/// The colour all around a logo's edge, if it is one solid colour (e.g. a square logo on a
-/// black background). The badge is filled with it so the logo blends in instead of leaving
-/// white gaps. `None` for see-through or mixed edges, which keep the white badge.
-fn edge_color(logo: &DynamicImage) -> Option<Rgb> {
-    let size = 64;
-    let small = logo
-        .resize_exact(size, size, FilterType::Triangle)
-        .to_rgba8();
-    let edge: Vec<[u8; 4]> = (0..size)
-        .flat_map(|i| [(i, 0), (i, size - 1), (0, i), (size - 1, i)])
-        .map(|(x, y)| small.get_pixel(x, y).0)
-        .collect();
-    if edge.iter().any(|p| p[3] < 250) {
-        return None;
-    }
-    let average = |c: usize| {
-        let total: u32 = edge.iter().map(|p| u32::from(p[c])).sum();
-        (total / edge.len() as u32) as u8
-    };
-    let mean = [average(0), average(1), average(2)];
-    let matching = edge
-        .iter()
-        .filter(|p| (0..3).all(|c| p[c].abs_diff(mean[c]) <= 24))
-        .count();
-    // Allow a few stray pixels, e.g. where the artwork touches the edge.
-    (matching * 10 >= edge.len() * 9).then_some(mean)
-}
-
-/// A team logo, fitted inside its box and cut to it.
+/// A team logo as uploaded (no frame or backdrop), as large as fits its space, centred on
+/// (`cx`, `cy`) with a soft shadow behind it.
 fn team_logo(
     canvas: &mut Pixmap,
     logo: &DynamicImage,
     (cx, cy): (f32, f32),
     (hw, hh): (f32, f32),
-    badge: &Path,
+    shade: f32,
 ) {
-    let scale = (2.0 * hw * LOGO_FILL / logo.width().max(1) as f32)
-        .min(2.0 * hh * LOGO_FILL / logo.height().max(1) as f32);
+    let scale = (2.0 * hw / logo.width().max(1) as f32).min(2.0 * hh / logo.height().max(1) as f32);
     let w = ((logo.width() as f32 * scale).round() as u32).max(1);
     let h = ((logo.height() as f32 * scale).round() as u32).max(1);
     let Some(picture) = to_pixmap(&logo.resize_exact(w, h, FilterType::Lanczos3).to_rgba8()) else {
         return;
     };
-    let Some(mut clip) = Mask::new(WIDTH, HEIGHT) else {
-        return;
-    };
-    clip.fill_path(badge, FillRule::Winding, true, Transform::identity());
+    let (x, y) = (cx - w as f32 / 2.0, cy - h as f32 / 2.0);
+    if let Some(area) = Rect::from_xywh(x, y, w as f32, h as f32) {
+        let area = PathBuilder::from_rect(area);
+        shadow(
+            canvas,
+            &area,
+            Transform::identity(),
+            Glow::new(14.0, 40.0, BLACK, shade),
+        );
+    }
     canvas.draw_pixmap(
-        (cx - w as f32 / 2.0).round() as i32,
-        (cy - h as f32 / 2.0).round() as i32,
+        x.round() as i32,
+        y.round() as i32,
         picture.as_ref(),
         &PixmapPaint::default(),
         Transform::identity(),
-        Some(&clip),
+        None,
     );
 }
 
@@ -690,7 +593,7 @@ fn info_bar(canvas: &mut Pixmap, font: &Font, game: &Game) {
     }
     let line = font.normal_line(size);
     let (w, h) = (total(size) + 80.0 + 20.0, line + 24.0);
-    let (x, top) = (CENTER_X - w / 2.0, HEIGHT as f32 - 30.0 - h);
+    let (x, top) = (CENTER_X - w / 2.0, SAFE_BOTTOM - h);
     let lean = slanted(top + h / 2.0);
     if let Some(bar) = Rect::from_xywh(x, top, w, h) {
         let bar = PathBuilder::from_rect(bar);
@@ -1110,82 +1013,6 @@ mod tests {
     }
 
     #[test]
-    fn square_logos_on_a_solid_colour_fill_the_badge_with_it() {
-        let solid = |rgba: [u8; 4]| {
-            DynamicImage::ImageRgba8(RgbaImage::from_pixel(200, 200, image::Rgba(rgba)))
-        };
-        let mut black = solid([0, 0, 0, 255]).to_rgba8();
-        // Artwork in the middle doesn't matter.
-        for (x, y, px) in black.enumerate_pixels_mut() {
-            if (50..150).contains(&x) && (50..150).contains(&y) {
-                *px = image::Rgba([80, 160, 220, 255]);
-            }
-        }
-        assert_eq!(
-            edge_color(&DynamicImage::ImageRgba8(black)),
-            Some([0, 0, 0])
-        );
-        assert_eq!(edge_color(&solid([255, 255, 255, 255])), Some(WHITE));
-        assert_eq!(edge_color(&solid([0, 0, 0, 0])), None);
-
-        let mut mixed = solid([0, 0, 0, 255]).to_rgba8();
-        for (x, _, px) in mixed.enumerate_pixels_mut() {
-            if x >= 100 {
-                *px = image::Rgba([255, 0, 0, 255]);
-            }
-        }
-        assert_eq!(edge_color(&DynamicImage::ImageRgba8(mixed)), None);
-    }
-
-    #[test]
-    fn a_plain_frame_around_a_coloured_logo_is_cut_away() {
-        let picture = |background: [u8; 4], middle: [u8; 4]| {
-            let mut image = RgbaImage::from_pixel(200, 120, image::Rgba(background));
-            for (x, y, px) in image.enumerate_pixels_mut() {
-                if (10..190).contains(&x) && (10..110).contains(&y) {
-                    *px = image::Rgba(middle);
-                }
-            }
-            DynamicImage::ImageRgba8(image)
-        };
-        // A yellow rectangle saved on white: the white frame goes, the badge turns yellow.
-        let framed = picture([255, 255, 255, 255], [250, 230, 60, 255]);
-        let (logo, color) = badge_logo(&framed);
-        assert_eq!(
-            (logo.width(), logo.height(), color),
-            (180, 100, [250, 230, 60])
-        );
-
-        // Artwork in the middle of a black square: kept whole, badge black.
-        let mut artwork = RgbaImage::from_pixel(200, 200, image::Rgba([0, 0, 0, 255]));
-        for (x, y, px) in artwork.enumerate_pixels_mut() {
-            if (60..140).contains(&x) && (60..140).contains(&y) {
-                *px = image::Rgba([80, 160, 220, 255]);
-            }
-            if (60..80).contains(&x) && (60..140).contains(&y) {
-                *px = image::Rgba([255, 0, 0, 255]);
-            }
-        }
-        let artwork = DynamicImage::ImageRgba8(artwork);
-        let (logo, color) = badge_logo(&artwork);
-        assert_eq!((logo.width(), color), (200, BLACK));
-
-        // Artwork on a see-through background with a mixed outline: stays on white.
-        let mut clear = RgbaImage::from_pixel(200, 200, image::Rgba([0, 0, 0, 0]));
-        for (x, y, px) in clear.enumerate_pixels_mut() {
-            if (50..150).contains(&x) && (50..150).contains(&y) {
-                *px = image::Rgba(if x < 100 {
-                    [200, 30, 30, 255]
-                } else {
-                    [30, 30, 200, 255]
-                });
-            }
-        }
-        let (_, color) = badge_logo(&DynamicImage::ImageRgba8(clear));
-        assert_eq!(color, WHITE);
-    }
-
-    #[test]
     fn the_logo_boxes_take_the_shape_most_of_the_event_logos_have() {
         let logo =
             |w, h| DynamicImage::ImageRgba8(RgbaImage::from_pixel(w, h, [9, 9, 9, 255].into()));
@@ -1227,7 +1054,7 @@ mod tests {
     #[test]
     fn long_names_wrap_onto_two_lines_and_shrink_if_needed() {
         let font = Font::new().unwrap();
-        let (size, lines) = font.fit("INDONESIA ELITE WOMEN", NAME_SIZE, 0.0, NAME_MAX_WIDTH, 2);
+        let (size, lines) = font.fit("SUNNY COAST SEA DRAGONS", NAME_SIZE, 0.0, NAME_MAX_WIDTH, 2);
         assert_eq!(size, NAME_SIZE);
         assert_eq!(lines.len(), 2);
 

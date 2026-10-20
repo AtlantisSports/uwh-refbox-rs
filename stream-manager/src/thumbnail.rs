@@ -71,10 +71,11 @@ const MIDDLE_Y: f32 = HEIGHT as f32 / 2.0;
 const BADGE_BORDER: f32 = 8.0;
 /// Space between a logo box and its name plate.
 const PLATE_GAP: f32 = 22.0;
-/// A name plate's padding above and below its text, line spacing (× text size), and the height
-/// of its teal edge.
+/// A name plate's padding above and below its text.
 const PLATE_PAD: f32 = 8.0;
+/// A name plate's line spacing, as a multiple of the text size.
 const PLATE_LINE_SPACING: f32 = 1.1;
+/// The height of a name plate's teal edge.
 const PLATE_EDGE: f32 = 5.0;
 const BADGE_RING: f32 = 6.0;
 /// Share of the badge the team logo fills.
@@ -126,9 +127,9 @@ pub enum LogoShape {
 }
 
 impl LogoShape {
-    /// The shape most of the event's logo pictures have (as uploaded, e.g. 1000×500 is wide);
-    /// square when the event has no logos.
-    pub fn of<'a>(logos: impl IntoIterator<Item = &'a DynamicImage>) -> Self {
+    /// How many of the logo pictures are wide (as uploaded, e.g. 1000×500 is wide), and how
+    /// many there are.
+    pub fn count<'a>(logos: impl IntoIterator<Item = &'a DynamicImage>) -> (usize, usize) {
         let (mut wide, mut total) = (0, 0);
         for logo in logos {
             total += 1;
@@ -136,11 +137,25 @@ impl LogoShape {
                 wide += 1;
             }
         }
+        (wide, total)
+    }
+
+    /// The shape of `total` logos of which `wide` are wide: wide only when most are, so square
+    /// when there are none.
+    pub fn majority(wide: usize, total: usize) -> Self {
         if wide * 2 > total {
             Self::Wide
         } else {
             Self::Square
         }
+    }
+
+    /// The [`Self::majority`] of `wide` of `total` logos plus `unread` more of unknown shape,
+    /// if it is the same whatever shape those turn out to be.
+    pub fn certain(wide: usize, total: usize, unread: usize) -> Option<Self> {
+        let all_square = Self::majority(wide, total + unread);
+        let all_wide = Self::majority(wide + unread, total + unread);
+        (all_square == all_wide).then_some(all_square)
     }
 
     /// Half the box's width and height.
@@ -1174,12 +1189,28 @@ mod tests {
     fn the_logo_boxes_take_the_shape_most_of_the_event_logos_have() {
         let logo =
             |w, h| DynamicImage::ImageRgba8(RgbaImage::from_pixel(w, h, [9, 9, 9, 255].into()));
+        let of = |logos: &[&DynamicImage]| {
+            let (wide, total) = LogoShape::count(logos.iter().copied());
+            LogoShape::majority(wide, total)
+        };
         let (square, flag) = (logo(100, 100), logo(200, 100));
-        assert_eq!(LogoShape::of([]), LogoShape::Square);
-        assert_eq!(LogoShape::of([&square, &flag]), LogoShape::Square);
-        assert_eq!(LogoShape::of([&flag, &flag, &square]), LogoShape::Wide);
+        assert_eq!(of(&[]), LogoShape::Square);
+        assert_eq!(of(&[&square, &flag]), LogoShape::Square);
+        assert_eq!(of(&[&flag, &flag, &square]), LogoShape::Wide);
         // A 3:2 flag counts as wide.
-        assert_eq!(LogoShape::of([&logo(150, 100)]), LogoShape::Wide);
+        assert_eq!(of(&[&logo(150, 100)]), LogoShape::Wide);
+    }
+
+    #[test]
+    fn the_shape_is_certain_only_when_the_unread_logos_cant_change_it() {
+        // 3 wide of 4 read: wide even if the 5th is square.
+        assert_eq!(LogoShape::certain(3, 4, 1), Some(LogoShape::Wide));
+        // 2 wide of 3 read: a square 4th makes it 2 of 4, square.
+        assert_eq!(LogoShape::certain(2, 3, 1), None);
+        // 1 wide of 4 read: square even if the 5th is wide.
+        assert_eq!(LogoShape::certain(1, 4, 1), Some(LogoShape::Square));
+        assert_eq!(LogoShape::certain(1, 2, 1), None);
+        assert_eq!(LogoShape::certain(1, 2, 0), Some(LogoShape::Square));
     }
 
     #[test]

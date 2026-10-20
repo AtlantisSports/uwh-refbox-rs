@@ -304,8 +304,9 @@ Also set:
      organiser, signed in to the portal, opens the event's **Manage Event → Stream management**
      tab, clicks **(+)** and enters this Stream Manager's ID, shown in the **Portal watch links**
      box. The portal then shows a 6-digit code. Type that code into the box's **Code** field and
-     click **Link** (a code lasts 15 minutes). **Check:** the box says "Linked ✓". Changing the
-     event or the portal later unlinks it, so link it again after such a change. Prepare's
+     click **Link** (a code lasts 15 minutes). **Check:** the box says "Linked ✓". Each event is
+     linked once: switching to another event and back keeps its link, but a new event needs its
+     own link. Prepare's
      **1. Preview** checks the link with the portal and warns before anything is created if
      the portal refuses it.
 5. ⛔ **STOP — a human must do this.** Click **Connect YouTube**. In the browser, sign in with the
@@ -552,6 +553,7 @@ once this Stream Manager is linked, B5 step 4).
 | Start day: "Re-run Prepare: some of today's videos use a stream key other than A" | The court was switched to one-key mode after Prepare. Run **Prepare** again for that day and court; it moves the videos to key A. |
 | Log: "Allowance low: skipped the chat message and Next game link" | This PC's share of YouTube's daily allowance is nearly used. Switching carries on. If Google has granted a higher limit, raise **Daily allowance (units)** in Settings; otherwise nothing to do until midnight US Pacific time. |
 | Log: "Portal: the event refused this Stream Manager's key …", or the same warning in Prepare's preview | The organiser removed this Stream Manager on the portal, or the event is over. Link it again (B5 step 4, **Portal watch links**), then run **Prepare** again to send the links. |
+| Log: "Portal: watch links weren't set: The portal said 403 Forbidden: `<html>…`", or Prepare's preview: "Portal watch links: couldn't check the link (The portal said 403 …)" | Something between this PC and the portal answered instead of the portal, usually the venue Wi-Fi's sign-in page or a network filter. The key is kept. Sign in to the venue Wi-Fi in a browser on this PC (or use another network), then run **Prepare** again. |
 | Log: "Portal: watch links weren't set: the event isn't marked \"Will be streamed\" …", or Prepare's preview: "Portal watch links: the event isn't marked \"Will be streamed\" on the portal …" | On the portal, turn on **Will be streamed** for the event, then run **Prepare** again. The link is kept. (Links are still cleared when videos are deleted, whatever this setting.) |
 | Watch links weren't set on the portal (log: "Portal: watch links weren't set …" or "… isn't linked to the event, so none were set") | Run **Prepare** again; it sends the links again. If the log says it isn't linked, link it first (B5 step 4). |
 | Log: "⚠ The portal or YouTube didn't answer in time; titles weren't checked" | The internet or the portal was slow. Nothing to do: titles are checked again in 10 minutes and just before each switch. |

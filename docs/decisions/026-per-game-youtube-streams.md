@@ -306,7 +306,7 @@ message and description link; portal title sync; quota-aware behaviour with a pe
 restart recovery; live status on the Stream Deck through Companion.
 
 **Follow-up (separate PRs, after this one):** filling each game's watch link on the portal. Built
-in the Stream Manager watch-links PR (stacked on #3521), together with the uwhportal PR. See
+in the Stream Manager watch-links PR (#3523, after #3521), together with the uwhportal PR. See
 "Amendments, 2026-10-07".
 
 **Out of scope for now (possible later):**
@@ -501,9 +501,10 @@ Made after a review of the PR against this ADR, and approved by Eric.
      the meantime. Taking it out means this PR builds nothing that would later be thrown away:
      no stored admin login, and no password encryption through PowerShell (whose test failed on
      GitHub's Windows machines).
-   - **Built (2026-10-08):** in the Stream Manager watch-links PR (stacked on #3521), together
+   - **Built (2026-10-08):** in the Stream Manager watch-links PR (#3523, after #3521), together
      with the uwhportal PR. The Settings tab's **Portal watch links** box shows the ID and takes
-     the code. Changing the event or the portal forgets the key.
+     the code. Changing the event or the portal forgot the key; amendment 13 replaced that with
+     one key per event.
 10. **The control page answers only the mini PC it runs on, unless told otherwise; Stream Deck
     links use a button key, not the PIN.** A review showed that anyone on the venue network could
     find the 4-digit PIN in seconds by trying every PIN at once, because Companion's links carried
@@ -527,7 +528,18 @@ Made after a review of the PR against this ADR, and approved by Eric.
     2026-10-12): the portal refuses *setting* watch links (400 `NotStreamed`) while the event's
     "Will be streamed" option is off. Prepare says so in plain words and keeps the saved key,
     because the key is still good. Preview warns beforehand, from the "Will be streamed" setting
-    in the schedule it has already loaded (the portal's key check itself never refuses for
-    this). Clearing links, after videos are deleted, still works whatever the setting. A refused
+    in a freshly read schedule, or the loaded one if the portal doesn't answer within 5 seconds
+    (the portal's key check itself never refuses for this). Clearing links, after videos are deleted, still works whatever the setting. A refused
     key found by Preview is still forgotten (D4), but its warning now survives a YouTube failure
     in the same preview, and Settings stops showing the event as linked straight away.
+13. **One portal key per event; a key is forgotten only when the portal itself refuses it**
+    (Eric, 2026-10-20, from the review of the watch-links PR after its rebase):
+    - Stream Manager keeps a key for each portal and event it has been linked to, so switching to
+      another event and back needs no new code from an organiser. **Unlink** forgets only the
+      current event's key.
+    - A key is forgotten only on the portal's own refusal: a 401 or 403 with an empty body, which
+      is how the portal refuses. A 403 that carries a page, such as a venue Wi-Fi sign-in or a
+      network filter, is reported as an error and the key is kept.
+    - Preview keeps the schedule it reads, so the Prepare run that follows sends links only for
+      games still on the portal. A game removed since the schedule was loaded no longer makes the
+      portal refuse every link at once.

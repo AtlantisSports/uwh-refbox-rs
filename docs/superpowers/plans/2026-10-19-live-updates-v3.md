@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 2024, MSRV 1.85, serde / serde_json, tokio.
 
-**Spec:** `/home/estraily/projects/uwh-portal-live-schedule/docs/superpowers/specs/2026-10-19-live-schedule-refbox-live-updates-agreement.md`, section "v3" (READ ONLY: it belongs to uwh-portal and is never edited from here). Base: v2, PR #3633 (`feat/uwh-common/live-updates`, 5740f519). This branch is stacked on it.
+**Spec:** the refbox/portal live-updates agreement, `2026-10-19-live-schedule-refbox-live-updates-agreement.md`, section "v3". It is held by the uwh-portal team and, as of 2026-10-20, is not committed to either repo (READ ONLY: it belongs to uwh-portal and is never edited from here). Base: v2, PR #3633 (`feat/uwh-common/live-updates`, 5740f519). This branch is stacked on it.
 
 **Scope Card**
 Task: Build Live Updates v3 in refbox: the four v3 body fields and their send-at-once rules, with a test pinning every portal rule.
@@ -21,7 +21,7 @@ Explicitly not doing: the running-stats send (next branch, `live-running-stats`,
 - Every field is PUBLIC (PO ruling). Cap numbers only, never names. No infraction type, warnings, fouls or earlier goals.
 - Portal validation is STRICT: one bad field returns 400 and the WHOLE send is dropped, live score included.
 - Never touch `GameSnapshot`, `GameSnapshotNoHeap` or `PenaltySnapshot`. The snapshot goes to the LED panel in a binary format, and adding a field there changes that format.
-- Leave the walkthrough refbox (pids 884863/884864, binary in `/home/estraily/projects/uwh-refbox-rs-live-updates`) running. Build and test only in `/home/estraily/projects/uwh-refbox-rs-live-v3`, using absolute paths.
+- Leave any walkthrough refbox that is already running alone. Build and test only in the v3 worktree, never the shared checkout, using absolute paths.
 - Tests need `--test-threads=1` when ALSA flakes appear (this machine has no sound card).
 
 ### The portal rules (agreement, "Portal review of the field table"), verbatim intent
@@ -208,3 +208,12 @@ In `refresh_live_frame`, when `snapshot` is `None` (the fallback to `self.snapsh
 - Task 4 added `LiveEngineRead::snapshot_and_details`, so the rule that a fallback snapshot drops its details is tested in isolation.
 - The Task 2 and Task 3 commits carry clippy `dead_code` for `live_details` (no caller until Task 4). The branch tip is clean. No `#[allow]` was added (rust.md).
 - Final review: the team-timeout seconds now come from `LiveDetails.team_timeout` (the team clock's `clock_time(now)`, 0 past zero), never from the snapshot's `u16::MAX` stand-in. `LiveTimeout::from_snapshot` takes the clock rather than a running flag.
+- Pre-PR review (2026-10-20, after rebasing onto `origin/master` 6b0e9534): a failed engine read in the instant a
+  period ends carried an empty penalty key, so `needs_send_now` read "penalties removed" and sent `penalties: null`
+  at once. `penalty_key` is now `Option` (`None` = unknown). An unknown read is not a change apart from a different
+  timeout kind or team, and the first good read after a sent unknown one goes out at once. The plan's sender
+  helpers above now read `penalty_key: Some(vec![])`.
+- Acceptance went further than planned: the walk ran against portal v3 itself (slot 4, PRs #1139 server and #1137
+  web), not a v2 portal. Eric walked goals (including a cap-only hidden player), all three timed penalty lengths plus a
+  Total Dismissal, both team timeouts, a penalty running out, a half ending with a penalty running and the final, all
+  on the website. All 116 live PUTs got 204.

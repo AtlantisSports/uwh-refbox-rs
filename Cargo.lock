@@ -6402,6 +6402,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "socket2",
  "time",
  "tokio",
  "uwh-common",

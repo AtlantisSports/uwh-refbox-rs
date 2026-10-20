@@ -71,6 +71,11 @@ const MIDDLE_Y: f32 = HEIGHT as f32 / 2.0;
 const BADGE_BORDER: f32 = 8.0;
 /// Space between a logo box and its name plate.
 const PLATE_GAP: f32 = 22.0;
+/// A name plate's padding above and below its text, line spacing (× text size), and the height
+/// of its teal edge.
+const PLATE_PAD: f32 = 8.0;
+const PLATE_LINE_SPACING: f32 = 1.1;
+const PLATE_EDGE: f32 = 5.0;
 const BADGE_RING: f32 = 6.0;
 /// Share of the badge the team logo fills.
 const LOGO_FILL: f32 = 0.88;
@@ -482,8 +487,6 @@ fn name_only(canvas: &mut Pixmap, font: &Font, team: &Team, style: &SideStyle) {
     name_plate(canvas, font, team, style, fit, |h| MIDDLE_Y - h / 2.0);
 }
 
-/// The team's name on a slanted plate with a teal edge: as large as `largest` allows within
-/// `max_width` and `max_lines`, with its top where `top` puts it for the plate's height.
 /// Height of the name plate under a logo.
 fn plate_height(font: &Font, team: &Team) -> f32 {
     let (size, lines) = font.fit(
@@ -493,9 +496,16 @@ fn plate_height(font: &Font, team: &Team) -> f32 {
         NAME_MAX_WIDTH,
         NAME_MAX_LINES,
     );
-    2.0 * 8.0 + size * 1.1 * lines.len() as f32 + 5.0
+    plate_height_for(size, lines.len())
 }
 
+/// Height of a name plate holding `lines` lines of text at `size`.
+fn plate_height_for(size: f32, lines: usize) -> f32 {
+    2.0 * PLATE_PAD + size * PLATE_LINE_SPACING * lines as f32 + PLATE_EDGE
+}
+
+/// The team's name on a slanted plate with a teal edge: as large as `largest` allows within
+/// `max_width` and `max_lines`, with its top where `top` puts it for the plate's height.
 fn name_plate(
     canvas: &mut Pixmap,
     font: &Font,
@@ -505,17 +515,14 @@ fn name_plate(
     top: impl FnOnce(f32) -> f32,
 ) {
     let cx = style.center_x;
-    let pad = 8.0;
+    let pad = PLATE_PAD;
     let (size, lines) = font.fit(&name_text(team), largest, 0.0, max_width, max_lines);
-    let line = size * 1.1;
+    let line = size * PLATE_LINE_SPACING;
     let text_width = lines
         .iter()
         .map(|l| font.width(l, size, 0.0))
         .fold(0.0, f32::max);
-    let (w, h) = (
-        text_width + 52.0,
-        2.0 * pad + line * lines.len() as f32 + 5.0,
-    );
+    let (w, h) = (text_width + 52.0, plate_height_for(size, lines.len()));
     let top = top(h);
     let lean = slanted(top + h / 2.0);
     if let Some(plate) = Rect::from_xywh(cx - w / 2.0, top, w, h) {
@@ -523,7 +530,7 @@ fn name_plate(
         shadow(canvas, &plate, lean, Glow::new(8.0, 22.0, BLACK, 0.55));
         fill(canvas, &plate, solid(style.plate[0], 1.0), lean);
     }
-    if let Some(edge) = Rect::from_xywh(cx - w / 2.0, top + h - 5.0, w, 5.0) {
+    if let Some(edge) = Rect::from_xywh(cx - w / 2.0, top + h - PLATE_EDGE, w, PLATE_EDGE) {
         fill(
             canvas,
             &PathBuilder::from_rect(edge),
@@ -783,7 +790,6 @@ impl Font {
             .sum()
     }
 
-    /// Height of a line at the font's own line spacing.
     /// Height of a capital letter.
     fn cap_height(&self, size: f32) -> f32 {
         let units = self
@@ -793,6 +799,7 @@ impl Font {
         units * self.scale(size)
     }
 
+    /// Height of a line at the font's own line spacing.
     fn normal_line(&self, size: f32) -> f32 {
         let f = &self.face;
         (f32::from(f.ascender()) - f32::from(f.descender()) + f32::from(f.line_gap()))

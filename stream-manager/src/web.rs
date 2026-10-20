@@ -903,7 +903,7 @@ async fn prepare_run(
         .ok_or_else(|| bad("The schedule isn't loaded yet"))?;
     if !app.is_current(&config.portal_url, &config.event_slug) {
         return Err(bad(
-            "The settings changed since the preview. Preview again.",
+            "The settings changed while Create was starting. Try again.",
         ));
     }
     app.begin_job("Create videos").map_err(bad)?;

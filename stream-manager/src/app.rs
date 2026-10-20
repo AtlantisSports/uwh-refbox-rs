@@ -288,7 +288,7 @@ impl App {
             .join(&self.inner().config.client_secret_file)
     }
 
-    /// The file holding the access key for the linked portal event.
+    /// The file holding the access key for each linked portal event.
     pub fn link_file(&self) -> PathBuf {
         self.config_dir.join(watch_links::LINK_FILE)
     }

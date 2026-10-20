@@ -11,6 +11,7 @@ use image::{
     codecs::jpeg::JpegEncoder,
     imageops::{self, FilterType},
 };
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use tiny_skia::{
     Color, ColorU8, FillRule, GradientStop, LinearGradient, Mask, MaskType, Paint, Path,
@@ -113,7 +114,7 @@ const LIGHT_SIDE: SideStyle = SideStyle {
 
 /// The shape of the logo boxes, the same for every game of an event: square for events whose
 /// team logos are square (1:1), wide for events whose logos are wide (2:1), e.g. flags.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LogoShape {
     Square,
     Wide,

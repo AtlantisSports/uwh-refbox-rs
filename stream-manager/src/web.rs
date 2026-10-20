@@ -910,14 +910,20 @@ async fn thumbnail_preview(
     let planned = plan
         .game(&game)
         .ok_or_else(|| bad(format!("Game {game} isn't in the schedule")))?;
+    // The event's logo box shape as recorded; never recorded from here.
+    let logo_shape = app
+        .state_file()
+        .and_then(|file| prepare::load_state(&file, &app.config().event_slug))
+        .ok()
+        .and_then(|state| state.logo_shape);
     let key = format!(
-        "{} | {}",
+        "{} | {} | {logo_shape:?}",
         plan.event_name,
         plan.banner_url.as_deref().unwrap_or("")
     );
     let mut previews = THUMBNAIL_PREVIEWS.lock().await;
     if !matches!(&*previews, Some((k, _)) if *k == key) {
-        *previews = Some((key, Thumbnails::default()));
+        *previews = Some((key, Thumbnails::for_event(logo_shape)));
     }
     let Some((_, thumbnails)) = previews.as_mut() else {
         return Err(bad("Couldn't prepare the thumbnail preview"));

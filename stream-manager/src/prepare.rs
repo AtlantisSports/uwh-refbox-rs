@@ -11,7 +11,10 @@ use crate::{
     portal::{EventPlan, PlannedGame, TeamArt, playlist_title, video_title},
     quota,
     thumbnail::{self, DESIGN_VERSION, LogoShape, MissingGlyph, Painter},
-    youtube::{BroadcastSpec, Playlist, StreamInfo, THUMBNAIL_COST, YouTube, YouTubeAccess},
+    youtube::{
+        self, BroadcastSpec, Playlist, StreamInfo, THUMBNAIL_COST, ThumbnailFailure, YouTube,
+        YouTubeAccess,
+    },
 };
 use image::DynamicImage;
 use log::info;
@@ -447,6 +450,12 @@ pub fn thumbnail_needs_redraw(
             }
         }
     }
+}
+
+/// Whether Prepare should draw and upload a game's thumbnail: the same rule as title sync's,
+/// with the pictures taken as available, so an incomplete one is tried again.
+fn prepare_needs_thumbnail(recorded: Option<&str>, key: &str) -> bool {
+    thumbnail_needs_redraw(recorded, key, true)
 }
 
 /// A game's thumbnail drawn again by title sync, waiting to be uploaded.
@@ -887,12 +896,17 @@ async fn download_picture(http: &reqwest::Client, url: &str) -> Result<DynamicIm
 }
 
 /// Whether a [`download_picture`] failure would happen again: the picture was refused (HTTP
-/// 4xx) or isn't one that can be read. Anything else (a timeout, no connection, a server error)
+/// 4xx other than 408 and 429) or isn't one that can be read. Anything else (a timeout, no connection, a server error)
 /// might not.
 fn is_final(e: &BoxError) -> bool {
     e.downcast_ref::<reqwest::Error>()
         .and_then(reqwest::Error::status)
-        .is_some_and(|status| status.is_client_error())
+        .is_some_and(|status| {
+            // A busy or slow host may answer next time.
+            status.is_client_error()
+                && status != reqwest::StatusCode::REQUEST_TIMEOUT
+                && status != reqwest::StatusCode::TOO_MANY_REQUESTS
+        })
         || e.downcast_ref::<image::ImageError>().is_some()
 }
 
@@ -1156,10 +1170,13 @@ pub async fn run(
             // lock, so a slow picture download never holds up a switch on that court.
             let thumbnail_key = thumbnail_key(plan, game);
             let needs_thumbnail = thumbnails.enabled
-                && load_state(state_file, &config.event_slug)?
-                    .videos
-                    .get(&game.number)
-                    .is_none_or(|v| v.thumbnail.as_deref() != Some(thumbnail_key.as_str()));
+                && prepare_needs_thumbnail(
+                    load_state(state_file, &config.event_slug)?
+                        .videos
+                        .get(&game.number)
+                        .and_then(|v| v.thumbnail.as_deref()),
+                    &thumbnail_key,
+                );
             let drawn = if needs_thumbnail {
                 match thumbnails.draw(plan, game, log).await {
                     Ok(drawn) => Some(drawn),
@@ -1278,6 +1295,10 @@ pub async fn run(
                     ));
                 }
                 Some((jpeg, complete)) => {
+                    let read = load_state(state_file, &config.event_slug)?
+                        .videos
+                        .get(&game.number)
+                        .and_then(|v| v.thumbnail.clone());
                     match youtube.set_thumbnail(&video.broadcast_id, jpeg).await {
                         Ok(()) => {
                             log(format!("Game {}: thumbnail set", game.number));
@@ -1293,13 +1314,33 @@ pub async fn run(
                             })?;
                         }
                         // The videos matter more than their thumbnails: carry on without them.
-                        Err(e) => {
-                            log(format!(
-                                "Thumbnails skipped for the rest of this run. Game {}: {e}",
-                                game.number
-                            ));
-                            thumbnails.enabled = false;
-                        }
+                        Err(e) => match youtube::thumbnail_failure(e.as_ref()) {
+                            // Only this game's thumbnail was refused: leave it until it
+                            // changes and carry on with the others.
+                            ThumbnailFailure::SkipGame => {
+                                log(format!(
+                                    "Game {}: thumbnail not accepted by YouTube, so it isn't \
+                                     tried again until it changes — {e}",
+                                    game.number
+                                ));
+                                let recorded =
+                                    record_rejected(state_file, config, game, read, thumbnail_key);
+                                if let Err(e) = recorded {
+                                    log(format!(
+                                        "Game {}: the skip wasn't recorded, so it will be \
+                                         tried again — {e}",
+                                        game.number
+                                    ));
+                                }
+                            }
+                            ThumbnailFailure::StopForDay | ThumbnailFailure::StopForNow => {
+                                log(format!(
+                                    "Thumbnails skipped for the rest of this run. Game {}: {e}",
+                                    game.number
+                                ));
+                                thumbnails.enabled = false;
+                            }
+                        },
                     }
                 }
                 None => {}
@@ -1908,6 +1949,28 @@ mod tests {
     }
 
     #[test]
+    fn prepare_does_not_redraw_a_refused_or_undrawable_thumbnail() {
+        let plan = one_game_plan("2026-08-01T09:30:00+10:00");
+        let (key, _) = keys(&plan);
+        let other = key.clone() + "x";
+        assert!(prepare_needs_thumbnail(None, &key));
+        assert!(!prepare_needs_thumbnail(Some(&key), &key));
+        assert!(!prepare_needs_thumbnail(
+            Some(&(key.clone() + REJECTED)),
+            &key
+        ));
+        assert!(!prepare_needs_thumbnail(
+            Some(&(key.clone() + UNDRAWABLE)),
+            &key
+        ));
+        assert!(prepare_needs_thumbnail(Some(&(other + REJECTED)), &key));
+        assert!(prepare_needs_thumbnail(
+            Some(&(key.clone() + INCOMPLETE)),
+            &key
+        ));
+    }
+
+    #[test]
     fn a_game_with_no_thumbnail_recorded_is_tried() {
         let plan = one_game_plan("2026-08-01T09:30:00+10:00");
         let (key, _) = keys(&plan);
@@ -1950,6 +2013,7 @@ mod tests {
         Png(Vec<u8>),
         NotFound,
         Close,
+        Status(u16),
     }
 
     fn png(width: u32, height: u32) -> Reply {
@@ -2019,6 +2083,11 @@ mod tests {
                         Some(Reply::NotFound) | None => b"HTTP/1.1 404 Not Found\r\n\
                             Content-Length: 0\r\nConnection: close\r\n\r\n"
                             .to_vec(),
+                        Some(Reply::Status(code)) => format!(
+                            "HTTP/1.1 {code} Status\r\nContent-Length: 0\r\n\
+                             Connection: close\r\n\r\n"
+                        )
+                        .into_bytes(),
                         Some(Reply::Close) => return,
                     };
                     let _ = socket.write_all(&response).await;
@@ -2131,6 +2200,24 @@ mod tests {
         let summary = summaries(&lines);
         assert_eq!(summary.len(), 1, "{lines:?}");
         assert!(summary[0].ends_with("for now"), "{lines:?}");
+    }
+
+    #[tokio::test]
+    async fn a_busy_or_slow_logo_host_is_tried_again() {
+        for code in [408, 429] {
+            let (base, _) = picture_server(vec![
+                ("w1", png(200, 100)),
+                ("w2", png(200, 100)),
+                ("sq", png(100, 100)),
+                ("busy", Reply::Status(code)),
+            ])
+            .await;
+            let plan = logo_plan(&base, [["w1", "w2"], ["w1", "busy"], ["w2", "sq"]]);
+            let mut thumbnails = Thumbnails::default();
+            let (complete, _) = draw_game_1(&mut thumbnails, &plan).await;
+            assert!(!complete, "{code}");
+            assert_eq!(thumbnails.newly_settled(), None, "{code}");
+        }
     }
 
     #[tokio::test]

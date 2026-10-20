@@ -611,7 +611,11 @@ impl App {
         if let Some(action) = result {
             // The same words go in the court log and the reply, as one line.
             let prefix = if no_data && command == Command::SwitchNow {
-                "Refbox not connected: switched using its last report. "
+                if court.refbox_connected {
+                    "No current data from the refbox: switched using its last report. "
+                } else {
+                    "Refbox not connected: switched using its last report. "
+                }
             } else {
                 ""
             };
@@ -645,6 +649,9 @@ impl App {
                 "Hold released — will switch at the next safe moment".to_string()
             }
             Command::Release => "Hold was not on".to_string(),
+            Command::SwitchNow if !court.switcher.has_report() => {
+                "Nothing to switch to: this court's refbox hasn't reported yet".to_string()
+            }
             Command::SwitchNow => {
                 "Nothing to switch to (day not started, or no next game)".to_string()
             }
@@ -1760,6 +1767,42 @@ mod tests {
             log.contains("Refbox not connected: switched using its last report"),
             "{log}"
         );
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn switch_now_says_no_current_data_while_connected_without_a_snapshot() {
+        let (app, generation) = app_with_hold("switch-no-data");
+        app.on_refbox_event(generation, 0, RefboxEvent::Disconnected);
+        app.on_refbox_event(generation, 0, RefboxEvent::Connected);
+        let message = app.court_command("1", Command::SwitchNow).unwrap();
+        let prefix = "No current data from the refbox: switched using its last report.";
+        assert!(message.starts_with(prefix), "{message}");
+        let log = app.inner().courts[0]
+            .log
+            .front()
+            .cloned()
+            .unwrap_or_default();
+        assert!(log.contains(prefix), "{log}");
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn switch_now_says_the_refbox_has_not_reported_yet() {
+        let app = temp_app("switch-never-reported");
+        // Restart recovery resumed the day, but no refbox report has arrived since.
+        app.inner().courts[0].switcher.resume("14".into());
+        let expected = "Nothing to switch to: this court's refbox hasn't reported yet";
+        assert_eq!(
+            app.court_command("1", Command::SwitchNow),
+            Ok(expected.to_string())
+        );
+        let log = app.inner().courts[0]
+            .log
+            .front()
+            .cloned()
+            .unwrap_or_default();
+        assert!(log.ends_with(expected), "{log}");
         let _ = std::fs::remove_dir_all(&app.config_dir);
     }
 

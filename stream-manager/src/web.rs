@@ -28,6 +28,7 @@ use serde_json::{Value, json};
 use std::{
     cmp::Ordering,
     collections::HashMap,
+    hash::{BuildHasher, Hasher, RandomState},
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
     sync::{Arc, OnceLock},
 };
@@ -886,8 +887,26 @@ async fn prepare_preview(
     };
     let (remaining, switches_left) = app.prepare_allowance(&selection.courts);
     let allowance_warning = prepare::allowance_warning(&work, remaining, switches_left);
-    let (portal_links, key_forgotten) = preview_reply_parts(&key_check);
-    Ok(Json(json!({
+    Ok(Json(preview_success_body(
+        &work,
+        &key_check,
+        &config,
+        allowance_warning,
+    ))
+    .into_response())
+}
+
+/// The reply to a preview that worked: the work, what the key check found, the allowance
+/// warning, and the portal, event and settings it was made for, which the page sends back with
+/// Create.
+fn preview_success_body(
+    work: &prepare::Work,
+    key_check: &watch_links::KeyCheck,
+    config: &Config,
+    allowance_warning: Option<String>,
+) -> Value {
+    let (portal_links, key_forgotten) = preview_reply_parts(key_check);
+    json!({
         "work": work,
         "empty": work.is_empty(),
         "allowance_warning": allowance_warning,
@@ -895,8 +914,8 @@ async fn prepare_preview(
         "key_forgotten": key_forgotten,
         "portal_url": config.portal_url,
         "event_slug": config.event_slug,
-    }))
-    .into_response())
+        "settings_version": settings_version(config),
+    })
 }
 
 /// One game's thumbnail exactly as Prepare would upload it. Nothing is sent to YouTube.
@@ -944,7 +963,25 @@ async fn thumbnail_preview(
         .into_response())
 }
 
-/// Create's request: the preview's choices, and the portal and event that preview was made for.
+/// A short fingerprint of the settings as saved: any change to them gives another one. It only
+/// has to stay the same while this program runs, since a preview doesn't outlive it. The settings
+/// include the PIN and the button key, so the hash is keyed with a random key made once per run:
+/// a device that sees the fingerprint can't test guesses of either against it.
+fn settings_version(config: &Config) -> String {
+    static KEY: OnceLock<RandomState> = OnceLock::new();
+    let mut hasher = KEY.get_or_init(RandomState::new).build_hasher();
+    // Serialised with the same field rules as the settings file. A `Config` is plain data, so
+    // this can't fail; if it ever did, its printed form still tells one set of settings from
+    // another.
+    match serde_json::to_vec(config) {
+        Ok(bytes) => hasher.write(&bytes),
+        Err(_) => hasher.write(format!("{config:?}").as_bytes()),
+    }
+    format!("{:016x}", hasher.finish())
+}
+
+/// Create's request: the preview's choices, and the portal, event and settings that preview
+/// was made for.
 #[derive(Deserialize)]
 struct RunRequest {
     #[serde(flatten)]
@@ -953,6 +990,8 @@ struct RunRequest {
     portal_url: Option<String>,
     #[serde(default)]
     event_slug: Option<String>,
+    #[serde(default)]
+    settings_version: Option<String>,
 }
 
 async fn prepare_run(
@@ -964,14 +1003,26 @@ async fn prepare_run(
     // Worked out once, before the job starts, so the videos are made and the links go out for
     // this job's event even if the settings change meanwhile.
     let config = app.config();
-    // Create only makes what its preview showed: a preview made for another event or portal
-    // (the settings changed since), or a request that doesn't say which (an old page), is
-    // refused rather than run with choices nobody previewed for this event.
-    if request.portal_url.as_deref() != Some(config.portal_url.as_str())
-        || request.event_slug.as_deref() != Some(config.event_slug.as_str())
-    {
+    // Create only makes what its preview showed. A request that doesn't say which preview it
+    // follows comes from a page loaded before this check existed; a preview made before the
+    // settings changed (here, in another tab or on another device) showed other work.
+    let (Some(portal_url), Some(event_slug), Some(version)) = (
+        request.portal_url.as_deref(),
+        request.event_slug.as_deref(),
+        request.settings_version.as_deref(),
+    ) else {
+        return Err(bad(
+            "This page is out of date. Reload it, then press Preview again.",
+        ));
+    };
+    if !app.is_current(portal_url, event_slug) {
         return Err(bad(
             "The event or portal changed since the preview. Preview again.",
+        ));
+    }
+    if version != settings_version(&config) {
+        return Err(bad(
+            "The settings changed since the preview. Preview again.",
         ));
     }
     let selection = request.selection;
@@ -2271,6 +2322,28 @@ mod tests {
     // ----- Create tied to its preview -----
 
     const PREVIEW_CHANGED: &str = "The event or portal changed since the preview. Preview again.";
+    const SETTINGS_CHANGED: &str = "The settings changed since the preview. Preview again.";
+    const PAGE_OUT_OF_DATE: &str = "This page is out of date. Reload it, then press Preview again.";
+
+    /// A server on this PC whose settings name `portal` and the event `cup-2026`, with no
+    /// schedule loaded; returns its address, its folder, a client, the sign-in cookie and the
+    /// settings' version as a preview would report it.
+    async fn create_server(
+        name: &str,
+        portal: &MockPortal,
+    ) -> (String, std::path::PathBuf, reqwest::Client, String, String) {
+        let config = Config {
+            pin: "1234".into(),
+            portal_url: portal.base_url().to_string(),
+            event_slug: "cup-2026".into(),
+            ..Config::default()
+        };
+        let version = settings_version(&config);
+        let (base, dir) = test_server_with_config(name, None, config).await;
+        let client = reqwest::Client::new();
+        let cookie = sign_in(&client, &base).await;
+        (base, dir, client, cookie, version)
+    }
 
     /// Sends Create with `body`; returns the status and the reply's text.
     async fn create(
@@ -2303,11 +2376,12 @@ mod tests {
     #[tokio::test]
     async fn a_create_for_another_event_than_the_preview_is_refused() {
         let portal = MockPortal::start(200, "{}").await;
-        let (base, dir, client, cookie) = linking_server("cr-other", &portal, "cup-2026").await;
+        let (base, dir, client, cookie, version) = create_server("cr-other", &portal).await;
         let body = json!({
             "day": 1,
             "portal_url": portal.base_url(),
             "event_slug": "other-cup",
+            "settings_version": version,
         });
         let (status, text) = create(&client, &base, &cookie, body).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -2317,12 +2391,52 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_create_without_its_preview_event_is_refused() {
+    async fn a_create_from_an_out_of_date_page_is_refused() {
         let portal = MockPortal::start(200, "{}").await;
-        let (base, dir, client, cookie) = linking_server("cr-none", &portal, "cup-2026").await;
-        let (status, text) = create(&client, &base, &cookie, json!({ "day": 1 })).await;
+        let (base, dir, client, cookie, version) = create_server("cr-old-page", &portal).await;
+        let full = json!({
+            "day": 1,
+            "portal_url": portal.base_url(),
+            "event_slug": "cup-2026",
+            "settings_version": version,
+        });
+        // With none of the three, and with each one missing in turn.
+        let mut bodies = vec![json!({ "day": 1 })];
+        for field in ["portal_url", "event_slug", "settings_version"] {
+            let mut body = full.clone();
+            body.as_object_mut().unwrap().remove(field);
+            bodies.push(body);
+        }
+        for body in bodies {
+            let (status, text) = create(&client, &base, &cookie, body.clone()).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+            assert!(text.contains(PAGE_OUT_OF_DATE), "{body}: {text}");
+        }
+        assert_eq!(job_running(&client, &base, &cookie).await, false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_create_after_another_setting_changed_is_refused() {
+        let portal = MockPortal::start(200, "{}").await;
+        let (base, dir, client, cookie, version) = create_server("cr-settings", &portal).await;
+        let stale = settings_version(&Config {
+            pin: "1234".into(),
+            portal_url: portal.base_url().to_string(),
+            event_slug: "cup-2026".into(),
+            privacy: "public".into(),
+            ..Config::default()
+        });
+        assert_ne!(stale, version);
+        let body = json!({
+            "day": 1,
+            "portal_url": portal.base_url(),
+            "event_slug": "cup-2026",
+            "settings_version": stale,
+        });
+        let (status, text) = create(&client, &base, &cookie, body).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(text.contains(PREVIEW_CHANGED), "{text}");
+        assert!(text.contains(SETTINGS_CHANGED), "{text}");
         assert_eq!(job_running(&client, &base, &cookie).await, false);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2330,14 +2444,51 @@ mod tests {
     #[tokio::test]
     async fn a_create_for_the_previewed_event_gets_past_the_check() {
         let portal = MockPortal::start(200, "{}").await;
-        let (base, dir, client, cookie) = linking_server("cr-same", &portal, "cup-2026").await;
+        let (base, dir, client, cookie, version) = create_server("cr-same", &portal).await;
         let body = json!({
             "day": 1,
             "portal_url": portal.base_url(),
             "event_slug": "cup-2026",
+            "settings_version": version,
         });
-        let (_, text) = create(&client, &base, &cookie, body).await;
-        assert!(!text.contains(PREVIEW_CHANGED), "{text}");
+        // The next refusal after the preview checks: this server has no schedule loaded.
+        let (status, text) = create(&client, &base, &cookie, body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            serde_json::from_str::<Value>(&text).unwrap(),
+            json!({ "error": "The schedule isn't loaded yet" })
+        );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_preview_names_the_portal_event_and_settings_it_was_made_for() {
+        let config = Config {
+            portal_url: "https://portal.example".into(),
+            event_slug: "cup-2026".into(),
+            ..Config::default()
+        };
+        let body = preview_success_body(
+            &prepare::Work::default(),
+            &watch_links::KeyCheck::Accepted,
+            &config,
+            None,
+        );
+        assert_eq!(body["portal_url"], "https://portal.example");
+        assert_eq!(body["event_slug"], "cup-2026");
+        assert_eq!(body["settings_version"], settings_version(&config));
+        assert_eq!(body["empty"], true);
+        assert_eq!(body["key_forgotten"], false);
+    }
+
+    #[test]
+    fn any_saved_setting_changes_the_settings_version() {
+        let config = Config::default();
+        assert_eq!(settings_version(&config), settings_version(&config.clone()));
+        let other = Config {
+            switch_lead_secs: config.switch_lead_secs + 1,
+            ..config.clone()
+        };
+        assert_ne!(settings_version(&config), settings_version(&other));
     }
 }

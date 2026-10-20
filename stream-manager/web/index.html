@@ -672,9 +672,12 @@ async function loadSettings() {
     $('s-lan').innerHTML = lanUrl ? `Allowed devices can open <code>${esc(lanUrl)}</code>` : '';
   } catch (_) {}
 }
+// True while the event list is loading, when the list can't yet show the saved event.
+let eventsLoading = false;
 async function loadEvents() {
   const sel = $('s-event');
-  sel.innerHTML = '<option>Loading events…</option>';
+  eventsLoading = true;
+  sel.innerHTML = '<option value="">Loading events…</option>';
   try {
     const r = await api('/api/events?portal_url=' + encodeURIComponent($('s-portal').value));
     const opts = r.events.map(e => `<option value="${esc(e.slug)}">${esc(e.name)} — ${esc((e.starts || '').slice(0, 10))}${e.upcoming ? ' (upcoming)' : ''}</option>`);
@@ -685,6 +688,7 @@ async function loadEvents() {
       sel.value = settings.event_slug;
     }
   } catch (e) { sel.innerHTML = `<option value="${esc(settings?.event_slug || '')}">Couldn't load events: ${esc(e.message)}</option>`; }
+  finally { eventsLoading = false; }
 }
 function renderPortalLink(s, linked) {
   $('pl-msg').textContent = '';
@@ -715,7 +719,9 @@ async function linkPortal() {
   // The link is made for the saved event and portal, not the ones chosen on the page. A saved
   // portal that isn't one of the choices (a hand-edited settings file) leaves the list blank.
   const portalChoice = $('s-portal').value;
-  if ($('s-event').value !== settings.event_slug || (portalChoice && portalChoice !== settings.portal_url)) {
+  // While the event list is loading it can't show the saved event, so only the portal is checked.
+  const eventChanged = !eventsLoading && $('s-event').value !== settings.event_slug;
+  if (eventChanged || (portalChoice && portalChoice !== settings.portal_url)) {
     portalLinkError("Save settings first: the event or portal on this page isn't saved yet.");
     return;
   }

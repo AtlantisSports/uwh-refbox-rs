@@ -351,7 +351,7 @@ Settings and secrets live in `Documents\stream-manager\`:
 | `youtube-token.json` | the saved YouTube connection (secret) |
 | `state-<event>.json` | the videos and playlists it created |
 | `youtube-allowance.json` | how much of YouTube's daily allowance this PC has used today |
-| `portal-watch-links.json` | the portal key for setting watch links (secret) |
+| `portal-watch-links.json` | the portal keys for setting watch links, one for each event this PC has been linked to (secret) |
 
 **Never put this folder in the code repository.**
 

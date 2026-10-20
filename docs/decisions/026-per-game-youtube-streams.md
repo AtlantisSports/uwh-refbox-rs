@@ -540,6 +540,8 @@ Made after a review of the PR against this ADR, and approved by Eric.
     - A key is forgotten only on the portal's own refusal: a 401 or 403 with an empty body, which
       is how the portal refuses. A 403 that carries a page, such as a venue Wi-Fi sign-in or a
       network filter, is reported as an error and the key is kept.
-    - Preview keeps the schedule it reads, so the Prepare run that follows sends links only for
-      games still on the portal. A game removed since the schedule was loaded no longer makes the
-      portal refuse every link at once.
+    - Preview keeps the schedule it reads, so the Create that follows sends links only for games
+      on the portal at the time of the preview. The links go out after Create has made the videos,
+      so a game removed during Create, or after a preview whose read failed (the loaded schedule
+      is used then), can still make the portal refuse the whole update; the log then says to run
+      Prepare again.

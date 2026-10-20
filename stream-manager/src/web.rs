@@ -893,6 +893,8 @@ async fn prepare_preview(
         "allowance_warning": allowance_warning,
         "portal_links": portal_links,
         "key_forgotten": key_forgotten,
+        "portal_url": config.portal_url,
+        "event_slug": config.event_slug,
     }))
     .into_response())
 }
@@ -942,15 +944,37 @@ async fn thumbnail_preview(
         .into_response())
 }
 
+/// Create's request: the preview's choices, and the portal and event that preview was made for.
+#[derive(Deserialize)]
+struct RunRequest {
+    #[serde(flatten)]
+    selection: Selection,
+    #[serde(default)]
+    portal_url: Option<String>,
+    #[serde(default)]
+    event_slug: Option<String>,
+}
+
 async fn prepare_run(
     State(app): State<AppState>,
     headers: HeaderMap,
-    Json(selection): Json<Selection>,
+    Json(request): Json<RunRequest>,
 ) -> ApiResult {
     authorize(&app, &headers)?;
     // Worked out once, before the job starts, so the videos are made and the links go out for
     // this job's event even if the settings change meanwhile.
     let config = app.config();
+    // Create only makes what its preview showed: a preview made for another event or portal
+    // (the settings changed since), or a request that doesn't say which (an old page), is
+    // refused rather than run with choices nobody previewed for this event.
+    if request.portal_url.as_deref() != Some(config.portal_url.as_str())
+        || request.event_slug.as_deref() != Some(config.event_slug.as_str())
+    {
+        return Err(bad(
+            "The event or portal changed since the preview. Preview again.",
+        ));
+    }
+    let selection = request.selection;
     let state_file = app.state_file().map_err(|e| bad(e.to_string()))?;
     let plan = app
         .plan()
@@ -2242,5 +2266,78 @@ mod tests {
             body,
             json!({ "error": "YouTube said 500", "portal_links": null, "key_forgotten": false })
         );
+    }
+
+    // ----- Create tied to its preview -----
+
+    const PREVIEW_CHANGED: &str = "The event or portal changed since the preview. Preview again.";
+
+    /// Sends Create with `body`; returns the status and the reply's text.
+    async fn create(
+        client: &reqwest::Client,
+        base: &str,
+        cookie: &str,
+        body: Value,
+    ) -> (StatusCode, String) {
+        let response = client
+            .post(format!("{base}/api/prepare/run"))
+            .header(header::COOKIE, cookie)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        (response.status(), response.text().await.unwrap())
+    }
+
+    async fn job_running(client: &reqwest::Client, base: &str, cookie: &str) -> Value {
+        let response = client
+            .get(format!("{base}/api/status"))
+            .header(header::COOKIE, cookie)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        response.json::<Value>().await.unwrap()["job"]["running"].clone()
+    }
+
+    #[tokio::test]
+    async fn a_create_for_another_event_than_the_preview_is_refused() {
+        let portal = MockPortal::start(200, "{}").await;
+        let (base, dir, client, cookie) = linking_server("cr-other", &portal, "cup-2026").await;
+        let body = json!({
+            "day": 1,
+            "portal_url": portal.base_url(),
+            "event_slug": "other-cup",
+        });
+        let (status, text) = create(&client, &base, &cookie, body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(text.contains(PREVIEW_CHANGED), "{text}");
+        assert_eq!(job_running(&client, &base, &cookie).await, false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_create_without_its_preview_event_is_refused() {
+        let portal = MockPortal::start(200, "{}").await;
+        let (base, dir, client, cookie) = linking_server("cr-none", &portal, "cup-2026").await;
+        let (status, text) = create(&client, &base, &cookie, json!({ "day": 1 })).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(text.contains(PREVIEW_CHANGED), "{text}");
+        assert_eq!(job_running(&client, &base, &cookie).await, false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_create_for_the_previewed_event_gets_past_the_check() {
+        let portal = MockPortal::start(200, "{}").await;
+        let (base, dir, client, cookie) = linking_server("cr-same", &portal, "cup-2026").await;
+        let body = json!({
+            "day": 1,
+            "portal_url": portal.base_url(),
+            "event_slug": "cup-2026",
+        });
+        let (_, text) = create(&client, &base, &cookie, body).await;
+        assert!(!text.contains(PREVIEW_CHANGED), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

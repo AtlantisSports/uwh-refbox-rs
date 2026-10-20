@@ -585,6 +585,22 @@ impl App {
         }
         let was_hold = court.switcher.status().hold;
         let was_running = court.switcher.status().day_running;
+        // Without current refbox data, Start day and Release would act on a stale picture, so
+        // they refuse. Switch now still works, from the last report, and says so below.
+        let no_data = !court.refbox_has_data;
+        let refusal = match command {
+            Command::StartDay if no_data && !was_running => {
+                Some("Can't start yet: no data from this court's refbox")
+            }
+            Command::Release if no_data && was_hold => {
+                Some("Hold stays on: no data from this court's refbox")
+            }
+            _ => None,
+        };
+        if let Some(message) = refusal {
+            court.note(message.to_string());
+            return Ok(message.to_string());
+        }
         let result = court.switcher.on_command(command);
         // Start day or End day took effect: the removed games are looked at afresh, and restart
         // recovery leaves the court alone from now on.
@@ -593,7 +609,11 @@ impl App {
             court.recovered = true;
         }
         if let Some(action) = result {
-            let message = describe_action(plan.as_ref(), &action, practice);
+            let mut message = describe_action(plan.as_ref(), &action, practice);
+            if no_data && command == Command::SwitchNow {
+                message =
+                    format!("Refbox not connected: switched using its last report. {message}");
+            }
             dispatch(court, executors.get(i), plan.as_ref(), action, practice);
             return Ok(message);
         }
@@ -1614,16 +1634,123 @@ mod tests {
             Ok("Can't start yet: no data from this court's refbox".to_string())
         );
         // After the court's last game the refbox sends a blank upcoming game.
-        app.inner().courts[0].switcher.on_snapshot(&snapshot(
-            GamePeriod::BetweenGames,
-            "20",
-            "",
-            600,
-        ));
+        let generation = app.inner().generation;
+        app.on_refbox_event(generation, 0, RefboxEvent::Connected);
+        app.on_refbox_event(
+            generation,
+            0,
+            RefboxEvent::Snapshot(Box::new(snapshot(GamePeriod::BetweenGames, "20", "", 600))),
+        );
         assert_eq!(
             app.court_command("1", Command::StartDay),
             Ok("No more games on this court".to_string())
         );
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn start_day_refuses_while_the_refbox_is_gone() {
+        let app = temp_app("start-refuse");
+        let generation = app.inner().generation;
+        let send = |event| app.on_refbox_event(generation, 0, event);
+        send(RefboxEvent::Connected);
+        send(RefboxEvent::Snapshot(Box::new(snapshot(
+            GamePeriod::SecondHalf,
+            "14",
+            "15",
+            300,
+        ))));
+        send(RefboxEvent::Disconnected);
+        assert_eq!(
+            app.court_command("1", Command::StartDay),
+            Ok("Can't start yet: no data from this court's refbox".to_string())
+        );
+        assert!(!app.inner().courts[0].switcher.status().day_running);
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    /// Starts the day and turns Hold on, with live refbox data.
+    fn app_with_hold(name: &str) -> (Arc<App>, u64) {
+        let app = temp_app(name);
+        let generation = app.inner().generation;
+        let send = |event| app.on_refbox_event(generation, 0, event);
+        send(RefboxEvent::Connected);
+        send(RefboxEvent::Snapshot(Box::new(snapshot(
+            GamePeriod::SecondHalf,
+            "14",
+            "15",
+            300,
+        ))));
+        assert!(app.court_command("1", Command::StartDay).is_ok());
+        assert!(app.inner().courts[0].switcher.status().day_running);
+        assert!(app.court_command("1", Command::Hold).is_ok());
+        assert!(app.inner().courts[0].switcher.status().hold);
+        (app, generation)
+    }
+
+    #[test]
+    fn release_keeps_hold_while_the_refbox_is_gone() {
+        let (app, generation) = app_with_hold("release-gone");
+        app.on_refbox_event(generation, 0, RefboxEvent::Disconnected);
+        assert_eq!(
+            app.court_command("1", Command::Release),
+            Ok("Hold stays on: no data from this court's refbox".to_string())
+        );
+        assert!(app.inner().courts[0].switcher.status().hold);
+        app.on_refbox_event(generation, 0, RefboxEvent::Connected);
+        app.on_refbox_event(
+            generation,
+            0,
+            RefboxEvent::Snapshot(Box::new(snapshot(GamePeriod::SecondHalf, "14", "15", 290))),
+        );
+        assert_eq!(
+            app.court_command("1", Command::Release),
+            Ok("Hold released — will switch at the next safe moment".to_string())
+        );
+        assert!(!app.inner().courts[0].switcher.status().hold);
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn release_waits_for_the_first_snapshot_after_a_reconnect() {
+        let (app, generation) = app_with_hold("release-reconnect");
+        app.on_refbox_event(generation, 0, RefboxEvent::Disconnected);
+        app.on_refbox_event(generation, 0, RefboxEvent::Connected);
+        assert_eq!(
+            app.court_command("1", Command::Release),
+            Ok("Hold stays on: no data from this court's refbox".to_string())
+        );
+        assert!(app.inner().courts[0].switcher.status().hold);
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn switch_now_still_works_while_the_refbox_is_gone_and_says_so() {
+        let (app, generation) = app_with_hold("switch-gone");
+        app.on_refbox_event(generation, 0, RefboxEvent::Disconnected);
+        let message = app.court_command("1", Command::SwitchNow).unwrap();
+        assert!(
+            message.starts_with("Refbox not connected: switched using its last report."),
+            "{message}"
+        );
+        let _ = std::fs::remove_dir_all(&app.config_dir);
+    }
+
+    #[test]
+    fn silence_does_not_stop_the_buttons() {
+        let app = temp_app("silence-buttons");
+        let generation = app.inner().generation;
+        let send = |event| app.on_refbox_event(generation, 0, event);
+        send(RefboxEvent::Connected);
+        send(RefboxEvent::Snapshot(Box::new(snapshot(
+            GamePeriod::SecondHalf,
+            "14",
+            "15",
+            300,
+        ))));
+        send(RefboxEvent::Silent);
+        assert!(app.court_command("1", Command::StartDay).is_ok());
+        assert!(app.inner().courts[0].switcher.status().day_running);
         let _ = std::fs::remove_dir_all(&app.config_dir);
     }
 

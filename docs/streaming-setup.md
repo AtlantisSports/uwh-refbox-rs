@@ -466,6 +466,9 @@ key A.
     starts only 29 seconds before kick-off.
 - **Hold** stops the automatic switch (e.g. a long interview). **Switch now** switches
   immediately.
+  While a court's refbox has no current data (disconnected, or just reconnected and not yet
+  heard from), **Release** and **Start day** refuse and say so; **Switch now** still works, using
+  the last report, and the court's log says it did.
 - If a switch fails, the court shows a **red message** and goes to Hold. Fix the cause, then
   press **Switch now**. Stream Manager never retries by itself, so a failing step can't use up the
   YouTube allowance.

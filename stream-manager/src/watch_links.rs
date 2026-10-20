@@ -13,7 +13,12 @@ use crate::{
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, path::Path, time::Duration};
+use std::{
+    collections::BTreeMap,
+    path::Path,
+    sync::{Mutex, MutexGuard},
+    time::Duration,
+};
 
 /// The file, next to the settings, holding the access key for each linked portal event.
 pub const LINK_FILE: &str = "portal-watch-links.json";
@@ -31,6 +36,26 @@ pub struct PortalLink {
     pub portal_url: String,
     pub event_slug: String,
     pub access_key: String,
+}
+
+/// Held around every read-change-write of the link file, so two writers at once (a job
+/// forgetting a refused key while the operator links another event, say) can't lose each
+/// other's change.
+static LINK_FILE_LOCK: Mutex<()> = Mutex::new(());
+
+/// Takes [`LINK_FILE_LOCK`]. The lock guards no data, so one left poisoned by a panic is still
+/// safe to take.
+fn lock_link_file() -> MutexGuard<'static, ()> {
+    LINK_FILE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+impl PortalLink {
+    /// Whether this link is for this portal and event.
+    fn is_for(&self, portal_url: &str, event_slug: &str) -> bool {
+        self.portal_url == portal_url && self.event_slug == event_slug
+    }
 }
 
 /// Every saved link. A missing, unreadable or unparsable file is no links.
@@ -58,14 +83,14 @@ fn write_links(path: &Path, links: &[PortalLink]) -> Result<(), BoxError> {
 pub fn link_for(path: &Path, portal_url: &str, event_slug: &str) -> Option<PortalLink> {
     saved_links(path)
         .into_iter()
-        .find(|link| link.portal_url == portal_url && link.event_slug == event_slug)
+        .find(|link| link.is_for(portal_url, event_slug))
 }
 
 /// Saves the link, replacing any saved for the same portal and event and keeping the others.
 pub fn save(path: &Path, link: &PortalLink) -> Result<(), BoxError> {
+    let _lock = lock_link_file();
     let mut links = saved_links(path);
-    links
-        .retain(|saved| saved.portal_url != link.portal_url || saved.event_slug != link.event_slug);
+    links.retain(|saved| !saved.is_for(&link.portal_url, &link.event_slug));
     links.push(link.clone());
     write_links(path, &links)
 }
@@ -73,8 +98,9 @@ pub fn save(path: &Path, link: &PortalLink) -> Result<(), BoxError> {
 /// Forgets the link for this portal and event and keeps the others. When none are left the
 /// file is deleted; a file that isn't there is fine.
 pub fn forget(path: &Path, portal_url: &str, event_slug: &str) -> Result<(), BoxError> {
+    let _lock = lock_link_file();
     let mut links = saved_links(path);
-    links.retain(|saved| saved.portal_url != portal_url || saved.event_slug != event_slug);
+    links.retain(|saved| !saved.is_for(portal_url, event_slug));
     write_links(path, &links)
 }
 
@@ -379,11 +405,16 @@ async fn check_key_within(link_file: &Path, config: &Config, timeout: Duration) 
 /// Forgets `refused` after the portal refused it, but only if it is still the saved key: a key
 /// saved by linking again meanwhile must survive.
 fn forget_refused(link_file: &Path, refused: &PortalLink) {
-    let still_saved = link_for(link_file, &refused.portal_url, &refused.event_slug)
-        .is_some_and(|saved| saved.access_key == refused.access_key);
-    if still_saved {
-        // If the file can't be removed, the next run is refused again and says so again.
-        let _ = forget(link_file, &refused.portal_url, &refused.event_slug);
+    let _lock = lock_link_file();
+    let mut links = saved_links(link_file);
+    let before = links.len();
+    links.retain(|saved| {
+        !saved.is_for(&refused.portal_url, &refused.event_slug)
+            || saved.access_key != refused.access_key
+    });
+    if links.len() != before {
+        // If the file can't be rewritten, the next run is refused again and says so again.
+        let _ = write_links(link_file, &links);
     }
 }
 
@@ -1458,6 +1489,45 @@ mod tests {
         forget(&path, "https://portal.example", "b").unwrap();
         assert!(!path.exists());
         assert!(forget(&path, "https://portal.example", "b").is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_refused_key_is_not_forgotten_after_a_relink() {
+        let dir = temp_dir("refused-after-relink");
+        let path = dir.join(LINK_FILE);
+        let link = |access_key: &str| PortalLink {
+            portal_url: "https://portal.example".into(),
+            event_slug: "a".into(),
+            access_key: access_key.into(),
+        };
+        save(&path, &link("k1")).unwrap();
+        save(&path, &link("k2")).unwrap();
+        forget_refused(&path, &link("k1"));
+        assert_eq!(
+            link_for(&path, "https://portal.example", "a"),
+            Some(link("k2"))
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn forgetting_a_refused_key_keeps_other_events() {
+        let dir = temp_dir("refused-keeps-others");
+        let path = dir.join(LINK_FILE);
+        let link = |event_slug: &str, access_key: &str| PortalLink {
+            portal_url: "https://portal.example".into(),
+            event_slug: event_slug.into(),
+            access_key: access_key.into(),
+        };
+        save(&path, &link("a", "k1")).unwrap();
+        save(&path, &link("b", "k2")).unwrap();
+        forget_refused(&path, &link("a", "k1"));
+        assert_eq!(link_for(&path, "https://portal.example", "a"), None);
+        assert_eq!(
+            link_for(&path, "https://portal.example", "b"),
+            Some(link("b", "k2"))
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

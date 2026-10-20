@@ -708,19 +708,30 @@ async function loadSettings() {
     $('s-lan').innerHTML = lanUrl ? `Allowed devices can open <code>${esc(lanUrl)}</code>` : '';
   } catch (_) {}
 }
+// Each call takes a number, so a slow reply for a portal chosen earlier can't replace the list
+// for the portal chosen now.
+let eventsRequest = 0;
 async function loadEvents() {
+  const mine = ++eventsRequest;
   const sel = $('s-event');
-  sel.innerHTML = `<option value="${esc(settings?.event_slug || '')}">Loading events…</option>`;
+  const portal = $('s-portal').value;
+  // The saved event belongs to the saved portal: it is offered only while that portal is chosen.
+  const savedEvent = settings && portal === settings.portal_url ? (settings.event_slug || '') : '';
+  sel.innerHTML = `<option value="${esc(savedEvent)}">Loading events…</option>`;
   try {
-    const r = await api('/api/events?portal_url=' + encodeURIComponent($('s-portal').value));
+    const r = await api('/api/events?portal_url=' + encodeURIComponent(portal));
+    if (mine !== eventsRequest) return;
     const opts = r.events.map(e => `<option value="${esc(e.slug)}">${esc(e.name)} — ${esc((e.starts || '').slice(0, 10))}${e.upcoming ? ' (upcoming)' : ''}</option>`);
     sel.innerHTML = '<option value="">— choose an event —</option>' + opts.join('');
-    if (settings && settings.event_slug) {
-      if (![...sel.options].some(o => o.value === settings.event_slug))
-        sel.insertAdjacentHTML('beforeend', `<option value="${esc(settings.event_slug)}">${esc(settings.event_slug)}</option>`);
-      sel.value = settings.event_slug;
+    if (savedEvent) {
+      if (![...sel.options].some(o => o.value === savedEvent))
+        sel.insertAdjacentHTML('beforeend', `<option value="${esc(savedEvent)}">${esc(savedEvent)}</option>`);
+      sel.value = savedEvent;
     }
-  } catch (e) { sel.innerHTML = `<option value="${esc(settings?.event_slug || '')}">Couldn't load events: ${esc(e.message)}</option>`; }
+  } catch (e) {
+    if (mine !== eventsRequest) return;
+    sel.innerHTML = `<option value="${esc(savedEvent)}">Couldn't load events: ${esc(e.message)}</option>`;
+  }
 }
 function renderPortalLink(s, linked) {
   $('pl-msg').textContent = '';

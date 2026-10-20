@@ -516,6 +516,12 @@ impl App {
                 court.refbox_silent = false;
                 court.note("Refbox connection lost — automatic switching paused".into());
             }
+            RefboxEvent::NoHealthCheck(reason) => {
+                court.note(format!(
+                    "Refbox connection health check couldn't be turned on, so a dropped \
+                     network may need a restart to recover — {reason}"
+                ));
+            }
             RefboxEvent::Unreadable(reason) => {
                 court.refbox_unreadable = Some(reason.clone());
                 court.note(format!(

@@ -1,7 +1,8 @@
 //! Receives game snapshots from a refbox, the same way the overlay does.
 
 use log::{debug, info, warn};
-use std::{net::IpAddr, time::Duration};
+use socket2::{SockRef, TcpKeepalive};
+use std::{io, net::IpAddr, time::Duration};
 use tokio::{io::AsyncReadExt, net::TcpStream, sync::mpsc::UnboundedSender};
 use uwh_common::game_snapshot::GameSnapshot;
 
@@ -10,8 +11,11 @@ use uwh_common::game_snapshot::GameSnapshot;
 const MAX_LINE: usize = 64 * 1024;
 
 /// While a clock runs (a game or the break countdown), the refbox sends a snapshot every
-/// second. This long without one on an open connection is reported as [`RefboxEvent::Silent`],
-/// e.g. after a Wi-Fi drop that never closed the connection.
+/// second. This long without one on an open connection is reported as [`RefboxEvent::Silent`].
+/// A Wi-Fi drop that never closes the connection is caught by TCP keepalive (see
+/// [`configure_keepalive`]), which forces a reconnect; silence only reports a refbox that has
+/// stopped sending. The refbox is also legitimately silent whenever its clock is stopped, so
+/// silence is never treated as a disconnection.
 pub const SILENCE: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
@@ -24,6 +28,31 @@ pub enum RefboxEvent {
     /// The refbox also goes quiet while its clock is stopped, so this alone isn't a fault.
     Silent,
     Disconnected,
+    /// TCP keepalive could not be turned on for this connection, so a dropped network may not be
+    /// noticed. Sent at most once per connection, right after [`RefboxEvent::Connected`].
+    NoHealthCheck(String),
+}
+
+/// How long a socket may sit idle before the OS starts sending TCP keepalive probes.
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(5);
+/// How far apart consecutive keepalive probes are sent once idle.
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(3);
+/// How many unanswered probes the OS sends before giving up on the connection.
+const KEEPALIVE_RETRIES: u32 = 3;
+
+/// Configures TCP keepalive on `stream` so a refbox that silently disappears -- Wi-Fi drop, power
+/// cycle -- is noticed by the OS and reported as a read error, instead of the read waiting
+/// forever. The feed is one-way, so Stream Manager never transmits, and a peer that has rebooted
+/// never gets the chance to reset the connection. Same settings and reasoning as
+/// `configure_keepalive` in `overlay-bridge/src/feed.rs`: a dead peer is noticed within
+/// 5s + 3 * 3s = 14s in the worst case, well short of the 25-second stopped-clock silence
+/// measured on a live refbox, which is why a read timeout is not used for this.
+fn configure_keepalive(stream: &TcpStream) -> io::Result<()> {
+    let params = TcpKeepalive::new()
+        .with_time(KEEPALIVE_IDLE)
+        .with_interval(KEEPALIVE_INTERVAL)
+        .with_retries(KEEPALIVE_RETRIES);
+    SockRef::from(stream).set_tcp_keepalive(&params)
 }
 
 /// Connects to the refbox and forwards everything as `(court_index, event)`.
@@ -60,6 +89,15 @@ async fn follow_refbox_with(
         info!("Connected to refbox at {ip}:{port}");
         if tx.send((court_index, RefboxEvent::Connected)).is_err() {
             return;
+        }
+        if let Err(e) = configure_keepalive(&stream) {
+            warn!("Could not turn on TCP keepalive for refbox at {ip}:{port}: {e}");
+            if tx
+                .send((court_index, RefboxEvent::NoHealthCheck(e.to_string())))
+                .is_err()
+            {
+                return;
+            }
         }
 
         // The refbox sends one JSON snapshot per line.
@@ -138,6 +176,17 @@ mod tests {
             .expect("an event in time")
             .expect("the reader is still running")
             .1
+    }
+
+    #[tokio::test]
+    async fn keepalive_is_on_for_a_refbox_connection() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        configure_keepalive(&stream).unwrap();
+        assert!(SockRef::from(&stream).keepalive().unwrap());
     }
 
     #[tokio::test]

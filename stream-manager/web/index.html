@@ -628,8 +628,8 @@ async function previewPrepare() {
   $('prep-preview').innerHTML = '<p class="muted">Checking YouTube…</p>';
   try {
     const r = await api('/api/prepare/preview', { method: 'POST', body: sel });
+    afterKeyCheck(r); // a forgotten key is news even when this preview itself is dropped
     if (mine !== previewRequest) return;
-    afterKeyCheck(r);
     const w = r.work;
     const lists = w.playlists.map(([t, n]) => `<li>Playlist "${esc(t)}": ${n} videos</li>`).join('');
     const portal = portalLinksNotice(r.portal_links);
@@ -651,8 +651,8 @@ async function previewPrepare() {
       (r.allowance_warning ? `<div class="banner">${esc(r.allowance_warning)}</div>` : '');
     $('prep-run').disabled = false;
   } catch (e) {
-    if (mine !== previewRequest) return;
     afterKeyCheck(e.body);
+    if (mine !== previewRequest) return;
     $('prep-preview').innerHTML = `<div class="banner error">${esc(e.message)}</div>${portalLinksNotice(e.body && e.body.portal_links)}`;
   }
 }
@@ -721,11 +721,9 @@ async function loadEvents() {
   const mine = ++eventsRequest;
   const sel = $('s-event');
   const portal = $('s-portal').value;
-  // The saved event belongs to the saved portal: it is offered only while that portal is chosen
-  // (ignoring trailing slashes), or while the choice is blank because the saved portal isn't one
-  // of the listed ones, so it is still the one in use.
-  const trimmed = url => (url || '').replace(/\/+$/, '');
-  const savedEvent = settings && (portal === '' || trimmed(portal) === trimmed(settings.portal_url))
+  // The saved event belongs to the saved portal: it is offered only while that portal is chosen,
+  // or while the choice is blank because the saved portal isn't one of the listed ones.
+  const savedEvent = settings && (portal === '' || portal === settings.portal_url)
     ? (settings.event_slug || '') : '';
   sel.innerHTML = `<option value="${esc(savedEvent)}">Loading events…</option>`;
   try {

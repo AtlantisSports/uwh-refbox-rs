@@ -41,6 +41,10 @@ pub struct EventState {
     pub playlists: BTreeMap<String, String>,
     /// Game number → its video.
     pub videos: BTreeMap<String, VideoState>,
+    /// The shape of the event's logo boxes, once worked out from every event logo, so every
+    /// thumbnail of the event keeps it and the logos aren't all downloaded again.
+    #[serde(default)]
+    pub logo_shape: Option<LogoShape>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -612,11 +616,29 @@ const PICTURE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
 type Pictures = HashMap<String, Option<DynamicImage>>;
 
+/// Why a picture couldn't be had, and whether trying again could change that.
+struct Failure {
+    message: String,
+    /// Refused (HTTP 4xx) or not a readable picture: trying again won't help.
+    is_final: bool,
+}
+
 /// Downloads the event's pictures (once each) and draws the thumbnails.
 pub struct Thumbnails {
     painter: Option<Painter>,
     banner_ok: bool,
     pictures: Pictures,
+    /// Why each picture that couldn't be had failed.
+    failures: HashMap<String, Failure>,
+    /// Pictures whose failure has been logged.
+    reported: BTreeSet<String>,
+    /// The event's logo box shape as recorded, if it is.
+    stored_shape: Option<LogoShape>,
+    /// The shape worked out from every event logo, until [`Thumbnails::newly_settled`] takes it.
+    settled: Option<LogoShape>,
+    /// The logo box shape is only a guess for this run (some logos couldn't be reached, or
+    /// none could be read), so no thumbnail that shows a logo counts as complete.
+    shape_guessed: bool,
     /// `None` if the downloader couldn't be set up: every picture then counts as unavailable.
     http: Option<reqwest::Client>,
     /// Turned off after an upload fails, so a refused upload isn't repeated for every video.
@@ -625,10 +647,23 @@ pub struct Thumbnails {
 
 impl Default for Thumbnails {
     fn default() -> Self {
+        Self::for_event(None)
+    }
+}
+
+impl Thumbnails {
+    /// `shape` is the event's logo box shape from its record, if it has one: the other games'
+    /// logos are then not downloaded.
+    pub fn for_event(shape: Option<LogoShape>) -> Self {
         Self {
             painter: None,
             banner_ok: true,
             pictures: HashMap::new(),
+            failures: HashMap::new(),
+            reported: BTreeSet::new(),
+            stored_shape: shape,
+            settled: None,
+            shape_guessed: false,
             http: reqwest::Client::builder()
                 .timeout(PICTURE_TIMEOUT)
                 .build()
@@ -636,31 +671,112 @@ impl Default for Thumbnails {
             enabled: true,
         }
     }
-}
 
-impl Thumbnails {
-    /// Downloads a picture unless already tried; false if it couldn't be fetched or read.
-    async fn fetch(&mut self, url: &str, log: &mut (dyn FnMut(String) + Send)) -> bool {
+    /// The logo box shape this worked out from every event logo, if it worked one out; given
+    /// once, for the caller to record ([`record_logo_shape`]).
+    pub fn newly_settled(&mut self) -> Option<LogoShape> {
+        self.settled.take()
+    }
+
+    /// Downloads a picture unless already tried, saying nothing; false if it couldn't be
+    /// fetched or read.
+    async fn fetch(&mut self, url: &str) -> bool {
         if !self.pictures.contains_key(url) {
             let picture = match &self.http {
                 Some(http) => match download_picture(http, url).await {
                     Ok(picture) => Some(picture),
                     Err(e) => {
-                        log(format!("Could not download picture {url}: {e}"));
+                        let failure = Failure {
+                            message: e.to_string(),
+                            is_final: is_final(&e),
+                        };
+                        self.failures.insert(url.to_string(), failure);
                         None
                     }
                 },
-                None => {
-                    // Said once: no picture has been tried before the first.
-                    if self.pictures.is_empty() {
-                        log("Pictures left out: the picture downloader couldn't start".to_string());
-                    }
-                    None
-                }
+                None => None,
             };
             self.pictures.insert(url.to_string(), picture);
         }
         self.pictures.get(url).is_some_and(Option::is_some)
+    }
+
+    /// [`Self::fetch`] for a picture the game being drawn shows: a failure is logged, the first
+    /// time only.
+    async fn fetch_shown(&mut self, url: &str, log: &mut (dyn FnMut(String) + Send)) -> bool {
+        let ok = self.fetch(url).await;
+        if !ok && self.reported.insert(url.to_string()) {
+            match (&self.http, self.failures.get(url)) {
+                (Some(_), Some(failure)) => {
+                    log(format!(
+                        "Could not download picture {url}: {}",
+                        failure.message
+                    ));
+                }
+                // Said once: no failure has been reported before the first.
+                _ if self.reported.len() == 1 => {
+                    log("Pictures left out: the picture downloader couldn't start".to_string());
+                }
+                _ => {}
+            }
+        }
+        ok
+    }
+
+    /// The shape most of the event's logos have, fetching them all (silently) and logging one
+    /// line if any couldn't be had. Settled (see [`Self::newly_settled`]) once at least one
+    /// logo was read and none might still be had by trying again; until then it is only a
+    /// guess, and the thumbnails that show a logo count as incomplete so they are redrawn once
+    /// it settles.
+    async fn event_shape(
+        &mut self,
+        plan: &EventPlan,
+        log: &mut (dyn FnMut(String) + Send),
+    ) -> LogoShape {
+        let logo_urls: BTreeSet<&String> = plan
+            .games
+            .iter()
+            .flat_map(|g| [&g.dark_team, &g.light_team])
+            .flatten()
+            .filter_map(|art| art.logo_url.as_ref())
+            .collect();
+        let (mut failed, mut retry) = (0, 0);
+        for url in &logo_urls {
+            if !self.fetch(url).await {
+                failed += 1;
+                if self.failures.get(url.as_str()).is_none_or(|f| !f.is_final) {
+                    retry += 1;
+                }
+            }
+        }
+        let shape = LogoShape::of(
+            logo_urls
+                .iter()
+                .filter_map(|url| self.pictures.get(*url))
+                .flatten(),
+        );
+        // Settled only from at least one logo read: an event with none yet (teams not known,
+        // or every logo refused) mustn't lock in square boxes.
+        if retry == 0 && failed < logo_urls.len() {
+            self.settled = Some(shape);
+        } else {
+            self.shape_guessed = true;
+        }
+        if failed > 0 {
+            let mut line = format!(
+                "Logo boxes: {failed} of {} team logos couldn't be downloaded",
+                logo_urls.len()
+            );
+            if self.shape_guessed {
+                let shape = match shape {
+                    LogoShape::Square => "square",
+                    LogoShape::Wide => "wide",
+                };
+                line += &format!(" — boxes are {shape} for now");
+            }
+            log(line);
+        }
+        shape
     }
 
     /// The game's thumbnail as a JPEG, and whether every picture it needed was available.
@@ -672,26 +788,15 @@ impl Thumbnails {
     ) -> Result<(Vec<u8>, bool), BoxError> {
         if self.painter.is_none() {
             if let Some(url) = &plan.banner_url {
-                self.banner_ok = self.fetch(url, log).await;
+                self.banner_ok = self.fetch_shown(url, log).await;
             }
             // The logo boxes are the shape most of the event's logos have, so every game's
-            // thumbnail matches: all the logos are fetched before the first one is drawn.
-            let logo_urls: BTreeSet<&String> = plan
-                .games
-                .iter()
-                .flat_map(|g| [&g.dark_team, &g.light_team])
-                .flatten()
-                .filter_map(|art| art.logo_url.as_ref())
-                .collect();
-            for url in &logo_urls {
-                self.fetch(url, log).await;
-            }
-            let shape = LogoShape::of(
-                logo_urls
-                    .iter()
-                    .filter_map(|url| self.pictures.get(*url))
-                    .flatten(),
-            );
+            // thumbnail matches: unless the record has it, all the logos are fetched before the
+            // first one is drawn.
+            let shape = match self.stored_shape {
+                Some(shape) => shape,
+                None => self.event_shape(plan, log).await,
+            };
             let banner = plan
                 .banner_url
                 .as_ref()
@@ -700,10 +805,18 @@ impl Thumbnails {
             self.painter = Some(Painter::new(&plan.event_name, banner, shape)?);
         }
         let mut complete = self.banner_ok;
+        let mut draws_a_logo = false;
         for art in [&game.dark_team, &game.light_team].into_iter().flatten() {
             if let Some(url) = &art.logo_url {
-                complete &= self.fetch(url, log).await;
+                let fetched = self.fetch_shown(url, log).await;
+                complete &= fetched;
+                draws_a_logo |= fetched;
             }
+        }
+        // A guessed box shape only matters to a game that shows a logo in it; a game without
+        // one shows no box, and a logo added later changes its key anyway.
+        if self.shape_guessed && draws_a_logo {
+            complete = false;
         }
         let when = when_text(game);
         let thumbnail = thumbnail::Game {
@@ -716,6 +829,18 @@ impl Thumbnails {
         let painter = self.painter.as_ref().ok_or("thumbnail painter missing")?;
         Ok((painter.render(&thumbnail)?, complete))
     }
+}
+
+/// Records the event's logo box shape, unless one is recorded already.
+pub fn record_logo_shape(
+    state_file: &Path,
+    config: &Config,
+    shape: LogoShape,
+) -> Result<(), BoxError> {
+    update_state(state_file, &config.event_slug, |state| {
+        state.logo_shape.get_or_insert(shape);
+    })?;
+    Ok(())
 }
 
 /// What to log when a game's thumbnail can't be drawn, and whether to stop drawing them for the
@@ -759,6 +884,16 @@ async fn download_picture(http: &reqwest::Client, url: &str) -> Result<DynamicIm
         .bytes()
         .await?;
     Ok(image::load_from_memory(&bytes)?)
+}
+
+/// Whether a [`download_picture`] failure would happen again: the picture was refused (HTTP
+/// 4xx) or isn't one that can be read. Anything else (a timeout, no connection, a server error)
+/// might not.
+fn is_final(e: &BoxError) -> bool {
+    e.downcast_ref::<reqwest::Error>()
+        .and_then(reqwest::Error::status)
+        .is_some_and(|status| status.is_client_error())
+        || e.downcast_ref::<image::ImageError>().is_some()
 }
 
 /// What the prepare step will do, worked out before anything is changed.
@@ -975,7 +1110,8 @@ pub async fn run(
     extras_ok: &(dyn Fn(&str) -> bool + Sync),
     log: &mut (dyn FnMut(String) + Send),
 ) -> Result<(), BoxError> {
-    let mut thumbnails = Thumbnails::default();
+    let logo_shape = load_state(state_file, &config.event_slug)?.logo_shape;
+    let mut thumbnails = Thumbnails::for_event(logo_shape);
     for target in select_targets(config, plan, selection)? {
         let title = &target.playlist_title;
         let pair = court_streams(target.court, &lookups.streams)?;
@@ -1040,6 +1176,13 @@ pub async fn run(
             } else {
                 None
             };
+            if let Some(shape) = thumbnails.newly_settled() {
+                if let Err(e) = record_logo_shape(state_file, config, shape) {
+                    log(format!(
+                        "Logo box shape not recorded, so it will be worked out again — {e}"
+                    ));
+                }
+            }
 
             // Held for this game only; released before the next one.
             let mut youtube = youtube.step(&target.court.name).await?;
@@ -1799,6 +1942,275 @@ mod tests {
             "new".to_string()
         ));
         assert_eq!(thumbnail.as_deref(), Some("newer"));
+    }
+
+    /// What the test picture server answers for a path.
+    #[derive(Clone)]
+    enum Reply {
+        Png(Vec<u8>),
+        NotFound,
+        Close,
+    }
+
+    fn png(width: u32, height: u32) -> Reply {
+        let mut bytes = Vec::new();
+        DynamicImage::new_rgb8(width, height)
+            .write_to(&mut io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .unwrap();
+        Reply::Png(bytes)
+    }
+
+    type Requests = std::sync::Arc<Mutex<HashMap<String, usize>>>;
+
+    /// Serves `table` (path without the leading slash → reply) on 127.0.0.1; returns the base
+    /// URL and the number of requests seen per path.
+    async fn picture_server(table: Vec<(&str, Reply)>) -> (String, Requests) {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let table: HashMap<String, Reply> = table
+            .into_iter()
+            .map(|(path, reply)| (path.to_string(), reply))
+            .collect();
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let requests = Requests::default();
+        let seen = requests.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((socket, _)) = listener.accept().await else {
+                    return;
+                };
+                let table = table.clone();
+                let seen = seen.clone();
+                tokio::spawn(async move {
+                    let mut reader = BufReader::new(socket);
+                    let mut first = String::new();
+                    if reader.read_line(&mut first).await.is_err() {
+                        return;
+                    }
+                    loop {
+                        let mut line = String::new();
+                        match reader.read_line(&mut line).await {
+                            Ok(0) | Err(_) => break,
+                            Ok(_) if line == "\r\n" => break,
+                            Ok(_) => {}
+                        }
+                    }
+                    let path = first
+                        .split_whitespace()
+                        .nth(1)
+                        .unwrap_or("")
+                        .trim_start_matches('/')
+                        .to_string();
+                    *seen.lock().unwrap().entry(path.clone()).or_default() += 1;
+                    let mut socket = reader.into_inner();
+                    let response = match table.get(&path) {
+                        Some(Reply::Png(bytes)) => {
+                            let mut r = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\
+                                 Content-Type: image/png\r\nConnection: close\r\n\r\n",
+                                bytes.len()
+                            )
+                            .into_bytes();
+                            r.extend_from_slice(bytes);
+                            r
+                        }
+                        Some(Reply::NotFound) | None => b"HTTP/1.1 404 Not Found\r\n\
+                            Content-Length: 0\r\nConnection: close\r\n\r\n"
+                            .to_vec(),
+                        Some(Reply::Close) => return,
+                    };
+                    let _ = socket.write_all(&response).await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+        (base, requests)
+    }
+
+    /// Three games, each with a dark and a light logo at `base/<name>`.
+    fn logo_plan(base: &str, logos: [[&str; 2]; 3]) -> EventPlan {
+        let mut plan = one_game_plan("2030-08-01T09:30:00+10:00");
+        let template = plan.games[0].clone();
+        let art = |name: &str| {
+            Some(TeamArt {
+                logo_url: Some(format!("{base}/{name}")),
+            })
+        };
+        plan.games = logos
+            .iter()
+            .enumerate()
+            .map(|(i, [dark, light])| PlannedGame {
+                number: (i + 1).to_string(),
+                dark_team: art(dark),
+                light_team: art(light),
+                ..template.clone()
+            })
+            .collect();
+        plan
+    }
+
+    async fn draw_game_1(thumbnails: &mut Thumbnails, plan: &EventPlan) -> (bool, Vec<String>) {
+        let mut lines = Vec::new();
+        let (_, complete) = thumbnails
+            .draw(plan, &plan.games[0], &mut |line| lines.push(line))
+            .await
+            .unwrap();
+        (complete, lines)
+    }
+
+    fn summaries(lines: &[String]) -> Vec<&String> {
+        lines
+            .iter()
+            .filter(|l| l.contains("couldn't be downloaded"))
+            .collect()
+    }
+
+    #[test]
+    fn a_record_without_a_logo_shape_still_loads() {
+        let state: EventState =
+            serde_json::from_str(r#"{ "event_slug": "cup", "playlists": {}, "videos": {} }"#)
+                .unwrap();
+        assert_eq!(state.logo_shape, None);
+    }
+
+    #[tokio::test]
+    async fn the_shape_is_settled_from_every_event_logo() {
+        let (base, _) = picture_server(vec![
+            ("w1", png(200, 100)),
+            ("w2", png(200, 100)),
+            ("sq", png(100, 100)),
+        ])
+        .await;
+        let plan = logo_plan(&base, [["w1", "sq"], ["w1", "w2"], ["w2", "sq"]]);
+        let mut thumbnails = Thumbnails::default();
+        let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(complete);
+        assert!(lines.is_empty(), "{lines:?}");
+        assert_eq!(thumbnails.newly_settled(), Some(LogoShape::Wide));
+        assert_eq!(thumbnails.newly_settled(), None);
+    }
+
+    #[tokio::test]
+    async fn a_dead_logo_still_settles_the_shape_and_is_logged_once() {
+        let (base, _) = picture_server(vec![
+            ("w1", png(200, 100)),
+            ("w2", png(200, 100)),
+            ("sq", png(100, 100)),
+            ("dead", Reply::NotFound),
+        ])
+        .await;
+        let plan = logo_plan(&base, [["w1", "w2"], ["w1", "dead"], ["w2", "sq"]]);
+        let mut thumbnails = Thumbnails::default();
+        let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(complete);
+        assert_eq!(thumbnails.newly_settled(), Some(LogoShape::Wide));
+        assert_eq!(
+            summaries(&lines),
+            ["Logo boxes: 1 of 4 team logos couldn't be downloaded"],
+            "{lines:?}"
+        );
+        assert!(!lines.iter().any(|l| l.contains("/dead")), "{lines:?}");
+    }
+
+    #[tokio::test]
+    async fn a_logo_that_could_not_be_reached_leaves_the_shape_unsettled() {
+        let (base, _) = picture_server(vec![
+            ("w1", png(200, 100)),
+            ("w2", png(200, 100)),
+            ("sq", png(100, 100)),
+            ("gone", Reply::Close),
+        ])
+        .await;
+        let plan = logo_plan(&base, [["w1", "w2"], ["w1", "gone"], ["w2", "sq"]]);
+        let mut thumbnails = Thumbnails::default();
+        let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(!complete);
+        assert_eq!(thumbnails.newly_settled(), None);
+        let summary = summaries(&lines);
+        assert_eq!(summary.len(), 1, "{lines:?}");
+        assert!(summary[0].ends_with("for now"), "{lines:?}");
+    }
+
+    #[tokio::test]
+    async fn an_event_with_no_readable_logos_does_not_settle_the_shape() {
+        // (a) No logo URLs at all.
+        let plan = one_game_plan("2030-08-01T09:30:00+10:00");
+        let mut thumbnails = Thumbnails::default();
+        let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(complete);
+        assert!(lines.is_empty(), "{lines:?}");
+        assert_eq!(thumbnails.newly_settled(), None);
+
+        // (b) Every logo refused (game 1's own logos too, so it is incomplete anyway).
+        let (base, _) =
+            picture_server(vec![("d1", Reply::NotFound), ("d2", Reply::NotFound)]).await;
+        let plan = logo_plan(&base, [["d1", "d2"], ["d1", "d2"], ["d2", "d1"]]);
+        let mut thumbnails = Thumbnails::default();
+        let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(!complete);
+        assert_eq!(thumbnails.newly_settled(), None);
+        assert_eq!(
+            summaries(&lines),
+            ["Logo boxes: 2 of 2 team logos couldn't be downloaded — boxes are square for now"],
+            "{lines:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_game_without_logos_is_complete_while_the_shape_is_a_guess() {
+        let (base, _) = picture_server(vec![
+            ("w1", png(200, 100)),
+            ("sq", png(100, 100)),
+            ("gone", Reply::Close),
+        ])
+        .await;
+        let mut plan = logo_plan(&base, [["w1", "sq"], ["w1", "gone"], ["sq", "gone"]]);
+        plan.games[0].dark_team = None;
+        plan.games[0].light_team = Some(TeamArt { logo_url: None });
+        let mut thumbnails = Thumbnails::default();
+        let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(complete, "{lines:?}");
+        assert_eq!(thumbnails.newly_settled(), None);
+        assert!(summaries(&lines)[0].ends_with("for now"), "{lines:?}");
+    }
+
+    #[tokio::test]
+    async fn a_stored_shape_downloads_only_the_games_own_logos() {
+        let (base, requests) = picture_server(vec![
+            ("w1", png(200, 100)),
+            ("w2", png(200, 100)),
+            ("sq", png(100, 100)),
+        ])
+        .await;
+        let plan = logo_plan(&base, [["w1", "w2"], ["w1", "sq"], ["w2", "sq"]]);
+        let mut thumbnails = Thumbnails::for_event(Some(LogoShape::Square));
+        let (complete, _) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(complete);
+        let seen: BTreeSet<String> = requests.lock().unwrap().keys().cloned().collect();
+        assert_eq!(seen, BTreeSet::from(["w1".to_string(), "w2".to_string()]));
+        assert_eq!(thumbnails.newly_settled(), None);
+    }
+
+    #[test]
+    fn the_logo_shape_is_recorded_only_once() {
+        let dir =
+            std::env::temp_dir().join(format!("stream-manager-logo-shape-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state-cup.json");
+        let _ = fs::remove_file(&path);
+        let config = Config {
+            event_slug: "cup".to_string(),
+            ..Default::default()
+        };
+        record_logo_shape(&path, &config, LogoShape::Wide).unwrap();
+        record_logo_shape(&path, &config, LogoShape::Square).unwrap();
+        assert_eq!(
+            load_state(&path, "cup").unwrap().logo_shape,
+            Some(LogoShape::Wide)
+        );
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     fn one_game_plan(start: &str) -> EventPlan {

@@ -254,7 +254,7 @@ pub async fn update_thumbnails(
         }
     }
     // The check's own event, whatever the settings say by now.
-    let state_file = match prepare::state_path(&app.config_dir, &check.config.event_slug) {
+    let state_file = match record_file(app, check) {
         Ok(path) => path,
         Err(e) => {
             log(format!("Thumbnails not checked — {e}"));
@@ -268,42 +268,46 @@ pub async fn update_thumbnails(
             return;
         }
     };
-    let mut pictures = prepare::Thumbnails::default();
+    // Made from the first record read, which says whether the event's logo box shape is known.
+    let mut pictures: Option<prepare::Thumbnails> = None;
     for game in check.games.iter().filter_map(|g| check.plan.game(g)) {
         if !still_current() {
             return;
         }
-        let (key, read) = match prepare::load_state(&state_file, &check.config.event_slug) {
-            Ok(state) => match prepare::thumbnail_to_redraw(&state, &check.plan, game) {
-                Some(key) => {
-                    let read = state
-                        .videos
-                        .get(&game.number)
-                        .and_then(|v| v.thumbnail.clone());
-                    (key, read)
+        let (key, read, logo_shape) =
+            match prepare::load_state(&state_file, &check.config.event_slug) {
+                Ok(state) => match prepare::thumbnail_to_redraw(&state, &check.plan, game) {
+                    Some(key) => {
+                        let read = state
+                            .videos
+                            .get(&game.number)
+                            .and_then(|v| v.thumbnail.clone());
+                        (key, read, state.logo_shape)
+                    }
+                    None => continue,
+                },
+                Err(e) => {
+                    log(format!("Game {}: thumbnail not checked — {e}", game.number));
+                    continue;
                 }
-                None => continue,
-            },
-            Err(e) => {
-                log(format!("Game {}: thumbnail not checked — {e}", game.number));
-                continue;
-            }
-        };
+            };
         // Asked before drawing, so nothing is drawn or downloaded while the switches need the
         // allowance.
         let allowed = app.can_spend_extra(&game.court, THUMBNAIL_COST);
         if !thumbnails_allowed(app, &game.court, allowed, log) {
             return;
         }
-        let redrawn = match prepare::redraw_thumbnail(
-            &mut pictures,
-            &check.plan,
-            game,
-            key.clone(),
-            log,
-        )
-        .await
-        {
+        let pictures = pictures.get_or_insert_with(|| prepare::Thumbnails::for_event(logo_shape));
+        let redrawn =
+            prepare::redraw_thumbnail(pictures, &check.plan, game, key.clone(), log).await;
+        if let Some(shape) = pictures.newly_settled() {
+            if let Err(e) = prepare::record_logo_shape(&state_file, &check.config, shape) {
+                log(format!(
+                    "Logo box shape not recorded, so it will be worked out again — {e}"
+                ));
+            }
+        }
+        let redrawn = match redrawn {
             Ok(redrawn) => redrawn,
             Err(e) => {
                 let (line, stop) = prepare::thumbnail_failed(&game.number, e.as_ref());

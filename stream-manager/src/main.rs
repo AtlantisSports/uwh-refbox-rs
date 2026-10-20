@@ -220,7 +220,9 @@ async fn run(command: CliCommand, config_path: &Path, open_browser: bool) -> Res
             }
             result.map(|_| ())
         }
-        CliCommand::Thumbnails { out, day } => save_thumbnails(&config, &out, day).await,
+        CliCommand::Thumbnails { out, day } => {
+            save_thumbnails(&config, &out, day, state_file()).await
+        }
         CliCommand::Videos => show_videos(&config, &mut youtube()?, &state_file()?).await,
         CliCommand::Cleanup => {
             let mut yt = youtube()?;
@@ -354,10 +356,22 @@ fn load_config(path: &Path) -> Result<Config, BoxError> {
     Ok(config)
 }
 
-async fn save_thumbnails(config: &Config, out: &Path, day: Option<usize>) -> Result<(), BoxError> {
+/// Draws the thumbnails into `out`, with the logo box shape `state_file` (the event's record)
+/// has, if it can be read.
+async fn save_thumbnails(
+    config: &Config,
+    out: &Path,
+    day: Option<usize>,
+    state_file: Result<PathBuf, BoxError>,
+) -> Result<(), BoxError> {
     let plan = portal::fetch_event_plan(&config.portal_url, &config.event_slug).await?;
     std::fs::create_dir_all(out)?;
-    let mut thumbnails = prepare::Thumbnails::default();
+    // The event's logo box shape as recorded, if it is; never recorded from here.
+    let logo_shape = state_file
+        .and_then(|file| prepare::load_state(&file, &config.event_slug))
+        .ok()
+        .and_then(|state| state.logo_shape);
+    let mut thumbnails = prepare::Thumbnails::for_event(logo_shape);
     let mut count = 0;
     for game in plan.games.iter().filter(|g| day.is_none_or(|d| g.day == d)) {
         let jpeg = match thumbnails

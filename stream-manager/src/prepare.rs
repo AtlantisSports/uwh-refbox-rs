@@ -628,7 +628,8 @@ type Pictures = HashMap<String, Option<DynamicImage>>;
 /// Why a picture couldn't be had, and whether trying again could change that.
 struct Failure {
     message: String,
-    /// Refused (HTTP 4xx) or not a readable picture: trying again won't help.
+    /// Refused (HTTP 4xx other than 408 and 429, which are tried again), a malformed address,
+    /// or not a readable picture: trying again won't help.
     is_final: bool,
 }
 
@@ -758,19 +759,25 @@ impl Thumbnails {
                 }
             }
         }
-        let shape = LogoShape::of(
+        let (wide, read) = LogoShape::count(
             logo_urls
                 .iter()
                 .filter_map(|url| self.pictures.get(*url))
                 .flatten(),
         );
-        // Settled only from at least one logo read: an event with none yet (teams not known,
-        // or every logo refused) mustn't lock in square boxes.
-        if retry == 0 && failed < logo_urls.len() {
-            self.settled = Some(shape);
-        } else {
-            self.shape_guessed = true;
-        }
+        // Settled once the logos that might still be had can't change the majority, and only
+        // from at least one logo read: an event with none yet (teams not known, or every logo
+        // refused) mustn't lock in square boxes.
+        let shape = match LogoShape::certain(wide, read, retry) {
+            Some(shape) if read > 0 => {
+                self.settled = Some(shape);
+                shape
+            }
+            _ => {
+                self.shape_guessed = true;
+                LogoShape::majority(wide, read)
+            }
+        };
         if failed > 0 {
             let mut line = format!(
                 "Logo boxes: {failed} of {} team logos couldn't be downloaded",
@@ -788,7 +795,8 @@ impl Thumbnails {
         shape
     }
 
-    /// The game's thumbnail as a JPEG, and whether every picture it needed was available.
+    /// The game's thumbnail as a JPEG, and whether every picture it needed was available and,
+    /// if it shows a logo, the logo box shape was settled rather than a guess.
     pub async fn draw(
         &mut self,
         plan: &EventPlan,
@@ -896,17 +904,19 @@ async fn download_picture(http: &reqwest::Client, url: &str) -> Result<DynamicIm
 }
 
 /// Whether a [`download_picture`] failure would happen again: the picture was refused (HTTP
-/// 4xx other than 408 and 429) or isn't one that can be read. Anything else (a timeout, no
-/// connection, a server error) might not.
+/// 4xx other than 408 and 429), its address is malformed, or it isn't one that can be read.
+/// Anything else (a timeout, no connection, a server error) might not.
 fn is_final(e: &BoxError) -> bool {
     e.downcast_ref::<reqwest::Error>()
-        .and_then(reqwest::Error::status)
-        .is_some_and(|status| {
-            // A busy or slow host may answer next time.
-            status.is_client_error()
-                && status != reqwest::StatusCode::REQUEST_TIMEOUT
-                && status != reqwest::StatusCode::TOO_MANY_REQUESTS
-        })
+        .is_some_and(reqwest::Error::is_builder)
+        || e.downcast_ref::<reqwest::Error>()
+            .and_then(reqwest::Error::status)
+            .is_some_and(|status| {
+                // A busy or slow host may answer next time.
+                status.is_client_error()
+                    && status != reqwest::StatusCode::REQUEST_TIMEOUT
+                    && status != reqwest::StatusCode::TOO_MANY_REQUESTS
+            })
         || e.downcast_ref::<image::ImageError>().is_some()
 }
 
@@ -2162,7 +2172,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_dead_logo_still_settles_the_shape_and_is_logged_once() {
+    async fn a_dead_logo_still_settles_the_shape_and_is_only_counted_in_the_summary() {
         let (base, _) = picture_server(vec![
             ("w1", png(200, 100)),
             ("w2", png(200, 100)),
@@ -2192,6 +2202,7 @@ mod tests {
             ("gone", Reply::Close),
         ])
         .await;
+        // 2 wide and 1 square read: a square "gone" would make it 2 of 4, so square.
         let plan = logo_plan(&base, [["w1", "w2"], ["w1", "gone"], ["w2", "sq"]]);
         let mut thumbnails = Thumbnails::default();
         let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
@@ -2200,6 +2211,58 @@ mod tests {
         let summary = summaries(&lines);
         assert_eq!(summary.len(), 1, "{lines:?}");
         assert!(summary[0].ends_with("for now"), "{lines:?}");
+    }
+
+    #[tokio::test]
+    async fn one_unreachable_logo_still_settles_a_clear_majority() {
+        let (base, _) = picture_server(vec![
+            ("w1", png(200, 100)),
+            ("w2", png(200, 100)),
+            ("w3", png(200, 100)),
+            ("sq", png(100, 100)),
+            ("gone", Reply::Close),
+        ])
+        .await;
+        // 3 wide and 1 square read: even a square "gone" leaves 3 of 5 wide.
+        let plan = logo_plan(&base, [["w1", "w2"], ["w3", "sq"], ["gone", "w1"]]);
+        let mut thumbnails = Thumbnails::default();
+        let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(complete, "{lines:?}");
+        assert_eq!(thumbnails.newly_settled(), Some(LogoShape::Wide));
+        assert_eq!(
+            summaries(&lines),
+            ["Logo boxes: 1 of 5 team logos couldn't be downloaded"],
+            "{lines:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_logo_that_could_tip_the_majority_leaves_it_unsettled() {
+        let (base, _) = picture_server(vec![
+            ("w1", png(200, 100)),
+            ("sq", png(100, 100)),
+            ("gone", Reply::Close),
+        ])
+        .await;
+        // 1 wide and 1 square read: "gone" decides it.
+        let plan = logo_plan(&base, [["w1", "sq"], ["w1", "gone"], ["sq", "gone"]]);
+        let mut thumbnails = Thumbnails::default();
+        let (complete, _) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(!complete);
+        assert_eq!(thumbnails.newly_settled(), None);
+    }
+
+    #[tokio::test]
+    async fn a_malformed_logo_url_counts_as_final() {
+        let (base, _) = picture_server(vec![("w1", png(200, 100)), ("w2", png(200, 100))]).await;
+        let mut plan = logo_plan(&base, [["w1", "w2"], ["w1", "w2"], ["w2", "w1"]]);
+        plan.games[2].light_team = Some(TeamArt {
+            logo_url: Some("not a url".to_string()),
+        });
+        let mut thumbnails = Thumbnails::default();
+        let (complete, _) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(complete);
+        assert_eq!(thumbnails.newly_settled(), Some(LogoShape::Wide));
     }
 
     #[tokio::test]

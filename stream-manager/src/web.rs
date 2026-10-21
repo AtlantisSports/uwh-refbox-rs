@@ -28,7 +28,7 @@ use serde_json::{Value, json};
 use std::{
     cmp::Ordering,
     collections::HashMap,
-    hash::{BuildHasher, Hasher, RandomState},
+    hash::{BuildHasher, DefaultHasher, Hasher, RandomState},
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
     sync::{Arc, OnceLock},
 };
@@ -891,18 +891,20 @@ async fn prepare_preview(
         &work,
         &key_check,
         &config,
+        &plan,
         allowance_warning,
     ))
     .into_response())
 }
 
 /// The reply to a preview that worked: the work, what the key check found, the allowance
-/// warning, and the portal, event and settings it was made for, which the page sends back with
-/// Create.
+/// warning, and the portal, event, settings and schedule it was made for, which the page sends
+/// back with Create.
 fn preview_success_body(
     work: &prepare::Work,
     key_check: &watch_links::KeyCheck,
     config: &Config,
+    plan: &EventPlan,
     allowance_warning: Option<String>,
 ) -> Value {
     let (portal_links, key_forgotten) = preview_reply_parts(key_check);
@@ -914,7 +916,7 @@ fn preview_success_body(
         "key_forgotten": key_forgotten,
         "portal_url": config.portal_url,
         "event_slug": config.event_slug,
-        "settings_version": settings_version(config),
+        "preview_version": preview_version(config, plan),
     })
 }
 
@@ -963,13 +965,28 @@ async fn thumbnail_preview(
         .into_response())
 }
 
-/// A short fingerprint of the settings as saved: any change to them gives another one. It only
-/// has to stay the same while this program runs, since a preview doesn't outlive it. The settings
-/// include the PIN and the button key, so the hash is keyed with a random key made once per run:
-/// a device that sees the fingerprint can't test guesses of either against it.
-fn settings_version(config: &Config) -> String {
+/// A hasher keyed with a random key made once per run. The settings include the PIN and the
+/// button key, so a device that sees a preview's version can't test guesses of either against
+/// it.
+fn keyed_hasher() -> DefaultHasher {
     static KEY: OnceLock<RandomState> = OnceLock::new();
-    let mut hasher = KEY.get_or_init(RandomState::new).build_hasher();
+    KEY.get_or_init(RandomState::new).build_hasher()
+}
+
+/// A marker for this run of the program: another run gives another one, because its key differs.
+fn this_run() -> String {
+    let mut hasher = keyed_hasher();
+    hasher.write(b"this run");
+    format!("{:016x}", hasher.finish())
+}
+
+/// A short fingerprint of what a preview was made from, the settings as saved and the schedule
+/// it used, after a marker for this run: any change to either gives another one. It goes by
+/// content, so the same schedule loaded again keeps it. It only has to stay the same while this
+/// program runs, since a preview doesn't outlive it; the run marker lets Create tell a preview
+/// from an earlier run apart from one whose schedule or settings changed.
+fn preview_version(config: &Config, plan: &EventPlan) -> String {
+    let mut hasher = keyed_hasher();
     // Serialised with the same field rules as the settings file. A `Config` is plain data, so
     // this can't fail; if it ever did, its printed form still tells one set of settings from
     // another.
@@ -977,11 +994,13 @@ fn settings_version(config: &Config) -> String {
         Ok(bytes) => hasher.write(&bytes),
         Err(_) => hasher.write(format!("{config:?}").as_bytes()),
     }
-    format!("{:016x}", hasher.finish())
+    // The schedule holds only lists, strings, numbers and times, so equal schedules print the same.
+    hasher.write(format!("{plan:?}").as_bytes());
+    format!("{}-{:016x}", this_run(), hasher.finish())
 }
 
-/// Create's request: the preview's choices, and the portal, event and settings that preview
-/// was made for.
+/// Create's request: the preview's choices, and the portal, event, settings and schedule that
+/// preview was made for.
 #[derive(Deserialize)]
 struct RunRequest {
     #[serde(flatten)]
@@ -991,7 +1010,7 @@ struct RunRequest {
     #[serde(default)]
     event_slug: Option<String>,
     #[serde(default)]
-    settings_version: Option<String>,
+    preview_version: Option<String>,
 }
 
 async fn prepare_run(
@@ -1005,11 +1024,12 @@ async fn prepare_run(
     let config = app.config();
     // Create only makes what its preview showed. A request that doesn't say which preview it
     // follows comes from a page loaded before this check existed; a preview made before the
-    // settings changed (here, in another tab or on another device) showed other work.
+    // settings or the schedule changed (here, in another tab or on another device) showed other
+    // work.
     let (Some(portal_url), Some(event_slug), Some(version)) = (
         request.portal_url.as_deref(),
         request.event_slug.as_deref(),
-        request.settings_version.as_deref(),
+        request.preview_version.as_deref(),
     ) else {
         return Err(bad(
             "This page is out of date. Reload it, then press Preview again.",
@@ -1020,16 +1040,22 @@ async fn prepare_run(
             "The event or portal changed since the preview. Preview again.",
         ));
     }
-    if version != settings_version(&config) {
+    // Read before the comparison, so the job runs with the very schedule it was compared against.
+    let plan = app
+        .plan()
+        .ok_or_else(|| bad("The schedule isn't loaded yet"))?;
+    if version.split_once('-').map(|(run, _)| run) != Some(this_run().as_str()) {
         return Err(bad(
-            "The settings changed since the preview. Preview again.",
+            "Stream Manager restarted since the preview. Preview again.",
+        ));
+    }
+    if version != preview_version(&config, &plan) {
+        return Err(bad(
+            "The schedule or settings changed since the preview. Preview again.",
         ));
     }
     let selection = request.selection;
     let state_file = app.state_file().map_err(|e| bad(e.to_string()))?;
-    let plan = app
-        .plan()
-        .ok_or_else(|| bad("The schedule isn't loaded yet"))?;
     if !app.is_current(&config.portal_url, &config.event_slug) {
         return Err(bad(
             "The settings changed while Create was starting. Try again.",
@@ -1432,6 +1458,16 @@ mod tests {
         from: Option<[u8; 4]>,
         config: Config,
     ) -> (String, std::path::PathBuf) {
+        let (base, dir, _) = test_server_with_app(name, from, config).await;
+        (base, dir)
+    }
+
+    /// As [`test_server_with_config`], also returning the server's app.
+    async fn test_server_with_app(
+        name: &str,
+        from: Option<[u8; 4]>,
+        config: Config,
+    ) -> (String, std::path::PathBuf, Arc<App>) {
         let dir =
             std::env::temp_dir().join(format!("stream-manager-web-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -1441,7 +1477,7 @@ mod tests {
         let base = format!("http://{}", listener.local_addr().unwrap());
         match from {
             Some(ip) => {
-                let service = router(app)
+                let service = router(Arc::clone(&app))
                     .layer(axum::extract::connect_info::MockConnectInfo(
                         SocketAddr::from((ip, 50000)),
                     ))
@@ -1449,11 +1485,12 @@ mod tests {
                 tokio::spawn(async move { axum::serve(listener, service).await });
             }
             None => {
-                let service = router(app).into_make_service_with_connect_info::<SocketAddr>();
+                let service =
+                    router(Arc::clone(&app)).into_make_service_with_connect_info::<SocketAddr>();
                 tokio::spawn(async move { axum::serve(listener, service).await });
             }
         }
-        (base, dir)
+        (base, dir, app)
     }
 
     /// Signs in with the PIN; returns the cookie to send with later requests.
@@ -2322,27 +2359,59 @@ mod tests {
     // ----- Create tied to its preview -----
 
     const PREVIEW_CHANGED: &str = "The event or portal changed since the preview. Preview again.";
-    const SETTINGS_CHANGED: &str = "The settings changed since the preview. Preview again.";
+    const SCHEDULE_OR_SETTINGS_CHANGED: &str =
+        "The schedule or settings changed since the preview. Preview again.";
+    const RESTARTED: &str = "Stream Manager restarted since the preview. Preview again.";
     const PAGE_OUT_OF_DATE: &str = "This page is out of date. Reload it, then press Preview again.";
 
-    /// A server on this PC whose settings name `portal` and the event `cup-2026`, with no
-    /// schedule loaded; returns its address, its folder, a client, the sign-in cookie and the
-    /// settings' version as a preview would report it.
+    /// A one-game schedule; `dark` names the dark side, so two calls with other names differ.
+    fn one_game_plan(dark: &str) -> EventPlan {
+        EventPlan {
+            event_name: "Cup".into(),
+            banner_url: None,
+            games: vec![crate::portal::PlannedGame {
+                number: "1".into(),
+                court: "A".into(),
+                day: 1,
+                start: time::macros::datetime!(2026-10-21 09:00 UTC),
+                dark: dark.into(),
+                light: "Sharks".into(),
+                dark_team: None,
+                light_team: None,
+                description: None,
+            }],
+            will_be_streamed: None,
+        }
+    }
+
+    /// A server on this PC whose settings name `portal` and the event `cup-2026`, with a
+    /// one-game schedule loaded; returns its address, its folder, a client, the sign-in cookie,
+    /// the version a preview would report, and the app.
     async fn create_server(
         name: &str,
         portal: &MockPortal,
-    ) -> (String, std::path::PathBuf, reqwest::Client, String, String) {
+    ) -> (
+        String,
+        std::path::PathBuf,
+        reqwest::Client,
+        String,
+        String,
+        Arc<App>,
+    ) {
         let config = Config {
             pin: "1234".into(),
             portal_url: portal.base_url().to_string(),
             event_slug: "cup-2026".into(),
             ..Config::default()
         };
-        let version = settings_version(&config);
-        let (base, dir) = test_server_with_config(name, None, config).await;
+        let plan = one_game_plan("Rays");
+        let version = preview_version(&config, &plan);
+        let (base, dir, app) = test_server_with_app(name, None, config).await;
+        app.set_plan(portal.base_url(), "cup-2026", plan);
+        assert!(app.plan().is_some());
         let client = reqwest::Client::new();
         let cookie = sign_in(&client, &base).await;
-        (base, dir, client, cookie, version)
+        (base, dir, client, cookie, version, app)
     }
 
     /// Sends Create with `body`; returns the status and the reply's text.
@@ -2376,12 +2445,12 @@ mod tests {
     #[tokio::test]
     async fn a_create_for_another_event_than_the_preview_is_refused() {
         let portal = MockPortal::start(200, "{}").await;
-        let (base, dir, client, cookie, version) = create_server("cr-other", &portal).await;
+        let (base, dir, client, cookie, version, _) = create_server("cr-other", &portal).await;
         let body = json!({
             "day": 1,
             "portal_url": portal.base_url(),
             "event_slug": "other-cup",
-            "settings_version": version,
+            "preview_version": version,
         });
         let (status, text) = create(&client, &base, &cookie, body).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -2393,16 +2462,16 @@ mod tests {
     #[tokio::test]
     async fn a_create_from_an_out_of_date_page_is_refused() {
         let portal = MockPortal::start(200, "{}").await;
-        let (base, dir, client, cookie, version) = create_server("cr-old-page", &portal).await;
+        let (base, dir, client, cookie, version, _) = create_server("cr-old-page", &portal).await;
         let full = json!({
             "day": 1,
             "portal_url": portal.base_url(),
             "event_slug": "cup-2026",
-            "settings_version": version,
+            "preview_version": version,
         });
         // With none of the three, and with each one missing in turn.
         let mut bodies = vec![json!({ "day": 1 })];
-        for field in ["portal_url", "event_slug", "settings_version"] {
+        for field in ["portal_url", "event_slug", "preview_version"] {
             let mut body = full.clone();
             body.as_object_mut().unwrap().remove(field);
             bodies.push(body);
@@ -2419,24 +2488,74 @@ mod tests {
     #[tokio::test]
     async fn a_create_after_another_setting_changed_is_refused() {
         let portal = MockPortal::start(200, "{}").await;
-        let (base, dir, client, cookie, version) = create_server("cr-settings", &portal).await;
-        let stale = settings_version(&Config {
-            pin: "1234".into(),
-            portal_url: portal.base_url().to_string(),
-            event_slug: "cup-2026".into(),
-            privacy: "public".into(),
-            ..Config::default()
-        });
+        let (base, dir, client, cookie, version, _) = create_server("cr-settings", &portal).await;
+        let stale = preview_version(
+            &Config {
+                pin: "1234".into(),
+                portal_url: portal.base_url().to_string(),
+                event_slug: "cup-2026".into(),
+                privacy: "public".into(),
+                ..Config::default()
+            },
+            &one_game_plan("Rays"),
+        );
         assert_ne!(stale, version);
         let body = json!({
             "day": 1,
             "portal_url": portal.base_url(),
             "event_slug": "cup-2026",
-            "settings_version": stale,
+            "preview_version": stale,
         });
         let (status, text) = create(&client, &base, &cookie, body).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(text.contains(SETTINGS_CHANGED), "{text}");
+        assert!(text.contains(SCHEDULE_OR_SETTINGS_CHANGED), "{text}");
+        assert_eq!(job_running(&client, &base, &cookie).await, false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_create_after_the_schedule_changed_is_refused() {
+        let portal = MockPortal::start(200, "{}").await;
+        let (base, dir, client, cookie, version, app) = create_server("cr-schedule", &portal).await;
+        // Refresh schedule, from any tab or device, swaps in other games after the preview.
+        app.set_plan(portal.base_url(), "cup-2026", one_game_plan("Orcas"));
+        let body = json!({
+            "day": 1,
+            "portal_url": portal.base_url(),
+            "event_slug": "cup-2026",
+            "preview_version": version,
+        });
+        let (status, text) = create(&client, &base, &cookie, body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            serde_json::from_str::<Value>(&text).unwrap(),
+            json!({ "error": SCHEDULE_OR_SETTINGS_CHANGED })
+        );
+        assert_eq!(job_running(&client, &base, &cookie).await, false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_create_with_a_preview_from_an_earlier_run_says_it_restarted() {
+        let portal = MockPortal::start(200, "{}").await;
+        let (base, dir, client, cookie, version, _) = create_server("cr-restart", &portal).await;
+        let (run, hash) = version.split_once('-').unwrap();
+        let other_run = format!("{:016x}", u64::from_str_radix(run, 16).unwrap() ^ 1);
+        for stale in [format!("{other_run}-{hash}"), hash.to_string()] {
+            let body = json!({
+                "day": 1,
+                "portal_url": portal.base_url(),
+                "event_slug": "cup-2026",
+                "preview_version": stale,
+            });
+            let (status, text) = create(&client, &base, &cookie, body).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{stale}");
+            assert_eq!(
+                serde_json::from_str::<Value>(&text).unwrap(),
+                json!({ "error": RESTARTED }),
+                "{stale}"
+            );
+        }
         assert_eq!(job_running(&client, &base, &cookie).await, false);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2444,51 +2563,69 @@ mod tests {
     #[tokio::test]
     async fn a_create_for_the_previewed_event_gets_past_the_check() {
         let portal = MockPortal::start(200, "{}").await;
-        let (base, dir, client, cookie, version) = create_server("cr-same", &portal).await;
+        let (base, dir, client, cookie, version, _) = create_server("cr-same", &portal).await;
         let body = json!({
             "day": 1,
             "portal_url": portal.base_url(),
             "event_slug": "cup-2026",
-            "settings_version": version,
+            "preview_version": version,
         });
-        // The next refusal after the preview checks: this server has no schedule loaded.
+        // The job starts; it then stops on its own, since this server isn't connected to YouTube.
         let (status, text) = create(&client, &base, &cookie, body).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(
-            serde_json::from_str::<Value>(&text).unwrap(),
-            json!({ "error": "The schedule isn't loaded yet" })
-        );
+        assert_eq!(status, StatusCode::OK, "{text}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn a_preview_names_the_portal_event_and_settings_it_was_made_for() {
+    fn a_preview_names_the_portal_event_settings_and_schedule_it_was_made_for() {
         let config = Config {
             portal_url: "https://portal.example".into(),
             event_slug: "cup-2026".into(),
             ..Config::default()
         };
+        let plan = one_game_plan("Rays");
         let body = preview_success_body(
             &prepare::Work::default(),
             &watch_links::KeyCheck::Accepted,
             &config,
+            &plan,
             None,
         );
         assert_eq!(body["portal_url"], "https://portal.example");
         assert_eq!(body["event_slug"], "cup-2026");
-        assert_eq!(body["settings_version"], settings_version(&config));
+        assert_eq!(body["preview_version"], preview_version(&config, &plan));
         assert_eq!(body["empty"], true);
         assert_eq!(body["key_forgotten"], false);
     }
 
     #[test]
-    fn any_saved_setting_changes_the_settings_version() {
+    fn any_saved_setting_changes_the_preview_version() {
         let config = Config::default();
-        assert_eq!(settings_version(&config), settings_version(&config.clone()));
+        let plan = one_game_plan("Rays");
+        assert_eq!(
+            preview_version(&config, &plan),
+            preview_version(&config.clone(), &plan)
+        );
         let other = Config {
             switch_lead_secs: config.switch_lead_secs + 1,
             ..config.clone()
         };
-        assert_ne!(settings_version(&config), settings_version(&other));
+        assert_ne!(
+            preview_version(&config, &plan),
+            preview_version(&other, &plan)
+        );
+    }
+
+    #[test]
+    fn the_same_schedule_keeps_the_preview_version_and_a_changed_game_does_not() {
+        let config = Config::default();
+        let plan = one_game_plan("Rays");
+        let version = preview_version(&config, &plan);
+        assert_eq!(version, preview_version(&config, &plan.clone()));
+        assert_eq!(version, preview_version(&config, &one_game_plan("Rays")));
+        assert_ne!(version, preview_version(&config, &one_game_plan("Orcas")));
+        let mut later = one_game_plan("Rays");
+        later.games[0].start += time::Duration::minutes(5);
+        assert_ne!(version, preview_version(&config, &later));
     }
 }

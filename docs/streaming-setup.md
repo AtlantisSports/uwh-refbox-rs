@@ -302,7 +302,9 @@ Also set:
    - **Portal watch links** (puts each game's YouTube link on the portal's schedule, after
      Prepare). The event must be chosen and saved first. ⛔ **STOP — ask a human:** an event
      organiser, signed in to the portal, opens the event's **Manage Event → Stream management**
-     tab, clicks **(+)** and enters this Stream Manager's ID, shown in the **Portal watch links**
+     tab (The tab appears only when the event has **Will be streamed** turned on, or already has a
+     Stream Manager linked, and the person can edit the event or has been accepted as TV crew on
+     it.), clicks **(+)** and enters this Stream Manager's ID, shown in the **Portal watch links**
      box. The portal then shows a 6-digit code. Type that code into the box's **Code** field and
      click **Link** (a code lasts 15 minutes). **Check:** the box says "Linked ✓". Each event is
      linked once: switching to another event and back keeps its link, but a new event needs its

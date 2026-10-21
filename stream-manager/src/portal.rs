@@ -368,8 +368,8 @@ mod tests {
     fn will_be_streamed_is_read_from_the_event() {
         for (value, expected) in [("true", Some(true)), ("false", Some(false)), ("null", None)] {
             let json = SAMPLE.replace(
-                r#""name": "Test Cup" }"#,
-                &format!(r#""name": "Test Cup", "willBeStreamed": {value} }}"#),
+                r#""name": "Test Cup","#,
+                &format!(r#""name": "Test Cup", "willBeStreamed": {value},"#),
             );
             assert_ne!(json, SAMPLE);
             let plan = parse_event_plan(&json).unwrap();

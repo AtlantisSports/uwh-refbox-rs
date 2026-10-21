@@ -9,8 +9,8 @@ adds four body fields: `lastGoal`, `penalties`, and `timeoutSeconds` / `timeoutR
 timeout. So the `timeout` row below ("the kind only, no seconds"), "Nothing else" under the body table, "a timeout
 timer" among the non-goals, and any statement that penalties are not sent no longer hold for a v3 refbox. The fields,
 their sources and their send-at-once rules are in the refbox/portal live-updates agreement
-(`2026-10-19-live-schedule-refbox-live-updates-agreement.md`, held by the uwh-portal team and, as of 2026-10-20, not
-committed to either repo), under "v3 (PROPOSED by refbox 2026-10-19, portal-reviewed): last goal, active penalties,
+(`2026-10-19-live-schedule-refbox-live-updates-agreement.md`, committed to the uwh-portal repo under
+`docs/superpowers/specs/` by uwhportal PR #1146, merged 2026-10-20), under "v3 (PROPOSED by refbox 2026-10-19, portal-reviewed): last goal, active penalties,
 team-timeout countdown".
 
 **Running stats note (2026-10-19, `feat/uwh-common/live-running-stats`):** while a game is in play, a v3 refbox also

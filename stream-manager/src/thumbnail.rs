@@ -19,7 +19,7 @@ use tiny_skia::{
 use ttf_parser::{Face, GlyphId, OutlineBuilder, Tag};
 
 /// Bump this whenever the look changes.
-pub const DESIGN_VERSION: u32 = 4;
+pub const DESIGN_VERSION: u32 = 5;
 
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
@@ -64,8 +64,8 @@ const HALF_LIGHT: Rgb = [245, 248, 252];
 const SLASH_WIDTH: f32 = 18.0;
 const SLASH_ANGLE: f32 = 13.0;
 
-/// Height of the middle of "VS", of the logo boxes and of the name plate of a team without a
-/// logo: the middle of the picture.
+/// Height of the middle of "VS" and of the name plate of a team without a logo: the middle of
+/// the picture.
 const MIDDLE_Y: f32 = HEIGHT as f32 / 2.0;
 /// Space between a logo and its name plate.
 const PLATE_GAP: f32 = 12.0;
@@ -76,7 +76,7 @@ const PLATE_LINE_SPACING: f32 = 1.1;
 /// The height of a name plate's teal edge.
 const PLATE_EDGE: f32 = 5.0;
 /// A logo at least this many times wider than it is tall counts as wide.
-const WIDE_LOGO: f32 = 1.5;
+const WIDE_LOGO: f32 = 1.4;
 
 const NAME_SIZE: f32 = 36.0;
 const NAME_MAX_WIDTH: f32 = 440.0;
@@ -90,6 +90,11 @@ const SMALLEST_TEXT: f32 = 20.0;
 /// drawn between these heights and only the background reaches the edges.
 const SAFE_TOP: f32 = 145.0;
 const SAFE_BOTTOM: f32 = 575.0;
+
+/// The event name's largest size; a long name shrinks.
+const EVENT_NAME_SIZE: f32 = 28.0;
+/// The bottom bar's largest text size; a long line shrinks.
+const INFO_SIZE: f32 = 36.0;
 
 const BRAND_LEFT: f32 = 34.0;
 const BRAND_TOP: f32 = SAFE_TOP;
@@ -236,16 +241,13 @@ impl Painter {
         self.font.drawable(&head, false)?;
         self.font.drawable(&rest, false)?;
         let mut canvas = self.base.clone();
-        // A logo and its name plate are centred together; both logos sit at the same height,
-        // set by the taller of the two name plates.
+        // Both logos sit at the same height, set by the taller of the two name plates.
         let plate = [&game.dark, &game.light]
             .iter()
             .filter(|t| t.logo.is_some())
             .map(|t| plate_height(&self.font, t))
             .fold(0.0, f32::max);
-        let (_, hh) = self.shape.half();
-        let block = 2.0 * hh + PLATE_GAP + plate;
-        let cy = MIDDLE_Y - block / 2.0 + hh;
+        let cy = logo_centre_y(&self.font, self.shape, plate);
         side(
             &mut canvas,
             &self.font,
@@ -380,7 +382,13 @@ fn slash(canvas: &mut Pixmap) {
 /// The event name on a teal bar at the top.
 fn event_bar(canvas: &mut Pixmap, font: &Font, event_name: &str) {
     let spacing = 2.0;
-    let (size, lines) = font.fit(&event_name.to_uppercase(), 28.0, spacing, 1000.0, 1);
+    let (size, lines) = font.fit(
+        &event_name.to_uppercase(),
+        EVENT_NAME_SIZE,
+        spacing,
+        1000.0,
+        1,
+    );
     let text = lines.join(" ");
     let line = font.normal_line(size);
     let (w, h) = (font.width(&text, size, spacing) + 68.0, line + 16.0);
@@ -489,6 +497,24 @@ fn plate_height(font: &Font, team: &Team) -> f32 {
     plate_height_for(size, lines.len())
 }
 
+/// Height of the middle of the logo boxes: a logo and its name plate (`plate` tall) are centred
+/// together between the event bar and the bottom bar, both at their tallest.
+fn logo_centre_y(font: &Font, shape: LogoShape, plate: f32) -> f32 {
+    let (_, hh) = shape.half();
+    let block = 2.0 * hh + PLATE_GAP + plate;
+    (event_bar_bottom(font) + info_bar_top(font)) / 2.0 - block / 2.0 + hh
+}
+
+/// The lowest the event bar reaches: its bottom at the largest text size.
+fn event_bar_bottom(font: &Font) -> f32 {
+    SAFE_TOP + font.normal_line(EVENT_NAME_SIZE) + 16.0
+}
+
+/// The highest the bottom bar reaches: its top at the largest text size.
+fn info_bar_top(font: &Font) -> f32 {
+    SAFE_BOTTOM - (font.normal_line(INFO_SIZE) + 24.0)
+}
+
 /// Height of a name plate holding `lines` lines of text at `size`.
 fn plate_height_for(size: f32, lines: usize) -> f32 {
     2.0 * PLATE_PAD + size * PLATE_LINE_SPACING * lines as f32 + PLATE_EDGE
@@ -548,7 +574,7 @@ fn name_text(team: &Team) -> String {
 }
 
 /// A team logo as uploaded (no frame or backdrop), as large as fits its space, centred on
-/// (`cx`, `cy`) with a soft shadow behind it.
+/// (`cx`, `cy`) with a soft shadow that follows its outline.
 fn team_logo(
     canvas: &mut Pixmap,
     logo: &DynamicImage,
@@ -562,19 +588,26 @@ fn team_logo(
     let Some(picture) = to_pixmap(&logo.resize_exact(w, h, FilterType::Lanczos3).to_rgba8()) else {
         return;
     };
-    let (x, y) = (cx - w as f32 / 2.0, cy - h as f32 / 2.0);
-    if let Some(area) = Rect::from_xywh(x, y, w as f32, h as f32) {
-        let area = PathBuilder::from_rect(area);
-        shadow(
-            canvas,
-            &area,
+    let (x, y) = (
+        (cx - w as f32 / 2.0).round() as i32,
+        (cy - h as f32 / 2.0).round() as i32,
+    );
+    // Its shadow follows the logo's own outline, so a see-through crest gets no dark box.
+    if let Some(mut layer) = Pixmap::new(WIDTH, HEIGHT) {
+        layer.draw_pixmap(
+            x,
+            y + 14,
+            picture.as_ref(),
+            &PixmapPaint::default(),
             Transform::identity(),
-            Glow::new(14.0, 40.0, BLACK, shade),
+            None,
         );
+        let mask = Mask::from_pixmap(layer.as_ref(), MaskType::Alpha);
+        shadow_from_mask(canvas, &mask, Glow::new(0.0, 40.0, BLACK, shade));
     }
     canvas.draw_pixmap(
-        x.round() as i32,
-        y.round() as i32,
+        x,
+        y,
         picture.as_ref(),
         &PixmapPaint::default(),
         Transform::identity(),
@@ -586,7 +619,7 @@ fn team_logo(
 fn info_bar(canvas: &mut Pixmap, font: &Font, game: &Game) {
     let (head, rest) = info_text(game);
     let gap = 16.0;
-    let mut size: f32 = 36.0;
+    let mut size = INFO_SIZE;
     let total = |size: f32| font.width(&head, size, 0.0) + gap + font.width(&rest, size, 0.0);
     while total(size) > 1100.0 && size > SMALLEST_TEXT {
         size -= 2.0;
@@ -1026,6 +1059,10 @@ mod tests {
         assert_eq!(of(&[&flag, &flag, &square]), LogoShape::Wide);
         // A 3:2 flag counts as wide.
         assert_eq!(of(&[&logo(150, 100)]), LogoShape::Wide);
+        // So does one stored a pixel short of 3:2.
+        assert_eq!(of(&[&logo(1000, 667)]), LogoShape::Wide);
+        // A 4:3 logo counts as square.
+        assert_eq!(of(&[&logo(400, 300)]), LogoShape::Square);
     }
 
     #[test]
@@ -1067,6 +1104,54 @@ mod tests {
                 .iter()
                 .all(|l| font.width(l, size, 0.0) <= NAME_MAX_WIDTH)
         );
+    }
+
+    #[test]
+    fn a_see_through_logo_casts_no_shadow_outside_its_artwork() {
+        let mut canvas = Pixmap::new(WIDTH, HEIGHT).unwrap();
+        canvas.fill(Color::WHITE);
+        // A crest that is transparent except for a 20×20 square in its middle.
+        let crest = RgbaImage::from_fn(188, 188, |x, y| {
+            let inside = (84..104).contains(&x) && (84..104).contains(&y);
+            if inside { [9, 9, 9, 255] } else { [0, 0, 0, 0] }.into()
+        });
+        let crest = DynamicImage::ImageRgba8(crest);
+        team_logo(&mut canvas, &crest, (640.0, 360.0), (94.0, 94.0), 0.7);
+        let at = |x, y| canvas.pixel(x, y).unwrap();
+        // Inside the logo's box, far from the artwork: untouched.
+        let corner = at(550, 450);
+        assert!(
+            [corner.red(), corner.green(), corner.blue()]
+                .iter()
+                .all(|&c| c > 245),
+            "{corner:?}"
+        );
+        // Just below the artwork: in its shadow (faint, as the artwork is small for the blur).
+        let below = at(640, 380);
+        assert!(
+            [below.red(), below.green(), below.blue()]
+                .iter()
+                .all(|&c| c < 245),
+            "{below:?}"
+        );
+    }
+
+    #[test]
+    fn the_tallest_logo_and_plate_stay_between_the_top_and_bottom_bars() {
+        let font = Font::new().unwrap();
+        let plate = plate_height_for(NAME_SIZE, NAME_MAX_LINES);
+        for shape in [LogoShape::Square, LogoShape::Wide] {
+            let (_, hh) = shape.half();
+            let cy = logo_centre_y(&font, shape, plate);
+            assert!(
+                cy - hh >= event_bar_bottom(&font),
+                "{shape:?}: logo under the event bar"
+            );
+            assert!(
+                cy + hh + PLATE_GAP + plate <= info_bar_top(&font),
+                "{shape:?}: plate under the info bar"
+            );
+        }
     }
 
     fn team(name: &str) -> Team<'_> {

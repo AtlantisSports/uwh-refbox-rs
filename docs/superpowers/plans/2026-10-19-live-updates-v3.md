@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 2024, MSRV 1.85, serde / serde_json, tokio.
 
-**Spec:** the refbox/portal live-updates agreement, `2026-10-19-live-schedule-refbox-live-updates-agreement.md`, section "v3". It is held by the uwh-portal team and, as of 2026-10-20, is not committed to either repo (READ ONLY: it belongs to uwh-portal and is never edited from here). Base: v2, PR #3633 (`feat/uwh-common/live-updates`, 5740f519). This branch is stacked on it.
+**Spec:** the refbox/portal live-updates agreement, `2026-10-19-live-schedule-refbox-live-updates-agreement.md`, section "v3". It is committed to the uwh-portal repo at `docs/superpowers/specs/2026-10-19-live-schedule-refbox-live-updates-agreement.md` by uwhportal PR #1146 (merged 2026-10-20) (READ ONLY: it belongs to uwh-portal and is never edited from here). Base: v2, PR #3633 (`feat/uwh-common/live-updates`, 5740f519). This branch is stacked on it.
 
 **Scope Card**
 Task: Build Live Updates v3 in refbox: the four v3 body fields and their send-at-once rules, with a test pinning every portal rule.

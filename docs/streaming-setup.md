@@ -571,6 +571,7 @@ phone verification).
 | Log: "Game 12: thumbnail skipped — the font has no "東"" | A team or event name uses a character the thumbnail's font can't draw. The video keeps YouTube's own picture; nothing else is affected. |
 | Log: "Game 12: thumbnail not uploaded — saving the allowance for switches", or "Thumbnails not uploaded — saving the allowance for switches" | The allowance is being kept for the switches. Nothing to do: the next Prepare or title check tries again while there is room. |
 | Log: "Thumbnails: YouTube refused an upload (…), so the 10-minute check uploads no more today" | YouTube won't take thumbnails, often because the channel isn't allowed custom thumbnails (verify it in YouTube Studio). The check stops trying until tomorrow (US Pacific time), or until YouTube is connected again, so it doesn't waste the allowance; once fixed, run **Prepare** again to set them now. |
+| Log: "Thumbnails skipped for the rest of this run, and by the 10-minute checks until tomorrow's allowance" | YouTube won't take thumbnails, often because the channel isn't allowed custom thumbnails (verify it in YouTube Studio). Prepare stops trying for this run, and the 10-minute check stops until tomorrow (US Pacific time), or until YouTube is connected again, so neither wastes the allowance; once fixed, run **Prepare** again to set them now. |
 | Log: "⚠ The portal or YouTube didn't answer in time; titles weren't checked" | The internet or the portal was slow. Nothing to do: titles are checked again in 10 minutes and just before each switch. |
 
 ---

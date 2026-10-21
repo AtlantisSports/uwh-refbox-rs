@@ -149,6 +149,15 @@ impl<'a> YouTubeAccess<'a> {
         YouTubeAccess::Shared { app, youtube: None }
     }
 
+    /// The program this access shares with other jobs, or `None` when nothing else runs that
+    /// it would need to take turns with (the terminal, or a switch's own check).
+    pub fn app(&self) -> Option<&'a App> {
+        match self {
+            YouTubeAccess::Held(_) => None,
+            YouTubeAccess::Shared { app, .. } => Some(*app),
+        }
+    }
+
     /// The connection for one step on `court`'s games.
     pub async fn step(&mut self, court: &str) -> Result<YouTubeStep<'_>, BoxError> {
         match self {

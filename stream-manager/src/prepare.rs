@@ -1130,8 +1130,9 @@ pub fn preview(
 /// stream key is decided), videos keep the stream key they are bound to; titles, descriptions
 /// and start times are still updated.
 ///
-/// Thumbnails are extras: `extras_ok` is asked with the court's name just before each upload,
-/// and a game whose thumbnail it refuses is left for a later run.
+/// Thumbnails are extras: `extras_ok` is asked with the court's name before each thumbnail is
+/// drawn and again just before its upload, and a game whose thumbnail it refuses is left for a
+/// later run.
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     config: &Config,
@@ -1146,6 +1147,8 @@ pub async fn run(
 ) -> Result<(), BoxError> {
     let logo_shape = load_state(state_file, &config.event_slug)?.logo_shape;
     let mut thumbnails = Thumbnails::for_event(logo_shape);
+    // Taken now: each game's step below shadows `youtube`.
+    let app = youtube.app();
     for target in select_targets(config, plan, selection)? {
         let title = &target.playlist_title;
         let pair = court_streams(target.court, &lookups.streams)?;
@@ -1186,7 +1189,8 @@ pub async fn run(
         drop(step);
 
         for (i, game) in target.games.iter().enumerate() {
-            // The thumbnail is drawn (and its pictures downloaded) before taking the court's
+            // The allowance is asked first, so nothing is drawn that couldn't be uploaded. The
+            // thumbnail is then drawn (and its pictures downloaded) before taking the court's
             // lock, so a slow picture download never holds up a switch on that court.
             let thumbnail_key = thumbnail_key(plan, game);
             let needs_thumbnail = thumbnails.enabled
@@ -1197,7 +1201,15 @@ pub async fn run(
                         .and_then(|v| v.thumbnail.as_deref()),
                     &thumbnail_key,
                 );
-            let drawn = if needs_thumbnail {
+            // Nothing is recorded, so a later Prepare tries again.
+            let allowed = needs_thumbnail && extras_ok(&target.court.name);
+            if needs_thumbnail && !allowed {
+                log(format!(
+                    "Game {}: thumbnail not uploaded — saving the allowance for switches",
+                    game.number
+                ));
+            }
+            let drawn = if allowed {
                 match thumbnails.draw(plan, game, log).await {
                     Ok(drawn) => Some(drawn),
                     // Nothing is uploaded or recorded, so the next Prepare tries again.
@@ -1306,8 +1318,9 @@ pub async fn run(
             }
 
             match drawn {
-                // Asked just before each upload: the switches always come first. Nothing is
-                // recorded, so a later Prepare tries again.
+                // Asked again just before each upload (it was asked before drawing too): the
+                // switches always come first. Nothing is recorded, so a later Prepare tries
+                // again.
                 Some(_) if !extras_ok(&target.court.name) => {
                     log(format!(
                         "Game {}: thumbnail not uploaded — saving the allowance for switches",
@@ -1315,10 +1328,25 @@ pub async fn run(
                     ));
                 }
                 Some((jpeg, complete)) => {
+                    // Uploaded and recorded within the same turn as the 10-minute checks' uploads,
+                    // held until the record is written: otherwise a check could upload an older
+                    // picture between this upload and its record, and YouTube would show
+                    // something other than what the record says, which no later check corrects.
+                    // Taken while holding the court's lock; nothing holding the turn ever waits
+                    // for a court's lock, so the two can't wait on each other.
+                    let _turn = match app {
+                        Some(app) => Some(app.thumbnail_upload_turn().await),
+                        None => None,
+                    };
+                    // Read afresh within the turn: a check may have set this picture meanwhile,
+                    // or the last upload already left out the same pictures this one does.
                     let read = load_state(state_file, &config.event_slug)?
                         .videos
                         .get(&game.number)
                         .and_then(|v| v.thumbnail.clone());
+                    if !thumbnail_needs_redraw(read.as_deref(), &thumbnail_key, complete) {
+                        continue;
+                    }
                     match youtube.set_thumbnail(&video.broadcast_id, jpeg).await {
                         Ok(()) => {
                             log(format!("Game {}: thumbnail set", game.number));
@@ -1329,7 +1357,7 @@ pub async fn run(
                             };
                             update_state(state_file, &config.event_slug, |state| {
                                 if let Some(v) = state.videos.get_mut(&game.number) {
-                                    v.thumbnail = Some(key);
+                                    record_if_unchanged(&mut v.thumbnail, read.as_deref(), key);
                                 }
                             })?;
                         }
@@ -1353,7 +1381,21 @@ pub async fn run(
                                     ));
                                 }
                             }
-                            ThumbnailFailure::StopForDay | ThumbnailFailure::StopForNow => {
+                            // The channel's refusal is passed on, so the 10-minute checks
+                            // don't spend the allowance finding it out again.
+                            ThumbnailFailure::StopForDay => {
+                                if let Some(app) = app {
+                                    app.thumbnail_memory()
+                                        .note_refusal(OffsetDateTime::now_utc());
+                                }
+                                log(format!(
+                                    "Thumbnails skipped for the rest of this run, and by the \
+                                     10-minute checks until tomorrow's allowance. Game {}: {e}",
+                                    game.number
+                                ));
+                                thumbnails.enabled = false;
+                            }
+                            ThumbnailFailure::StopForNow => {
                                 log(format!(
                                     "Thumbnails skipped for the rest of this run. Game {}: {e}",
                                     game.number

@@ -638,9 +638,9 @@ async function previewPrepare() {
       $('prep-preview').innerHTML = `${portal}<div class="summary-box"><ul>${lists}</ul><b class="ok-text">Everything is already up to date on YouTube.</b></div>`;
       return;
     }
-    // Create sends back the event, portal and settings this preview was made for, so a preview
-    // from before a settings change can't make videos nobody previewed.
-    previewed = { ...sel, portal_url: r.portal_url, event_slug: r.event_slug, settings_version: r.settings_version };
+    // Create sends back the event, portal, settings and schedule this preview was made for, so a
+    // preview from before a change can't make videos nobody previewed.
+    previewed = { ...sel, portal_url: r.portal_url, event_slug: r.event_slug, preview_version: r.preview_version };
     $('prep-preview').innerHTML = `${portal}<div class="summary-box"><ul>${lists}</ul>
       This will create <b>${w.playlists_to_create}</b> playlist(s) and <b>${w.videos_to_create}</b> video(s),
       update <b>${w.videos_to_update}</b>, link <b>${w.binds}</b> to stream keys, add <b>${w.playlist_adds}</b> to playlists
@@ -659,7 +659,8 @@ async function previewPrepare() {
 async function runPrepare() {
   if (!previewed) return;
   try { await api('/api/prepare/run', { method: 'POST', body: previewed }); clearPreview(); poll(); }
-  catch (e) { alert(e.message); }
+  // A refused Create means the preview no longer matches: clear it so it can't be pressed again.
+  catch (e) { clearPreview(); alert(e.message); }
 }
 async function refreshSchedule() {
   try { await api('/api/schedule/refresh', { method: 'POST' }); await loadSchedule(); } catch (e) { alert(e.message); }

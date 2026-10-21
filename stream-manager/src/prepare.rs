@@ -413,8 +413,9 @@ fn thumbnail_key(plan: &EventPlan, game: &PlannedGame) -> String {
     )
 }
 
-/// Added to the key when a banner or logo could not be downloaded, so the next Prepare tries
-/// again.
+/// Added to the key when a banner or logo could not be had but might be next time (the host
+/// was busy or unreachable), so the next Prepare tries again. One refused for good doesn't
+/// count: asking again would draw the same picture.
 const INCOMPLETE: &str = " | incomplete";
 
 /// Added to the key when the font can't draw a name on the game's thumbnail, so title sync
@@ -711,6 +712,13 @@ impl Thumbnails {
         self.pictures.get(url).is_some_and(Option::is_some)
     }
 
+    /// Whether a picture was refused for good (missing, unreadable or malformed), so trying
+    /// again would only fail the same way. False when the downloader never started: there is
+    /// no failure to judge, and a later run may have one.
+    fn failed_for_good(&self, url: &str) -> bool {
+        self.failures.get(url).is_some_and(|f| f.is_final)
+    }
+
     /// [`Self::fetch`] for a picture the game being drawn shows: a failure is logged, the first
     /// time only.
     async fn fetch_shown(&mut self, url: &str, log: &mut (dyn FnMut(String) + Send)) -> bool {
@@ -795,7 +803,8 @@ impl Thumbnails {
         shape
     }
 
-    /// The game's thumbnail as a JPEG, and whether every picture it needed was available and,
+    /// The game's thumbnail as a JPEG, and whether every picture it needed was available (one
+    /// refused for good doesn't count against it, as asking again can't change it) and,
     /// if it shows a logo, the logo box shape was settled rather than a guess.
     pub async fn draw(
         &mut self,
@@ -805,7 +814,8 @@ impl Thumbnails {
     ) -> Result<(Vec<u8>, bool), BoxError> {
         if self.painter.is_none() {
             if let Some(url) = &plan.banner_url {
-                self.banner_ok = self.fetch_shown(url, log).await;
+                let fetched = self.fetch_shown(url, log).await;
+                self.banner_ok = fetched || self.failed_for_good(url);
             }
             // The logo boxes are the shape most of the event's logos have, so every game's
             // thumbnail matches: unless the record has it, all the logos are fetched before the
@@ -826,7 +836,7 @@ impl Thumbnails {
         for art in [&game.dark_team, &game.light_team].into_iter().flatten() {
             if let Some(url) = &art.logo_url {
                 let fetched = self.fetch_shown(url, log).await;
-                complete &= fetched;
+                complete &= fetched || self.failed_for_good(url);
                 draws_a_logo |= fetched;
             }
         }
@@ -1094,7 +1104,7 @@ pub fn preview(
                     if !v.in_playlist {
                         work.playlist_adds += 1;
                     }
-                    if v.thumbnail.as_deref() != Some(thumbnail_key(plan, game).as_str()) {
+                    if prepare_needs_thumbnail(v.thumbnail.as_deref(), &thumbnail_key(plan, game)) {
                         work.thumbnails += 1;
                     }
                 }
@@ -1880,6 +1890,85 @@ mod tests {
         assert!(!work.is_empty());
     }
 
+    #[tokio::test]
+    async fn a_logo_refused_for_good_does_not_leave_the_thumbnail_incomplete() {
+        let (base, _) = picture_server(vec![
+            ("w1", png(200, 100)),
+            ("w2", png(200, 100)),
+            ("sq", png(100, 100)),
+            ("dead", Reply::NotFound),
+        ])
+        .await;
+        let plan = logo_plan(&base, [["w1", "dead"], ["w1", "w2"], ["w2", "sq"]]);
+        let mut thumbnails = Thumbnails::default();
+        let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(complete, "{lines:?}");
+        let logged = lines
+            .iter()
+            .filter(|l| l.contains("Could not download picture"))
+            .count();
+        assert_eq!(logged, 1, "{lines:?}");
+    }
+
+    #[tokio::test]
+    async fn a_banner_refused_for_good_does_not_leave_the_thumbnail_incomplete() {
+        let (base, _) = picture_server(vec![
+            ("w1", png(200, 100)),
+            ("w2", png(200, 100)),
+            ("sq", png(100, 100)),
+            ("banner", Reply::NotFound),
+        ])
+        .await;
+        let mut plan = logo_plan(&base, [["w1", "w2"], ["w1", "w2"], ["w2", "sq"]]);
+        plan.banner_url = Some(format!("{base}/banner"));
+        let mut thumbnails = Thumbnails::default();
+        let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(complete, "{lines:?}");
+    }
+
+    #[test]
+    fn the_preview_leaves_out_thumbnails_prepare_wont_try() {
+        let config = Config::default();
+        let plan = one_game_plan("2030-08-01T09:30:00+10:00");
+        let game = &plan.games[0];
+        let lookups = Lookups {
+            streams: vec![stream("Court 1 - A"), stream("Court 1 - B")],
+            existing_playlists: Vec::new(),
+        };
+        let selection = Selection {
+            day: game.day,
+            courts: Vec::new(),
+            limit: None,
+        };
+        let no_day_running = |_: &str| false;
+        let spec = broadcast_spec(&config, &plan, game);
+        let mut state = EventState::default();
+        state
+            .playlists
+            .insert(playlist_title(&plan.event_name, game.day, "1"), "p1".into());
+        for (suffix, expected) in [(REJECTED, 0), (UNDRAWABLE, 0), (INCOMPLETE, 1)] {
+            let mut video = recorded(&spec, portal_start(game));
+            video.court = Some(game.court.clone());
+            video.day = Some(game.day);
+            video.thumbnail = Some(thumbnail_key(&plan, game) + suffix);
+            state.videos.insert(game.number.clone(), video);
+            let work = preview(
+                &config,
+                &plan,
+                &state,
+                &lookups,
+                &selection,
+                &no_day_running,
+            )
+            .unwrap();
+            assert_eq!(work.thumbnails, expected, "{suffix}");
+            if expected == 0 {
+                assert_eq!(work.extra_units, 0, "{suffix}");
+                assert!(work.is_empty(), "{suffix}");
+            }
+        }
+    }
+
     /// A game's thumbnail key, and the same key recorded for an upload missing a picture.
     fn keys(plan: &EventPlan) -> (String, String) {
         let key = thumbnail_key(plan, &plan.games[0]);
@@ -2293,13 +2382,14 @@ mod tests {
         assert!(lines.is_empty(), "{lines:?}");
         assert_eq!(thumbnails.newly_settled(), None);
 
-        // (b) Every logo refused (game 1's own logos too, so it is incomplete anyway).
+        // (b) Every logo refused for good (game 1's own too): it draws no logo and nothing
+        // better will come, so it is complete.
         let (base, _) =
             picture_server(vec![("d1", Reply::NotFound), ("d2", Reply::NotFound)]).await;
         let plan = logo_plan(&base, [["d1", "d2"], ["d1", "d2"], ["d2", "d1"]]);
         let mut thumbnails = Thumbnails::default();
         let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
-        assert!(!complete);
+        assert!(complete);
         assert_eq!(thumbnails.newly_settled(), None);
         assert_eq!(
             summaries(&lines),

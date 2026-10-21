@@ -2179,6 +2179,7 @@ mod tests {
     fn event_plan(name: &str, will_be_streamed: Option<bool>) -> EventPlan {
         EventPlan {
             event_name: name.into(),
+            banner_url: None,
             games: Vec::new(),
             will_be_streamed,
         }

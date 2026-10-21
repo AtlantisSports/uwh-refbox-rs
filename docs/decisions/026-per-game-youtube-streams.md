@@ -307,7 +307,7 @@ restart recovery; live status on the Stream Deck through Companion.
 
 **Follow-up (separate PRs, after this one):** filling each game's watch link on the portal. Built
 in the Stream Manager watch-links PR (#3523, after #3521), together with the uwhportal PR. See
-"Amendments, 2026-10-07".
+"Amendments, 2026-10-07". A thumbnail for each game's video: built in #3620, see amendment 14.
 
 **Out of scope for now (possible later):**
 

@@ -602,6 +602,10 @@ async function previewThumbnails() {
   // copy. Kept local: loadSchedule() would redraw the court checkboxes and lose the selection.
   let fresh;
   try { fresh = await api('/api/schedule'); } catch (e) { alert(e.message); return; }
+  // No schedule any more (the event changed in Settings): show the page's "no event" state instead.
+  if (!fresh.loaded) { await loadSchedule(); return; }
+  // The day or courts changed while it loaded: that change already cleared the thumbnails.
+  if (JSON.stringify(selection()) !== JSON.stringify(sel)) return;
   const stamp = Date.now();
   const lists = fresh.playlists.filter(p => p.day === sel.day && sel.courts.includes(p.court));
   $('prep-thumbs').innerHTML = `<p class="muted">The thumbnails Prepare will put on each video. Nothing is sent to

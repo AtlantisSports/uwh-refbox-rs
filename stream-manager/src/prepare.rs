@@ -1911,6 +1911,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_logo_that_may_come_back_leaves_the_thumbnail_incomplete() {
+        // The shape is stored, so it is not a guess: only the logo itself can make it incomplete.
+        let replies = [
+            || Reply::Close,
+            || Reply::Status(503),
+            || Reply::Status(408),
+            || Reply::Status(429),
+        ];
+        for (i, reply) in replies.into_iter().enumerate() {
+            let (base, _) = picture_server(vec![("w1", png(200, 100)), ("gone", reply())]).await;
+            let plan = logo_plan(&base, [["w1", "gone"], ["w1", "w1"], ["w1", "w1"]]);
+            let mut thumbnails = Thumbnails::for_event(Some(LogoShape::Wide));
+            let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
+            assert!(!complete, "reply {i}: {lines:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_banner_that_may_come_back_leaves_the_thumbnail_incomplete() {
+        let (base, _) = picture_server(vec![("w1", png(200, 100)), ("banner", Reply::Close)]).await;
+        let mut plan = logo_plan(&base, [["w1", "w1"], ["w1", "w1"], ["w1", "w1"]]);
+        plan.banner_url = Some(format!("{base}/banner"));
+        let mut thumbnails = Thumbnails::for_event(Some(LogoShape::Wide));
+        let (complete, lines) = draw_game_1(&mut thumbnails, &plan).await;
+        assert!(!complete, "{lines:?}");
+    }
+
+    #[tokio::test]
     async fn a_banner_refused_for_good_does_not_leave_the_thumbnail_incomplete() {
         let (base, _) = picture_server(vec![
             ("w1", png(200, 100)),

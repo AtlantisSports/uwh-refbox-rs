@@ -126,8 +126,6 @@ impl GameStats {
         for color in [Color::Black, Color::White] {
             events.extend(running[color].iter().map(|pen| penalty_event(pen, color)));
         }
-        // Stable sort: events with the same `occurredOn` keep their insertion order, so the
-        // key does not flip between builds of an unchanged list.
         events.sort_by_key(|event| match event {
             Event::Goal { occurred_on, .. } => *occurred_on,
             Event::Penalty { occurred_on, .. } => *occurred_on,
@@ -137,17 +135,20 @@ impl GameStats {
         // As in `as_json`: these events hold only strings, numbers, booleans and
         // timestamps, which serde_json always serialises, so neither call can fail.
         let body = serde_json::to_string(&events).unwrap();
-        let without_times: Vec<serde_json::Value> = events
+        // The key is sorted by content, not by time: events from one instant get `occurredOn`s
+        // that jitter against each other on every build, so their order in the body can swap.
+        let mut without_times: Vec<String> = events
             .iter()
             .map(|event| {
                 let mut value = serde_json::to_value(event).unwrap();
                 if let serde_json::Value::Object(fields) = &mut value {
                     fields.remove("occurredOn");
                 }
-                value
+                value.to_string()
             })
             .collect();
-        let key = serde_json::to_string(&without_times).unwrap();
+        without_times.sort_unstable();
+        let key = format!("[{}]", without_times.join(","));
         RunningStats { body, key }
     }
 }
@@ -157,7 +158,8 @@ impl GameStats {
 pub struct RunningStats {
     /// The PUT body: JSON array, ordered by occurredOn.
     pub body: String,
-    /// The same list with every `occurredOn` removed, serialised: equal keys = same list.
+    /// The same list with every `occurredOn` removed, serialised in content order: equal keys =
+    /// same list.
     ///
     /// `occurredOn` is left out because it is recomputed from the wall clock on every call,
     /// so the same list gives a slightly different body each time.
@@ -300,5 +302,23 @@ mod tests {
         let neither = fouls.iter().find(|e| e["side"].is_null()).unwrap();
         assert!(neither["playerCapNumber"].is_null());
         assert_eq!(neither["called"], "DelayOfGame");
+    }
+
+    /// Two events from one instant get `occurredOn`s that jitter against each other from build
+    /// to build, so their order in the body can swap. The key must not change when it does.
+    #[test]
+    fn running_list_key_ignores_event_order() {
+        let now = Instant::now();
+        let later = now + Duration::from_secs(1);
+        let goals = |white_at, black_at| {
+            let mut stats = GameStats::new("1");
+            stats.add_goal(GamePeriod::FirstHalf, None, Color::White, 3, white_at);
+            stats.add_goal(GamePeriod::FirstHalf, None, Color::Black, 5, black_at);
+            stats.running_list(&BlackWhiteBundle::default())
+        };
+        let white_first = goals(now, later);
+        let black_first = goals(later, now);
+        assert_ne!(white_first.body, black_first.body, "the bodies are ordered");
+        assert_eq!(white_first.key, black_first.key);
     }
 }

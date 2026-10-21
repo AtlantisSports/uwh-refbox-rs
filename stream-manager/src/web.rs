@@ -994,7 +994,8 @@ fn preview_version(config: &Config, plan: &EventPlan) -> String {
         Ok(bytes) => hasher.write(&bytes),
         Err(_) => hasher.write(format!("{config:?}").as_bytes()),
     }
-    // The schedule holds only lists, strings, numbers and times, so equal schedules print the same.
+    // The schedule holds only lists, strings, numbers and times, so the same schedule fetched
+    // again prints the same.
     hasher.write(format!("{plan:?}").as_bytes());
     format!("{}-{:016x}", this_run(), hasher.finish())
 }
@@ -1040,15 +1041,16 @@ async fn prepare_run(
             "The event or portal changed since the preview. Preview again.",
         ));
     }
-    // Read before the comparison, so the job runs with the very schedule it was compared against.
-    let plan = app
-        .plan()
-        .ok_or_else(|| bad("The schedule isn't loaded yet"))?;
+    // Before the schedule check: just after a restart the schedule may not be loaded yet.
     if version.split_once('-').map(|(run, _)| run) != Some(this_run().as_str()) {
         return Err(bad(
             "Stream Manager restarted since the preview. Preview again.",
         ));
     }
+    // Read before the comparison, so the job runs with the very schedule it was compared against.
+    let plan = app
+        .plan()
+        .ok_or_else(|| bad("The schedule isn't loaded yet"))?;
     if version != preview_version(&config, &plan) {
         return Err(bad(
             "The schedule or settings changed since the preview. Preview again.",
@@ -2573,6 +2575,13 @@ mod tests {
         // The job starts; it then stops on its own, since this server isn't connected to YouTube.
         let (status, text) = create(&client, &base, &cookie, body).await;
         assert_eq!(status, StatusCode::OK, "{text}");
+        // Its folder is removed only once the job is over.
+        let mut waited = 0;
+        while job_running(&client, &base, &cookie).await != false {
+            assert!(waited < 500, "the job never stopped");
+            waited += 1;
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

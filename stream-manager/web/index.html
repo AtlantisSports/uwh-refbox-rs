@@ -659,8 +659,9 @@ async function previewPrepare() {
 async function runPrepare() {
   if (!previewed) return;
   try { await api('/api/prepare/run', { method: 'POST', body: previewed }); clearPreview(); poll(); }
-  // A refused Create means the preview no longer matches: clear it so it can't be pressed again.
-  catch (e) { clearPreview(); alert(e.message); }
+  // A refusal ending "Preview again." means the preview no longer matches: clear it so it can't
+  // be pressed again. Any other failure ("Try again", a job still running) leaves it to retry.
+  catch (e) { if (/Preview again\.$/.test(e.message)) clearPreview(); alert(e.message); }
 }
 async function refreshSchedule() {
   try { await api('/api/schedule/refresh', { method: 'POST' }); await loadSchedule(); } catch (e) { alert(e.message); }

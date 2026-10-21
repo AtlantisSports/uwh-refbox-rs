@@ -45,7 +45,8 @@ async fn run(
     keys: SharedAccessKeys,
     timing: StatsTiming,
 ) {
-    // The frame the portal last accepted. A frame that is the same list is not sent again.
+    // The frame the portal last accepted, cleared by any failed send after it. A frame that is
+    // the same list is not sent again.
     let mut accepted: Option<StatsFrame> = None;
     let mut log = FailureLog::new(LogWording::STATS);
 
@@ -87,6 +88,9 @@ async fn run(
             accepted = Some(frame);
             continue;
         }
+        // A send that failed, above all one that timed out, may still have reached the portal,
+        // so what it holds is no longer known: a list that goes back to the accepted one is sent.
+        accepted = None;
 
         // Failed, or not sendable (no key, the site changed): try again after the retry
         // interval, or at once with whatever replaced this frame, whichever comes first. Either
@@ -277,6 +281,32 @@ mod tests {
             "retry {gap:?} after the hung send; the timeout is 1 s"
         );
         assert_eq!(second.body, sent.list.body);
+    }
+
+    /// A send that times out may still have reached the portal, so the portal may now hold that
+    /// list. A list that then goes back to the last accepted one is sent again.
+    #[tokio::test]
+    async fn list_reverting_after_failed_send_is_resent() {
+        let mut portal = portal(|i, _| {
+            if i == 1 {
+                Reply::Hang
+            } else {
+                Reply::After(Duration::ZERO)
+            }
+        })
+        .await;
+        let first = frame(&portal.site, "A");
+        let (tx, _task) = start(&portal, Some(first.clone()), timing(3000, 300));
+        portal.next(WAIT).await.expect("A sent");
+        tx.send(Some(frame(&portal.site, "B"))).unwrap();
+        portal.next(WAIT).await.expect("B sent");
+        tx.send(Some(first.clone())).unwrap();
+        // Well inside the 3 s retry interval: only the change itself can send it.
+        let again = portal
+            .next(Duration::from_millis(2000))
+            .await
+            .expect("A sent again after B's send timed out");
+        assert_eq!(again.body, first.list.body);
     }
 
     #[tokio::test]

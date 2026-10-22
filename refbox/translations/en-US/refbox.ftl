@@ -452,7 +452,8 @@ portal-row-pending = Game { $game } Score not sent, tap to retry
 portal-row-stats-pending = Game { $game } Stats not sent, tap to fix
 portal-row-attempt-suffix = (attempt { $attempts })
 portal-row-recent = Game { $game } · Submitted { $mins } min ago
-portal-action-force-submit = Retry this game result
+portal-action-force-submit = Retry this
+    game result
 portal-action-discard = Discard this game result
 portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
 portal-page-title-attention = Game { $game } submission error

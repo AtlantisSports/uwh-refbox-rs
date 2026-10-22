@@ -5271,6 +5271,9 @@ impl RefBoxApp {
                     PortalEvent::ScoreSentStatsPending(id) => {
                         self.portal_manager.on_score_sent_stats_pending(id);
                     }
+                    PortalEvent::StatsMayHaveLanded(id) => {
+                        self.portal_manager.on_stats_may_have_landed(id);
+                    }
                     PortalEvent::ItemAttempted { id, attempts, at } => {
                         self.portal_manager.on_item_attempted(id, attempts, at);
                     }

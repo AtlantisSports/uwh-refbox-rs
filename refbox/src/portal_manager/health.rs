@@ -100,11 +100,13 @@ pub trait PortalTaskIo {
 
 #[derive(Debug)]
 pub enum PortalCallError {
-    /// The portal responded, but with a non-success status. From the
-    /// current uwh-common API we cannot tell a conflict (409), token
-    /// rejection (401), or server error (5xx) apart — they all collapse to
-    /// this one variant. See ADR 011 amendment (2026-04-21) for the
-    /// rationale.
+    /// The portal responded, but with a non-success status. The current
+    /// uwh-common API keeps no status code, so a conflict (409), token
+    /// rejection (401), or server error (5xx) all collapse to this one
+    /// variant and can be told apart only by the response body it carries
+    /// (as `portal_refuses_stats_for_event` and
+    /// `portal_already_has_these_stats` do). See ADR 011 amendment
+    /// (2026-04-21) for the rationale.
     Failed(String),
     /// The portal could not be reached at all: the HTTP exchange never
     /// completed (DNS, connect, timeout, TLS, or a dropped response). The
@@ -150,8 +152,9 @@ const STATS_REFUSED_FOR_EVENT: &str = "This event does not require unique cap nu
 /// True when the portal has said it will never take stats for this event, so
 /// there is nothing left to send and the item is done.
 ///
-/// Only that exact reason counts. Every other failure, including a duplicate
-/// or a validation error, keeps the item stats-pending as before. If the
+/// Only that exact reason counts. Every other failure, including a validation
+/// error, keeps the item stats-pending as before (a duplicate has its own,
+/// narrower rule: `portal_already_has_these_stats`). If the
 /// portal ever rewords the reason, this stops matching and the row goes back
 /// to "Stats not sent", which the operator can still clear by hand.
 fn portal_refuses_stats_for_event(e: &PortalCallError) -> bool {
@@ -165,6 +168,32 @@ fn portal_refuses_stats_for_event(e: &PortalCallError) -> bool {
                 .as_str()
                 .map(|r| r == STATS_REFUSED_FOR_EVENT)
         })
+        .unwrap_or(false)
+}
+
+/// The reason the portal gives when a stats upload contains an event it
+/// already stores.
+const STATS_ALREADY_STORED: &str =
+    "Event is a duplicate, based on Type, PlayerCapNumber, Side and OccurredOn";
+
+/// True when the portal answered a stats upload with its "duplicate" refusal.
+///
+/// That answer proves only that SOME event in the upload is already stored,
+/// and the portal saved nothing from this attempt: a game ended twice queues
+/// a second row that repeats the first row's events, and the portal refuses
+/// it whole. It counts as "already saved" only for a row whose earlier stats
+/// send went unanswered (`stats_may_have_landed`): the portal saves an upload
+/// all-or-nothing and the refbox resends the identical stored body, so then
+/// it means that unanswered send was saved in full. Only the portal's exact
+/// reason counts: any other wording, a body that merely quotes it, or an
+/// error where the portal never answered leaves the row as before.
+fn portal_already_has_these_stats(e: &PortalCallError) -> bool {
+    let PortalCallError::Failed(body) = e else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| v.get("reason")?.as_str().map(|r| r == STATS_ALREADY_STORED))
         .unwrap_or(false)
 }
 
@@ -317,6 +346,20 @@ async fn run_task(
                                     .send(PortalEvent::ItemResolved(item.id.clone()))
                                     .await;
                             }
+                            Err(e)
+                                if item.stats_may_have_landed
+                                    && portal_already_has_these_stats(&e) =>
+                            {
+                                // The earlier unanswered send was saved in
+                                // full; nothing is left to send.
+                                log::info!(
+                                    "stats for game {} already on the portal: {e}",
+                                    item.id.game_number
+                                );
+                                let _ = event_tx
+                                    .send(PortalEvent::ItemResolved(item.id.clone()))
+                                    .await;
+                            }
                             Err(e) => {
                                 // Stays stats-pending; no escalation, no loop.
                                 // Logged for the same reason as the first
@@ -326,6 +369,13 @@ async fn run_task(
                                     "stats retry for game {}: {e}",
                                     item.id.game_number
                                 );
+                                if matches!(e, PortalCallError::Unreachable(_)) {
+                                    // No answer came back: the portal may have
+                                    // saved it. Marked before ItemUpdated.
+                                    let _ = event_tx
+                                        .send(PortalEvent::StatsMayHaveLanded(item.id.clone()))
+                                        .await;
+                                }
                                 let _ = event_tx.send(PortalEvent::ItemUpdated).await;
                             }
                         }
@@ -337,8 +387,9 @@ async fn run_task(
 }
 
 /// Attempt to submit a single queued item (scores + stats). The portal
-/// API collapses all non-success outcomes (409 conflict, 401 token
-/// expired, 5xx, network) into a single error. Four outcomes:
+/// API collapses its non-success answers (409 conflict, 401 token
+/// expired, 5xx) into a single `Failed` error, told apart only by the body
+/// it carries. Four outcomes:
 ///
 /// - **Score fails** → emits `ItemUpdated`, returns `false`. The item
 ///   remains fully on the queue; `last_success` is not advanced so the
@@ -351,6 +402,12 @@ async fn run_task(
 /// - **Score succeeds, portal refuses stats for the whole event** → emits
 ///   `ItemResolved`, returns `true`. See `portal_refuses_stats_for_event`.
 /// - **Both succeed** → emits `ItemResolved`, returns `true`.
+///
+/// A first send never accepts the portal's "duplicate" answer as already
+/// saved (it has no unanswered predecessor); only a `RetryStats` of a row
+/// whose stats send went unanswered does. When the stats send itself gets
+/// no answer (`Unreachable`), `StatsMayHaveLanded` is emitted before
+/// `ScoreSentStatsPending`.
 async fn attempt_item(
     io: &impl PortalTaskIo,
     item: &QueuedItem,
@@ -400,6 +457,13 @@ async fn attempt_item(
                 "stats upload for game {} (score already accepted): {e}",
                 item.id.game_number
             );
+            if matches!(e, PortalCallError::Unreachable(_)) {
+                // No answer came back: the portal may have saved it. Marked
+                // first so the row is stats-pending with the flag already set.
+                let _ = event_tx
+                    .send(PortalEvent::StatsMayHaveLanded(item.id.clone()))
+                    .await;
+            }
             let _ = event_tx
                 .send(PortalEvent::ScoreSentStatsPending(item.id.clone()))
                 .await;
@@ -455,6 +519,7 @@ mod tests {
             last_attempt_at: None,
             force: false,
             score_sent: false,
+            stats_may_have_landed: false,
         }
     }
 
@@ -1142,6 +1207,242 @@ mod tests {
             "failed RetryStats must NOT emit ItemResolved, got {events:?}"
         );
         drop(handle);
+    }
+
+    const DUP_BODY: &str = r#"{"reason":"Event is a duplicate, based on Type, PlayerCapNumber, Side and OccurredOn","event":{"type":"Goal"}}"#;
+
+    #[test]
+    fn only_the_portals_duplicate_answer_means_stats_are_already_stored() {
+        assert!(portal_already_has_these_stats(&PortalCallError::Failed(
+            DUP_BODY.to_string()
+        )));
+        for body in [
+            r#"{"reason":"This event does not require unique cap numbers."}"#,
+            r#"{"errors":{"[0].Type":["'Type' must not be empty."]}}"#,
+            r#"{"reason":"Unrelated: Event is a duplicate, based on Type, PlayerCapNumber, Side and OccurredOn"}"#,
+            "Event is a duplicate, based on Type, PlayerCapNumber, Side and OccurredOn",
+            "",
+        ] {
+            assert!(
+                !portal_already_has_these_stats(&PortalCallError::Failed(body.to_string())),
+                "must not match: {body}"
+            );
+        }
+        // The portal never answered: the text proves nothing.
+        assert!(!portal_already_has_these_stats(
+            &PortalCallError::Unreachable(DUP_BODY.to_string())
+        ));
+        assert!(!portal_already_has_these_stats(&PortalCallError::NotSent(
+            DUP_BODY.to_string()
+        )));
+    }
+
+    /// Run one first attempt (`attempt_item` via the retry tick) of a fresh
+    /// item whose score posts and whose stats get `stats_result`. Returns the
+    /// item's id and every event emitted.
+    async fn first_attempt_with_stats(
+        stats_result: Result<(), PortalCallError>,
+    ) -> (ItemId, Vec<PortalEvent>) {
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Ok(())]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![Ok(())]),
+            scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            stats_results: Mutex::new(vec![stats_result]),
+            stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        };
+        let mut handle = spawn(io);
+
+        let queue = queue_with_one_eligible_item();
+        let id = queue.items[0].id.clone();
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated(queue))
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        let events = drain_events(&mut handle.event_rx);
+        drop(handle);
+        (id, events)
+    }
+
+    /// Send one `RetryStats` for a stats-pending item (`score_sent = true`)
+    /// with the given `stats_may_have_landed` flag; its stats get
+    /// `stats_result`. Returns the item's id and every event emitted, after
+    /// asserting the score was never re-posted.
+    async fn retry_stats_with(
+        may_have_landed: bool,
+        stats_result: Result<(), PortalCallError>,
+    ) -> (ItemId, Vec<PortalEvent>) {
+        let scores_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let stats_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Ok(())]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![]),
+            scores_count: scores_count.clone(),
+            stats_results: Mutex::new(vec![stats_result]),
+            stats_count: stats_count.clone(),
+        };
+        let mut handle = spawn(io);
+
+        let mut item = mk_queue_item(0);
+        item.score_sent = true;
+        item.stats_may_have_landed = may_have_landed;
+        let id = item.id.clone();
+        handle
+            .command_tx
+            .send(PortalCommand::RetryStats(item))
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(stats_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            scores_count.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "RetryStats must never re-post the score"
+        );
+        let events = drain_events(&mut handle.event_rx);
+        drop(handle);
+        (id, events)
+    }
+
+    fn resolved(events: &[PortalEvent], id: &ItemId) -> bool {
+        events
+            .iter()
+            .any(|ev| matches!(ev, PortalEvent::ItemResolved(i) if i == id))
+    }
+
+    fn marked_may_have_landed(events: &[PortalEvent]) -> bool {
+        events
+            .iter()
+            .any(|ev| matches!(ev, PortalEvent::StatsMayHaveLanded(_)))
+    }
+
+    // An earlier send of this row went unanswered, so the portal may have
+    // saved it: its "duplicate" answer now means the stats are already up.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn retry_resolves_on_duplicate_only_after_an_unanswered_send() {
+        let (id, events) =
+            retry_stats_with(true, Err(PortalCallError::Failed(DUP_BODY.into()))).await;
+        assert!(
+            resolved(&events, &id),
+            "a duplicate answer after an unanswered send must resolve the item, got {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::ItemUpdated)),
+            "an already-stored answer must not emit ItemUpdated, got {events:?}"
+        );
+    }
+
+    // The game-ended-twice case: no earlier send went unanswered, so the
+    // duplicate is an OLD event inside a new upload that saved nothing.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn retry_keeps_the_row_on_duplicate_without_an_unanswered_send() {
+        let (id, events) =
+            retry_stats_with(false, Err(PortalCallError::Failed(DUP_BODY.into()))).await;
+        assert!(
+            !resolved(&events, &id),
+            "a duplicate answer with no unanswered send must NOT resolve the item, got {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::ItemUpdated)),
+            "the row must stay stats-pending (ItemUpdated), got {events:?}"
+        );
+    }
+
+    // A first send has no unanswered predecessor, so a duplicate answer to
+    // it can never mean "already saved".
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn first_send_answered_duplicate_stays_stats_pending() {
+        let (id, events) =
+            first_attempt_with_stats(Err(PortalCallError::Failed(DUP_BODY.into()))).await;
+        assert!(
+            events.iter().any(|ev| matches!(
+                ev, PortalEvent::ScoreSentStatsPending(i) if i == &id
+            )),
+            "a duplicate answer to a first send must leave the item stats-pending, got {events:?}"
+        );
+        assert!(
+            !resolved(&events, &id),
+            "a duplicate answer to a first send must NOT resolve the item, got {events:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn unanswered_stats_send_marks_the_row() {
+        // First send: the flag is marked BEFORE the row turns stats-pending,
+        // so the persisted row carries it when the operator retries.
+        let (id, events) =
+            first_attempt_with_stats(Err(PortalCallError::Unreachable("timed out".into()))).await;
+        let marked = events
+            .iter()
+            .position(|ev| matches!(ev, PortalEvent::StatsMayHaveLanded(i) if i == &id));
+        let pending = events
+            .iter()
+            .position(|ev| matches!(ev, PortalEvent::ScoreSentStatsPending(i) if i == &id));
+        assert!(
+            matches!((marked, pending), (Some(m), Some(p)) if m < p),
+            "an unanswered first send must emit StatsMayHaveLanded then ScoreSentStatsPending, got {events:?}"
+        );
+
+        // Retry: marked as well, and the row still stays stats-pending.
+        let (id, events) =
+            retry_stats_with(false, Err(PortalCallError::Unreachable("timed out".into()))).await;
+        assert!(
+            events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::StatsMayHaveLanded(i) if i == &id)),
+            "an unanswered retry must emit StatsMayHaveLanded, got {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::ItemUpdated)),
+            "an unanswered retry must keep the row stats-pending, got {events:?}"
+        );
+    }
+
+    // The portal answered (`Failed`) or nothing left the machine (`NotSent`):
+    // neither can have saved anything unheard, so neither marks the row.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn answered_or_unsent_stats_failure_does_not_mark_the_row() {
+        let errors: [fn() -> PortalCallError; 2] = [
+            || PortalCallError::Failed("server error".into()),
+            || PortalCallError::NotSent("not an https address".into()),
+        ];
+        for err in errors {
+            let (_, events) = first_attempt_with_stats(Err(err())).await;
+            assert!(
+                !marked_may_have_landed(&events),
+                "first send must not mark the row, got {events:?}"
+            );
+            assert!(
+                events
+                    .iter()
+                    .any(|ev| matches!(ev, PortalEvent::ScoreSentStatsPending(_))),
+                "first send must still leave the row stats-pending, got {events:?}"
+            );
+            let (_, events) = retry_stats_with(false, Err(err())).await;
+            assert!(
+                !marked_may_have_landed(&events),
+                "retry must not mark the row, got {events:?}"
+            );
+        }
     }
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]

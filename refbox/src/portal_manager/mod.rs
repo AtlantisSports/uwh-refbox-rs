@@ -391,6 +391,11 @@ pub enum PortalEvent {
     /// so the auto-retry loop, the stuck escalation, and the indicator
     /// all stop treating it as outstanding. Carries the item id.
     ScoreSentStatsPending(ItemId),
+    /// A stats send for this item went out but no answer came back, so the
+    /// portal may have saved it. The main thread sets the item's
+    /// `stats_may_have_landed` flag so a later "duplicate" answer to a
+    /// stats retry can count as already saved. Carries the item id.
+    StatsMayHaveLanded(ItemId),
     /// Result of the latest periodic `verify_token` probe that reached the
     /// portal. `true` = portal accepted the token, `false` = rejected. The
     /// main-thread handler maps this onto `token_known_problem` so the
@@ -935,6 +940,7 @@ impl PortalManager {
             last_attempt_at: None,
             force: false,
             score_sent: false,
+            stats_may_have_landed: false,
         };
         self.queue.items.push(item);
         self.persist()?;
@@ -1112,6 +1118,25 @@ impl PortalManager {
             log::warn!("portal queue save after score-sent/stats-pending failed: {e}");
         }
         self.recompute_indicator();
+        self.push_queue_snapshot();
+    }
+
+    /// Background task reported a stats send that got no answer: the
+    /// portal may have saved it. Set the item's `stats_may_have_landed`
+    /// flag, persist, and push a fresh snapshot so the next `RetryStats`
+    /// carries it. Idempotent: a flag already set (or an unknown id) is a
+    /// silent no-op.
+    pub fn on_stats_may_have_landed(&mut self, id: ItemId) {
+        let Some(item) = self.find_mut(&id) else {
+            return;
+        };
+        if item.stats_may_have_landed {
+            return; // Already marked; nothing to do.
+        }
+        item.stats_may_have_landed = true;
+        if let Err(e) = self.persist() {
+            log::warn!("portal queue save after stats-may-have-landed failed: {e}");
+        }
         self.push_queue_snapshot();
     }
 
@@ -1401,6 +1426,7 @@ mod tests {
             last_attempt_at: None,
             force: false,
             score_sent: false,
+            stats_may_have_landed: false,
         }
     }
 
@@ -2501,6 +2527,34 @@ mod tests {
         // Persisted: a restart must reload it as stats-pending.
         let reloaded = queue::load_or_empty(tmp.path()).unwrap();
         assert!(reloaded.items[0].score_sent);
+    }
+
+    #[tokio::test]
+    async fn on_stats_may_have_landed_sets_and_persists_the_flag() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        m.enqueue_game_end("e".into(), "G1".into(), 3, 2, "{}".into())
+            .unwrap();
+        let id = m.queue.items[0].id.clone();
+        assert!(!m.queue.items[0].stats_may_have_landed);
+
+        // Unknown id: a silent no-op.
+        m.on_stats_may_have_landed(ItemId {
+            event_id: "e".into(),
+            game_number: "GX".into(),
+        });
+        assert!(!m.queue.items[0].stats_may_have_landed);
+
+        m.on_stats_may_have_landed(id);
+
+        assert!(
+            m.queue.items[0].stats_may_have_landed,
+            "item must be marked as possibly landed"
+        );
+        // Persisted: a restart must reload it with the flag set, so a retry
+        // after the restart can still accept a "duplicate" answer.
+        let reloaded = queue::load_or_empty(tmp.path()).unwrap();
+        assert!(reloaded.items[0].stats_may_have_landed);
     }
 
     #[tokio::test]

@@ -67,6 +67,13 @@ pub struct QueuedItem {
     /// load as score-pending.
     #[serde(default)]
     pub score_sent: bool,
+    /// Set when a stats send of this row went out and no answer came back
+    /// (`Unreachable`), so the portal may have saved it without the refbox
+    /// hearing. Only then does a later "duplicate" answer to a stats retry
+    /// count as already saved. `#[serde(default)]` so old
+    /// `portal_queue.json` files load as false.
+    #[serde(default)]
+    pub stats_may_have_landed: bool,
 }
 
 const QUEUE_FILE_NAME: &str = "portal_queue.json";
@@ -280,6 +287,7 @@ mod tests {
                 last_attempt_at: Some(datetime!(2026-04-19 14:23:15 UTC)),
                 force: false,
                 score_sent: false,
+                stats_may_have_landed: false,
             }],
         };
         let s = serde_json::to_string_pretty(&q).unwrap();
@@ -308,6 +316,7 @@ mod tests {
                     last_attempt_at: None,
                     force: false,
                     score_sent: false,
+                    stats_may_have_landed: false,
                 }],
             }
         }
@@ -393,6 +402,7 @@ mod tests {
                     last_attempt_at: None,
                     force: false,
                     score_sent: false,
+                    stats_may_have_landed: false,
                 }],
             };
             save(tmp.path(), &q).unwrap();
@@ -447,6 +457,7 @@ mod tests {
             last_attempt_at: None,
             force: false,
             score_sent: true,
+            stats_may_have_landed: false,
         };
         let s = serde_json::to_string(&item).unwrap();
         let back: QueuedItem = serde_json::from_str(&s).unwrap();
@@ -470,6 +481,7 @@ mod tests {
             last_attempt_at: None,
             force: false,
             score_sent: true,
+            stats_may_have_landed: false,
         };
         let mut v = serde_json::to_value(&item).unwrap();
         v.as_object_mut().unwrap().remove("score_sent");
@@ -477,6 +489,33 @@ mod tests {
         assert!(
             !back.score_sent,
             "an item with no score_sent field must load as score-pending (false)"
+        );
+    }
+
+    #[test]
+    fn missing_stats_may_have_landed_field_defaults_to_false() {
+        // Simulate a portal_queue.json written before this field existed.
+        let item = QueuedItem {
+            id: ItemId {
+                event_id: "e1".into(),
+                game_number: "G1".into(),
+            },
+            black_score: 0,
+            white_score: 0,
+            stats: "{}".into(),
+            queued_at: datetime!(2026-06-25 12:00:00 UTC),
+            attempts: 0,
+            last_attempt_at: None,
+            force: false,
+            score_sent: true,
+            stats_may_have_landed: true,
+        };
+        let mut v = serde_json::to_value(&item).unwrap();
+        v.as_object_mut().unwrap().remove("stats_may_have_landed");
+        let back: QueuedItem = serde_json::from_value(v).unwrap();
+        assert!(
+            !back.stats_may_have_landed,
+            "an item with no stats_may_have_landed field must load as false"
         );
     }
 }
@@ -500,6 +539,7 @@ mod archive_tests {
             last_attempt_at: None,
             force: false,
             score_sent: false,
+            stats_may_have_landed: false,
         }
     }
 

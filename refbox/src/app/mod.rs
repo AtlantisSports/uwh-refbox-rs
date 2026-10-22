@@ -8430,7 +8430,9 @@ impl RefBoxApp {
                         item.id.game_number.clone(),
                         item.black_score,
                         item.white_score,
-                        item.score_sent,
+                        // Same test the row tap and Retry use, so the page's
+                        // wording always matches what Retry will do.
+                        self.portal_manager.is_stats_pending(item_id),
                         discard_armed,
                     )
                 } else {

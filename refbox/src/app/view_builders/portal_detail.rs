@@ -8,8 +8,10 @@ use iced::{
 };
 
 /// Maximum number of detail-page rows visible at once before scroll
-/// arrows become active. Matches the Manage Remotes page's list size.
-const PORTAL_DETAIL_LIST_LEN: usize = 4;
+/// arrows become active. Three, like the penalty, foul and warning lists:
+/// with four, the page had no room left for the title and the last row was
+/// crushed.
+const PORTAL_DETAIL_LIST_LEN: usize = 3;
 
 /// Render the portal detail page. The scrollable list lives in the
 /// left 5/6 of the page, with scroll arrows down the right side

@@ -373,7 +373,8 @@ enum AppState {
     PortalDetailPage {
         scroll_index: usize,
     },
-    /// Shown when the operator taps a red stuck row on the detail page.
+    /// Shown when the operator taps a red stuck row or a yellow
+    /// stats-pending row on the detail page.
     /// `discard_armed` is the two-tap confirmation state for the
     /// DISCARD button; it starts false and flips to true on the first
     /// DISCARD tap (the second tap, for the same item, confirms).
@@ -997,6 +998,47 @@ fn source_tap_outcome(
         SourceTapOutcome::Confirm
     } else {
         SourceTapOutcome::SwitchNow
+    }
+}
+
+/// What tapping a row on the portal detail page does.
+///
+/// Pure, and separate from the handler that acts on it, for the same reason
+/// as `SourceTapOutcome`: the message loop has no test harness in this crate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PortalRowTapOutcome {
+    /// Open the Retry / Discard attention page for the item.
+    OpenAttention,
+    /// Young score-pending item: retry it now, with no page in between.
+    RetryNow,
+}
+
+/// Decide what a portal detail row tap does. A stuck item and a
+/// stats-pending item both open the attention page, so either can be
+/// discarded; only a young score-pending item retries on the spot.
+fn portal_row_tap_outcome(stuck: bool, stats_pending: bool) -> PortalRowTapOutcome {
+    if stuck || stats_pending {
+        PortalRowTapOutcome::OpenAttention
+    } else {
+        PortalRowTapOutcome::RetryNow
+    }
+}
+
+/// What the Retry button on the attention page does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AttentionRetry {
+    /// The score was already accepted: send the stats once, nothing else.
+    StatsOnly,
+    /// The score was not accepted: resubmit it with `force` set.
+    ForceScore,
+}
+
+/// Decide what Retry on the attention page does for an item.
+fn attention_retry(stats_pending: bool) -> AttentionRetry {
+    if stats_pending {
+        AttentionRetry::StatsOnly
+    } else {
+        AttentionRetry::ForceScore
     }
 }
 
@@ -5270,27 +5312,38 @@ impl RefBoxApp {
                     // not tappable and REFRESH declines to spin.
                     return Task::none();
                 }
-                if self.portal_manager.is_stuck(&id) {
-                    self.app_state = AppState::PortalAttentionAction {
-                        item_id: id,
-                        discard_armed: false,
-                    };
-                    trace!("AppState changed to {:?}", self.app_state);
-                } else if self.portal_manager.is_stats_pending(&id) {
-                    // Stats-pending row: fire one stats attempt. No
-                    // background loop, no escalation.
-                    self.portal_manager.request_stats_retry(&id);
-                } else {
-                    // Young score-pending row tapped — force an immediate retry.
-                    if let Err(e) = self.portal_manager.force_immediate_retry(&id) {
-                        error!("force_immediate_retry failed: {e}");
+                // Stuck and stats-pending rows both open the Retry / Discard
+                // page, so a stats item can be discarded as well as retried.
+                match portal_row_tap_outcome(
+                    self.portal_manager.is_stuck(&id),
+                    self.portal_manager.is_stats_pending(&id),
+                ) {
+                    PortalRowTapOutcome::OpenAttention => {
+                        self.app_state = AppState::PortalAttentionAction {
+                            item_id: id,
+                            discard_armed: false,
+                        };
+                        trace!("AppState changed to {:?}", self.app_state);
+                    }
+                    PortalRowTapOutcome::RetryNow => {
+                        // Young score-pending row tapped — force an immediate retry.
+                        if let Err(e) = self.portal_manager.force_immediate_retry(&id) {
+                            error!("force_immediate_retry failed: {e}");
+                        }
                     }
                 }
                 Task::none()
             }
             Message::PortalForceSubmit(id) => {
-                if let Err(e) = self.portal_manager.force_submit(&id) {
-                    error!("force_submit failed: {e}");
+                match attention_retry(self.portal_manager.is_stats_pending(&id)) {
+                    // Stats-pending: one stats attempt. The score was
+                    // already accepted, so it must not be resent with force.
+                    AttentionRetry::StatsOnly => self.portal_manager.request_stats_retry(&id),
+                    AttentionRetry::ForceScore => {
+                        if let Err(e) = self.portal_manager.force_submit(&id) {
+                            error!("force_submit failed: {e}");
+                        }
+                    }
                 }
                 self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
                 trace!("AppState changed to {:?}", self.app_state);
@@ -8377,6 +8430,7 @@ impl RefBoxApp {
                         item.id.game_number.clone(),
                         item.black_score,
                         item.white_score,
+                        item.score_sent,
                         discard_armed,
                     )
                 } else {
@@ -12070,5 +12124,49 @@ mod live_updates_wiring_tests {
         let list = stats("[]", "[]");
         assert!(stats_frame_for_site(SiteKind::Portal, &inputs, &list).is_some());
         assert_eq!(stats_frame_for_site(SiteKind::Custom, &inputs, &list), None);
+    }
+}
+
+#[cfg(test)]
+mod portal_attention_tests {
+    use super::*;
+
+    /// A stats-pending row opens the same Retry / Discard page a stuck row
+    /// does, so the operator can discard it. Before this, the tap fired a
+    /// stats retry on the spot and there was no way to remove the item.
+    #[test]
+    fn a_stats_pending_row_opens_the_attention_page() {
+        assert_eq!(
+            portal_row_tap_outcome(false, true),
+            PortalRowTapOutcome::OpenAttention
+        );
+    }
+
+    #[test]
+    fn a_stuck_row_opens_the_attention_page() {
+        assert_eq!(
+            portal_row_tap_outcome(true, false),
+            PortalRowTapOutcome::OpenAttention
+        );
+    }
+
+    #[test]
+    fn a_young_score_row_retries_at_once() {
+        assert_eq!(
+            portal_row_tap_outcome(false, false),
+            PortalRowTapOutcome::RetryNow
+        );
+    }
+
+    /// Retry on a stats item resends the stats only. Force-submitting would
+    /// resend the already-accepted score with `force` set.
+    #[test]
+    fn retry_on_a_stats_item_sends_stats_only() {
+        assert_eq!(attention_retry(true), AttentionRetry::StatsOnly);
+    }
+
+    #[test]
+    fn retry_on_a_score_item_force_submits() {
+        assert_eq!(attention_retry(false), AttentionRetry::ForceScore);
     }
 }

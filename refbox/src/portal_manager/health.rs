@@ -306,7 +306,9 @@ async fn run_task(
                                     .await;
                             }
                             Err(e) if portal_refuses_stats_for_event(&e) => {
-                                // A row left stuck before this rule existed.
+                                // Same rule as `attempt_item`: the event keeps
+                                // no stats, so the item is done. Reached by any
+                                // stats-pending row, whatever stuck it first.
                                 log::info!(
                                     "stats for game {} not kept by the portal for this event: {e}",
                                     item.id.game_number
@@ -838,7 +840,7 @@ mod tests {
             verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             scores_results: Mutex::new(vec![Ok(())]),
             scores_count: scores_count.clone(),
-            stats_results: Mutex::new(vec![Err(PortalCallError::Failed("no unique caps".into()))]),
+            stats_results: Mutex::new(vec![Err(PortalCallError::Failed("server error".into()))]),
             stats_count: stats_count.clone(),
         };
         let mut handle = spawn(io);

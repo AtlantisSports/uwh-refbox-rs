@@ -141,6 +141,33 @@ impl std::fmt::Display for PortalCallError {
     }
 }
 
+/// The reason the portal gives, word for word, when it refuses stats because
+/// the event does not require unique cap numbers (portal api tag 1.0.0.1192,
+/// `AdminController.EventStats.cs`). It checks that setting on every upload,
+/// after validating the items, so even a game with nothing to report gets it.
+const STATS_REFUSED_FOR_EVENT: &str = "This event does not require unique cap numbers.";
+
+/// True when the portal has said it will never take stats for this event, so
+/// there is nothing left to send and the item is done.
+///
+/// Only that exact reason counts. Every other failure, including a duplicate
+/// or a validation error, keeps the item stats-pending as before. If the
+/// portal ever rewords the reason, this stops matching and the row goes back
+/// to "Stats not sent", which the operator can still clear by hand.
+fn portal_refuses_stats_for_event(e: &PortalCallError) -> bool {
+    let PortalCallError::Failed(body) = e else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| {
+            v.get("reason")?
+                .as_str()
+                .map(|r| r == STATS_REFUSED_FOR_EVENT)
+        })
+        .unwrap_or(false)
+}
+
 async fn run_task(
     io: impl PortalTaskIo,
     mut command_rx: mpsc::Receiver<PortalCommand>,
@@ -278,6 +305,16 @@ async fn run_task(
                                     .send(PortalEvent::ItemResolved(item.id.clone()))
                                     .await;
                             }
+                            Err(e) if portal_refuses_stats_for_event(&e) => {
+                                // A row left stuck before this rule existed.
+                                log::info!(
+                                    "stats for game {} not kept by the portal for this event: {e}",
+                                    item.id.game_number
+                                );
+                                let _ = event_tx
+                                    .send(PortalEvent::ItemResolved(item.id.clone()))
+                                    .await;
+                            }
                             Err(e) => {
                                 // Stays stats-pending; no escalation, no loop.
                                 // Logged for the same reason as the first
@@ -299,7 +336,7 @@ async fn run_task(
 
 /// Attempt to submit a single queued item (scores + stats). The portal
 /// API collapses all non-success outcomes (409 conflict, 401 token
-/// expired, 5xx, network) into a single error. Three outcomes:
+/// expired, 5xx, network) into a single error. Four outcomes:
 ///
 /// - **Score fails** → emits `ItemUpdated`, returns `false`. The item
 ///   remains fully on the queue; `last_success` is not advanced so the
@@ -309,6 +346,8 @@ async fn run_task(
 ///   advance `last_success` to suppress an unnecessary `verify_token`.
 ///   The main thread flips the item to `score_sent = true` so it exits
 ///   the auto-retry loop and the yellow/red indicator.
+/// - **Score succeeds, portal refuses stats for the whole event** → emits
+///   `ItemResolved`, returns `true`. See `portal_refuses_stats_for_event`.
 /// - **Both succeed** → emits `ItemResolved`, returns `true`.
 async fn attempt_item(
     io: &impl PortalTaskIo,
@@ -335,11 +374,22 @@ async fn attempt_item(
                 .await;
             true
         }
+        Err(e) if portal_refuses_stats_for_event(&e) => {
+            // The event does not keep stats at all, so there is nothing
+            // left to send: resolve rather than leave "Stats not sent".
+            log::info!(
+                "stats for game {} not kept by the portal for this event: {e}",
+                item.id.game_number
+            );
+            let _ = event_tx
+                .send(PortalEvent::ItemResolved(item.id.clone()))
+                .await;
+            true
+        }
         Err(e) => {
-            // Score is up but stats failed (e.g. an event that does not
-            // require unique cap numbers rejects all stats). Mark the
-            // item stats-pending; the portal is reachable, so return
-            // `true` to suppress the cadence `verify_token`.
+            // Score is up but stats failed. Mark the item stats-pending; the
+            // portal is reachable, so return `true` to suppress the cadence
+            // `verify_token`.
             //
             // Logged because the reason is not otherwise recoverable: the row
             // only ever says "Stats not sent", and the several causes the
@@ -870,6 +920,127 @@ mod tests {
             stats_count.load(std::sync::atomic::Ordering::SeqCst),
             0,
             "the auto-retry loop must not auto-attempt stats for a stats-pending item"
+        );
+        drop(handle);
+    }
+
+    /// The portal's body when an event does not require unique cap numbers.
+    const REFUSED_FOR_EVENT_BODY: &str =
+        r#"{"reason":"This event does not require unique cap numbers."}"#;
+
+    #[test]
+    fn only_the_portals_exact_refusal_means_stats_are_never_wanted() {
+        assert!(portal_refuses_stats_for_event(&PortalCallError::Failed(
+            REFUSED_FOR_EVENT_BODY.into()
+        )));
+        // Anything else may still be fixed or worth a retry, so it must stay
+        // stats-pending: a duplicate, a validation error, another reason
+        // that happens to quote the sentence, or a body that is not JSON.
+        for body in [
+            r#"{"reason":"Event is a duplicate, based on Type, PlayerCapNumber, Side and OccurredOn"}"#,
+            r#"{"errors":{"[0].Type":["'Type' must not be empty."]}}"#,
+            r#"{"reason":"Unrelated: This event does not require unique cap numbers."}"#,
+            "This event does not require unique cap numbers.",
+            "",
+        ] {
+            assert!(
+                !portal_refuses_stats_for_event(&PortalCallError::Failed(body.into())),
+                "{body:?} must not count as the portal's refusal"
+            );
+        }
+        // The portal never answered, so it has refused nothing.
+        assert!(!portal_refuses_stats_for_event(
+            &PortalCallError::Unreachable(REFUSED_FOR_EVENT_BODY.into())
+        ));
+        assert!(!portal_refuses_stats_for_event(&PortalCallError::NotSent(
+            REFUSED_FOR_EVENT_BODY.into()
+        )));
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn stats_refused_for_the_event_resolves_the_item_on_first_attempt() {
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Ok(())]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![Ok(())]),
+            scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            stats_results: Mutex::new(vec![Err(PortalCallError::Failed(
+                REFUSED_FOR_EVENT_BODY.into(),
+            ))]),
+            stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        };
+        let mut handle = spawn(io);
+
+        let queue = queue_with_one_eligible_item();
+        let expected_id = queue.items[0].id.clone();
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated(queue))
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events.iter().any(|ev| matches!(
+                ev, PortalEvent::ItemResolved(id) if id == &expected_id
+            )),
+            "a refusal for the whole event must resolve the item, got {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::ScoreSentStatsPending(_))),
+            "a refusal for the whole event must not leave Stats not sent, got {events:?}"
+        );
+        drop(handle);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn stats_refused_for_the_event_resolves_the_item_on_retry() {
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Ok(())]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![]),
+            scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            stats_results: Mutex::new(vec![Err(PortalCallError::Failed(
+                REFUSED_FOR_EVENT_BODY.into(),
+            ))]),
+            stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        };
+        let mut handle = spawn(io);
+
+        // A row left stuck by a build without this rule, then retried.
+        let mut item = mk_queue_item(0);
+        item.score_sent = true;
+        let expected_id = item.id.clone();
+        handle
+            .command_tx
+            .send(PortalCommand::RetryStats(item))
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events.iter().any(|ev| matches!(
+                ev, PortalEvent::ItemResolved(id) if id == &expected_id
+            )),
+            "a refusal for the whole event must resolve a retried item, got {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::ItemUpdated)),
+            "a refusal for the whole event must not keep the row, got {events:?}"
         );
         drop(handle);
     }

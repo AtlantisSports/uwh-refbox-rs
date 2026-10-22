@@ -15,7 +15,8 @@ use iced::{
 /// The portal API collapses all failure causes (409 conflict, 401 token
 /// expiry, 5xx, network) into a single opaque error — see the ADR 011
 /// amendment dated 2026-04-21 — so the operator is offered only two
-/// actions: RETRY THIS GAME RESULT (resubmit with force=true) and
+/// actions: RETRY THIS GAME RESULT (resubmit with force=true, or for a
+/// stats-pending item one stats attempt) and
 /// DISCARD THIS GAME RESULT (two-tap confirmation). BACK returns to the
 /// portal detail page (the list the operator came from), via
 /// `Message::ClosePortalAttentionAction` — not to the main application

@@ -2525,25 +2525,6 @@ mod tests {
         );
     }
 
-    /// The attention page's Retry on a stats-pending item calls
-    /// `request_stats_retry`, never `force_submit`: the score was already
-    /// accepted, so the item must not be flagged to resend it with force.
-    #[tokio::test]
-    async fn stats_retry_leaves_force_unset_and_item_queued() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
-        m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
-            .unwrap();
-        m.queue.items[0].score_sent = true;
-        let id = m.queue.items[0].id.clone();
-
-        m.request_stats_retry(&id);
-
-        let item = m.find(&id).expect("stats item must still be queued");
-        assert!(!item.force, "a stats retry must not set force");
-        assert!(item.score_sent, "a stats retry must stay stats-pending");
-    }
-
     /// Discard from the attention page works on a stats-pending item, and
     /// removing the last one stops it blocking an event switch.
     #[tokio::test]

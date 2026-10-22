@@ -9,7 +9,8 @@ use iced::{
     },
 };
 
-/// Render the attention-action page for a single stuck queued item.
+/// Render the attention-action page for a single stuck or stats-pending
+/// queued item.
 ///
 /// The portal API collapses all failure causes (409 conflict, 401 token
 /// expiry, 5xx, network) into a single opaque error — see the ADR 011
@@ -23,7 +24,10 @@ use iced::{
 /// Layout:
 /// - Game time banner at top
 /// - Title (MEDIUM_TEXT)
-/// - Three-line informational note: problem, stored score, remediation
+/// - Three-line informational note: problem, stored score, remediation.
+///   For a stats-pending item (`stats_pending`) the problem line says the
+///   score was accepted and only the stats were not sent; Retry then sends
+///   the stats once instead of resubmitting the score with force=true.
 /// - Button row: BACK (red) | Discard (yellow → red on confirm) | Retry (green)
 pub(in super::super) fn build_portal_attention_action<'a>(
     data: ViewData<'_, '_>,
@@ -31,6 +35,7 @@ pub(in super::super) fn build_portal_attention_action<'a>(
     game_number: String,
     black_score: u8,
     white_score: u8,
+    stats_pending: bool,
     discard_armed: bool,
 ) -> Element<'a, Message> {
     let ViewData {
@@ -56,9 +61,15 @@ pub(in super::super) fn build_portal_attention_action<'a>(
         .align_x(Horizontal::Center)
         .width(Length::Fill);
 
+    let info = if stats_pending {
+        fl!("portal-page-attention-stats-info")
+    } else {
+        fl!("portal-page-attention-info")
+    };
+
     let note = container(
         column![
-            text(fl!("portal-page-attention-info")).size(SMALL_PLUS_TEXT),
+            text(info).size(SMALL_PLUS_TEXT),
             text(fl!(
                 "portal-page-attention-score",
                 white = white_score,

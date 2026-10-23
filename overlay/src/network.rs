@@ -22,6 +22,35 @@ pub type Image = (u16, u16, Vec<u8>);
 pub const BLACK_TEAM_NAME: &str = "BLACK";
 pub const WHITE_TEAM_NAME: &str = "WHITE";
 
+/// The HTTP client every portal request goes through, built the same way the direct
+/// networking thread builds it.
+///
+/// The `expect` is the direct thread's existing one, moved here unchanged. Building only
+/// fails if the TLS backend cannot start, a broken install with no portal access at all.
+fn build_http_client() -> Client {
+    ClientBuilder::new()
+        .connect_timeout(Duration::from_secs(20))
+        .build()
+        .expect("Couldn't create HTTP client!")
+}
+
+/// Make sure the shared HTTP client exists. Safe to call more than once: later calls
+/// leave the first client in place.
+#[cfg(feature = "bridge")]
+pub fn init_http_client() {
+    CLIENT_CELL.get_or_init(build_http_client);
+}
+
+/// Why a one-attempt portal fetch produced nothing.
+#[cfg(feature = "bridge")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PortalFetchError {
+    /// A network error, or a reply that was not the expected JSON. Worth retrying later.
+    Unreachable,
+    /// The schedule loaded but holds no game with that number. Not worth retrying.
+    NotInSchedule,
+}
+
 async fn get_image_from_opt_url<T: IntoUrl>(url: Option<T>) -> Option<Image> {
     let client = CLIENT_CELL.get().unwrap();
     let img_bytes = match url {
@@ -60,7 +89,7 @@ async fn get_image_from_opt_url<T: IntoUrl>(url: Option<T>) -> Option<Image> {
 
 /// Contains data of each individual in the roster. pictures are raw unprocessed bytes that are
 /// serialisable
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub struct MemberRaw {
     pub name: String,
     pub role: Option<String>,
@@ -70,7 +99,7 @@ pub struct MemberRaw {
 }
 /// Contains information about team. `flag` here is a byte array for `Serialize`, which is
 /// processed into `Texture2D` when struct is converted into `TeamInfo`
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default, PartialEq)]
 pub struct TeamInfoRaw {
     pub team_name: String,
     pub members: Vec<MemberRaw>,
@@ -104,56 +133,100 @@ impl TeamInfoRaw {
         )
         .unwrap();
 
-        let (members, flag) = tokio::join!(
-            futures::future::join_all(
-                data["roster"] // json array of players
-                    .as_array()
-                    .map(|x| x.to_vec())
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|member| async move {
-                        let (picture, geared_picture) = tokio::join!(
-                            get_image_from_opt_url(member["photos"]["uniform"].as_str()),
-                            get_image_from_opt_url(
-                                member["photos"][match team_color {
-                                    Color::Black => "darkGear",
-                                    Color::White => "lightGear",
-                                }]
-                                .as_str(),
-                            )
-                        );
-                        MemberRaw {
-                            name: member["rosterName"]
-                                .as_str()
-                                .unwrap_or("Player")
-                                .trim()
-                                .to_string(),
-                            number: member["capNumber"].as_u64().map(|e| e as u8),
-                            role: member["roles"].as_array().and_then(|a| {
-                                a.iter()
-                                    .map(|v| v.as_str().unwrap_or("").to_owned())
-                                    .find(|v| *v != "Player")
-                            }),
-                            picture,
-                            geared_picture,
-                        }
-                    })
-            ),
-            get_image_from_opt_url(data["logoUrl"].as_str())
-        );
-        let members = members.into_iter().collect();
+        team_from_json(&data, team_color).await
+    }
 
-        Self {
-            team_name: data["name"].as_str().map_or(
-                match team_color {
-                    Color::Black => String::from(BLACK_TEAM_NAME),
-                    Color::White => String::from(WHITE_TEAM_NAME),
-                },
-                |s| s.trim().to_uppercase(),
-            ),
-            members,
-            flag,
-        }
+    /// One attempt at fetching a team. Never panics: a failed request or a reply that is
+    /// not JSON comes back as `PortalFetchError::Unreachable`.
+    #[cfg(feature = "bridge")]
+    pub async fn try_new(
+        uwhportal_url: &str,
+        team_id: Option<&TeamId>,
+        team_color: Color,
+    ) -> Result<Self, PortalFetchError> {
+        let team_id = match team_id {
+            Some(id) => id,
+            None => return Ok(Self::default()),
+        };
+
+        let client = CLIENT_CELL.get_or_init(build_http_client);
+        info!("Requesting UWH API for team information for team: {team_id}");
+        let text = client
+            .get(format!("{uwhportal_url}/api/admin/get-event-team"))
+            .query(&[("teamId", team_id.full())])
+            .send()
+            .await
+            .map_err(|e| {
+                warn!("Couldn't request team data for team {team_id}: {e}");
+                PortalFetchError::Unreachable
+            })?
+            .text()
+            .await
+            .map_err(|e| {
+                warn!("Couldn't get team data body for team {team_id}: {e}");
+                PortalFetchError::Unreachable
+            })?;
+        let data: Value = serde_json::from_str(&text).map_err(|e| {
+            warn!("Team data for team {team_id} was not valid JSON: {e}");
+            PortalFetchError::Unreachable
+        })?;
+
+        Ok(team_from_json(&data, team_color).await)
+    }
+}
+
+/// Build a team from a `get-event-team` reply, fetching its pictures. Shared by the
+/// panicking and the fallible team fetchers.
+async fn team_from_json(data: &Value, team_color: Color) -> TeamInfoRaw {
+    let (members, flag) = tokio::join!(
+        futures::future::join_all(
+            data["roster"] // json array of players
+                .as_array()
+                .map(|x| x.to_vec())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|member| async move {
+                    let (picture, geared_picture) = tokio::join!(
+                        get_image_from_opt_url(member["photos"]["uniform"].as_str()),
+                        get_image_from_opt_url(
+                            member["photos"][match team_color {
+                                Color::Black => "darkGear",
+                                Color::White => "lightGear",
+                            }]
+                            .as_str(),
+                        )
+                    );
+                    MemberRaw {
+                        name: member["rosterName"]
+                            .as_str()
+                            .unwrap_or("Player")
+                            .trim()
+                            .to_string(),
+                        number: member["capNumber"].as_u64().map(|e| e as u8),
+                        role: member["roles"].as_array().and_then(|a| {
+                            a.iter()
+                                .map(|v| v.as_str().unwrap_or("").to_owned())
+                                .find(|v| *v != "Player")
+                        }),
+                        picture,
+                        geared_picture,
+                    }
+                })
+        ),
+        get_image_from_opt_url(data["logoUrl"].as_str())
+    );
+    let members = members.into_iter().collect();
+
+    TeamInfoRaw {
+        team_name: data["name"].as_str().map_or(
+            match team_color {
+                Color::Black => String::from(BLACK_TEAM_NAME),
+                Color::White => String::from(WHITE_TEAM_NAME),
+            },
+            |s| s.trim().to_uppercase(),
+        ),
+        members,
+        flag,
     }
 }
 
@@ -183,31 +256,68 @@ impl EventLogos {
         )
         .unwrap();
 
-        let mut event_logo_url = None;
-        let mut sponsors_url = None;
+        logos_from_json(&data, event_id).await
+    }
 
-        for attachment in data["overlayAttachments"]
-            .as_array()
-            .map(|x| x.to_vec())
-            .unwrap_or_default()
-        {
-            if attachment["type"].as_str() == Some("Overlay") {
-                event_logo_url = attachment["url"].as_str().map(|s| s.to_owned());
-            } else if attachment["type"].as_str() == Some("Sponsor") {
-                sponsors_url = attachment["url"].as_str().to_owned().map(|s| s.to_owned());
-            }
+    /// One attempt at fetching an event's logos. Never panics: a failed request or a reply
+    /// that is not JSON comes back as `PortalFetchError::Unreachable`.
+    #[cfg(feature = "bridge")]
+    pub async fn try_new(uwhportal_url: &str, event_id: EventId) -> Result<Self, PortalFetchError> {
+        let client = CLIENT_CELL.get_or_init(build_http_client);
+        info!("Requesting Portal API for overlay images for event: {event_id}");
+        let text = client
+            .get(format!(
+                "{uwhportal_url}/api/admin/events/{}/overlay-attachments",
+                event_id.partial()
+            ))
+            .send()
+            .await
+            .map_err(|e| {
+                warn!("Couldn't request event images for event {event_id}: {e}");
+                PortalFetchError::Unreachable
+            })?
+            .text()
+            .await
+            .map_err(|e| {
+                warn!("Couldn't get event images body for event {event_id}: {e}");
+                PortalFetchError::Unreachable
+            })?;
+        let data: Value = serde_json::from_str(&text).map_err(|e| {
+            warn!("Event images for event {event_id} were not valid JSON: {e}");
+            PortalFetchError::Unreachable
+        })?;
+
+        Ok(logos_from_json(&data, event_id).await)
+    }
+}
+
+/// Build an event's logos from an `overlay-attachments` reply, fetching the images. Shared
+/// by the panicking and the fallible logo fetchers.
+async fn logos_from_json(data: &Value, event_id: EventId) -> EventLogos {
+    let mut event_logo_url = None;
+    let mut sponsors_url = None;
+
+    for attachment in data["overlayAttachments"]
+        .as_array()
+        .map(|x| x.to_vec())
+        .unwrap_or_default()
+    {
+        if attachment["type"].as_str() == Some("Overlay") {
+            event_logo_url = attachment["url"].as_str().map(|s| s.to_owned());
+        } else if attachment["type"].as_str() == Some("Sponsor") {
+            sponsors_url = attachment["url"].as_str().to_owned().map(|s| s.to_owned());
         }
+    }
 
-        let (event_logo, sponsors) = tokio::join!(
-            get_image_from_opt_url(event_logo_url),
-            get_image_from_opt_url(sponsors_url)
-        );
+    let (event_logo, sponsors) = tokio::join!(
+        get_image_from_opt_url(event_logo_url),
+        get_image_from_opt_url(sponsors_url)
+    );
 
-        Self {
-            event_id,
-            event_logo,
-            sponsors,
-        }
+    EventLogos {
+        event_id,
+        event_logo,
+        sponsors,
     }
 }
 
@@ -218,7 +328,7 @@ pub enum StateUpdate {
     EventLogos(EventId, EventLogos),
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct GameData {
     pub pool: String,
     pub start_time: String,
@@ -448,19 +558,85 @@ async fn fetch_game_data(
     }
 }
 
+/// One attempt at fetching a game's display data: the same requests and the same result
+/// as `fetch_game_data`, but it never panics, never retries and never sends. A failed
+/// referee fetch gives an empty referee list, as on the direct path.
+#[cfg(feature = "bridge")]
+pub async fn try_fetch_game_data(
+    uwhportal_url: &str,
+    event_id: &EventId,
+    game_number: &GameNumber,
+) -> Result<GameData, PortalFetchError> {
+    let client = CLIENT_CELL.get_or_init(build_http_client);
+    let text = client
+        .get(format!(
+            "{uwhportal_url}/api/events/{}/schedule",
+            event_id.partial()
+        ))
+        .send()
+        .await
+        .map_err(|e| {
+            warn!("Game data request for event: {event_id}, game: {game_number} failed: {e}");
+            PortalFetchError::Unreachable
+        })?
+        .text()
+        .await
+        .map_err(|e| {
+            warn!("Schedule body for event {event_id} could not be received: {e}");
+            PortalFetchError::Unreachable
+        })?;
+    let data: Value = serde_json::from_str(text.as_str()).map_err(|_| {
+        error!("Server did not return valid JSON for event {event_id}: {text}");
+        PortalFetchError::Unreachable
+    })?;
+    let Some(GameDisplayInfo {
+        team_id_black,
+        team_id_white,
+        pool,
+        start_time,
+    }) = parse_game_display_info(&data, game_number)
+    else {
+        error!("Game number {game_number} was not found in the schedule for event {event_id}");
+        return Err(PortalFetchError::NotInSchedule);
+    };
+    info!("Got game data for event: {event_id}, game number: {game_number} from uwhportal");
+    let (referees, black, white) = tokio::join!(
+        fetch_game_referees(uwhportal_url, event_id, game_number),
+        TeamInfoRaw::try_new(uwhportal_url, team_id_black.as_ref(), Color::Black),
+        TeamInfoRaw::try_new(uwhportal_url, team_id_white.as_ref(), Color::White)
+    );
+
+    let referees = match referees {
+        Ok(r) => {
+            info!(
+                "Fetched referees for game {game_number}, there are {}",
+                r.len()
+            );
+            r
+        }
+        Err(e) => {
+            warn!("Couldn't fetch referees for event {event_id}, game number {game_number}: {e}");
+            Vec::new()
+        }
+    };
+
+    Ok(GameData {
+        pool,
+        start_time,
+        referees,
+        black: black?,
+        white: white?,
+        event_id: Some(event_id.clone()),
+        game_number: game_number.clone(),
+    })
+}
+
 #[tokio::main]
 pub async fn networking_thread(
     state_tx: crossbeam_channel::Sender<StateUpdate>,
     config: crate::AppConfig,
 ) {
-    CLIENT_CELL
-        .set(
-            ClientBuilder::new()
-                .connect_timeout(Duration::from_secs(20))
-                .build()
-                .expect("Couldn't create HTTP client!"),
-        )
-        .unwrap();
+    CLIENT_CELL.set(build_http_client()).unwrap();
 
     let AppConfig {
         refbox_ip,
@@ -736,5 +912,84 @@ mod tests {
         let data: Value = serde_json::from_str(PUBLIC_SCHEDULE).unwrap();
 
         assert!(parse_game_display_info(&data, &"99".to_string()).is_none());
+    }
+
+    /// Nothing listens on port 1, so every request to it fails at once.
+    #[cfg(feature = "bridge")]
+    const UNREACHABLE_PORTAL: &str = "http://127.0.0.1:1";
+
+    #[cfg(feature = "bridge")]
+    #[tokio::test]
+    async fn team_from_json_reads_names_numbers_roles_and_uppercases_the_team_name() {
+        init_http_client();
+        let data: Value = serde_json::from_str(
+            r#"{"name":" Team A ","roster":[{"rosterName":" Ann ","capNumber":3,"roles":["Player","Captain"]},{"rosterName":"Coach Bob","roles":["Coach"]}]}"#,
+        )
+        .unwrap();
+
+        let team = team_from_json(&data, Color::Black).await;
+
+        assert_eq!(team.team_name, "TEAM A");
+        let members: Vec<_> = team
+            .members
+            .iter()
+            .map(|m| (m.name.as_str(), m.number, m.role.as_deref()))
+            .collect();
+        assert_eq!(
+            members,
+            vec![
+                ("Ann", Some(3), Some("Captain")),
+                ("Coach Bob", None, Some("Coach")),
+            ]
+        );
+        assert!(team.flag.is_none());
+        assert!(
+            team.members
+                .iter()
+                .all(|m| m.picture.is_none() && m.geared_picture.is_none())
+        );
+    }
+
+    #[cfg(feature = "bridge")]
+    #[tokio::test]
+    async fn try_fetch_game_data_reports_unreachable_instead_of_panicking() {
+        init_http_client();
+        let event_id = EventId::from_full("events/1889-B").unwrap();
+
+        let result = try_fetch_game_data(UNREACHABLE_PORTAL, &event_id, &"1".to_string()).await;
+
+        assert!(result == Err(PortalFetchError::Unreachable));
+    }
+
+    #[cfg(feature = "bridge")]
+    #[tokio::test]
+    async fn team_try_new_reports_unreachable_instead_of_panicking() {
+        init_http_client();
+        let team_id = TeamId::from_full("teams/2529-B").unwrap();
+
+        let result = TeamInfoRaw::try_new(UNREACHABLE_PORTAL, Some(&team_id), Color::Black).await;
+
+        assert!(result == Err(PortalFetchError::Unreachable));
+    }
+
+    #[cfg(feature = "bridge")]
+    #[tokio::test]
+    async fn team_try_new_with_no_team_id_is_the_default_team() {
+        init_http_client();
+
+        let result = TeamInfoRaw::try_new(UNREACHABLE_PORTAL, None, Color::White).await;
+
+        assert!(result == Ok(TeamInfoRaw::default()));
+    }
+
+    #[cfg(feature = "bridge")]
+    #[tokio::test]
+    async fn event_logos_try_new_reports_unreachable_instead_of_panicking() {
+        init_http_client();
+        let event_id = EventId::from_full("events/1889-B").unwrap();
+
+        let result = EventLogos::try_new(UNREACHABLE_PORTAL, event_id).await;
+
+        assert!(matches!(result, Err(PortalFetchError::Unreachable)));
     }
 }

@@ -12,10 +12,16 @@
 //!
 //! **What this reconstructs:** the clock, scores, period, timeout, penalties, the
 //! recent-goal callout, and team *names* (`black_team`/`white_team`, already resolved by
-//! the bridge -- no portal lookup needed on this side for just the names). Full team
-//! rosters and player photos (the roster page) still come from `network.rs`'s existing
-//! portal-fetching code, which this module does not yet call -- see the module-level TODO
-//! below.
+//! the bridge -- no portal lookup needed on this side for just the names), plus full rosters
+//! from the bridge's `GET /roster` table.
+//!
+//! **Pictures:** when the feed names a portal event, this also asks that portal directly
+//! (through `network.rs`'s never-panicking fetchers) for the game's team logos, player photos,
+//! referees, court and start time, and for the event and sponsor logos. Those are merged into
+//! the bridge's own names-only game data ([`with_portal_pictures`]): the bridge stays the
+//! authority for names and caps, and a photo is used only where the portal's player for that
+//! cap has the same name. With no portal event (a local-CSV roster) nothing is fetched and the
+//! names are shown without pictures.
 
 use std::time::Duration;
 
@@ -27,10 +33,12 @@ use uwh_common::{
     game_snapshot::{
         GamePeriod, GameSnapshot, Infraction, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
     },
-    uwhportal::schedule::EventId,
+    uwhportal::schedule::{EventId, GameNumber},
 };
 
-use crate::network::{GameData, MemberRaw, StateUpdate, TeamInfoRaw};
+use crate::network::{
+    self, EventLogos, GameData, MemberRaw, PortalFetchError, StateUpdate, TeamInfoRaw,
+};
 
 /// The `/game` schema version this client understands. Bumped only when a field is
 /// removed, renamed, or changes meaning (`overlay-bridge/src/game_feed.rs`'s own rule) --
@@ -229,10 +237,9 @@ fn build_snapshot(feed: &GameFeed) -> Option<GameSnapshot> {
 /// A `GameData` carrying the team names the feed already resolved, and full team rosters when
 /// `full_roster` has them (fetched separately -- see [`fetch_full_roster`]), falling back to
 /// per-player names for whoever currently has a penalty ([`members_with_known_names`]) when it
-/// doesn't. No player photos: a CSV-sourced roster has none, per design, and this doesn't
-/// distinguish that from a Portal-sourced one not having resolved one yet -- both are simply
-/// absent, the same "absent, not impossible" modelling the roster-from-local-file design settled
-/// on.
+/// doesn't. Names only, with no pictures, referees, court or start time: in portal mode those are
+/// merged in afterwards from a separate portal fetch ([`with_portal_pictures`]); a CSV-sourced
+/// roster has none, per design.
 ///
 /// `snapshot` must be the `GameSnapshot` just built from this same `feed` by
 /// [`build_snapshot`]: `State::update_state`'s `GameData` handling matches against the
@@ -354,6 +361,162 @@ async fn fetch_full_roster(
     Some((black, white))
 }
 
+/// Which portal game the pictures belong to: the portal address, the event and the game number
+/// on screen. A change in any of them means the held portal data is for a different game.
+#[derive(Debug, Clone, PartialEq)]
+struct PortalTarget {
+    portal_url: String,
+    event_id: EventId,
+    game_number: GameNumber,
+}
+
+/// The portal game `snapshot` is showing, or `None` when the feed names no portal event (the
+/// bridge sends the event id and the portal address both or neither).
+fn portal_target(snapshot: &GameSnapshot) -> Option<PortalTarget> {
+    Some(PortalTarget {
+        portal_url: snapshot
+            .portal_base_url
+            .as_deref()?
+            .trim_end_matches('/')
+            .to_string(),
+        event_id: snapshot.event_id.clone()?,
+        game_number: snapshot.game_number().clone(),
+    })
+}
+
+/// Whether two player names are the same person's: equal ignoring case and surrounding spaces.
+fn names_match(a: &str, b: &str) -> bool {
+    a.trim().to_lowercase() == b.trim().to_lowercase()
+}
+
+/// `bridge` with the portal's team logos, referees, court and start time, and each player's
+/// photos from the portal player with the same cap number -- but only when that player's name
+/// matches too, so a cap number reused by a different player never shows the wrong face. Names,
+/// caps, roles, the player list, the game number and the event id all stay the bridge's.
+fn with_portal_pictures(mut bridge: GameData, portal: &GameData) -> GameData {
+    fn merge_team(team: &mut TeamInfoRaw, portal: &TeamInfoRaw) {
+        team.flag = portal.flag.clone();
+        for member in &mut team.members {
+            let found = member.number.and_then(|number| {
+                portal
+                    .members
+                    .iter()
+                    .find(|p| p.number == Some(number) && names_match(&p.name, &member.name))
+            });
+            member.picture = found.and_then(|p| p.picture.clone());
+            member.geared_picture = found.and_then(|p| p.geared_picture.clone());
+        }
+    }
+
+    merge_team(&mut bridge.black, &portal.black);
+    merge_team(&mut bridge.white, &portal.white);
+    bridge.referees = portal.referees.clone();
+    bridge.pool = portal.pool.clone();
+    bridge.start_time = portal.start_time.clone();
+    bridge
+}
+
+/// Whether a finished portal fetch is still for the game on screen. One that finished after the
+/// game, event or portal changed is discarded.
+fn result_is_for_current_target(current: Option<&PortalTarget>, result_for: &PortalTarget) -> bool {
+    current == Some(result_for)
+}
+
+/// Whether game data must be sent again: only when the bridge's names-only data or the held
+/// portal data changed since the last send. Every `GameData` makes the renderer rebuild all its
+/// team and player pictures, so resending an unchanged one each tick would waste that work.
+fn needs_send(
+    last_sent: Option<&(GameData, u64)>,
+    bridge_data: &GameData,
+    portal_generation: u64,
+) -> bool {
+    match last_sent {
+        Some((data, generation)) => data != bridge_data || *generation != portal_generation,
+        None => true,
+    }
+}
+
+/// How long to wait before asking an unreachable portal again.
+const PORTAL_RETRY_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Fetches one game's portal data until it arrives, then sends it on `result_tx` tagged with the
+/// game it is for. Gives up, with a warning, when the portal says there is no such game or
+/// refuses the request; retries every [`PORTAL_RETRY_INTERVAL`] while it is unreachable.
+async fn fetch_portal_game_data(
+    target: PortalTarget,
+    result_tx: tokio::sync::mpsc::UnboundedSender<(PortalTarget, GameData)>,
+) {
+    loop {
+        match network::try_fetch_game_data(
+            &target.portal_url,
+            &target.event_id,
+            &target.game_number,
+        )
+        .await
+        {
+            Ok(data) => {
+                // The receiver lives as long as the polling loop, which outlives this task.
+                let _ = result_tx.send((target, data));
+                return;
+            }
+            Err(PortalFetchError::NotInSchedule) => {
+                warn!(
+                    "Game {} is not in the portal schedule for event {}; showing it without pictures",
+                    target.game_number, target.event_id
+                );
+                return;
+            }
+            Err(PortalFetchError::Refused) => {
+                warn!(
+                    "The portal refused the request for game {} of event {}; showing it without pictures",
+                    target.game_number, target.event_id
+                );
+                return;
+            }
+            Err(PortalFetchError::Unreachable) => {
+                warn!(
+                    "Could not get game {} of event {} from the portal; retrying in {}s",
+                    target.game_number,
+                    target.event_id,
+                    PORTAL_RETRY_INTERVAL.as_secs()
+                );
+                tokio::time::sleep(PORTAL_RETRY_INTERVAL).await;
+            }
+        }
+    }
+}
+
+/// Fetches an event's logos until they arrive, then sends them straight to the renderer, which
+/// applies them only while that event is still on screen. Gives up, with a warning, when the
+/// portal refuses; retries every [`PORTAL_RETRY_INTERVAL`] while it is unreachable.
+async fn fetch_event_logos(
+    portal_url: String,
+    event_id: EventId,
+    state_tx: crossbeam_channel::Sender<StateUpdate>,
+) {
+    loop {
+        match EventLogos::try_new(&portal_url, event_id.clone()).await {
+            Ok(logos) => {
+                state_tx
+                    .send(StateUpdate::EventLogos(event_id, logos))
+                    .unwrap_or_else(|e| error!("Frontend could not receive event logos!: {e}"));
+                return;
+            }
+            Err(PortalFetchError::Unreachable) => {
+                warn!(
+                    "Could not get the logos for event {event_id} from the portal; retrying in {}s",
+                    PORTAL_RETRY_INTERVAL.as_secs()
+                );
+                tokio::time::sleep(PORTAL_RETRY_INTERVAL).await;
+            }
+            Err(e @ (PortalFetchError::Refused | PortalFetchError::NotInSchedule)) => {
+                warn!("Giving up on the logos for event {event_id}: {e:?}");
+                return;
+            }
+        }
+    }
+}
+
 #[tokio::main]
 pub async fn networking_thread(
     state_tx: crossbeam_channel::Sender<StateUpdate>,
@@ -365,6 +528,19 @@ pub async fn networking_thread(
     let roster_url = format!("{bridge_url}/roster");
     let mut interval = tokio::time::interval(POLL_INTERVAL);
     let mut schema_mismatch_warned = false;
+
+    network::init_http_client();
+    let (result_tx, mut result_rx) =
+        tokio::sync::mpsc::unbounded_channel::<(PortalTarget, GameData)>();
+    let mut current_target: Option<PortalTarget> = None;
+    let mut game_data_task: Option<tokio::task::JoinHandle<()>> = None;
+    // The portal's data for `current_target`, once fetched.
+    let mut portal_data: Option<GameData> = None;
+    // Bumped whenever `portal_data` changes, so `needs_send` can tell without comparing images.
+    let mut portal_generation: u64 = 0;
+    let mut logos_key: Option<(String, EventId)> = None;
+    let mut logos_task: Option<tokio::task::JoinHandle<()>> = None;
+    let mut last_sent: Option<(GameData, u64)> = None;
 
     log::info!("Polling overlay-bridge for game state at {url}");
 
@@ -420,6 +596,46 @@ pub async fn networking_thread(
             Some(snapshot) => {
                 debug!("Got snapshot from overlay-bridge!");
 
+                let target = portal_target(&snapshot);
+                if target != current_target {
+                    if let Some(task) = game_data_task.take() {
+                        task.abort();
+                    }
+                    portal_data = None;
+                    portal_generation += 1;
+                    if let Some(target) = target.clone() {
+                        game_data_task = Some(tokio::spawn(fetch_portal_game_data(
+                            target,
+                            result_tx.clone(),
+                        )));
+                    }
+                    current_target = target;
+                }
+
+                let key = current_target
+                    .as_ref()
+                    .map(|t| (t.portal_url.clone(), t.event_id.clone()));
+                if key != logos_key {
+                    if let Some(task) = logos_task.take() {
+                        task.abort();
+                    }
+                    if let Some((portal_url, event_id)) = key.clone() {
+                        logos_task = Some(tokio::spawn(fetch_event_logos(
+                            portal_url,
+                            event_id,
+                            state_tx.clone(),
+                        )));
+                    }
+                    logos_key = key;
+                }
+
+                while let Ok((result_for, data)) = result_rx.try_recv() {
+                    if result_is_for_current_target(current_target.as_ref(), &result_for) {
+                        portal_data = Some(data);
+                        portal_generation += 1;
+                    }
+                }
+
                 // A second request, not part of the /game feed itself: the pre-game reveal
                 // needs every player on both rosters, not just whoever currently has a
                 // penalty. Fetched every tick, same as /game -- rosters change rarely, but
@@ -437,13 +653,179 @@ pub async fn networking_thread(
                     .send(StateUpdate::Snapshot(snapshot))
                     .unwrap_or_else(|e| error!("Frontend could not receive snapshot!: {e}"));
 
-                if let Some(game_data) = game_data {
-                    state_tx
-                        .send(StateUpdate::GameData(game_data))
-                        .unwrap_or_else(|e| error!("Frontend could not receive game data!: {e}"));
+                if let Some(bridge_data) = game_data {
+                    if needs_send(last_sent.as_ref(), &bridge_data, portal_generation) {
+                        let to_send = match &portal_data {
+                            Some(portal) => with_portal_pictures(bridge_data.clone(), portal),
+                            None => bridge_data.clone(),
+                        };
+                        state_tx
+                            .send(StateUpdate::GameData(to_send))
+                            .unwrap_or_else(|e| {
+                                error!("Frontend could not receive game data!: {e}")
+                            });
+                        last_sent = Some((bridge_data, portal_generation));
+                    }
                 }
             }
             None => warn!("Bridge feed had an unrecognised value; discarding this update"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::network::Image;
+
+    fn img(v: u8) -> Image {
+        (1, 1, vec![v, v, v, 255])
+    }
+
+    fn member(name: &str, number: u8) -> MemberRaw {
+        MemberRaw {
+            name: name.to_string(),
+            role: None,
+            number: Some(number),
+            picture: None,
+            geared_picture: None,
+        }
+    }
+
+    fn game(black: TeamInfoRaw, white: TeamInfoRaw) -> GameData {
+        GameData {
+            pool: String::new(),
+            start_time: String::new(),
+            referees: Vec::new(),
+            black,
+            white,
+            game_number: "12".to_string(),
+            event_id: None,
+        }
+    }
+
+    fn team(name: &str, members: Vec<MemberRaw>) -> TeamInfoRaw {
+        TeamInfoRaw {
+            team_name: name.to_string(),
+            members,
+            flag: None,
+        }
+    }
+
+    fn target(game_number: &str) -> PortalTarget {
+        PortalTarget {
+            portal_url: "https://portal.example".to_string(),
+            event_id: EventId::from_full("events/1889-B").unwrap(),
+            game_number: game_number.to_string(),
+        }
+    }
+
+    #[test]
+    fn a_photo_is_copied_when_cap_and_name_match() {
+        let bridge = game(team("B", vec![member("Ann", 3)]), team("W", vec![]));
+        let mut portal_ann = member("Ann", 3);
+        portal_ann.picture = Some(img(1));
+        portal_ann.geared_picture = Some(img(2));
+        let portal = game(team("B", vec![portal_ann]), team("W", vec![]));
+
+        let merged = with_portal_pictures(bridge, &portal);
+        assert!(merged.black.members[0].picture == Some(img(1)));
+        assert!(merged.black.members[0].geared_picture == Some(img(2)));
+    }
+
+    #[test]
+    fn no_photo_when_the_portal_name_for_that_cap_differs() {
+        let bridge = game(team("B", vec![member("Ann", 3)]), team("W", vec![]));
+        let mut portal_bea = member("Bea", 3);
+        portal_bea.picture = Some(img(1));
+        let portal = game(team("B", vec![portal_bea]), team("W", vec![]));
+
+        let merged = with_portal_pictures(bridge, &portal);
+        assert!(merged.black.members[0].picture.is_none());
+        assert!(merged.black.members[0].geared_picture.is_none());
+        assert_eq!(merged.black.members[0].name, "Ann");
+    }
+
+    #[test]
+    fn names_match_ignores_case_and_surrounding_spaces() {
+        assert!(names_match(" ann ", "ANN"));
+        assert!(!names_match("Ann", "Anna"));
+    }
+
+    #[test]
+    fn team_logo_referees_court_and_start_come_from_the_portal_names_stay_the_bridges() {
+        let bridge = game(team("BRIDGE NAME", vec![]), team("W", vec![]));
+        let mut portal_black = team("PORTAL NAME", vec![]);
+        portal_black.flag = Some(img(9));
+        let mut portal = game(portal_black, team("W", vec![]));
+        portal.referees = vec![member("Ref", 0)];
+        portal.pool = "COURT: 1".to_string();
+        portal.start_time = "START: 10:00".to_string();
+
+        let merged = with_portal_pictures(bridge, &portal);
+        assert_eq!(merged.black.team_name, "BRIDGE NAME");
+        assert!(merged.black.flag == Some(img(9)));
+        assert!(merged.referees == vec![member("Ref", 0)]);
+        assert_eq!(merged.pool, "COURT: 1");
+        assert_eq!(merged.start_time, "START: 10:00");
+    }
+
+    #[test]
+    fn portal_only_players_are_not_added() {
+        let bridge = game(team("B", vec![member("Ann", 3)]), team("W", vec![]));
+        let portal = game(
+            team("B", vec![member("Ann", 3), member("Cat", 7)]),
+            team("W", vec![]),
+        );
+
+        let merged = with_portal_pictures(bridge, &portal);
+        assert_eq!(merged.black.members.len(), 1);
+    }
+
+    #[test]
+    fn portal_target_needs_both_event_and_address_and_trims_the_slash() {
+        let event_id = EventId::from_full("events/1889-B").unwrap();
+        let both = GameSnapshot {
+            event_id: Some(event_id.clone()),
+            portal_base_url: Some("https://portal.example/".to_string()),
+            game_number: "12".to_string(),
+            is_old_game: true,
+            ..Default::default()
+        };
+        let t = portal_target(&both).unwrap();
+        assert_eq!(t.portal_url, "https://portal.example");
+        assert_eq!(t.event_id, event_id);
+        assert_eq!(&t.game_number, both.game_number());
+
+        let no_event = GameSnapshot {
+            event_id: None,
+            ..both.clone()
+        };
+        assert!(portal_target(&no_event).is_none());
+        let no_address = GameSnapshot {
+            portal_base_url: None,
+            ..both
+        };
+        assert!(portal_target(&no_address).is_none());
+    }
+
+    #[test]
+    fn a_result_for_a_previous_game_is_discarded() {
+        let game_1 = target("1");
+        let game_2 = target("2");
+        assert!(!result_is_for_current_target(Some(&game_2), &game_1));
+        assert!(result_is_for_current_target(Some(&game_1), &game_1));
+        assert!(!result_is_for_current_target(None, &game_1));
+    }
+
+    #[test]
+    fn needs_send_only_when_names_or_portal_data_change() {
+        let data = game(team("B", vec![member("Ann", 3)]), team("W", vec![]));
+        let other = game(team("B", vec![member("Bea", 3)]), team("W", vec![]));
+        let last = (data.clone(), 1);
+        assert!(needs_send(None, &data, 1));
+        assert!(!needs_send(Some(&last), &data, 1));
+        assert!(needs_send(Some(&last), &data, 2));
+        assert!(needs_send(Some(&last), &other, 1));
     }
 }

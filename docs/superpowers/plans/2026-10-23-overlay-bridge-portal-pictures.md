@@ -107,4 +107,10 @@ Feature-on gates (run from the worktree root, absolute worktree path — never t
 
 ## Deviations
 
-(none yet)
+- **Task 1:** a third error variant, `PortalFetchError::Refused`, sorts a portal client error
+  (other than 408/429) from a retryable outage. Every fetch checks the HTTP status before reading
+  the body (task review finding: a JSON error body was read as a normal answer).
+- **Task 2, PO decision 2026-10-23:** bridge mode matches the Pi's photo roster. The portal's
+  members with no cap number (coaches, managers) are added, and a player's role tag is copied
+  from the portal under the same name-match rule as photos. This amends "Portal members not in
+  the bridge list are not added", which now applies only to portal members WITH a cap number.

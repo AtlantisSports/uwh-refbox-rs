@@ -373,8 +373,13 @@ struct PortalTarget {
 }
 
 /// The portal game `snapshot` is showing, or `None` when the feed names no portal event (the
-/// bridge sends the event id and the portal address both or neither).
+/// bridge sends the event id and the portal address both or neither) or when the game number is
+/// blank: that is how the refbox says the court has no further scheduled games, and a blank number
+/// is never looked up.
 fn portal_target(snapshot: &GameSnapshot) -> Option<PortalTarget> {
+    if snapshot.game_number().is_empty() {
+        return None;
+    }
     Some(PortalTarget {
         portal_url: snapshot
             .portal_base_url
@@ -480,11 +485,6 @@ fn needs_send(
 /// How long to wait before asking an unreachable portal again.
 const PORTAL_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 
-/// The longest one portal fetch may take before it is abandoned and treated as unreachable. A
-/// portal that accepts the connection and then sends nothing would otherwise leave the fetch
-/// waiting forever, so its pictures would never arrive and it would never be retried.
-const PORTAL_FETCH_TIMEOUT: Duration = Duration::from_secs(60);
-
 /// Fetches one game's portal data until it arrives, then sends it on `result_tx` tagged with the
 /// game it is for. Gives up, with a warning, when the portal says there is no such game or
 /// refuses the request; retries every [`PORTAL_RETRY_INTERVAL`] while it is unreachable.
@@ -493,13 +493,13 @@ async fn fetch_portal_game_data(
     result_tx: tokio::sync::mpsc::UnboundedSender<(PortalTarget, GameData)>,
 ) {
     loop {
-        let result = tokio::time::timeout(
-            PORTAL_FETCH_TIMEOUT,
-            network::try_fetch_game_data(&target.portal_url, &target.event_id, &target.game_number),
+        match network::try_fetch_game_data(
+            &target.portal_url,
+            &target.event_id,
+            &target.game_number,
         )
         .await
-        .unwrap_or(Err(PortalFetchError::Unreachable));
-        match result {
+        {
             Ok(data) => {
                 // The receiver lives as long as the polling loop, which outlives this task.
                 let _ = result_tx.send((target, data));
@@ -541,13 +541,7 @@ async fn fetch_event_logos(
     state_tx: crossbeam_channel::Sender<StateUpdate>,
 ) {
     loop {
-        let result = tokio::time::timeout(
-            PORTAL_FETCH_TIMEOUT,
-            EventLogos::try_new(&portal_url, event_id.clone()),
-        )
-        .await
-        .unwrap_or(Err(PortalFetchError::Unreachable));
-        match result {
+        match EventLogos::try_new(&portal_url, event_id.clone()).await {
             Ok(logos) => {
                 state_tx
                     .send(StateUpdate::EventLogos(event_id, logos))
@@ -996,6 +990,21 @@ mod tests {
             ..both
         };
         assert!(portal_target(&no_address).is_none());
+    }
+
+    #[test]
+    fn portal_target_is_none_for_a_blank_next_game_number() {
+        let between_games = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            is_old_game: false,
+            event_id: Some(EventId::from_full("events/1889-B").unwrap()),
+            portal_base_url: Some("https://portal.example".to_string()),
+            game_number: "12".to_string(),
+            next_game_number: String::new(),
+            ..Default::default()
+        };
+        assert!(between_games.game_number().is_empty());
+        assert!(portal_target(&between_games).is_none());
     }
 
     #[test]

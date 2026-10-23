@@ -20,10 +20,10 @@
 //! referees, court and start time, and for the event and sponsor logos. Those are merged into
 //! the bridge's own names-only game data ([`with_portal_pictures`]): the bridge stays the
 //! authority for names and caps, a photo and role tag are used only where the portal's player
-//! for that cap has the same name, a team logo only where the team names match, and the
-//! portal's coaches and managers (members with no cap number) are added with their photos and
-//! roles, as on the direct Pi mode's roster screen. With no portal event (a local-CSV roster) nothing is fetched and the
-//! names are shown without pictures.
+//! for that cap has the same name, and a team logo and the portal's coaches and managers
+//! (members with no cap number, with their photos and roles, as on the direct Pi mode's roster
+//! screen) only where the team names match. With no portal event (a local-CSV roster) nothing is
+//! fetched and the names are shown without pictures.
 
 use std::time::Duration;
 
@@ -394,18 +394,16 @@ fn names_match(a: &str, b: &str) -> bool {
 /// `bridge` with the portal's referees, court and start time; each team's logo when the portal
 /// team of that colour has the same name; and each player's photos and role tag from the portal
 /// player with the same cap number -- but only when that player's name matches too, so a cap
-/// number reused by a different player never shows the wrong face. The portal's coaches and
-/// managers (members with no cap number) are appended after the bridge's players, with their
-/// names, roles and photos as the portal has them. Team names, player names and caps, the game
+/// number reused by a different player never shows the wrong face. When the team names match,
+/// the portal's coaches and managers (members with no cap number) are appended after the bridge's
+/// players, with their names, roles and photos as the portal has them; a different team's staff
+/// are never added. Team names, player names and caps, the game
 /// number and the event id all stay the bridge's, and a portal player with a cap number the
 /// bridge lacks is not added.
 fn with_portal_pictures(mut bridge: GameData, portal: &GameData) -> GameData {
     fn merge_team(team: &mut TeamInfoRaw, portal: &TeamInfoRaw) {
-        team.flag = if names_match(&team.team_name, &portal.team_name) {
-            portal.flag.clone()
-        } else {
-            None
-        };
+        let same_team = names_match(&team.team_name, &portal.team_name);
+        team.flag = if same_team { portal.flag.clone() } else { None };
         for member in &mut team.members {
             let found = member.number.and_then(|number| {
                 portal
@@ -419,13 +417,15 @@ fn with_portal_pictures(mut bridge: GameData, portal: &GameData) -> GameData {
             member.picture = found.and_then(|p| p.picture.clone());
             member.geared_picture = found.and_then(|p| p.geared_picture.clone());
         }
-        team.members.extend(
-            portal
-                .members
-                .iter()
-                .filter(|p| p.number.is_none())
-                .cloned(),
-        );
+        if same_team {
+            team.members.extend(
+                portal
+                    .members
+                    .iter()
+                    .filter(|p| p.number.is_none())
+                    .cloned(),
+            );
+        }
     }
 
     merge_team(&mut bridge.black, &portal.black);
@@ -864,6 +864,25 @@ mod tests {
         assert_eq!(added.role.as_deref(), Some("Coach"));
         assert!(added.picture == Some(img(5)));
         assert!(added.number.is_none());
+    }
+
+    #[test]
+    fn no_portal_staff_when_the_team_names_differ() {
+        let coach = MemberRaw {
+            name: "Coach Bob".to_string(),
+            role: Some("Coach".to_string()),
+            number: None,
+            picture: Some(img(5)),
+            geared_picture: None,
+        };
+        let bridge = game(
+            team("BRIDGE NAME", vec![member("Ann", 3)]),
+            team("W", vec![]),
+        );
+        let portal = game(team("PORTAL NAME", vec![coach]), team("W", vec![]));
+
+        let merged = with_portal_pictures(bridge.clone(), &portal);
+        assert!(merged.black.members == bridge.black.members);
     }
 
     #[test]

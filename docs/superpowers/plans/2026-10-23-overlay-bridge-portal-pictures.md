@@ -114,3 +114,14 @@ Feature-on gates (run from the worktree root, absolute worktree path — never t
   members with no cap number (coaches, managers) are added, and a player's role tag is copied
   from the portal under the same name-match rule as photos. This amends "Portal members not in
   the bridge list are not added", which now applies only to portal members WITH a cap number.
+- **Team-name gate:** a team's logo, its players' photos and role tags, and its coaches and
+  managers are copied from the portal only when the portal team of that colour has the same name
+  (ignoring case and surrounding spaces). This supersedes the Interfaces text "flag from the
+  portal team of the same colour" and the planned test expecting a logo when the names differ,
+  which is replaced by `no_team_logo_when_the_team_names_differ` and
+  `no_photo_or_role_when_the_team_names_differ`. Why: never a picture or role against the wrong
+  team. Cost: a team whose bridge name differs from the portal's shows no pictures.
+- **Stalled portal:** bridge requests use a 30 s per-read timeout. A stall counts as unreachable
+  and is retried.
+- **Blank game number:** never looked up. A blank number means the court has no further games.
+- **Long non-JSON bodies:** logged truncated to 200 characters.

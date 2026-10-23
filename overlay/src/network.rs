@@ -22,14 +22,43 @@ pub type Image = (u16, u16, Vec<u8>);
 pub const BLACK_TEAM_NAME: &str = "BLACK";
 pub const WHITE_TEAM_NAME: &str = "WHITE";
 
-/// The HTTP client every portal request goes through, built the same way the direct
-/// networking thread builds it.
+/// The HTTP client the direct networking thread's portal requests go through (the bridge
+/// builds its own, see [`build_bridge_http_client`]).
 ///
 /// The `expect` is the direct thread's existing one, moved here unchanged. Building only
 /// fails if the TLS backend cannot start, a broken install with no portal access at all.
 fn build_http_client() -> Client {
-    ClientBuilder::new()
-        .connect_timeout(Duration::from_secs(20))
+    http_client_builder()
+        .build()
+        .expect("Couldn't create HTTP client!")
+}
+
+/// The settings every portal client starts from, shared by the direct and the bridge client.
+fn http_client_builder() -> ClientBuilder {
+    ClientBuilder::new().connect_timeout(Duration::from_secs(20))
+}
+
+/// The longest the bridge waits for the next piece of a portal reply. A portal that accepts the
+/// connection and then goes silent would otherwise hold a fetch forever; the timeout restarts on
+/// every successful read, so a slow but moving download is never cut off.
+#[cfg(feature = "bridge")]
+const PORTAL_READ_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The HTTP client the bridge's portal requests go through: the direct client's settings plus
+/// a [`PORTAL_READ_TIMEOUT`] per read.
+#[cfg(feature = "bridge")]
+fn build_bridge_http_client() -> Client {
+    build_bridge_http_client_with(PORTAL_READ_TIMEOUT)
+}
+
+/// The bridge client with the given per-read timeout.
+///
+/// The `expect` is the same as the direct client's: building only fails if the TLS backend
+/// cannot start, a broken install with no portal access at all.
+#[cfg(feature = "bridge")]
+fn build_bridge_http_client_with(read_timeout: Duration) -> Client {
+    http_client_builder()
+        .read_timeout(read_timeout)
         .build()
         .expect("Couldn't create HTTP client!")
 }
@@ -38,7 +67,18 @@ fn build_http_client() -> Client {
 /// leave the first client in place.
 #[cfg(feature = "bridge")]
 pub fn init_http_client() {
-    CLIENT_CELL.get_or_init(build_http_client);
+    CLIENT_CELL.get_or_init(build_bridge_http_client);
+}
+
+/// A reply body short enough to log: at most its first 200 characters, plus its whole length.
+#[cfg(feature = "bridge")]
+fn body_for_log(text: &str) -> String {
+    let start: String = text.chars().take(200).collect();
+    if start.len() == text.len() {
+        start
+    } else {
+        format!("{start}... ({} bytes in all)", text.len())
+    }
 }
 
 /// Why a one-attempt portal fetch produced nothing.
@@ -168,7 +208,7 @@ impl TeamInfoRaw {
             None => return Ok(Self::default()),
         };
 
-        let client = CLIENT_CELL.get_or_init(build_http_client);
+        let client = CLIENT_CELL.get_or_init(build_bridge_http_client);
         info!("Requesting UWH API for team information for team: {team_id}");
         let response = client
             .get(format!("{uwhportal_url}/api/admin/get-event-team"))
@@ -286,7 +326,7 @@ impl EventLogos {
     /// that is not JSON comes back as `PortalFetchError::Unreachable`.
     #[cfg(feature = "bridge")]
     pub async fn try_new(uwhportal_url: &str, event_id: EventId) -> Result<Self, PortalFetchError> {
-        let client = CLIENT_CELL.get_or_init(build_http_client);
+        let client = CLIENT_CELL.get_or_init(build_bridge_http_client);
         info!("Requesting Portal API for overlay images for event: {event_id}");
         let response = client
             .get(format!(
@@ -594,7 +634,7 @@ pub async fn try_fetch_game_data(
     event_id: &EventId,
     game_number: &GameNumber,
 ) -> Result<GameData, PortalFetchError> {
-    let client = CLIENT_CELL.get_or_init(build_http_client);
+    let client = CLIENT_CELL.get_or_init(build_bridge_http_client);
     let response = client
         .get(format!(
             "{uwhportal_url}/api/events/{}/schedule",
@@ -617,7 +657,10 @@ pub async fn try_fetch_game_data(
         PortalFetchError::Unreachable
     })?;
     let data: Value = serde_json::from_str(text.as_str()).map_err(|_| {
-        error!("Server did not return valid JSON for event {event_id}: {text}");
+        error!(
+            "Server did not return valid JSON for event {event_id}: {}",
+            body_for_log(&text)
+        );
         PortalFetchError::Unreachable
     })?;
     let Some(GameDisplayInfo {
@@ -1049,5 +1092,39 @@ mod tests {
         let result = EventLogos::try_new(UNREACHABLE_PORTAL, event_id).await;
 
         assert!(matches!(result, Err(PortalFetchError::Unreachable)));
+    }
+
+    #[cfg(feature = "bridge")]
+    #[tokio::test]
+    async fn bridge_client_gives_up_on_a_portal_that_goes_silent() {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            // Accept the connection, then hold it open and send nothing.
+            tokio::spawn(async move {
+                let (socket, _) = listener.accept().await.unwrap();
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                drop(socket);
+            });
+            let client = build_bridge_http_client_with(Duration::from_millis(300));
+
+            let result = client.get(format!("http://{address}/")).send().await;
+
+            assert!(result.is_err());
+        })
+        .await
+        .expect("a silent portal must time out, not hang the request");
+    }
+
+    #[cfg(feature = "bridge")]
+    #[test]
+    fn a_long_body_is_cut_to_200_characters_for_the_log() {
+        let long = "é".repeat(300);
+        let logged = body_for_log(&long);
+        assert!(logged.starts_with(&"é".repeat(200)));
+        assert!(!logged.starts_with(&"é".repeat(201)));
+        assert!(logged.ends_with("(600 bytes in all)"));
+
+        assert_eq!(body_for_log("short"), "short");
     }
 }

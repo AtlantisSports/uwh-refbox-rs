@@ -45,10 +45,29 @@ pub fn init_http_client() {
 #[cfg(feature = "bridge")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PortalFetchError {
-    /// A network error, or a reply that was not the expected JSON. Worth retrying later.
+    /// A network error, a server error, a timeout or a rate limit reply, or a reply that
+    /// was not the expected JSON. Worth retrying later.
     Unreachable,
     /// The schedule loaded but holds no game with that number. Not worth retrying.
     NotInSchedule,
+    /// The portal answered with a client error (other than 408/429). Not worth retrying.
+    Refused,
+}
+
+/// Sort a portal reply's HTTP status: 2xx is a reply to read, a server error, a timeout
+/// (408) or a rate limit (429) is worth retrying, and any other refusal is not.
+#[cfg(feature = "bridge")]
+fn classify_status(status: reqwest::StatusCode) -> Result<(), PortalFetchError> {
+    if status.is_success() {
+        Ok(())
+    } else if status.is_server_error()
+        || status == reqwest::StatusCode::REQUEST_TIMEOUT
+        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+    {
+        Err(PortalFetchError::Unreachable)
+    } else {
+        Err(PortalFetchError::Refused)
+    }
 }
 
 async fn get_image_from_opt_url<T: IntoUrl>(url: Option<T>) -> Option<Image> {
@@ -151,7 +170,7 @@ impl TeamInfoRaw {
 
         let client = CLIENT_CELL.get_or_init(build_http_client);
         info!("Requesting UWH API for team information for team: {team_id}");
-        let text = client
+        let response = client
             .get(format!("{uwhportal_url}/api/admin/get-event-team"))
             .query(&[("teamId", team_id.full())])
             .send()
@@ -159,13 +178,17 @@ impl TeamInfoRaw {
             .map_err(|e| {
                 warn!("Couldn't request team data for team {team_id}: {e}");
                 PortalFetchError::Unreachable
-            })?
-            .text()
-            .await
-            .map_err(|e| {
-                warn!("Couldn't get team data body for team {team_id}: {e}");
-                PortalFetchError::Unreachable
             })?;
+        classify_status(response.status()).inspect_err(|_| {
+            warn!(
+                "Team data request for team {team_id} got HTTP {}",
+                response.status()
+            );
+        })?;
+        let text = response.text().await.map_err(|e| {
+            warn!("Couldn't get team data body for team {team_id}: {e}");
+            PortalFetchError::Unreachable
+        })?;
         let data: Value = serde_json::from_str(&text).map_err(|e| {
             warn!("Team data for team {team_id} was not valid JSON: {e}");
             PortalFetchError::Unreachable
@@ -265,7 +288,7 @@ impl EventLogos {
     pub async fn try_new(uwhportal_url: &str, event_id: EventId) -> Result<Self, PortalFetchError> {
         let client = CLIENT_CELL.get_or_init(build_http_client);
         info!("Requesting Portal API for overlay images for event: {event_id}");
-        let text = client
+        let response = client
             .get(format!(
                 "{uwhportal_url}/api/admin/events/{}/overlay-attachments",
                 event_id.partial()
@@ -275,13 +298,17 @@ impl EventLogos {
             .map_err(|e| {
                 warn!("Couldn't request event images for event {event_id}: {e}");
                 PortalFetchError::Unreachable
-            })?
-            .text()
-            .await
-            .map_err(|e| {
-                warn!("Couldn't get event images body for event {event_id}: {e}");
-                PortalFetchError::Unreachable
             })?;
+        classify_status(response.status()).inspect_err(|_| {
+            warn!(
+                "Event images request for event {event_id} got HTTP {}",
+                response.status()
+            );
+        })?;
+        let text = response.text().await.map_err(|e| {
+            warn!("Couldn't get event images body for event {event_id}: {e}");
+            PortalFetchError::Unreachable
+        })?;
         let data: Value = serde_json::from_str(&text).map_err(|e| {
             warn!("Event images for event {event_id} were not valid JSON: {e}");
             PortalFetchError::Unreachable
@@ -568,7 +595,7 @@ pub async fn try_fetch_game_data(
     game_number: &GameNumber,
 ) -> Result<GameData, PortalFetchError> {
     let client = CLIENT_CELL.get_or_init(build_http_client);
-    let text = client
+    let response = client
         .get(format!(
             "{uwhportal_url}/api/events/{}/schedule",
             event_id.partial()
@@ -578,13 +605,17 @@ pub async fn try_fetch_game_data(
         .map_err(|e| {
             warn!("Game data request for event: {event_id}, game: {game_number} failed: {e}");
             PortalFetchError::Unreachable
-        })?
-        .text()
-        .await
-        .map_err(|e| {
-            warn!("Schedule body for event {event_id} could not be received: {e}");
-            PortalFetchError::Unreachable
         })?;
+    classify_status(response.status()).inspect_err(|_| {
+        warn!(
+            "Schedule request for event {event_id}, game {game_number} got HTTP {}",
+            response.status()
+        );
+    })?;
+    let text = response.text().await.map_err(|e| {
+        warn!("Schedule body for event {event_id} could not be received: {e}");
+        PortalFetchError::Unreachable
+    })?;
     let data: Value = serde_json::from_str(text.as_str()).map_err(|_| {
         error!("Server did not return valid JSON for event {event_id}: {text}");
         PortalFetchError::Unreachable
@@ -912,6 +943,33 @@ mod tests {
         let data: Value = serde_json::from_str(PUBLIC_SCHEDULE).unwrap();
 
         assert!(parse_game_display_info(&data, &"99".to_string()).is_none());
+    }
+
+    #[cfg(feature = "bridge")]
+    #[test]
+    fn classify_status_sorts_replies_into_retry_and_stop() {
+        use reqwest::StatusCode;
+
+        for code in [200, 204] {
+            let status = StatusCode::from_u16(code).unwrap();
+            assert_eq!(classify_status(status), Ok(()), "{code}");
+        }
+        for code in [500, 502, 503, 504, 408, 429] {
+            let status = StatusCode::from_u16(code).unwrap();
+            assert_eq!(
+                classify_status(status),
+                Err(PortalFetchError::Unreachable),
+                "{code}"
+            );
+        }
+        for code in [400, 401, 403, 404] {
+            let status = StatusCode::from_u16(code).unwrap();
+            assert_eq!(
+                classify_status(status),
+                Err(PortalFetchError::Refused),
+                "{code}"
+            );
+        }
     }
 
     /// Nothing listens on port 1, so every request to it fails at once.

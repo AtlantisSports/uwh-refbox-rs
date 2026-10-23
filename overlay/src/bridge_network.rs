@@ -391,10 +391,11 @@ fn names_match(a: &str, b: &str) -> bool {
     a.trim().to_lowercase() == b.trim().to_lowercase()
 }
 
-/// `bridge` with the portal's referees, court and start time; each team's logo when the portal
-/// team of that colour has the same name; and each player's photos and role tag from the portal
-/// player with the same cap number -- but only when that player's name matches too, so a cap
-/// number reused by a different player never shows the wrong face. When the team names match,
+/// `bridge` with the portal's referees, court and start time; and, only when the portal team of
+/// that colour has the same name, that team's logo and each player's photos and role tag from the
+/// portal player with the same cap number -- but only when that player's name matches too, so a
+/// cap number reused by a different player never shows the wrong face. When the team names
+/// differ, no logo, photo or role tag is copied for that team. When the team names match,
 /// the portal's coaches and managers (members with no cap number) are appended after the bridge's
 /// players, with their names, roles and photos as the portal has them; a different team's staff
 /// are never added. Team names, player names and caps, the game
@@ -405,12 +406,16 @@ fn with_portal_pictures(mut bridge: GameData, portal: &GameData) -> GameData {
         let same_team = names_match(&team.team_name, &portal.team_name);
         team.flag = if same_team { portal.flag.clone() } else { None };
         for member in &mut team.members {
-            let found = member.number.and_then(|number| {
-                portal
-                    .members
-                    .iter()
-                    .find(|p| p.number == Some(number) && names_match(&p.name, &member.name))
-            });
+            let found = if same_team {
+                member.number.and_then(|number| {
+                    portal
+                        .members
+                        .iter()
+                        .find(|p| p.number == Some(number) && names_match(&p.name, &member.name))
+                })
+            } else {
+                None
+            };
             if let Some(found) = found {
                 member.role = found.role.clone();
             }
@@ -475,6 +480,11 @@ fn needs_send(
 /// How long to wait before asking an unreachable portal again.
 const PORTAL_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 
+/// The longest one portal fetch may take before it is abandoned and treated as unreachable. A
+/// portal that accepts the connection and then sends nothing would otherwise leave the fetch
+/// waiting forever, so its pictures would never arrive and it would never be retried.
+const PORTAL_FETCH_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Fetches one game's portal data until it arrives, then sends it on `result_tx` tagged with the
 /// game it is for. Gives up, with a warning, when the portal says there is no such game or
 /// refuses the request; retries every [`PORTAL_RETRY_INTERVAL`] while it is unreachable.
@@ -483,13 +493,13 @@ async fn fetch_portal_game_data(
     result_tx: tokio::sync::mpsc::UnboundedSender<(PortalTarget, GameData)>,
 ) {
     loop {
-        match network::try_fetch_game_data(
-            &target.portal_url,
-            &target.event_id,
-            &target.game_number,
+        let result = tokio::time::timeout(
+            PORTAL_FETCH_TIMEOUT,
+            network::try_fetch_game_data(&target.portal_url, &target.event_id, &target.game_number),
         )
         .await
-        {
+        .unwrap_or(Err(PortalFetchError::Unreachable));
+        match result {
             Ok(data) => {
                 // The receiver lives as long as the polling loop, which outlives this task.
                 let _ = result_tx.send((target, data));
@@ -531,7 +541,13 @@ async fn fetch_event_logos(
     state_tx: crossbeam_channel::Sender<StateUpdate>,
 ) {
     loop {
-        match EventLogos::try_new(&portal_url, event_id.clone()).await {
+        let result = tokio::time::timeout(
+            PORTAL_FETCH_TIMEOUT,
+            EventLogos::try_new(&portal_url, event_id.clone()),
+        )
+        .await
+        .unwrap_or(Err(PortalFetchError::Unreachable));
+        match result {
             Ok(logos) => {
                 state_tx
                     .send(StateUpdate::EventLogos(event_id, logos))
@@ -792,6 +808,24 @@ mod tests {
         assert!(merged.black.members[0].picture.is_none());
         assert!(merged.black.members[0].geared_picture.is_none());
         assert_eq!(merged.black.members[0].name, "Ann");
+    }
+
+    #[test]
+    fn no_photo_or_role_when_the_team_names_differ() {
+        let bridge = game(
+            team("BRIDGE NAME", vec![member("Ann", 3)]),
+            team("W", vec![]),
+        );
+        let mut portal_ann = member("Ann", 3);
+        portal_ann.picture = Some(img(1));
+        portal_ann.geared_picture = Some(img(2));
+        portal_ann.role = Some("Captain".to_string());
+        let portal = game(team("PORTAL NAME", vec![portal_ann]), team("W", vec![]));
+
+        let merged = with_portal_pictures(bridge, &portal);
+        assert!(merged.black.members[0].picture.is_none());
+        assert!(merged.black.members[0].geared_picture.is_none());
+        assert!(merged.black.members[0].role.is_none());
     }
 
     #[test]

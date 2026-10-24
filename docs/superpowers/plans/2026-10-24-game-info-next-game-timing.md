@@ -81,7 +81,7 @@ Added 2026-10-24 (PO-approved scope widening). PO's second symptom: during the b
 
 Review Focus additions:
 6. **A court finished** (blank next game) between games: the feed figure is the committed config's, as today. Covered by the `None` case.
-7. **Half-time and other in-game breaks** must keep reporting the current game's next period. Covered by the `FirstHalf` assertion.
+7. **Half-time and other in-game breaks** must keep reporting the current game's next period. Covered by the `FirstHalf` and `HalfTime` assertions; the test's playoff rule has a different half-time (180s vs 120s) so they can fail (seen failing on a mutant that passes `BetweenGames` as the period).
 
 ## Verification (pre-PR)
 
@@ -93,4 +93,5 @@ Review Focus additions:
 
 - Task 1: the helper used a let-chain (`if … && let Some(…)`), which needs Rust 1.88 against MSRV 1.85 and compiled only because the local toolchain is newer. Rewritten as a `match` with a guard before commit `02fdf114`.
 - Scope widened 2026-10-24 (PO): Task 2 added for the overlay / feed symptom. Global Constraints' "app/mod.rs only, no engine changes" is superseded for Task 2 only. The engine's *config* still changes only at kickoff; only the reported figure moves.
-- Check 2 gains a step: the overlay's pre-game page during the same break shows the upcoming game's half length.
+- Check 2 gains a step: the overlay's pre-game page during the same break shows the upcoming game's half length. If an LED panel is available with hide time on, the last 10 s of that break show the upcoming game's half length too.
+- Task 2 review (Opus, 2026-10-24): approve with fixes; production code unchanged. Important 1 (the half-time check could not fail, because finals_timing_rule's half-time equals the RR's) fixed in the follow-up commit. Minors not taken: a third copy of golden's `tick` in the test, and a TimingRule clone per snapshot between games (negligible). Full review: session scratchpad `review-task2.md`.

@@ -3586,7 +3586,7 @@ pub struct NextGameInfo {
 /// They have to describe the same game. Between games that is the
 /// upcoming game, whose timing rule the engine only adopts at kickoff, so the
 /// committed config still holds the game just played. During a game, or when the
-/// upcoming game carries no rule (court finished, manual mode), the committed
+/// upcoming game is unknown or carries no rule (court finished, manual mode), the committed
 /// config is the right answer.
 pub fn displayed_game_config<'a>(
     period: GamePeriod,
@@ -13033,17 +13033,26 @@ mod test {
         initialize();
         let playoff = TimingRule {
             half_play_duration: Duration::from_secs(900),
+            // Differs from the round robin's 120s, so a figure read from the wrong
+            // game cannot pass the in-game checks below by coincidence.
+            half_time_duration: Duration::from_secs(180),
             ..finals_timing_rule()
         };
         let (mut tm, t0) = round_robin_game_with_next(Some(playoff));
 
-        // Half-time is the current game's next period: unchanged.
+        // During a game the feed describes that game's own next period: unchanged.
         let now = t0 + Duration::from_secs(1);
         updater_tick(&mut tm, now);
         assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
         assert_eq!(
             tm.generate_snapshot(now).unwrap().next_period_len_secs,
             Some(120)
+        );
+        // Half-time is where the LED panel's hide-time swap shows this figure.
+        let now = tick_until(&mut tm, now, GamePeriod::HalfTime);
+        assert_eq!(
+            tm.generate_snapshot(now).unwrap().next_period_len_secs,
+            Some(420)
         );
 
         // Between games the feed describes the upcoming game.

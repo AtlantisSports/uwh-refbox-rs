@@ -2007,6 +2007,21 @@ impl RefBoxApp {
         !matches!(self.source, GameSource::Manual)
     }
 
+    /// The timing the main page and Game info show: the config for the Current
+    /// row, and the Game Block for the Next row.
+    ///
+    /// The `tm` guard lives only inside this call, so callers can lock `tm` again
+    /// in the same expression (the mutex is not reentrant).
+    fn displayed_timing(&self) -> (GameConfig, Duration) {
+        let tm = self.tm.lock();
+        let next_game = tm.next_game_info().as_ref();
+        (
+            displayed_game_config(self.snapshot.current_period, next_game, &self.config.game)
+                .into_owned(),
+            upcoming_game_config(next_game, &self.config.game).game_block,
+        )
+    }
+
     /// The source reads should resolve against: the one staged in the editor
     /// while it is open, the committed one otherwise.
     ///
@@ -8266,12 +8281,7 @@ impl RefBoxApp {
 
         let mut main_view = column![match self.app_state {
             AppState::MainPage => {
-                let next_game = self.tm.lock().next_game_info().clone();
-                let game_config = displayed_game_config(
-                    self.snapshot.current_period,
-                    next_game.as_ref(),
-                    &self.config.game,
-                );
+                let (game_config, next_game_block) = self.displayed_timing();
                 let behind_schedule = if self.config.show_behind_schedule_time {
                     self.tm.lock().behind_schedule(Instant::now())
                 } else {
@@ -8280,7 +8290,7 @@ impl RefBoxApp {
                 build_main_view(
                     data,
                     &game_config,
-                    upcoming_game_config(next_game.as_ref(), &self.config.game).game_block,
+                    next_game_block,
                     self.uses_remote(),
                     self.schedule.as_ref(),
                     self.config.fouls_tracked(),
@@ -8347,18 +8357,11 @@ impl RefBoxApp {
                 )
             }
             AppState::GameDetailsPage(is_refreshing) => {
-                // Taken in its own statement so the `tm` lock is released before
-                // the builder arguments lock it again (the mutex is not reentrant).
-                let next_game = self.tm.lock().next_game_info().clone();
-                let game_config = displayed_game_config(
-                    self.snapshot.current_period,
-                    next_game.as_ref(),
-                    &self.config.game,
-                );
+                let (game_config, next_game_block) = self.displayed_timing();
                 build_game_info_page(
                     data,
                     &game_config,
-                    upcoming_game_config(next_game.as_ref(), &self.config.game).game_block,
+                    next_game_block,
                     self.uses_remote(),
                     is_refreshing,
                     self.schedule.as_ref(),

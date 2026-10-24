@@ -40,6 +40,9 @@ pub struct Config {
     pub roster_end_secs: u32,
     /// Privacy of the videos and playlists we create: `unlisted`, `public` or `private`.
     pub privacy: String,
+    /// One playlist per day and court (the default), or one for the whole event.
+    #[serde(default)]
+    pub playlist_grouping: PlaylistGrouping,
     /// Google sign-in file downloaded from the Cloud console. Relative paths are relative to
     /// the config file's folder.
     pub client_secret_file: PathBuf,
@@ -86,6 +89,16 @@ fn default_quota_daily_limit() -> u32 {
 
 fn default_quota_share_percent() -> u8 {
     50
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PlaylistGrouping {
+    /// "<event> · Day N · Court X" (ADR 026).
+    #[default]
+    DayAndCourt,
+    /// One playlist named after the event, every day's games added after the earlier days'.
+    Event,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -161,6 +174,7 @@ impl Default for Config {
             roster_start_secs: 181,
             roster_end_secs: 30,
             privacy: "unlisted".to_string(),
+            playlist_grouping: PlaylistGrouping::DayAndCourt,
             client_secret_file: PathBuf::from("client_secret.json"),
             web_port: 8090,
             pin: String::new(),

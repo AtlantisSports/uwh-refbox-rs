@@ -1,7 +1,7 @@
 //! Reads an event's schedule from uwhportal and turns it into the list of videos and playlists
 //! we want on YouTube.
 
-use crate::BoxError;
+use crate::{BoxError, config::PlaylistGrouping};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use time::{Date, OffsetDateTime};
@@ -98,6 +98,34 @@ pub fn playlist_title(event_name: &str, day: usize, court: &str) -> String {
         cut.push('…');
         cut
     }
+}
+
+/// The playlist a day and court's games go into, as `grouping` chooses.
+pub fn playlist_title_for(
+    grouping: PlaylistGrouping,
+    event_name: &str,
+    day: usize,
+    court: &str,
+) -> String {
+    match grouping {
+        PlaylistGrouping::DayAndCourt => playlist_title(event_name, day, court),
+        PlaylistGrouping::Event => event_playlist_title(event_name),
+    }
+}
+
+/// The whole event's playlist: the event's name, shortened if YouTube would reject it.
+pub fn event_playlist_title(event_name: &str) -> String {
+    // YouTube does not allow angle brackets in titles.
+    let event_name = event_name.replace(['<', '>'], "");
+    if event_name.chars().count() <= MAX_PLAYLIST_TITLE_CHARS {
+        return event_name;
+    }
+    let mut cut: String = event_name
+        .chars()
+        .take(MAX_PLAYLIST_TITLE_CHARS - 1)
+        .collect();
+    cut.push('…');
+    cut
 }
 
 pub fn video_title(event_name: &str, game: &PlannedGame) -> String {
@@ -437,6 +465,26 @@ mod tests {
             .expect("day and court kept");
         assert!(event_part.ends_with('…'));
         assert!(event_part.starts_with('é'));
+    }
+
+    #[test]
+    fn event_playlist_is_named_after_the_event_on_every_day_and_court() {
+        let title =
+            |day, court| playlist_title_for(PlaylistGrouping::Event, "<Cup> 2026", day, court);
+        assert_eq!(title(1, "1"), "Cup 2026");
+        assert_eq!(title(2, "1"), title(1, "1"));
+        assert_eq!(title(1, "2"), title(1, "1"));
+        assert_eq!(
+            playlist_title_for(PlaylistGrouping::DayAndCourt, "Cup 2026", 2, "1"),
+            "Cup 2026 · Day 2 · Court 1"
+        );
+    }
+
+    #[test]
+    fn long_event_name_is_shortened_in_event_playlist_title() {
+        let title = event_playlist_title(&"é".repeat(200));
+        assert_eq!(title.chars().count(), MAX_PLAYLIST_TITLE_CHARS);
+        assert!(title.ends_with('…'));
     }
 
     #[test]

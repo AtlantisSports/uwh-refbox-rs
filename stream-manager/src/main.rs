@@ -27,7 +27,7 @@ mod web;
 mod youtube;
 
 use config::Config;
-use portal::{playlist_title, video_title};
+use portal::{playlist_title_for, video_title};
 use youtube::YouTube;
 
 /// Error type used throughout; thread-safe so errors can come back from background tasks.
@@ -415,7 +415,7 @@ async fn show_plan(config: &Config) -> Result<(), BoxError> {
         };
         println!(
             "Playlist \"{}\" — {} videos{note}",
-            playlist_title(&plan.event_name, day, &court),
+            playlist_title_for(config.playlist_grouping, &plan.event_name, day, &court),
             games.len()
         );
         for game in games {

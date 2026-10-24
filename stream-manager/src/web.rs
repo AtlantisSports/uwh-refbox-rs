@@ -477,6 +477,9 @@ struct SettingsBody {
     portal_url: String,
     event_slug: String,
     privacy: String,
+    /// Missing from an older page: keeps the setting in use.
+    #[serde(default)]
+    playlist_grouping: Option<crate::config::PlaylistGrouping>,
     switch_lead_secs: u32,
     roster_start_secs: u32,
     roster_end_secs: u32,
@@ -564,6 +567,7 @@ fn settings_from(body: SettingsBody, current: &Config, local: bool) -> Result<Co
         portal_url: body.portal_url,
         event_slug: body.event_slug.trim().to_string(),
         privacy: body.privacy,
+        playlist_grouping: body.playlist_grouping.unwrap_or(current.playlist_grouping),
         switch_lead_secs: body.switch_lead_secs,
         roster_start_secs: body.roster_start_secs,
         roster_end_secs: body.roster_end_secs,

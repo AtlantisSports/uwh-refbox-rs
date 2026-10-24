@@ -2012,12 +2012,11 @@ impl RefBoxApp {
     ///
     /// The `tm` guard lives only inside this call, so callers can lock `tm` again
     /// in the same expression (the mutex is not reentrant).
-    fn displayed_timing(&self) -> (GameConfig, Duration) {
+    fn displayed_timing(&self) -> (Cow<'_, GameConfig>, Duration) {
         let tm = self.tm.lock();
         let next_game = tm.next_game_info().as_ref();
         (
-            displayed_game_config(self.snapshot.current_period, next_game, &self.config.game)
-                .into_owned(),
+            displayed_game_config(self.snapshot.current_period, next_game, &self.config.game),
             upcoming_game_config(next_game, &self.config.game).game_block,
         )
     }

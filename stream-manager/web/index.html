@@ -625,6 +625,8 @@ async function previewPrepare() {
   const sel = selection();
   if (!sel.courts.length) { alert('Choose at least one court'); return; }
   const mine = ++previewRequest;
+  // Create waits for this preview: the one on screen is being replaced.
+  previewed = null; $('prep-run').disabled = true;
   $('prep-preview').innerHTML = '<p class="muted">Checking YouTube…</p>';
   try {
     const r = await api('/api/prepare/preview', { method: 'POST', body: sel });

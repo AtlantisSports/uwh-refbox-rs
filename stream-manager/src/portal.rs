@@ -1,7 +1,7 @@
 //! Reads an event's schedule from uwhportal and turns it into the list of videos and playlists
 //! we want on YouTube.
 
-use crate::{BoxError, config::PlaylistGrouping};
+use crate::BoxError;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use time::{Date, OffsetDateTime};
@@ -74,9 +74,9 @@ impl EventPlan {
     }
 }
 
-/// Named after the event, so a new tournament on the same channel never adopts an earlier
-/// tournament's playlist. A long event name is shortened, never dropped, so the day and court
-/// always show.
+/// The per-day-and-court playlist title earlier versions made. Kept so an event prepared by
+/// them keeps its playlist (see `adopted_playlist` in prepare.rs). A long event name is
+/// shortened, never dropped, so the day and court always show.
 pub fn playlist_title(event_name: &str, day: usize, court: &str) -> String {
     // YouTube does not allow angle brackets in titles.
     let event_name = event_name.replace(['<', '>'], "");
@@ -97,19 +97,6 @@ pub fn playlist_title(event_name: &str, day: usize, court: &str) -> String {
         let mut cut: String = full.chars().take(MAX_PLAYLIST_TITLE_CHARS - 1).collect();
         cut.push('…');
         cut
-    }
-}
-
-/// The playlist a day and court's games go into, as `grouping` chooses.
-pub fn playlist_title_for(
-    grouping: PlaylistGrouping,
-    event_name: &str,
-    day: usize,
-    court: &str,
-) -> String {
-    match grouping {
-        PlaylistGrouping::DayAndCourt => playlist_title(event_name, day, court),
-        PlaylistGrouping::Event => event_playlist_title(event_name),
     }
 }
 
@@ -468,16 +455,8 @@ mod tests {
     }
 
     #[test]
-    fn event_playlist_is_named_after_the_event_on_every_day_and_court() {
-        let title =
-            |day, court| playlist_title_for(PlaylistGrouping::Event, "<Cup> 2026", day, court);
-        assert_eq!(title(1, "1"), "Cup 2026");
-        assert_eq!(title(2, "1"), title(1, "1"));
-        assert_eq!(title(1, "2"), title(1, "1"));
-        assert_eq!(
-            playlist_title_for(PlaylistGrouping::DayAndCourt, "Cup 2026", 2, "1"),
-            "Cup 2026 · Day 2 · Court 1"
-        );
+    fn event_playlist_is_named_after_the_event() {
+        assert_eq!(event_playlist_title("<Cup> 2026"), "Cup 2026");
     }
 
     #[test]

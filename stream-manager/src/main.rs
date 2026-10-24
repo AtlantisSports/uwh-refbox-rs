@@ -27,7 +27,7 @@ mod web;
 mod youtube;
 
 use config::Config;
-use portal::{playlist_title_for, video_title};
+use portal::{event_playlist_title, video_title};
 use youtube::YouTube;
 
 /// Error type used throughout; thread-safe so errors can come back from background tasks.
@@ -405,7 +405,8 @@ async fn save_thumbnails(
 
 async fn show_plan(config: &Config) -> Result<(), BoxError> {
     let plan = portal::fetch_event_plan(&config.portal_url, &config.event_slug).await?;
-    println!("Event: {}  ({} games)\n", plan.event_name, plan.games.len());
+    println!("Event: {}  ({} games)", plan.event_name, plan.games.len());
+    println!("Playlist \"{}\"\n", event_playlist_title(&plan.event_name));
     for ((day, court), games) in plan.playlists() {
         let streamed = config.courts.iter().any(|c| c.name == court);
         let note = if streamed {
@@ -413,11 +414,7 @@ async fn show_plan(config: &Config) -> Result<(), BoxError> {
         } else {
             "   (court not in config)"
         };
-        println!(
-            "Playlist \"{}\" — {} videos{note}",
-            playlist_title_for(config.playlist_grouping, &plan.event_name, day, &court),
-            games.len()
-        );
+        println!("Day {day} · Court {court} — {} videos{note}", games.len());
         for game in games {
             let start = game
                 .start

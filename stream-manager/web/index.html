@@ -202,12 +202,6 @@
               </select>
             </label>
             <p class="warn-text hidden" id="s-public-warning">⚠ New videos and playlists will be visible to everyone.</p>
-            <label class="field">Playlists
-              <select id="s-playlists">
-                <option value="day-and-court">One playlist per day and court</option>
-                <option value="event">One playlist for the whole event</option>
-              </select>
-            </label>
           </div>
           <div class="card" style="margin-top:16px" id="card-portal-link">
             <h2>Portal watch links</h2>
@@ -682,7 +676,6 @@ async function loadSettings() {
     $('s-portal').innerHTML = r.portals.map(p => `<option value="${esc(p.url)}">${esc(p.name)}</option>`).join('');
     $('s-portal').value = settings.portal_url;
     $('s-privacy').value = settings.privacy;
-    $('s-playlists').value = settings.playlist_grouping || 'day-and-court';
     $('s-practice').checked = settings.practice_mode;
     $('s-lead').value = settings.switch_lead_secs;
     $('s-rstart').value = settings.roster_start_secs;
@@ -820,7 +813,6 @@ function privacyWarning() { $('s-public-warning').classList.toggle('hidden', $('
 async function saveSettings() {
   const body = {
     portal_url: $('s-portal').value, event_slug: $('s-event').value, privacy: $('s-privacy').value,
-    playlist_grouping: $('s-playlists').value,
     switch_lead_secs: Number($('s-lead').value), roster_start_secs: Number($('s-rstart').value),
     roster_end_secs: Number($('s-rend').value), courts: readCourtRows(),
     practice_mode: $('s-practice').checked,

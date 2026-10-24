@@ -7,8 +7,8 @@
 
 use crate::{
     BoxError,
-    config::{Config, CourtConfig, PlaylistGrouping, StreamMode},
-    portal::{EventPlan, PlannedGame, TeamArt, playlist_title, playlist_title_for, video_title},
+    config::{Config, CourtConfig, StreamMode},
+    portal::{EventPlan, PlannedGame, TeamArt, event_playlist_title, playlist_title, video_title},
     quota,
     thumbnail::{self, DESIGN_VERSION, LogoShape, MissingGlyph, Painter},
     youtube::{
@@ -278,17 +278,14 @@ fn portal_event_page(config: &Config) -> String {
 /// The channel playlist Prepare made for this event under `title`, if there is one. Another
 /// event can have a playlist with the same title (e.g. a yearly event's name), so the title
 /// alone isn't enough: Prepare puts the event's portal page in every playlist it creates.
-/// With one playlist for the whole event, an event prepared earlier with one playlist per day
-/// and court keeps using its first such playlist, so the earlier days' videos stay in the same
-/// playlist as the later ones. Returns that playlist's title in the record and its id.
+/// The whole event has one playlist. An event prepared by an earlier version, which made one
+/// playlist per day and court, keeps using its first such playlist, so the earlier days' videos
+/// stay in the same playlist as the later ones. Returns that playlist's title in the record and
+/// its id.
 fn adopted_playlist<'s>(
-    config: &Config,
     plan: &EventPlan,
     state: &'s EventState,
 ) -> Option<(&'s String, &'s String)> {
-    if config.playlist_grouping != PlaylistGrouping::Event {
-        return None;
-    }
     plan.playlists().into_keys().find_map(|(day, court)| {
         state
             .playlists
@@ -1038,12 +1035,7 @@ fn select_targets<'a>(
             .take(selection.limit.unwrap_or(usize::MAX))
             .collect();
         targets.push(Target {
-            playlist_title: playlist_title_for(
-                config.playlist_grouping,
-                &plan.event_name,
-                day,
-                &court_name,
-            ),
+            playlist_title: event_playlist_title(&plan.event_name),
             court,
             games,
         });
@@ -1093,7 +1085,7 @@ pub fn preview(
         work.playlists
             .push((target.playlist_title.clone(), target.games.len()));
         if !state.playlists.contains_key(&target.playlist_title)
-            && adopted_playlist(config, plan, state).is_none()
+            && adopted_playlist(plan, state).is_none()
             && own_playlist(
                 &lookups.existing_playlists,
                 &target.playlist_title,
@@ -1183,7 +1175,7 @@ pub async fn run(
         let playlist_id = match state.playlists.get(title) {
             Some(id) => id.clone(),
             None => {
-                let adopted = adopted_playlist(config, plan, &state);
+                let adopted = adopted_playlist(plan, &state);
                 let id = if let Some((old_title, id)) = adopted {
                     log(format!(
                         "Using playlist \"{old_title}\" for the whole event (rename it in YouTube Studio if you like)"
@@ -2715,48 +2707,34 @@ mod tests {
     }
 
     #[test]
-    fn with_one_playlist_per_event_later_days_use_the_first_days_playlist() {
+    fn an_event_prepared_with_per_day_playlists_keeps_its_first_days_playlist() {
         let plan = two_day_plan();
         let mut state = EventState::default();
         state
             .playlists
             .insert(playlist_title(&plan.event_name, 1, "1"), "day-1".into());
-        let per_event = Config {
-            playlist_grouping: PlaylistGrouping::Event,
-            ..Default::default()
-        };
         // Day 2 goes into the playlist made for day 1: nothing new to create.
         assert_eq!(
-            playlists_previewed(&per_event, &state, 2),
+            playlists_previewed(&Config::default(), &state, 2),
             (0, vec!["Test Cup".to_string()])
         );
         assert_eq!(
-            adopted_playlist(&per_event, &plan, &state).map(|(_, id)| id.as_str()),
+            adopted_playlist(&plan, &state).map(|(_, id)| id.as_str()),
             Some("day-1")
         );
-        // One playlist per day and court (the default) still makes day 2 its own playlist.
-        assert_eq!(
-            playlists_previewed(&Config::default(), &state, 2),
-            (1, vec!["Test Cup · Day 2 · Court 1".to_string()])
-        );
-        assert_eq!(adopted_playlist(&Config::default(), &plan, &state), None);
     }
 
     #[test]
-    fn a_new_event_with_one_playlist_per_event_makes_one_named_after_the_event() {
-        let per_event = Config {
-            playlist_grouping: PlaylistGrouping::Event,
-            ..Default::default()
-        };
+    fn a_new_event_gets_one_playlist_named_after_the_event() {
         let mut state = EventState::default();
         assert_eq!(
-            playlists_previewed(&per_event, &state, 1),
+            playlists_previewed(&Config::default(), &state, 1),
             (1, vec!["Test Cup".to_string()])
         );
         // Once made, the next day adds to it.
         state.playlists.insert("Test Cup".into(), "event".into());
         assert_eq!(
-            playlists_previewed(&per_event, &state, 2),
+            playlists_previewed(&Config::default(), &state, 2),
             (0, vec!["Test Cup".to_string()])
         );
     }

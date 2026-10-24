@@ -94,9 +94,9 @@ Added 2026-10-24 (PO ruling, option 1 of 3, asked in the engine lane's chat). Pr
 - Modify: `refbox/src/app/mod.rs`: the `GameDetailsPage` arm passes `upcoming_game_config(next_game.as_ref(), &self.config.game).game_block`.
 - Modify: `refbox/src/app/view_builders/main_view.rs` (added during execution; PO ruling 2026-10-24, "fix both"): the main page's table under the clock calls `game_info_rows` too, with the same in-game Next block. `build_main_view` takes `next_game_block` and passes it to both calls; the `MainPage` arm passes the same `upcoming_game_config(..).game_block`, so the two screens agree.
 
-- [ ] Step 1: failing tests (table + `upcoming_game_config`), run, see them fail
-- [ ] Step 2: implement, run the touched tests, clippy, fmt; leave uncommitted
-- [ ] Step 3: review (the branch's final pre-PR `code-review` covers this task, as the last one), commit `fix(refbox): show the next game's own Game Block on Game Info during play`
+- [x] Step 1: failing tests (table + `upcoming_game_config`), run, see them fail
+- [x] Step 2: implement, run the touched tests, clippy, fmt; leave uncommitted
+- [x] Step 3: review (the branch's final pre-PR `code-review` covers this task, as the last one), commit `fix(refbox): show the next game's own Game Block in the Next row during play`
 
 Review Focus additions:
 8. Manual mode / a next game with no timing rule: the Next block shows the committed Game Block, as today (correct: the engine keeps that config at kickoff).
@@ -115,7 +115,10 @@ Review Focus additions:
 - Scope widened 2026-10-24 (PO): Task 2 added for the overlay / feed symptom. Global Constraints' "app/mod.rs only, no engine changes" is superseded for Task 2 only. The engine's *config* still changes only at kickoff; only the reported figure moves.
 - Check 2 gains a step: the overlay's pre-game page during the same break shows the upcoming game's half length. If an LED panel is available with hide time on, the last 10 s of that break show the upcoming game's half length too.
 - Task 2 review (Opus, 2026-10-24): approve with fixes; production code unchanged. Important 1 (the half-time check could not fail, because finals_timing_rule's half-time equals the RR's) fixed in the follow-up commit. Minors not taken: a third copy of golden's `tick` in the test, and a TimingRule clone per snapshot between games (negligible).
-- Pre-PR `code-review` (high, 2026-10-24) on `99325032`: 10 findings, triaged against the code.
-  - Taken: a court-finished engine test (the `None` test only covered a next game with no timing rule); the feed tests now drive the engine's real `updater_tick` instead of a third copy of golden's `tick`; this plan's boxes ticked and its scratchpad citation dropped; commit `99325032` reworded from `test(` to `fix(refbox)` (unpushed).
+- Pre-PR `code-review` (high, 2026-10-24) on `b4376274`: 10 findings, triaged against the code.
+  - Taken: a court-finished engine test (the `None` test only covered a next game with no timing rule); the feed tests now drive the engine's real `updater_tick` instead of a third copy of golden's `tick`; this plan's boxes ticked and its scratchpad citation dropped; commit `b4376274` reworded from `test(` to `fix(refbox)` (unpushed).
   - Declined: moving the choice into the engine under one lock (the kickoff flicker it fixes needs a redraw in the milliseconds before the new snapshot arrives, the main page has had it on master, and it would change where in-game timing is read from); the per-snapshot and per-redraw copies (negligible); two sources for the stop-clock row (between games both read the upcoming game).
   - Raised with the PO: during a game, Game Info's "Next" row shows the game in progress's Game Block rather than the upcoming game's. Older than this branch. PO ruled 2026-10-24: fix it here (Task 3), which supersedes Global Constraints' "no view-builder changes" for Task 3.
+- Pre-PR `code-review` round 2 (high, 2026-10-24) on `c4878166`, the whole branch: 6 findings, triaged against the code.
+  - Taken: the `MainPage` and `GameDetailsPage` arms of `view` repeated the same three steps (copy the next game, pick the displayed config, pick the next Game Block). Both now call one `RefBoxApp::displayed_timing()`, which locks `tm` once, borrows the next game instead of copying it, and releases the lock before the builder arguments lock it again. Same figures on both screens, no behaviour change. This plan's Task 3 boxes ticked and its commit title corrected.
+  - Declined: dashing the Next row when the next game's rule has no Game Block of its own. The derived figure is what the engine plays that game with (`start_game` adopts the rule), and what the Current row shows after the whistle; dashing only the Next row would bring back the flip at the whistle that Task 3 removed. Also declined: the snapshot's period against the live engine's next game (a window of milliseconds, and with no next game the committed block is what the engine keeps), and the second rule conversion per redraw (negligible).

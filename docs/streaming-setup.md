@@ -171,7 +171,7 @@ single file; the overlay's images and fonts are built into it.
 1. Double-click **overlay-bridge**. A console window opens and the **status page** opens in the
    browser at `http://127.0.0.1:8098`. (Port 8099 is taken by vMix, so the bridge uses 8098.)
 2. On the status page, set the **refbox** to this court's refbox (its IP address, port `19540`;
-   `8000` for a refbox from release 0.5.2 or earlier).
+   `8000` for a refbox from release 0.5.1 or earlier).
    - Refbox on **this same PC**: use `127.0.0.1:19540`. Every 127.x address means "this PC".
    - Refbox on **another device** (the usual setup at the pool): use that device's network address,
      e.g. `192.168.1.20:19540`.
@@ -548,7 +548,7 @@ verification).
 | Overlay shows no team names or scores | The overlay can't reach the bridge. Check `bridge_url` in `%APPDATA%\overlay\config\default-config.toml` matches the bridge's port (`http://127.0.0.1:8098`), and that the bridge's status page shows the refbox connected. Restart the overlay after changing the file. |
 | Stream Manager: "Refbox connected, waiting for its first update" (amber) | Connected, but the refbox hasn't sent a game update yet. It only sends while something changes, e.g. a running clock. Start a clock or the break countdown on the refbox. |
 | Stream Manager: "Refbox not responding: no countdown for 10 s, automatic switching paused" (red) | During the break the refbox sends its countdown every second, and nothing has come for 10 s (e.g. its Wi-Fi dropped). Automatic switching waits until it sends again. Check the refbox and its network. If a switch is due, press **Switch now**. |
-| Stream Manager: "Refbox data can't be read: check the refbox port is 19540 (8000 for an older refbox)" (red) | Connected to the refbox's other feed port (19541, or 8001 on an older refbox), or to another program such as Companion, instead of its game-data port. In Settings → Courts set the refbox port to **19540** (**8000** for a refbox from release 0.5.2 or earlier). |
+| Stream Manager: "Refbox data can't be read: check the refbox port is 19540 (8000 for an older refbox)" (red) | Connected to the refbox's other feed port (19541, or 8001 on an older refbox), or to another program such as Companion, instead of its game-data port. In Settings → Courts set the refbox port to **19540** (**8000** for a refbox from release 0.5.1 or earlier). |
 | Bridge's refbox scan lists the same refbox many times at 127.0.0.x | Older bridge versions did this on Windows (every 127.x is "this PC"). Pick `127.0.0.1:19540`; the current version lists it once. |
 | Settings: "The event … may only use letters, digits and dashes" | The event name isn't a portal event name. Pick the event from the list again. |
 | Signing in is slow to say "Wrong PIN" | After a wrong PIN the next try waits longer each time (up to 30 s). Check the PIN. The wait resets 15 minutes after the last wrong PIN. |

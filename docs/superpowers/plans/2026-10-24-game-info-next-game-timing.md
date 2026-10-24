@@ -45,15 +45,15 @@
 **Interfaces:**
 - Produces: `fn displayed_game_config<'a>(period: GamePeriod, next_game: Option<&NextGameInfo>, committed: &'a GameConfig) -> Cow<'a, GameConfig>`, a free function in `app/mod.rs`. `Cow::Owned(timing.clone().into())` when `period == BetweenGames` and `next_game` has `Some(timing)`; otherwise `Cow::Borrowed(committed)`.
 
-- [ ] **Step 1: Write the failing tests** in `displayed_game_config_tests`. Build a `TimingRule` with `half_play_duration: 900s` (copy the field list of `finals_timing_rule()` in `tournament_manager/mod.rs`) and a committed `GameConfig { half_play_duration: 420s, ..Default::default() }`.
+- [x] **Step 1: Write the failing tests** in `displayed_game_config_tests`. Build a `TimingRule` with `half_play_duration: 900s` (copy the field list of `finals_timing_rule()` in `tournament_manager/mod.rs`) and a committed `GameConfig { half_play_duration: 420s, ..Default::default() }`.
   - (a) `between_games_shows_the_next_games_timing`: `BetweenGames` + next timing `Some` → `half_play_duration == 900s`
   - (b) `between_games_without_a_timing_rule_shows_the_committed_config`: `BetweenGames` with `next_game == None`, and again with `Some(NextGameInfo { timing: None, .. })` → 420s both times
   - (c) `during_a_game_shows_the_game_in_progress`: `FirstHalf` + next timing `Some` → 420s
-- [ ] **Step 2: Run, expect a compile failure** (function missing): `cargo test -p refbox --bin refbox displayed_game_config -- --test-threads=1`
-- [ ] **Step 3: Implement `displayed_game_config`** with the signature above.
-- [ ] **Step 4: Route both arms through it.** MainPage: replace the inline `new_config`/`game_config` block with a call using `self.snapshot.current_period`, `self.tm.lock().next_game_info().as_ref()` and `&self.config.game`, and pass `&game_config` on. GameDetailsPage: same call, replacing `&self.config.game`. Take the lock in a short scope, not across the builder call (the builder args already lock `self.tm` again).
-- [ ] **Step 5: Run the tests, expect PASS**, then `just check` in the worktree (`--test-threads=1` if ALSA flakes appear; see memory `reference_concurrent_refboxes_fail_tests_on_alsa`).
-- [ ] **Step 6: Commit** `fix(refbox): show the upcoming game's timing on Game Info between games`
+- [x] **Step 2: Run, expect a compile failure** (function missing): `cargo test -p refbox --bin refbox displayed_game_config -- --test-threads=1`
+- [x] **Step 3: Implement `displayed_game_config`** with the signature above.
+- [x] **Step 4: Route both arms through it.** MainPage: replace the inline `new_config`/`game_config` block with a call using `self.snapshot.current_period`, `self.tm.lock().next_game_info().as_ref()` and `&self.config.game`, and pass `&game_config` on. GameDetailsPage: same call, replacing `&self.config.game`. Take the lock in a short scope, not across the builder call (the builder args already lock `self.tm` again).
+- [x] **Step 5: Run the tests, expect PASS**, then `just check` in the worktree (`--test-threads=1` if ALSA flakes appear; see memory `reference_concurrent_refboxes_fail_tests_on_alsa`).
+- [x] **Step 6: Commit** `fix(refbox): show the upcoming game's timing on Game Info between games`
 
 ### Task 2: The live feed's "next period length" describes the upcoming game too
 
@@ -69,18 +69,18 @@ Added 2026-10-24 (PO-approved scope widening). PO's second symptom: during the b
 - Consumes: `displayed_game_config(period, next_game, committed) -> Cow<'a, GameConfig>` (Task 1, unchanged signature and body)
 - Produces: the same function at `crate::tournament_manager::displayed_game_config`
 
-- [ ] **Step 1: Write the failing engine test** `the_feed_describes_the_upcoming_game_between_games` in `tournament_manager/mod.rs` tests. RR config `half_play_duration: 420s, half_time_duration: 120s` and a score of 1–0 so the game ends after the second half. `start_play_now`, then `set_next_game` with timing `half_play_duration: 900s`. Drive the real updater sequence (the `tick` shape in `tournament_manager/golden/mod.rs`) one second at a time:
+- [x] **Step 1: Write the failing engine test** `the_feed_describes_the_upcoming_game_between_games` in `tournament_manager/mod.rs` tests. RR config `half_play_duration: 420s, half_time_duration: 120s` and a score of 1–0 so the game ends after the second half. `start_play_now`, then `set_next_game` with timing `half_play_duration: 900s`. Drive the real updater sequence (the `tick` shape in `tournament_manager/golden/mod.rs`) one second at a time:
   - during `FirstHalf`, `generate_snapshot(now).next_period_len_secs == Some(120)` (the RR half-time; unchanged behaviour)
   - on reaching `BetweenGames`, `next_period_len_secs == Some(900)`
   - after the PO1 kickoff (`FirstHalf` again), `tm.config().half_play_duration == 900s`
   - plus a break with `next_game` timing `None` → `Some(420)`
-- [ ] **Step 2: Run it, expect FAIL** at the `BetweenGames` assertion (420 ≠ 900): `cargo test -p refbox --bin refbox the_feed_describes_the_upcoming_game -- --test-threads=1`
-- [ ] **Step 3: Move the function and its tests**, then in `generate_snapshot` compute `next_period_len_secs` from `displayed_game_config(self.current_period, self.next_game.as_ref(), &self.config)`. `self.config` itself is NOT changed; only the figure reported.
-- [ ] **Step 4: Run** the new test, `displayed_game_config`, and the whole `tournament_manager` + `golden` tests (`cargo test -p refbox --bin refbox tournament_manager -- --test-threads=1`); clippy `-p refbox -- -D warnings`; `cargo fmt --all`. Leave uncommitted.
-- [ ] **Step 5: Commit** `fix(refbox): report the upcoming game's period length in the feed between games`
+- [x] **Step 2: Run it, expect FAIL** at the `BetweenGames` assertion (420 ≠ 900): `cargo test -p refbox --bin refbox the_feed_describes_the_upcoming_game -- --test-threads=1`
+- [x] **Step 3: Move the function and its tests**, then in `generate_snapshot` compute `next_period_len_secs` from `displayed_game_config(self.current_period, self.next_game.as_ref(), &self.config)`. `self.config` itself is NOT changed; only the figure reported.
+- [x] **Step 4: Run** the new test, `displayed_game_config`, and the whole `tournament_manager` + `golden` tests (`cargo test -p refbox --bin refbox tournament_manager -- --test-threads=1`); clippy `-p refbox -- -D warnings`; `cargo fmt --all`. Leave uncommitted.
+- [x] **Step 5: Commit** `fix(refbox): report the upcoming game's period length in the feed between games`
 
 Review Focus additions:
-6. **A court finished** (blank next game) between games: the feed figure is the committed config's, as today. Covered by the `None` case.
+6. **A court finished** (blank next game) between games: the feed figure is the committed config's, as today. Covered by `the_feed_describes_the_finished_game_once_the_court_is_finished` (added in the pre-PR fix round); the `None` test covers a next game with no timing rule, which is a different input.
 7. **Half-time and other in-game breaks** must keep reporting the current game's next period. Covered by the `FirstHalf` and `HalfTime` assertions; the test's playoff rule has a different half-time (180s vs 120s) so they can fail (seen failing on a mutant that passes `BetweenGames` as the period).
 
 ## Verification (pre-PR)
@@ -94,4 +94,8 @@ Review Focus additions:
 - Task 1: the helper used a let-chain (`if … && let Some(…)`), which needs Rust 1.88 against MSRV 1.85 and compiled only because the local toolchain is newer. Rewritten as a `match` with a guard before commit `02fdf114`.
 - Scope widened 2026-10-24 (PO): Task 2 added for the overlay / feed symptom. Global Constraints' "app/mod.rs only, no engine changes" is superseded for Task 2 only. The engine's *config* still changes only at kickoff; only the reported figure moves.
 - Check 2 gains a step: the overlay's pre-game page during the same break shows the upcoming game's half length. If an LED panel is available with hide time on, the last 10 s of that break show the upcoming game's half length too.
-- Task 2 review (Opus, 2026-10-24): approve with fixes; production code unchanged. Important 1 (the half-time check could not fail, because finals_timing_rule's half-time equals the RR's) fixed in the follow-up commit. Minors not taken: a third copy of golden's `tick` in the test, and a TimingRule clone per snapshot between games (negligible). Full review: session scratchpad `review-task2.md`.
+- Task 2 review (Opus, 2026-10-24): approve with fixes; production code unchanged. Important 1 (the half-time check could not fail, because finals_timing_rule's half-time equals the RR's) fixed in the follow-up commit. Minors not taken: a third copy of golden's `tick` in the test, and a TimingRule clone per snapshot between games (negligible).
+- Pre-PR `code-review` (high, 2026-10-24) on `99325032`: 10 findings, triaged against the code.
+  - Taken: a court-finished engine test (the `None` test only covered a next game with no timing rule); the feed tests now drive the engine's real `updater_tick` instead of a third copy of golden's `tick`; this plan's boxes ticked and its scratchpad citation dropped; commit `99325032` reworded from `test(` to `fix(refbox)` (unpushed).
+  - Declined: moving the choice into the engine under one lock (the kickoff flicker it fixes needs a redraw in the milliseconds before the new snapshot arrives, the main page has had it on master, and it would change where in-game timing is read from); the per-snapshot and per-redraw copies (negligible); two sources for the stop-clock row (between games both read the upcoming game).
+  - Raised with the PO: during a game, Game Info's "Next" row shows the game in progress's Game Block rather than the upcoming game's. Older than this branch; fixing it touches the view builders, which this plan keeps out of scope.

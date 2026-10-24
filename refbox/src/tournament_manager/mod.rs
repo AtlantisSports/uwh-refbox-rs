@@ -12987,22 +12987,11 @@ mod test {
         );
     }
 
-    /// The updater's decision each tick, copied from `tick` in `golden/mod.rs`.
-    fn updater_tick(tm: &mut TournamentManager, now: Instant) {
-        if tm.could_end_game(now).unwrap() {
-            tm.pause_for_confirm(now).unwrap();
-        } else if tm.pause_has_ended(now) {
-            tm.end_confirm_pause(now).unwrap();
-        } else {
-            tm.update(now).unwrap();
-        }
-    }
-
     /// Tick one second at a time until `period` is reached, returning the time it was.
     fn tick_until(tm: &mut TournamentManager, mut now: Instant, period: GamePeriod) -> Instant {
         for _ in 0..10_000 {
             now += Duration::from_secs(1);
-            updater_tick(tm, now);
+            tm.updater_tick(now).unwrap();
             if tm.current_period() == period {
                 return now;
             }
@@ -13042,7 +13031,7 @@ mod test {
 
         // During a game the feed describes that game's own next period: unchanged.
         let now = t0 + Duration::from_secs(1);
-        updater_tick(&mut tm, now);
+        tm.updater_tick(now).unwrap();
         assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
         assert_eq!(
             tm.generate_snapshot(now).unwrap().next_period_len_secs,
@@ -13067,6 +13056,29 @@ mod test {
         // At kickoff the engine adopts the upcoming game's timing.
         tick_until(&mut tm, now, GamePeriod::FirstHalf);
         assert_eq!(tm.config().half_play_duration, Duration::from_secs(900));
+    }
+
+    #[test]
+    fn the_feed_describes_the_finished_game_once_the_court_is_finished() {
+        // A refresh during the break finds no further game on this court: the
+        // upcoming game's figure must go with it, back to the committed config.
+        initialize();
+        let playoff = TimingRule {
+            half_play_duration: Duration::from_secs(900),
+            ..finals_timing_rule()
+        };
+        let (mut tm, t0) = round_robin_game_with_next(Some(playoff));
+        let now = tick_until(&mut tm, t0, GamePeriod::BetweenGames);
+        assert_eq!(
+            tm.generate_snapshot(now).unwrap().next_period_len_secs,
+            Some(900)
+        );
+
+        tm.set_no_next_game();
+        assert_eq!(
+            tm.generate_snapshot(now).unwrap().next_period_len_secs,
+            Some(420)
+        );
     }
 
     #[test]

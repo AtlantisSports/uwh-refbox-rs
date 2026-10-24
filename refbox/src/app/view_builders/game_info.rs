@@ -11,6 +11,7 @@ use uwh_common::{
 pub(in super::super) fn build_game_info_page<'a>(
     data: ViewData<'_, '_>,
     config: &GameConfig,
+    next_game_block: Duration,
     uses_remote: bool,
     is_refreshing: bool,
     schedule: Option<&Schedule>,
@@ -56,6 +57,7 @@ pub(in super::super) fn build_game_info_page<'a>(
     let table = render_game_info_table(game_info_rows(
         snapshot,
         config,
+        next_game_block,
         uses_remote,
         schedule,
         teams,

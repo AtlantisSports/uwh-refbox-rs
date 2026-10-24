@@ -83,6 +83,26 @@ Review Focus additions:
 6. **A court finished** (blank next game) between games: the feed figure is the committed config's, as today. Covered by `the_feed_describes_the_finished_game_once_the_court_is_finished` (added in the pre-PR fix round); the `None` test covers a next game with no timing rule, which is a different input.
 7. **Half-time and other in-game breaks** must keep reporting the current game's next period. Covered by the `FirstHalf` and `HalfTime` assertions; the test's playoff rule has a different half-time (180s vs 120s) so they can fail (seen failing on a mutant that passes `BetweenGames` as the period).
 
+### Task 3: Game Info's Next Game row shows the next game's own Game Block
+
+Added 2026-10-24 (PO ruling, option 1 of 3, asked in the engine lane's chat). Pre-existing on master, found by the pre-PR review: during a game, Game Info's Next Game block shows `config.game_block`, the game *in progress*'s Game Block, labelled as the next game's. During the last round-robin game that is the round-robin block for PO1; at the whistle the same game moves to the Current block and its figure changes.
+
+**Files:**
+- Modify: `refbox/src/tournament_manager/mod.rs`: split `upcoming_game_config(next_game, committed) -> Cow<'a, GameConfig>` (next game's rule if it has one, else the committed config, which `start_game` keeps at kickoff in that case) out of `displayed_game_config`, which becomes "between games: `upcoming_game_config`, else the committed config". Behaviour of `displayed_game_config` unchanged; its three tests stay, plus one for `upcoming_game_config`.
+- Modify: `refbox/src/app/view_builders/game_info_table.rs`: `game_info_rows` gains `next_game_block: Duration`, used for the in-game Next block instead of `config.game_block`. Every existing test call passes `config.game_block` of the config it already passes (unchanged expectations), plus one new test: in-game Next block shows `next_game_block`, Current block still shows `config.game_block`.
+- Modify: `refbox/src/app/view_builders/game_info.rs`: `build_game_info_page` takes and forwards `next_game_block`.
+- Modify: `refbox/src/app/mod.rs`: the `GameDetailsPage` arm passes `upcoming_game_config(next_game.as_ref(), &self.config.game).game_block`.
+- Modify: `refbox/src/app/view_builders/main_view.rs` (added during execution; PO ruling 2026-10-24, "fix both"): the main page's table under the clock calls `game_info_rows` too, with the same in-game Next block. `build_main_view` takes `next_game_block` and passes it to both calls; the `MainPage` arm passes the same `upcoming_game_config(..).game_block`, so the two screens agree.
+
+- [ ] Step 1: failing tests (table + `upcoming_game_config`), run, see them fail
+- [ ] Step 2: implement, run the touched tests, clippy, fmt; leave uncommitted
+- [ ] Step 3: review (the branch's final pre-PR `code-review` covers this task, as the last one), commit `fix(refbox): show the next game's own Game Block on Game Info during play`
+
+Review Focus additions:
+8. Manual mode / a next game with no timing rule: the Next block shows the committed Game Block, as today (correct: the engine keeps that config at kickoff).
+9. A court finished: the Next block stays dashed (`no_next_game`), unaffected.
+10. The main screen's table and Game Info show the same Next block figure during play.
+
 ## Verification (pre-PR)
 
 - **Check 1:** `code-review` skill on the branch diff, plus `just check`.
@@ -98,4 +118,4 @@ Review Focus additions:
 - Pre-PR `code-review` (high, 2026-10-24) on `99325032`: 10 findings, triaged against the code.
   - Taken: a court-finished engine test (the `None` test only covered a next game with no timing rule); the feed tests now drive the engine's real `updater_tick` instead of a third copy of golden's `tick`; this plan's boxes ticked and its scratchpad citation dropped; commit `99325032` reworded from `test(` to `fix(refbox)` (unpushed).
   - Declined: moving the choice into the engine under one lock (the kickoff flicker it fixes needs a redraw in the milliseconds before the new snapshot arrives, the main page has had it on master, and it would change where in-game timing is read from); the per-snapshot and per-redraw copies (negligible); two sources for the stop-clock row (between games both read the upcoming game).
-  - Raised with the PO: during a game, Game Info's "Next" row shows the game in progress's Game Block rather than the upcoming game's. Older than this branch; fixing it touches the view builders, which this plan keeps out of scope.
+  - Raised with the PO: during a game, Game Info's "Next" row shows the game in progress's Game Block rather than the upcoming game's. Older than this branch. PO ruled 2026-10-24: fix it here (Task 3), which supersedes Global Constraints' "no view-builder changes" for Task 3.

@@ -75,6 +75,7 @@ pub(in super::super) enum Row {
 pub(in super::super) fn game_info_rows(
     snapshot: &GameSnapshot,
     config: &GameConfig,
+    next_game_block: Duration,
     uses_remote: bool,
     schedule: Option<&Schedule>,
     teams: Option<&TeamList>,
@@ -250,7 +251,7 @@ pub(in super::super) fn game_info_rows(
             rows.push(game_block_row(
                 GameRole::Next,
                 &snapshot.next_game_number,
-                Some(time_string(config.game_block)),
+                Some(time_string(next_game_block)),
                 None,
                 uses_remote,
                 schedule,
@@ -773,7 +774,15 @@ mod tests {
     fn current_block_always_present() {
         // GameSnapshot::default() is BetweenGames; the Current block is present in any state.
         let snapshot = GameSnapshot::default();
-        let rows = game_info_rows(&snapshot, &cfg_all_on(), false, None, None, None);
+        let rows = game_info_rows(
+            &snapshot,
+            &cfg_all_on(),
+            cfg_all_on().game_block,
+            false,
+            None,
+            None,
+            None,
+        );
         assert!(rows.iter().any(|r| matches!(
             r,
             Row::GameBlock {
@@ -787,7 +796,15 @@ mod tests {
     #[test]
     fn settings_order_all_features_on() {
         let snapshot = GameSnapshot::default();
-        let rows = game_info_rows(&snapshot, &cfg_all_on(), false, None, None, None);
+        let rows = game_info_rows(
+            &snapshot,
+            &cfg_all_on(),
+            cfg_all_on().game_block,
+            false,
+            None,
+            None,
+            None,
+        );
         let pairs = setting_pairs(&rows);
         // Six fixed rows, paired exactly as in the mockup.
         assert_eq!(pairs.len(), 6);
@@ -830,7 +847,15 @@ mod tests {
             overtime_allowed: false,
             ..cfg_all_on()
         };
-        let rows = game_info_rows(&snapshot, &config, false, None, None, None);
+        let rows = game_info_rows(
+            &snapshot,
+            &config,
+            config.game_block,
+            false,
+            None,
+            None,
+            None,
+        );
         // Overtime-detail settings stay in their slots but greyed.
         assert_eq!(
             cell_grayed(&rows, &fl!("gi-pre-overtime-break")),
@@ -869,7 +894,15 @@ mod tests {
             num_team_timeouts_allowed: 0,
             ..cfg_all_on()
         };
-        let rows = game_info_rows(&snapshot, &config, false, None, None, None);
+        let rows = game_info_rows(
+            &snapshot,
+            &config,
+            config.game_block,
+            false,
+            None,
+            None,
+            None,
+        );
         assert_eq!(cell_grayed(&rows, &fl!("gi-timeout-duration")), Some(true));
         assert_eq!(cell_grayed(&rows, &fl!("gi-timeouts")), Some(false));
     }
@@ -886,7 +919,15 @@ mod tests {
             single_half: true,
             ..cfg_all_on()
         };
-        let rows = game_info_rows(&snapshot, &config, false, None, None, None);
+        let rows = game_info_rows(
+            &snapshot,
+            &config,
+            config.game_block,
+            false,
+            None,
+            None,
+            None,
+        );
         let pairs = setting_pairs(&rows);
         // First row's left label becomes "Game Length" (active); "Half Length" is unused.
         assert_eq!(pairs[0].0, fl!("gi-game-length"));
@@ -907,7 +948,15 @@ mod tests {
             num_team_timeouts_allowed: 0,
             ..Default::default()
         };
-        let rows = game_info_rows(&snapshot, &config, false, None, None, None);
+        let rows = game_info_rows(
+            &snapshot,
+            &config,
+            config.game_block,
+            false,
+            None,
+            None,
+            None,
+        );
         let pairs = setting_pairs(&rows);
         assert_eq!(pairs.len(), 6);
         assert!(pairs.contains(&(fl!("gi-overtime"), fl!("gi-sudden-death"))));
@@ -943,6 +992,7 @@ mod tests {
         let rows = game_info_rows(
             &between_games_snapshot(),
             &cfg_all_on(),
+            cfg_all_on().game_block,
             false,
             None,
             None,
@@ -955,7 +1005,15 @@ mod tests {
 
     #[test]
     fn in_game_shows_current_then_next_no_last() {
-        let rows = game_info_rows(&in_game_snapshot(), &cfg_all_on(), false, None, None, None);
+        let rows = game_info_rows(
+            &in_game_snapshot(),
+            &cfg_all_on(),
+            cfg_all_on().game_block,
+            false,
+            None,
+            None,
+            None,
+        );
         assert!(!roles(&rows).contains(&GameRole::Last));
         assert_eq!(roles(&rows).first(), Some(&GameRole::Current));
         assert_eq!(roles(&rows).last(), Some(&GameRole::Next));
@@ -967,6 +1025,7 @@ mod tests {
         let rows = game_info_rows(
             &between_games_snapshot(),
             &cfg_all_on(),
+            cfg_all_on().game_block,
             false,
             None,
             None,
@@ -1002,6 +1061,7 @@ mod tests {
         let rows = game_info_rows(
             &snapshot,
             &cfg_all_on(),
+            cfg_all_on().game_block,
             false,
             None,
             None,
@@ -1032,7 +1092,15 @@ mod tests {
             game_number: "18".to_string(),
             ..GameSnapshot::default()
         };
-        let rows = game_info_rows(&snapshot, &cfg_all_on(), false, None, None, None);
+        let rows = game_info_rows(
+            &snapshot,
+            &cfg_all_on(),
+            cfg_all_on().game_block,
+            false,
+            None,
+            None,
+            None,
+        );
         let last = rows
             .iter()
             .find_map(|r| match r {
@@ -1160,6 +1228,7 @@ mod tests {
         let rows = game_info_rows(
             &GameSnapshot::default(),
             &cfg_all_on(),
+            cfg_all_on().game_block,
             false,
             None,
             None,
@@ -1175,6 +1244,7 @@ mod tests {
         let rows = game_info_rows(
             &GameSnapshot::default(),
             &cfg_all_on(),
+            cfg_all_on().game_block,
             true,
             None,
             None,
@@ -1195,7 +1265,15 @@ mod tests {
 
     #[test]
     fn next_block_has_no_scores() {
-        let rows = game_info_rows(&in_game_snapshot(), &cfg_all_on(), false, None, None, None);
+        let rows = game_info_rows(
+            &in_game_snapshot(),
+            &cfg_all_on(),
+            cfg_all_on().game_block,
+            false,
+            None,
+            None,
+            None,
+        );
         let next = rows
             .iter()
             .find_map(|r| match r {
@@ -1213,11 +1291,46 @@ mod tests {
     }
 
     #[test]
+    fn next_block_shows_the_next_games_own_game_block() {
+        // The game in progress and the next game can run on different timing rules,
+        // so the Next block must show the next game's Game Block, not the current one's.
+        let config = GameConfig {
+            game_block: Duration::from_secs(27 * 60),
+            ..cfg_all_on()
+        };
+        let next_game_block = Duration::from_secs(40 * 60);
+        // A real next game: a blank number would take the "no further games" dash path.
+        let snapshot = GameSnapshot {
+            next_game_number: "2".to_string(),
+            ..in_game_snapshot()
+        };
+        let rows = game_info_rows(&snapshot, &config, next_game_block, false, None, None, None);
+        let block_for = |wanted: GameRole| {
+            rows.iter().find_map(|r| match r {
+                Row::GameBlock {
+                    role, game_block, ..
+                } if *role == wanted => Some(game_block.clone()),
+                _ => None,
+            })
+        };
+        assert_eq!(
+            block_for(GameRole::Next),
+            Some(Some(time_string(next_game_block)))
+        );
+        assert_eq!(
+            block_for(GameRole::Current),
+            Some(Some(time_string(config.game_block)))
+        );
+        assert_ne!(time_string(next_game_block), time_string(config.game_block));
+    }
+
+    #[test]
     fn between_games_current_block_has_no_score() {
         // Between games the "Current" block is the upcoming (not-yet-played) game.
         let rows = game_info_rows(
             &between_games_snapshot(),
             &cfg_all_on(),
+            cfg_all_on().game_block,
             false,
             None,
             None,
@@ -1245,7 +1358,15 @@ mod tests {
             scores: BlackWhiteBundle { black: 2, white: 3 },
             ..GameSnapshot::default()
         };
-        let rows = game_info_rows(&snapshot, &cfg_all_on(), false, None, None, None);
+        let rows = game_info_rows(
+            &snapshot,
+            &cfg_all_on(),
+            cfg_all_on().game_block,
+            false,
+            None,
+            None,
+            None,
+        );
         let current = rows
             .iter()
             .find_map(|r| match r {
@@ -1283,7 +1404,15 @@ mod tests {
 
     #[test]
     fn next_block_dashes_when_the_court_has_no_further_games() {
-        let rows = game_info_rows(&last_game_snapshot(), &cfg_all_on(), true, None, None, None);
+        let rows = game_info_rows(
+            &last_game_snapshot(),
+            &cfg_all_on(),
+            cfg_all_on().game_block,
+            true,
+            None,
+            None,
+            None,
+        );
         let next = rows
             .iter()
             .find_map(|r| match r {
@@ -1319,7 +1448,15 @@ mod tests {
             overtime_allowed: false,
             ..cfg_all_on()
         };
-        let rows = game_info_rows(&finished_court_snapshot(), &config, true, None, None, None);
+        let rows = game_info_rows(
+            &finished_court_snapshot(),
+            &config,
+            config.game_block,
+            true,
+            None,
+            None,
+            None,
+        );
         let current = rows
             .iter()
             .find_map(|r| match r {
@@ -1405,6 +1542,7 @@ mod tests {
         let rows = game_info_rows(
             &finished_court_snapshot(),
             &cfg_all_on(),
+            cfg_all_on().game_block,
             true,
             Some(&schedule),
             None,
@@ -1426,6 +1564,7 @@ mod tests {
         let rows = game_info_rows(
             &finished_court_snapshot(),
             &cfg_all_on(),
+            cfg_all_on().game_block,
             true,
             Some(&schedule),
             None,

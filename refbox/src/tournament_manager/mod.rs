@@ -3584,18 +3584,33 @@ pub struct NextGameInfo {
 /// length must all describe.
 ///
 /// They have to describe the same game. Between games that is the
-/// upcoming game, whose timing rule the engine only adopts at kickoff, so the
-/// committed config still holds the game just played. During a game, or when the
-/// upcoming game is unknown or carries no rule (court finished, manual mode), the committed
-/// config is the right answer.
+/// upcoming game (see `upcoming_game_config`). During a game it is the game in
+/// progress, which the committed config already holds.
 pub fn displayed_game_config<'a>(
     period: GamePeriod,
     next_game: Option<&NextGameInfo>,
     committed: &'a GameConfig,
 ) -> Cow<'a, GameConfig> {
+    if period == GamePeriod::BetweenGames {
+        upcoming_game_config(next_game, committed)
+    } else {
+        Cow::Borrowed(committed)
+    }
+}
+
+/// The timing the upcoming game will be played with, whatever the current period.
+///
+/// The engine only adopts the upcoming game's timing rule at kickoff, so until then
+/// the committed config holds the game in progress or just played. When the upcoming
+/// game is unknown or carries no rule (court finished, manual mode), kickoff keeps the
+/// committed config, so that is the upcoming game's timing.
+pub fn upcoming_game_config<'a>(
+    next_game: Option<&NextGameInfo>,
+    committed: &'a GameConfig,
+) -> Cow<'a, GameConfig> {
     match next_game.and_then(|info| info.timing.as_ref()) {
-        Some(timing) if period == GamePeriod::BetweenGames => Cow::Owned(timing.clone().into()),
-        _ => Cow::Borrowed(committed),
+        Some(timing) => Cow::Owned(timing.clone().into()),
+        None => Cow::Borrowed(committed),
     }
 }
 
@@ -3763,6 +3778,29 @@ mod displayed_game_config_tests {
         let next = next_game(Some(next_timing_rule()));
         let shown = displayed_game_config(GamePeriod::FirstHalf, Some(&next), &committed);
         assert_eq!(shown.half_play_duration, Duration::from_secs(420));
+    }
+
+    #[test]
+    fn upcoming_game_with_a_timing_rule_uses_the_rule() {
+        let committed = committed();
+        let next = next_game(Some(next_timing_rule()));
+        let upcoming = upcoming_game_config(Some(&next), &committed);
+        assert_eq!(upcoming.half_play_duration, Duration::from_secs(900));
+    }
+
+    #[test]
+    fn unknown_upcoming_game_uses_the_committed_config() {
+        let committed = committed();
+        let upcoming = upcoming_game_config(None, &committed);
+        assert_eq!(upcoming.half_play_duration, Duration::from_secs(420));
+    }
+
+    #[test]
+    fn upcoming_game_without_a_timing_rule_uses_the_committed_config() {
+        let committed = committed();
+        let next = next_game(None);
+        let upcoming = upcoming_game_config(Some(&next), &committed);
+        assert_eq!(upcoming.half_play_duration, Duration::from_secs(420));
     }
 }
 

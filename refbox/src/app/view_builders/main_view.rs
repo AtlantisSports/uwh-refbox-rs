@@ -34,6 +34,7 @@ fn delay_label(behind_schedule: std::time::Duration) -> Option<String> {
 pub(in super::super) fn build_main_view<'a>(
     data: ViewData<'_, '_>,
     game_config: &GameConfig,
+    next_game_block: std::time::Duration,
     uses_remote: bool,
     schedule: Option<&Schedule>,
     track_fouls_and_warnings: bool,
@@ -273,6 +274,7 @@ pub(in super::super) fn build_main_view<'a>(
                     container(render_game_info_table(game_info_rows(
                         snapshot,
                         game_config,
+                        next_game_block,
                         uses_remote,
                         schedule,
                         teams,
@@ -300,6 +302,7 @@ pub(in super::super) fn build_main_view<'a>(
                 container(render_game_info_table(game_info_rows(
                     snapshot,
                     game_config,
+                    next_game_block,
                     uses_remote,
                     schedule,
                     teams,

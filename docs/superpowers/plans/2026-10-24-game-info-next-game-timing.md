@@ -55,6 +55,34 @@
 - [ ] **Step 5: Run the tests, expect PASS**, then `just check` in the worktree (`--test-threads=1` if ALSA flakes appear; see memory `reference_concurrent_refboxes_fail_tests_on_alsa`).
 - [ ] **Step 6: Commit** `fix(refbox): show the upcoming game's timing on Game Info between games`
 
+### Task 2: The live feed's "next period length" describes the upcoming game too
+
+Added 2026-10-24 (PO-approved scope widening). PO's second symptom: during the break before PO1, the stream overlay's pre-game page showed the RR half length. Cause: `TournamentManager::generate_snapshot` computes `next_period_len_secs` as `self.current_period.next_period_dur(&self.config)`. Between games, `next_period_dur` is `FirstHalf → config.half_play_duration`, and `self.config` is still the finished game's. The same snapshot field feeds the overlay (`overlay/src/main.rs`, pre-game page), the overlay-bridge feed (`game_feed.rs`, passthrough) and the LED panel (`update_sender.rs`: with `hide_time` on, the last <10 s of a break show `next_period_len_secs` instead of the countdown).
+
+**Heavy process applies** (engine file, and a value that crosses the wire to the panel and overlay): per-task review on Opus after this task.
+
+**Files:**
+- Modify: `refbox/src/tournament_manager/mod.rs`: move `displayed_game_config` here from `app/mod.rs` as `pub fn` (place it beside `NextGameInfo`), together with its three tests (into the existing `#[cfg(test)]` module or a sibling module); use it in `generate_snapshot`
+- Modify: `refbox/src/app/mod.rs`: delete the function and its test module, import it from `crate::tournament_manager`. The two call sites stay as they are.
+
+**Interfaces:**
+- Consumes: `displayed_game_config(period, next_game, committed) -> Cow<'a, GameConfig>` (Task 1, unchanged signature and body)
+- Produces: the same function at `crate::tournament_manager::displayed_game_config`
+
+- [ ] **Step 1: Write the failing engine test** `the_feed_describes_the_upcoming_game_between_games` in `tournament_manager/mod.rs` tests. RR config `half_play_duration: 420s, half_time_duration: 120s` and a score of 1–0 so the game ends after the second half. `start_play_now`, then `set_next_game` with timing `half_play_duration: 900s`. Drive the real updater sequence (the `tick` shape in `tournament_manager/golden/mod.rs`) one second at a time:
+  - during `FirstHalf`, `generate_snapshot(now).next_period_len_secs == Some(120)` (the RR half-time; unchanged behaviour)
+  - on reaching `BetweenGames`, `next_period_len_secs == Some(900)`
+  - after the PO1 kickoff (`FirstHalf` again), `tm.config().half_play_duration == 900s`
+  - plus a break with `next_game` timing `None` → `Some(420)`
+- [ ] **Step 2: Run it, expect FAIL** at the `BetweenGames` assertion (420 ≠ 900): `cargo test -p refbox --bin refbox the_feed_describes_the_upcoming_game -- --test-threads=1`
+- [ ] **Step 3: Move the function and its tests**, then in `generate_snapshot` compute `next_period_len_secs` from `displayed_game_config(self.current_period, self.next_game.as_ref(), &self.config)`. `self.config` itself is NOT changed; only the figure reported.
+- [ ] **Step 4: Run** the new test, `displayed_game_config`, and the whole `tournament_manager` + `golden` tests (`cargo test -p refbox --bin refbox tournament_manager -- --test-threads=1`); clippy `-p refbox -- -D warnings`; `cargo fmt --all`. Leave uncommitted.
+- [ ] **Step 5: Commit** `fix(refbox): report the upcoming game's period length in the feed between games`
+
+Review Focus additions:
+6. **A court finished** (blank next game) between games: the feed figure is the committed config's, as today. Covered by the `None` case.
+7. **Half-time and other in-game breaks** must keep reporting the current game's next period. Covered by the `FirstHalf` assertion.
+
 ## Verification (pre-PR)
 
 - **Check 1:** `code-review` skill on the branch diff, plus `just check`.
@@ -63,4 +91,6 @@
 
 ## Deviations
 
-(none yet)
+- Task 1: the helper used a let-chain (`if … && let Some(…)`), which needs Rust 1.88 against MSRV 1.85 and compiled only because the local toolchain is newer. Rewritten as a `match` with a guard before commit `02fdf114`.
+- Scope widened 2026-10-24 (PO): Task 2 added for the overlay / feed symptom. Global Constraints' "app/mod.rs only, no engine changes" is superseded for Task 2 only. The engine's *config* still changes only at kickoff; only the reported figure moves.
+- Check 2 gains a step: the overlay's pre-game page during the same break shows the upcoming game's half length.

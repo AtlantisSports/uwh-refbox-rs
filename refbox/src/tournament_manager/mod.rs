@@ -1,5 +1,6 @@
 use log::*;
 use std::{
+    borrow::Cow,
     cmp::{max, min},
     convert::TryInto,
     sync::{
@@ -3331,7 +3332,11 @@ impl TournamentManager {
 
         let next_period_len_secs = self
             .current_period
-            .next_period_dur(&self.config)
+            .next_period_dur(&displayed_game_config(
+                self.current_period,
+                self.next_game.as_ref(),
+                &self.config,
+            ))
             .map(|dur| dur.as_secs().try_into().unwrap_or(0));
 
         let conf_pause_time = self.time_pause_confirmation.as_ref().map(|p| {
@@ -3575,6 +3580,25 @@ pub struct NextGameInfo {
     pub start_time: Option<OffsetDateTime>,
 }
 
+/// The game timing the main screen, Game Info and the snapshot's next period
+/// length must all describe.
+///
+/// They have to describe the same game. Between games that is the
+/// upcoming game, whose timing rule the engine only adopts at kickoff, so the
+/// committed config still holds the game just played. During a game, or when the
+/// upcoming game carries no rule (court finished, manual mode), the committed
+/// config is the right answer.
+pub fn displayed_game_config<'a>(
+    period: GamePeriod,
+    next_game: Option<&NextGameInfo>,
+    committed: &'a GameConfig,
+) -> Cow<'a, GameConfig> {
+    match next_game.and_then(|info| info.timing.as_ref()) {
+        Some(timing) if period == GamePeriod::BetweenGames => Cow::Owned(timing.clone().into()),
+        _ => Cow::Borrowed(committed),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LastGameInfo {
     /// The game that produced this result. A recorded result belongs to exactly one game,
@@ -3670,6 +3694,75 @@ fn print_p_num_foul(num: Option<u8>) -> String {
         format!(" player #{n}'s")
     } else {
         String::new()
+    }
+}
+
+#[cfg(test)]
+mod displayed_game_config_tests {
+    use super::*;
+    use uwh_common::uwhportal::schedule::TimingRule;
+
+    fn next_timing_rule() -> TimingRule {
+        TimingRule {
+            name: "PLAYOFF".to_string(),
+            team_timeout_count: 1,
+            team_timeouts_counted_per_half: true,
+            overtime_allowed: false,
+            sudden_death_allowed: true,
+            single_period: false,
+            last_2_min_stop_time: false,
+            half_play_duration: Duration::from_secs(900),
+            half_time_duration: Duration::from_secs(120),
+            team_timeout_duration: Duration::from_secs(60),
+            ot_half_play_duration: Duration::from_secs(300),
+            ot_half_time_duration: Duration::from_secs(60),
+            pre_overtime_break: Duration::from_secs(180),
+            pre_sudden_death_duration: Duration::from_secs(60),
+            minimum_break: Duration::from_secs(180),
+            game_block: None,
+        }
+    }
+
+    fn committed() -> GameConfig {
+        GameConfig {
+            half_play_duration: Duration::from_secs(420),
+            ..Default::default()
+        }
+    }
+
+    fn next_game(timing: Option<TimingRule>) -> NextGameInfo {
+        NextGameInfo {
+            number: "2".to_string(),
+            timing,
+            start_time: None,
+        }
+    }
+
+    #[test]
+    fn between_games_shows_the_next_games_timing() {
+        let committed = committed();
+        let next = next_game(Some(next_timing_rule()));
+        let shown = displayed_game_config(GamePeriod::BetweenGames, Some(&next), &committed);
+        assert_eq!(shown.half_play_duration, Duration::from_secs(900));
+    }
+
+    #[test]
+    fn between_games_without_a_timing_rule_shows_the_committed_config() {
+        let committed = committed();
+        let shown = displayed_game_config(GamePeriod::BetweenGames, None, &committed);
+        assert_eq!(shown.half_play_duration, Duration::from_secs(420));
+
+        let next = next_game(None);
+        let shown = displayed_game_config(GamePeriod::BetweenGames, Some(&next), &committed);
+        assert_eq!(shown.half_play_duration, Duration::from_secs(420));
+    }
+
+    #[test]
+    fn during_a_game_shows_the_game_in_progress() {
+        let committed = committed();
+        let next = next_game(Some(next_timing_rule()));
+        let shown = displayed_game_config(GamePeriod::FirstHalf, Some(&next), &committed);
+        assert_eq!(shown.half_play_duration, Duration::from_secs(420));
     }
 }
 
@@ -12891,6 +12984,91 @@ mod test {
         assert_eq!(
             tm.generate_snapshot(past).unwrap().timeout,
             Some(TimeoutSnapshot::White(u16::MAX))
+        );
+    }
+
+    /// The updater's decision each tick, copied from `tick` in `golden/mod.rs`.
+    fn updater_tick(tm: &mut TournamentManager, now: Instant) {
+        if tm.could_end_game(now).unwrap() {
+            tm.pause_for_confirm(now).unwrap();
+        } else if tm.pause_has_ended(now) {
+            tm.end_confirm_pause(now).unwrap();
+        } else {
+            tm.update(now).unwrap();
+        }
+    }
+
+    /// Tick one second at a time until `period` is reached, returning the time it was.
+    fn tick_until(tm: &mut TournamentManager, mut now: Instant, period: GamePeriod) -> Instant {
+        for _ in 0..10_000 {
+            now += Duration::from_secs(1);
+            updater_tick(tm, now);
+            if tm.current_period() == period {
+                return now;
+            }
+        }
+        panic!("never reached {period:?}");
+    }
+
+    fn round_robin_game_with_next(timing: Option<TimingRule>) -> (TournamentManager, Instant) {
+        let mut tm = TournamentManager::new(GameConfig {
+            half_play_duration: Duration::from_secs(420),
+            half_time_duration: Duration::from_secs(120),
+            ..Default::default()
+        });
+        let t0 = Instant::now();
+        tm.start_play_now(t0).unwrap();
+        // A decided game ends after the second half; a tie would go on to overtime.
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 0 }, t0);
+        tm.set_next_game(NextGameInfo {
+            number: "2".to_string(),
+            timing,
+            start_time: None,
+        });
+        (tm, t0)
+    }
+
+    #[test]
+    fn the_feed_describes_the_upcoming_game_between_games() {
+        initialize();
+        let playoff = TimingRule {
+            half_play_duration: Duration::from_secs(900),
+            ..finals_timing_rule()
+        };
+        let (mut tm, t0) = round_robin_game_with_next(Some(playoff));
+
+        // Half-time is the current game's next period: unchanged.
+        let now = t0 + Duration::from_secs(1);
+        updater_tick(&mut tm, now);
+        assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
+        assert_eq!(
+            tm.generate_snapshot(now).unwrap().next_period_len_secs,
+            Some(120)
+        );
+
+        // Between games the feed describes the upcoming game.
+        let now = tick_until(&mut tm, now, GamePeriod::BetweenGames);
+        assert_eq!(
+            tm.generate_snapshot(now).unwrap().next_period_len_secs,
+            Some(900)
+        );
+        // The engine's own config is still the finished game's until kickoff.
+        assert_eq!(tm.config().half_play_duration, Duration::from_secs(420));
+
+        // At kickoff the engine adopts the upcoming game's timing.
+        tick_until(&mut tm, now, GamePeriod::FirstHalf);
+        assert_eq!(tm.config().half_play_duration, Duration::from_secs(900));
+    }
+
+    #[test]
+    fn the_feed_describes_the_upcoming_game_without_a_timing_rule() {
+        // A court finished, or manual mode: the committed config is the answer, as before.
+        initialize();
+        let (mut tm, t0) = round_robin_game_with_next(None);
+        let now = tick_until(&mut tm, t0, GamePeriod::BetweenGames);
+        assert_eq!(
+            tm.generate_snapshot(now).unwrap().next_period_len_secs,
+            Some(420)
         );
     }
 }

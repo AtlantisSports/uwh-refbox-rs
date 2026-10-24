@@ -8266,21 +8266,12 @@ impl RefBoxApp {
 
         let mut main_view = column![match self.app_state {
             AppState::MainPage => {
-                let new_config = if self.snapshot.current_period == GamePeriod::BetweenGames {
-                    self.tm
-                        .lock()
-                        .next_game_info()
-                        .as_ref()
-                        .and_then(|info| Some(info.timing.as_ref()?.clone().into()))
-                } else {
-                    None
-                };
-
-                let game_config = if let Some(ref c) = new_config {
-                    c
-                } else {
-                    &self.config.game
-                };
+                let next_game = self.tm.lock().next_game_info().clone();
+                let game_config = displayed_game_config(
+                    self.snapshot.current_period,
+                    next_game.as_ref(),
+                    &self.config.game,
+                );
                 let behind_schedule = if self.config.show_behind_schedule_time {
                     self.tm.lock().behind_schedule(Instant::now())
                 } else {
@@ -8288,7 +8279,7 @@ impl RefBoxApp {
                 };
                 build_main_view(
                     data,
-                    game_config,
+                    &game_config,
                     self.uses_remote(),
                     self.schedule.as_ref(),
                     self.config.fouls_tracked(),
@@ -8354,17 +8345,27 @@ impl RefBoxApp {
                     self.config.keypad_numbers_forced(),
                 )
             }
-            AppState::GameDetailsPage(is_refreshing) => build_game_info_page(
-                data,
-                &self.config.game,
-                self.uses_remote(),
-                is_refreshing,
-                self.schedule.as_ref(),
-                self.tm
-                    .lock()
-                    .last_game_info()
-                    .map(|i| (i.game_number.clone(), i.scores)),
-            ),
+            AppState::GameDetailsPage(is_refreshing) => {
+                // Taken in its own statement so the `tm` lock is released before
+                // the builder arguments lock it again (the mutex is not reentrant).
+                let next_game = self.tm.lock().next_game_info().clone();
+                let game_config = displayed_game_config(
+                    self.snapshot.current_period,
+                    next_game.as_ref(),
+                    &self.config.game,
+                );
+                build_game_info_page(
+                    data,
+                    &game_config,
+                    self.uses_remote(),
+                    is_refreshing,
+                    self.schedule.as_ref(),
+                    self.tm
+                        .lock()
+                        .last_game_info()
+                        .map(|i| (i.game_number.clone(), i.scores)),
+                )
+            }
             AppState::WarningsSummaryPage => build_warnings_summary_page(data),
             AppState::PowerPage => build_power_page(data),
             AppState::EditGameConfig(page) => build_game_config_edit_page(
@@ -9842,6 +9843,93 @@ enum NextGameFromSchedule {
     NeedsPick,
     /// Nothing can be judged: no court selected, or no usable anchor.
     Unknown,
+}
+
+/// The game timing both the main screen and Game Info must show.
+///
+/// Both screens have to describe the same game. Between games that is the
+/// upcoming game, whose timing rule the engine only adopts at kickoff, so the
+/// committed config still holds the game just played. During a game, or when the
+/// upcoming game carries no rule (court finished, manual mode), the committed
+/// config is the right answer.
+fn displayed_game_config<'a>(
+    period: GamePeriod,
+    next_game: Option<&NextGameInfo>,
+    committed: &'a GameConfig,
+) -> Cow<'a, GameConfig> {
+    match next_game.and_then(|info| info.timing.as_ref()) {
+        Some(timing) if period == GamePeriod::BetweenGames => Cow::Owned(timing.clone().into()),
+        _ => Cow::Borrowed(committed),
+    }
+}
+
+#[cfg(test)]
+mod displayed_game_config_tests {
+    use super::*;
+    use uwh_common::uwhportal::schedule::TimingRule;
+
+    fn next_timing_rule() -> TimingRule {
+        TimingRule {
+            name: "PLAYOFF".to_string(),
+            team_timeout_count: 1,
+            team_timeouts_counted_per_half: true,
+            overtime_allowed: false,
+            sudden_death_allowed: true,
+            single_period: false,
+            last_2_min_stop_time: false,
+            half_play_duration: Duration::from_secs(900),
+            half_time_duration: Duration::from_secs(120),
+            team_timeout_duration: Duration::from_secs(60),
+            ot_half_play_duration: Duration::from_secs(300),
+            ot_half_time_duration: Duration::from_secs(60),
+            pre_overtime_break: Duration::from_secs(180),
+            pre_sudden_death_duration: Duration::from_secs(60),
+            minimum_break: Duration::from_secs(180),
+            game_block: None,
+        }
+    }
+
+    fn committed() -> GameConfig {
+        GameConfig {
+            half_play_duration: Duration::from_secs(420),
+            ..Default::default()
+        }
+    }
+
+    fn next_game(timing: Option<TimingRule>) -> NextGameInfo {
+        NextGameInfo {
+            number: "2".to_string(),
+            timing,
+            start_time: None,
+        }
+    }
+
+    #[test]
+    fn between_games_shows_the_next_games_timing() {
+        let committed = committed();
+        let next = next_game(Some(next_timing_rule()));
+        let shown = displayed_game_config(GamePeriod::BetweenGames, Some(&next), &committed);
+        assert_eq!(shown.half_play_duration, Duration::from_secs(900));
+    }
+
+    #[test]
+    fn between_games_without_a_timing_rule_shows_the_committed_config() {
+        let committed = committed();
+        let shown = displayed_game_config(GamePeriod::BetweenGames, None, &committed);
+        assert_eq!(shown.half_play_duration, Duration::from_secs(420));
+
+        let next = next_game(None);
+        let shown = displayed_game_config(GamePeriod::BetweenGames, Some(&next), &committed);
+        assert_eq!(shown.half_play_duration, Duration::from_secs(420));
+    }
+
+    #[test]
+    fn during_a_game_shows_the_game_in_progress() {
+        let committed = committed();
+        let next = next_game(Some(next_timing_rule()));
+        let shown = displayed_game_config(GamePeriod::FirstHalf, Some(&next), &committed);
+        assert_eq!(shown.half_play_duration, Duration::from_secs(420));
+    }
 }
 
 /// Decide what a freshly-received schedule means for the upcoming game.

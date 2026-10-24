@@ -8280,6 +8280,7 @@ impl RefBoxApp {
                 build_main_view(
                     data,
                     &game_config,
+                    upcoming_game_config(next_game.as_ref(), &self.config.game).game_block,
                     self.uses_remote(),
                     self.schedule.as_ref(),
                     self.config.fouls_tracked(),
@@ -8357,6 +8358,7 @@ impl RefBoxApp {
                 build_game_info_page(
                     data,
                     &game_config,
+                    upcoming_game_config(next_game.as_ref(), &self.config.game).game_block,
                     self.uses_remote(),
                     is_refreshing,
                     self.schedule.as_ref(),

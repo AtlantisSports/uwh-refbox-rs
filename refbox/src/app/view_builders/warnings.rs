@@ -1,4 +1,4 @@
-use super::*;
+use super::{fouls::visible_rows_newest_first, *};
 use collect_array::CollectArrayResult;
 use iced::{
     Element, Length,
@@ -40,16 +40,8 @@ pub(in super::super) fn build_warning_overview_page<'a>(
             None
         ),
         row![
-            make_warning_list(
-                warnings.black.into_iter().rev().collect(),
-                indices.black,
-                GameColor::Black
-            ),
-            make_warning_list(
-                warnings.white.into_iter().rev().collect(),
-                indices.white,
-                GameColor::White
-            )
+            make_warning_list(warnings.black, indices.black, GameColor::Black),
+            make_warning_list(warnings.white, indices.white, GameColor::White)
         ]
         .spacing(SPACING)
         .height(Length::Fill),
@@ -102,13 +94,9 @@ fn make_warning_list<'a>(
 
     let num_pens = warnings.len();
 
-    let buttons: CollectArrayResult<_, WARNING_LIST_LEN> = warnings
-        .into_iter()
-        .enumerate()
-        .skip(index)
-        .map(Some)
-        .chain([None].into_iter().cycle())
-        .take(WARNING_LIST_LEN)
+    let rows = visible_rows_newest_first(warnings, index, WARNING_LIST_LEN);
+
+    let buttons: CollectArrayResult<_, WARNING_LIST_LEN> = rows
         .map(|foul| {
             if let Some((i, details)) = foul {
                 let printable = fl!(

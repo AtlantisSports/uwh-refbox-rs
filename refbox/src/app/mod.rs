@@ -7234,11 +7234,18 @@ impl RefBoxApp {
                                         info!(
                                             "Setting upcoming game info from received schedule: {game:?}"
                                         );
-                                        tm.set_next_game(NextGameInfo {
-                                            number: game.number.clone(),
-                                            timing: Some(timing.clone()),
-                                            start_time: Some(game.start_time),
-                                        });
+                                        let now = Instant::now();
+                                        // Re-times a running break when the
+                                        // organiser has moved the next game's
+                                        // start since the break began.
+                                        let retimed = tm.set_next_game_and_retime(
+                                            NextGameInfo {
+                                                number: game.number.clone(),
+                                                timing: Some(timing.clone()),
+                                                start_time: Some(game.start_time),
+                                            },
+                                            now,
+                                        );
                                         let leaving_finished_state =
                                             was_court_finished && !tm.clock_is_running();
                                         if restore_num.is_some() || leaving_finished_state {
@@ -7252,7 +7259,6 @@ impl RefBoxApp {
                                             // time updater, so without this the
                                             // table would stay dashed, START NOW
                                             // greyed and the clock frozen.
-                                            let now = Instant::now();
                                             // why this cannot panic: BetweenGames was
                                             // just checked and next_game was just set.
                                             tm.apply_next_game_start(now).unwrap();
@@ -7262,6 +7268,14 @@ impl RefBoxApp {
                                             self.config.game = new_game_config;
                                             roster_tasks.push(self.apply_snapshot(snapshot));
                                             return Task::batch(roster_tasks);
+                                        } else if retimed {
+                                            // Show the new countdown at once rather
+                                            // than on the time updater's next tick.
+                                            if let Some(snapshot) = tm.generate_snapshot(now) {
+                                                std::mem::drop(tm);
+                                                roster_tasks.push(self.apply_snapshot(snapshot));
+                                                return Task::batch(roster_tasks);
+                                            }
                                         }
                                     } else {
                                         match decision {

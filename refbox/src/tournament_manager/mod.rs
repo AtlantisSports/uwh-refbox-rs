@@ -723,6 +723,11 @@ impl TournamentManager {
         if !self.has_reset {
             self.reset_game_time = new_remaining.saturating_sub(until_clear);
         }
+        let why = if moved {
+            "Next game's start moved"
+        } else {
+            "Applying a start move that arrived while the break clock was stopped"
+        };
         self.retime_owed = false;
         // The clock was already running, but the updater sleeps until the next whole
         // second of the countdown it last saw. This makes it work out its wake again
@@ -730,7 +735,7 @@ impl TournamentManager {
         self.send_clock_running(true);
 
         info!(
-            "{} Next game's start moved; re-timed the break from {remaining_now:?} to {new_remaining:?}",
+            "{} {why}; re-timed the break from {remaining_now:?} to {new_remaining:?}",
             self.status_string(now),
         );
         true
@@ -787,7 +792,7 @@ impl TournamentManager {
         self.clock_state = ClockState::Stopped {
             clock_time: self.config.minimum_break,
         };
-        // The operator reset the break by hand, so their time stands.
+        // Resetting the game sets the break afresh, so nothing is owed to it.
         self.retime_owed = false;
         self.timeout_state = None;
         self.reset();
@@ -2944,7 +2949,8 @@ impl TournamentManager {
 
             self.clock_state = ClockState::Stopped { clock_time };
             if self.current_period == GamePeriod::BetweenGames {
-                // TIME EDIT: the operator's time stands over a move they saw arrive.
+                // TIME EDIT: the operator's time stands, as it does over any refresh
+                // that leaves the start unchanged.
                 self.retime_owed = false;
             }
             Ok(())

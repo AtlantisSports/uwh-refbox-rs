@@ -649,6 +649,56 @@ impl TournamentManager {
         self.no_next_game = false;
     }
 
+    /// Store `info` exactly as `set_next_game` does, and if the next game's start has
+    /// moved while a break is counting down toward it, re-time that break to the new
+    /// start. Returns `true` only when it re-timed the break.
+    ///
+    /// **Only when the start changed.** The schedule is fetched again on every REFRESH
+    /// and at the end of every game. An operator who corrected the break with TIME EDIT
+    /// must keep that correction through a refresh that does not move the game (PO
+    /// ruling 2026-10-31), so a start that is unchanged — the same instant, in whatever
+    /// offset — leaves the clock alone.
+    ///
+    /// **The reset point is shifted, not re-armed.** It belongs to the countdown being
+    /// replaced, and re-arming it against a freshly floored break moves it — on a break
+    /// shorter than `post_game_duration`, all the way to 0:00, holding the old score on
+    /// screen until kickoff (see the comment in `apply_next_game_start`). Shifting it by
+    /// the change keeps the score clearing at the same moment it was already due.
+    pub fn set_next_game_and_retime(&mut self, info: NextGameInfo, now: Instant) -> bool {
+        let old_start = self.next_game.as_ref().and_then(|i| i.start_time);
+        let new_start = info.start_time;
+        self.set_next_game(info);
+
+        if new_start.is_none()
+            || new_start == old_start
+            || self.current_period != GamePeriod::BetweenGames
+            || self.timeout_state.is_some()
+            || !matches!(self.clock_state, ClockState::CountingDown { .. })
+        {
+            return false;
+        }
+
+        let Some(remaining_now) = self.game_clock_time(now) else {
+            return false;
+        };
+        let until_clear = remaining_now.saturating_sub(self.reset_game_time);
+
+        let new_remaining = self.calc_time_to_next_game(now, now);
+        self.clock_state = ClockState::CountingDown {
+            start_time: now,
+            time_remaining_at_start: new_remaining,
+        };
+        if !self.has_reset {
+            self.reset_game_time = new_remaining.saturating_sub(until_clear);
+        }
+
+        info!(
+            "{} Next game's start moved; re-timed the break from {remaining_now:?} to {new_remaining:?}",
+            self.status_string(now),
+        );
+        true
+    }
+
     /// Record that the selected court has no game after the one in progress. Reported
     /// as a blank next-game number, and honoured by the between-games countdown and by
     /// `start_play_now`, neither of which will start a game in this state.
@@ -12315,6 +12365,224 @@ mod test {
             time_remaining.saturating_sub(Duration::from_secs(120)),
             "the old score should clear post_game_duration before kickoff, not at 0:00"
         );
+    }
+
+    /// A break counting down `break_secs` toward game `number`, which starts
+    /// `start_mins` minutes from now. The config the re-time tests share.
+    fn retime_fixture(
+        number: &str,
+        start_mins: i64,
+        break_secs: u64,
+        now: Instant,
+    ) -> TournamentManager {
+        let config = GameConfig {
+            minimum_break: Duration::from_secs(60),
+            post_game_duration: Duration::from_secs(120),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        tm.set_next_game(NextGameInfo {
+            number: number.to_string(),
+            timing: None,
+            start_time: Some(OffsetDateTime::now_utc() + time::Duration::minutes(start_mins)),
+        });
+        tm.set_period_and_game_clock_time(
+            GamePeriod::BetweenGames,
+            Duration::from_secs(break_secs),
+        );
+        tm.start_clock(now);
+        tm
+    }
+
+    fn next_game_at(number: &str, start_mins: i64) -> NextGameInfo {
+        NextGameInfo {
+            number: number.to_string(),
+            timing: None,
+            start_time: Some(OffsetDateTime::now_utc() + time::Duration::minutes(start_mins)),
+        }
+    }
+
+    /// `actual` within 2 s of `expected_secs`: `calc_time_to_next_game` reads the
+    /// wall clock itself, so a test can only pin the result to the nearest second or so.
+    fn assert_about(actual: Option<Duration>, expected_secs: u64) {
+        let actual = actual.expect("the break clock should be running");
+        let expected = Duration::from_secs(expected_secs);
+        let diff = if actual > expected {
+            actual - expected
+        } else {
+            expected - actual
+        };
+        assert!(
+            diff <= Duration::from_secs(2),
+            "expected about {expected:?}, got {actual:?}"
+        );
+    }
+
+    #[test]
+    fn retime_moves_an_earlier_start_into_the_running_break() {
+        // The Milwaukee case: the next game was brought forward on the portal, and a
+        // REFRESH picked it up — but the break kept counting down to the old start.
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+
+        assert!(tm.set_next_game_and_retime(next_game_at("2", 5), now));
+        assert_about(tm.game_clock_time(now), 300);
+    }
+
+    #[test]
+    fn retime_moves_a_later_start_into_the_running_break() {
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 5, 300, now);
+
+        assert!(tm.set_next_game_and_retime(next_game_at("2", 20), now));
+        assert_about(tm.game_clock_time(now), 1200);
+    }
+
+    #[test]
+    fn retime_leaves_an_unchanged_start_alone() {
+        // 1000 s stands in for an operator's TIME EDIT: it disagrees with the start, and
+        // a refresh that does not move the game must not undo it (PO ruling 2026-10-31).
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 1000, now);
+        let same = tm
+            .next_game_info()
+            .clone()
+            .expect("fixture sets a next game");
+
+        assert!(!tm.set_next_game_and_retime(same, now));
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(1000)));
+    }
+
+    #[test]
+    fn retime_floors_a_past_start_at_minimum_break() {
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+
+        assert!(tm.set_next_game_and_retime(next_game_at("2", -10), now));
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn retime_follows_a_different_next_game() {
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+
+        assert!(tm.set_next_game_and_retime(next_game_at("3", 10), now));
+        assert_about(tm.game_clock_time(now), 600);
+        assert_eq!(tm.next_game_number(), "3");
+    }
+
+    #[test]
+    fn retime_keeps_the_score_clear_moment() {
+        // The old score was due to clear 90 s from the re-time (570 s showing, reset
+        // at 480 s). It must still clear 90 s from then, not `post_game_duration`
+        // before the new kickoff — re-arming would move it.
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 600, now);
+        // `new` sets the reset point to the nominal break and `start_clock` does not
+        // arm it, so put the fixture in the state `end_game` leaves.
+        tm.reset_game_time = Duration::from_secs(480);
+        tm.has_reset = false;
+        let later = now + Duration::from_secs(30);
+
+        assert!(tm.set_next_game_and_retime(next_game_at("2", 6), later));
+        let remaining = tm
+            .game_clock_time(later)
+            .expect("the break clock should be running");
+        // Six minutes from the real clock, measured from `later`, 30 s past it.
+        assert_about(Some(remaining), 330);
+        assert_eq!(
+            tm.reset_game_time,
+            remaining - Duration::from_secs(90),
+            "the score must clear at the same moment it was due to before the re-time"
+        );
+    }
+
+    #[test]
+    fn retime_shorter_than_the_score_display_clears_by_kickoff() {
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 600, now);
+        tm.reset_game_time = Duration::from_secs(480);
+        tm.has_reset = false;
+        let later = now + Duration::from_secs(30);
+
+        assert!(tm.set_next_game_and_retime(next_game_at("2", -10), later));
+        assert_eq!(tm.game_clock_time(later), Some(Duration::from_secs(60)));
+        assert_eq!(tm.reset_game_time, Duration::ZERO);
+    }
+
+    #[test]
+    fn retime_leaves_a_stopped_break_clock_stopped() {
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 900, now);
+        tm.stop_clock(now).unwrap();
+        let new_info = next_game_at("2", 5);
+
+        assert!(!tm.set_next_game_and_retime(new_info.clone(), now));
+        assert!(!tm.clock_is_running());
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(900)));
+        assert_eq!(tm.next_game_info(), &Some(new_info));
+    }
+
+    #[test]
+    fn retime_does_nothing_during_a_game() {
+        initialize();
+        let now = Instant::now();
+        let mut tm = TournamentManager::new(GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            minimum_break: Duration::from_secs(60),
+            post_game_duration: Duration::from_secs(120),
+            ..Default::default()
+        });
+        tm.set_next_game(next_game_at("2", 60));
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(900));
+        tm.start_clock(now);
+        let new_info = next_game_at("2", 5);
+
+        assert!(!tm.set_next_game_and_retime(new_info.clone(), now));
+        assert!(tm.clock_is_running());
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(900)));
+        assert_eq!(tm.next_game_info(), &Some(new_info));
+    }
+
+    #[test]
+    fn retime_ignores_a_schedule_with_no_start() {
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+
+        let no_start = NextGameInfo {
+            number: "2".to_string(),
+            timing: None,
+            start_time: None,
+        };
+        assert!(!tm.set_next_game_and_retime(no_start, now));
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(3600)));
+    }
+
+    #[test]
+    fn retime_treats_the_same_instant_in_another_offset_as_unchanged() {
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 1000, now);
+        let mut same = tm
+            .next_game_info()
+            .clone()
+            .expect("fixture sets a next game");
+        let start = same.start_time.expect("fixture sets a start");
+        same.start_time =
+            Some(start.to_offset(time::UtcOffset::from_hms(-5, 0, 0).expect("a valid offset")));
+
+        assert!(!tm.set_next_game_and_retime(same, now));
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(1000)));
     }
 
     #[test]

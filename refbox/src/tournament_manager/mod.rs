@@ -217,6 +217,12 @@ pub struct TournamentManager {
     /// is the only place a number is derived rather than supplied.
     game_number_step: u32,
     next_scheduled_start: Option<Instant>,
+    /// Set when the next game's start moved between games while the break clock could
+    /// not be re-timed — during a timeout, or with the clock stopped. The next refresh
+    /// after the clock runs again pays it, even though that refresh carries the start
+    /// already stored and so looks unchanged. Cleared wherever the break is set afresh,
+    /// from the schedule or by the operator, since that break owes nothing.
+    retime_owed: bool,
     /// Scheduled start of the game currently in progress (portal printed time when
     /// present, else the Game Block grid slot). Set at `start_game`. `None` before
     /// the first game. Used by `behind_schedule`.
@@ -255,6 +261,7 @@ impl TournamentManager {
             schedule_linked: false,
             game_number_step: 1,
             next_scheduled_start: None,
+            retime_owed: false,
             current_scheduled_start: None,
             reset_game_time: config.nominal_break,
             config,
@@ -503,6 +510,8 @@ impl TournamentManager {
     /// the invented game this whole area exists to prevent.
     pub fn reset_for_site_switch(&mut self, linked: bool, now: Instant) {
         self.clear_portal_next_game();
+        // A move on the previous site's schedule means nothing on this one.
+        self.retime_owed = false;
         self.set_schedule_linked(linked);
         // The previous site's number names nothing here; back to the fresh-launch
         // default so the game selection reads as empty.
@@ -659,6 +668,13 @@ impl TournamentManager {
     /// ruling 2026-10-31), so a start that is unchanged — the same instant, in whatever
     /// offset — leaves the clock alone.
     ///
+    /// **A stopped clock is left stopped, and the re-time is owed.** A move that
+    /// arrives during a timeout between games, or while the break clock is stopped,
+    /// is stored but not applied (PO ruling 2026-10-31). Every later refresh would
+    /// then see the stored start as unchanged and the move would never reach the
+    /// clock, so `retime_owed` remembers it: the first refresh after the clock runs
+    /// again re-times the break. A TIME EDIT or a freshly set break cancels it.
+    ///
     /// **The reset point is shifted, not re-armed.** It belongs to the countdown being
     /// replaced, and re-arming it against a freshly floored break moves it — on a break
     /// shorter than `post_game_duration`, all the way to 0:00, holding the old score on
@@ -671,14 +687,26 @@ impl TournamentManager {
     pub fn set_next_game_and_retime(&mut self, info: NextGameInfo, now: Instant) -> bool {
         let old_start = self.next_game.as_ref().and_then(|i| i.start_time);
         let new_start = info.start_time;
+        let moved = new_start.is_some() && new_start != old_start;
         self.set_next_game(info);
 
-        if new_start.is_none()
-            || new_start == old_start
-            || self.current_period != GamePeriod::BetweenGames
-            || self.timeout_state.is_some()
+        if self.current_period != GamePeriod::BetweenGames {
+            return false;
+        }
+        if self.timeout_state.is_some()
             || !matches!(self.clock_state, ClockState::CountingDown { .. })
         {
+            if moved {
+                info!(
+                    "{} Next game's start moved while the break clock is stopped; \
+                     re-timing once it runs again",
+                    self.status_string(now),
+                );
+                self.retime_owed = true;
+            }
+            return false;
+        }
+        if new_start.is_none() || !(moved || self.retime_owed) {
             return false;
         }
 
@@ -695,6 +723,11 @@ impl TournamentManager {
         if !self.has_reset {
             self.reset_game_time = new_remaining.saturating_sub(until_clear);
         }
+        self.retime_owed = false;
+        // The clock was already running, but the updater sleeps until the next whole
+        // second of the countdown it last saw. This makes it work out its wake again
+        // from the new one.
+        self.send_clock_running(true);
 
         info!(
             "{} Next game's start moved; re-timed the break from {remaining_now:?} to {new_remaining:?}",
@@ -724,6 +757,8 @@ impl TournamentManager {
         info!("No further games scheduled on this court");
         self.next_game = None;
         self.no_next_game = true;
+        // No game to re-time the break toward.
+        self.retime_owed = false;
         // A game that is never coming has no scheduled start. Left set, the Game Block
         // grid slot it would have used still projects a start time, and DELAY reads the
         // gap to it — a figure that grows for as long as the refbox stays open.
@@ -752,6 +787,8 @@ impl TournamentManager {
         self.clock_state = ClockState::Stopped {
             clock_time: self.config.minimum_break,
         };
+        // The operator reset the break by hand, so their time stands.
+        self.retime_owed = false;
         self.timeout_state = None;
         self.reset();
 
@@ -1592,6 +1629,8 @@ impl TournamentManager {
         self.clock_state = ClockState::Stopped {
             clock_time: self.config.nominal_break,
         };
+        // A fresh break, tied to no schedule start, so nothing is owed to it.
+        self.retime_owed = false;
         self.arm_mid_break_reset(self.config.nominal_break, now);
         // Start the break counting down, exactly as the app does at startup.
         self.start_clock(now);
@@ -1625,6 +1664,8 @@ impl TournamentManager {
             start_time: now,
             time_remaining_at_start,
         };
+        // This break is timed from the stored start, so any owed re-time is paid.
+        self.retime_owed = false;
         // Only when the clock was parked. A court coming back to life had its reset
         // point zeroed by `end_game`, so it needs arming. An ordinary mid-break game
         // change already has a reset point belonging to the countdown it replaces, and
@@ -1863,6 +1904,8 @@ impl TournamentManager {
             start_time: now,
             time_remaining_at_start: until_start,
         };
+        // Timed from the schedule, so nothing is owed.
+        self.retime_owed = false;
 
         if let Some(game) = self.court_schedule.get(index).cloned() {
             info!(
@@ -1932,6 +1975,8 @@ impl TournamentManager {
 
     fn end_game(&mut self, now: Instant) {
         let was_running = self.clock_is_running();
+        // A new break is set below, from the schedule, so nothing is owed.
+        self.retime_owed = false;
 
         self.current_period = GamePeriod::BetweenGames;
 
@@ -2051,6 +2096,8 @@ impl TournamentManager {
 
         self.game_number = self.next_game_number();
         self.no_next_game = false;
+        // The break is over; a re-time owed to it has nothing left to apply to.
+        self.retime_owed = false;
 
         if let Some(timing) = self.next_game.take().and_then(|info| info.timing) {
             self.config = timing.into();
@@ -2896,6 +2943,10 @@ impl TournamentManager {
             }
 
             self.clock_state = ClockState::Stopped { clock_time };
+            if self.current_period == GamePeriod::BetweenGames {
+                // TIME EDIT: the operator's time stands over a move they saw arrive.
+                self.retime_owed = false;
+            }
             Ok(())
         } else {
             Err(TournamentManagerError::ClockIsRunning)
@@ -12540,9 +12591,7 @@ mod test {
         initialize();
         let now = Instant::now();
         let mut tm = retime_fixture("2", 60, 3600, now);
-        tm.timeout_state = Some(TimeoutState::Ref(ClockState::Stopped {
-            clock_time: Duration::ZERO,
-        }));
+        tm.start_ref_timeout(now).unwrap();
         let before = tm.game_clock_time(now);
         let new_info = next_game_at("2", 5);
 
@@ -12563,6 +12612,103 @@ mod test {
         assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(900)));
         assert_eq!(tm.next_game_info(), &Some(new_info));
+    }
+
+    #[test]
+    fn retime_owed_from_a_ref_timeout_applies_after_it_ends() {
+        // A start moved during a REF TIMEOUT between games is held over, not lost:
+        // once the timeout ends, the next refresh re-times the break even though it
+        // carries the same start the timeout already saw.
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+        tm.start_ref_timeout(now).unwrap();
+        let before = tm.game_clock_time(now);
+        let moved = next_game_at("2", 5);
+
+        assert!(!tm.set_next_game_and_retime(moved.clone(), now));
+        assert_eq!(tm.game_clock_time(now), before);
+
+        tm.end_timeout(now).unwrap();
+        assert!(tm.set_next_game_and_retime(moved, now));
+        assert_about(tm.game_clock_time(now), 300);
+    }
+
+    #[test]
+    fn retime_owed_from_a_stopped_clock_applies_once_it_runs() {
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+        tm.stop_clock(now).unwrap();
+        let moved = next_game_at("2", 5);
+
+        assert!(!tm.set_next_game_and_retime(moved.clone(), now));
+
+        tm.start_clock(now);
+        assert!(tm.set_next_game_and_retime(moved, now));
+        assert_about(tm.game_clock_time(now), 300);
+    }
+
+    #[test]
+    fn retime_owed_is_paid_once() {
+        // After the owed re-time has run, the same start is unchanged again, so an
+        // operator's later TIME EDIT survives further refreshes as usual.
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+        tm.stop_clock(now).unwrap();
+        let moved = next_game_at("2", 5);
+        assert!(!tm.set_next_game_and_retime(moved.clone(), now));
+        tm.start_clock(now);
+        assert!(tm.set_next_game_and_retime(moved.clone(), now));
+
+        assert!(!tm.set_next_game_and_retime(moved, now));
+    }
+
+    #[test]
+    fn retime_owed_is_cancelled_by_time_edit() {
+        // The operator set the break by hand after the move arrived: their time
+        // stands, as it does for any refresh that does not move the game.
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+        tm.stop_clock(now).unwrap();
+        let moved = next_game_at("2", 5);
+        assert!(!tm.set_next_game_and_retime(moved.clone(), now));
+
+        tm.set_game_clock_time(Duration::from_secs(900)).unwrap();
+        tm.start_clock(now);
+        assert!(!tm.set_next_game_and_retime(moved, now));
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(900)));
+    }
+
+    #[test]
+    fn retime_owed_is_cancelled_by_a_fresh_break() {
+        // Applying the next game's start sets the break from the new start already,
+        // so nothing is left owing.
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+        tm.stop_clock(now).unwrap();
+        let moved = next_game_at("2", 5);
+        assert!(!tm.set_next_game_and_retime(moved.clone(), now));
+
+        tm.apply_next_game_start(now).unwrap();
+        assert!(!tm.set_next_game_and_retime(moved, now));
+    }
+
+    #[test]
+    fn retime_wakes_the_clock_updater() {
+        // The updater sleeps until the next whole second of the countdown it last
+        // saw. A re-time moves that countdown, so the updater must be told.
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+        let mut rx = tm.get_start_stop_rx();
+        rx.borrow_and_update();
+
+        assert!(tm.set_next_game_and_retime(next_game_at("2", 5), now));
+        assert!(matches!(rx.has_changed(), Ok(true)));
     }
 
     #[test]

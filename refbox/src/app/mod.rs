@@ -7248,34 +7248,41 @@ impl RefBoxApp {
                                         );
                                         let leaving_finished_state =
                                             was_court_finished && !tm.clock_is_running();
-                                        if restore_num.is_some() || leaving_finished_state {
-                                            // Start the live countdown to the
-                                            // scheduled start so a restored session
-                                            // is ready to go (same path the normal
-                                            // between-games transition uses). A
-                                            // court coming back to life needs the
-                                            // same treatment: its break clock is
-                                            // held stopped at 0:00, which idles the
-                                            // time updater, so without this the
-                                            // table would stay dashed, START NOW
-                                            // greyed and the clock frozen.
-                                            // why this cannot panic: BetweenGames was
-                                            // just checked and next_game was just set.
-                                            tm.apply_next_game_start(now).unwrap();
-                                            let new_game_config = tm.config().clone();
-                                            let snapshot = tm.generate_snapshot(now).unwrap();
+                                        let restoring =
+                                            restore_num.is_some() || leaving_finished_state;
+                                        if restoring || retimed {
+                                            let new_game_config = if restoring {
+                                                // Start the live countdown to the
+                                                // scheduled start so a restored session
+                                                // is ready to go (same path the normal
+                                                // between-games transition uses). A
+                                                // court coming back to life needs the
+                                                // same treatment: its break clock is
+                                                // held stopped at 0:00, which idles the
+                                                // time updater, so without this the
+                                                // table would stay dashed, START NOW
+                                                // greyed and the clock frozen.
+                                                // why this cannot panic: BetweenGames was
+                                                // just checked and next_game was just set.
+                                                tm.apply_next_game_start(now).unwrap();
+                                                Some(tm.config().clone())
+                                            } else {
+                                                // Re-timed: show the new countdown at
+                                                // once rather than on the time updater's
+                                                // next tick. No timing rule was applied,
+                                                // so the config is left as it is.
+                                                None
+                                            };
+                                            // The one snapshot tail both paths share.
+                                            let snapshot = tm.generate_snapshot(now);
                                             std::mem::drop(tm);
-                                            self.config.game = new_game_config;
-                                            roster_tasks.push(self.apply_snapshot(snapshot));
-                                            return Task::batch(roster_tasks);
-                                        } else if retimed {
-                                            // Show the new countdown at once rather
-                                            // than on the time updater's next tick.
-                                            if let Some(snapshot) = tm.generate_snapshot(now) {
-                                                std::mem::drop(tm);
-                                                roster_tasks.push(self.apply_snapshot(snapshot));
-                                                return Task::batch(roster_tasks);
+                                            if let Some(new_game_config) = new_game_config {
+                                                self.config.game = new_game_config;
                                             }
+                                            if let Some(snapshot) = snapshot {
+                                                roster_tasks.push(self.apply_snapshot(snapshot));
+                                            }
+                                            return Task::batch(roster_tasks);
                                         }
                                     } else {
                                         match decision {

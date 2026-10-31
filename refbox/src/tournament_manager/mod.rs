@@ -663,7 +663,11 @@ impl TournamentManager {
     /// replaced, and re-arming it against a freshly floored break moves it — on a break
     /// shorter than `post_game_duration`, all the way to 0:00, holding the old score on
     /// screen until kickoff (see the comment in `apply_next_game_start`). Shifting it by
-    /// the change keeps the score clearing at the same moment it was already due.
+    /// the change keeps the score clearing at the same moment it was already due — as
+    /// long as the new break still reaches that moment. When the new break is shorter
+    /// than the time left before the clear, the shift saturates the reset point to 0:00
+    /// and the old score stays on screen until kickoff, the same thing `end_game` does
+    /// for any break shorter than `post_game_duration`.
     pub fn set_next_game_and_retime(&mut self, info: NextGameInfo, now: Instant) -> bool {
         let old_start = self.next_game.as_ref().and_then(|i| i.start_time);
         let new_start = info.start_time;
@@ -12512,6 +12516,39 @@ mod test {
         assert!(tm.set_next_game_and_retime(next_game_at("2", -10), later));
         assert_eq!(tm.game_clock_time(later), Some(Duration::from_secs(60)));
         assert_eq!(tm.reset_game_time, Duration::ZERO);
+    }
+
+    #[test]
+    fn retime_leaves_the_reset_point_alone_once_the_score_has_cleared() {
+        // The old score has already cleared, so there is no reset point left to
+        // shift: the break is re-timed, the spent reset point is not touched.
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+        tm.has_reset = true;
+        tm.reset_game_time = Duration::from_secs(480);
+
+        assert!(tm.set_next_game_and_retime(next_game_at("2", 5), now));
+        assert_about(tm.game_clock_time(now), 300);
+        assert_eq!(tm.reset_game_time, Duration::from_secs(480));
+    }
+
+    #[test]
+    fn retime_does_nothing_during_a_between_games_timeout() {
+        // `game_clock_time` reads `clock_state`, the break countdown, not the
+        // timeout's own clock, so it shows whether the break was re-timed.
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+        tm.timeout_state = Some(TimeoutState::Ref(ClockState::Stopped {
+            clock_time: Duration::ZERO,
+        }));
+        let before = tm.game_clock_time(now);
+        let new_info = next_game_at("2", 5);
+
+        assert!(!tm.set_next_game_and_retime(new_info.clone(), now));
+        assert_eq!(tm.game_clock_time(now), before);
+        assert_eq!(tm.next_game_info(), &Some(new_info));
     }
 
     #[test]

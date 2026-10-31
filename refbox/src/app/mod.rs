@@ -7235,21 +7235,32 @@ impl RefBoxApp {
                                             "Setting upcoming game info from received schedule: {game:?}"
                                         );
                                         let now = Instant::now();
-                                        // Re-times a running break when the
-                                        // organiser has moved the next game's
-                                        // start since the break began.
-                                        let retimed = tm.set_next_game_and_retime(
-                                            NextGameInfo {
-                                                number: game.number.clone(),
-                                                timing: Some(timing.clone()),
-                                                start_time: Some(game.start_time),
-                                            },
-                                            now,
-                                        );
+                                        // Decided before the info is stored. Storing
+                                        // it cannot change whether the clock runs: a
+                                        // re-time only ever replaces a running
+                                        // countdown with another one.
                                         let leaving_finished_state =
                                             was_court_finished && !tm.clock_is_running();
                                         let restoring =
                                             restore_num.is_some() || leaving_finished_state;
+                                        let info = NextGameInfo {
+                                            number: game.number.clone(),
+                                            timing: Some(timing.clone()),
+                                            start_time: Some(game.start_time),
+                                        };
+                                        let retimed = if restoring {
+                                            // The countdown is set from the start
+                                            // below, so there is nothing to re-time.
+                                            tm.set_next_game(info);
+                                            false
+                                        } else {
+                                            // Re-times a running break when the
+                                            // organiser has moved the next game's
+                                            // start, or once the clock runs again
+                                            // after a move that arrived while it was
+                                            // stopped.
+                                            tm.set_next_game_and_retime(info, now)
+                                        };
                                         if restoring || retimed {
                                             let new_game_config = if restoring {
                                                 // Start the live countdown to the

@@ -12407,11 +12407,7 @@ mod test {
     fn assert_about(actual: Option<Duration>, expected_secs: u64) {
         let actual = actual.expect("the break clock should be running");
         let expected = Duration::from_secs(expected_secs);
-        let diff = if actual > expected {
-            actual - expected
-        } else {
-            expected - actual
-        };
+        let diff = actual.abs_diff(expected);
         assert!(
             diff <= Duration::from_secs(2),
             "expected about {expected:?}, got {actual:?}"

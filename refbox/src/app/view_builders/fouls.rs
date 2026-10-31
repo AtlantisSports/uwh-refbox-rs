@@ -41,21 +41,9 @@ pub(in super::super) fn build_foul_overview_page<'a>(
             None
         ),
         row![
-            make_foul_list(
-                warnings.black.into_iter().rev().collect(),
-                indices.black,
-                Some(GameColor::Black)
-            ),
-            make_foul_list(
-                warnings.equal.into_iter().rev().collect(),
-                indices.equal,
-                None
-            ),
-            make_foul_list(
-                warnings.white.into_iter().rev().collect(),
-                indices.white,
-                Some(GameColor::White)
-            )
+            make_foul_list(warnings.black, indices.black, Some(GameColor::Black)),
+            make_foul_list(warnings.equal, indices.equal, None),
+            make_foul_list(warnings.white, indices.white, Some(GameColor::White))
         ]
         .spacing(SPACING)
         .height(Length::Fill),
@@ -87,6 +75,26 @@ pub(in super::super) fn build_foul_overview_page<'a>(
     .into()
 }
 
+/// The `len` rows a list page shows from row `scroll` on, newest entry first,
+/// padded with `None`. Each row carries the entry's position in the stored
+/// (oldest-first) list, which is what an edit must be opened with: the
+/// on-screen row counts from the newest entry, so opening with it would edit,
+/// save over or delete a different entry.
+pub(super) fn visible_rows_newest_first<T>(
+    items: Vec<T>,
+    scroll: usize,
+    len: usize,
+) -> impl Iterator<Item = Option<(usize, T)>> {
+    items
+        .into_iter()
+        .enumerate()
+        .rev()
+        .skip(scroll)
+        .map(Some)
+        .chain(std::iter::repeat_with(|| None))
+        .take(len)
+}
+
 fn make_foul_list<'a>(
     fouls: Vec<PrintableInfractionSummary>,
     index: usize,
@@ -108,13 +116,9 @@ fn make_foul_list<'a>(
 
     let num_pens = fouls.len();
 
-    let buttons: CollectArrayResult<_, FOUL_LIST_LEN> = fouls
-        .into_iter()
-        .enumerate()
-        .skip(index)
-        .map(Some)
-        .chain([None].into_iter().cycle())
-        .take(FOUL_LIST_LEN)
+    let rows = visible_rows_newest_first(fouls, index, FOUL_LIST_LEN);
+
+    let buttons: CollectArrayResult<_, FOUL_LIST_LEN> = rows
         .map(|foul| {
             if let Some((i, details)) = foul {
                 let printable = fl!(
@@ -186,4 +190,20 @@ fn make_foul_list<'a>(
         scroll_option,
         cont_style,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_row_opens_the_entry_it_shows() {
+        // Stored oldest first: #11 was recorded before #6, so #6 is shown on
+        // top and must open stored entry 1.
+        let rows = |scroll| visible_rows_newest_first(vec!["#11", "#6"], scroll, 3).collect();
+        let at_top: Vec<_> = rows(0);
+        assert_eq!(at_top, vec![Some((1, "#6")), Some((0, "#11")), None]);
+        let scrolled: Vec<_> = rows(1);
+        assert_eq!(scrolled, vec![Some((0, "#11")), None, None]);
+    }
 }

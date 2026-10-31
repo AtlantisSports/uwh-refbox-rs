@@ -7292,6 +7292,10 @@ impl RefBoxApp {
                                             }
                                             if let Some(snapshot) = snapshot {
                                                 roster_tasks.push(self.apply_snapshot(snapshot));
+                                            } else {
+                                                warn!(
+                                                    "Could not build a snapshot after setting the break from the schedule; the screen was not updated"
+                                                );
                                             }
                                             return Task::batch(roster_tasks);
                                         }

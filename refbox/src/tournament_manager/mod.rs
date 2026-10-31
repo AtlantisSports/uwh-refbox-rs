@@ -2947,8 +2947,15 @@ impl TournamentManager {
                 }
             }
 
+            // Only when the break time actually changes. TIME EDIT calls this on every
+            // DONE, including one that edited only the timeout clock or nothing at all,
+            // and that operator has not chosen a break time over the moved start.
+            let break_time_changed = !matches!(
+                self.clock_state,
+                ClockState::Stopped { clock_time: old } if old == clock_time
+            );
             self.clock_state = ClockState::Stopped { clock_time };
-            if self.current_period == GamePeriod::BetweenGames {
+            if self.current_period == GamePeriod::BetweenGames && break_time_changed {
                 // TIME EDIT: the operator's time stands, as it does over any refresh
                 // that leaves the start unchanged.
                 self.retime_owed = false;
@@ -12686,6 +12693,24 @@ mod test {
         tm.start_clock(now);
         assert!(!tm.set_next_game_and_retime(moved, now));
         assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(900)));
+    }
+
+    #[test]
+    fn retime_owed_survives_a_time_edit_that_keeps_the_break_time() {
+        // DONE on TIME EDIT re-sends the break time even when only the timeout clock
+        // was edited, or nothing was. That is not the operator choosing a break time.
+        initialize();
+        let now = Instant::now();
+        let mut tm = retime_fixture("2", 60, 3600, now);
+        tm.stop_clock(now).unwrap();
+        let moved = next_game_at("2", 5);
+        assert!(!tm.set_next_game_and_retime(moved.clone(), now));
+
+        let unchanged = tm.game_clock_time(now).unwrap();
+        tm.set_game_clock_time(unchanged).unwrap();
+        tm.start_clock(now);
+        assert!(tm.set_next_game_and_retime(moved, now));
+        assert_about(tm.game_clock_time(now), 300);
     }
 
     #[test]

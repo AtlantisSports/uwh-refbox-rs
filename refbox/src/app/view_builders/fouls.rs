@@ -75,11 +75,12 @@ pub(in super::super) fn build_foul_overview_page<'a>(
     .into()
 }
 
-/// The `len` rows a list page shows from row `scroll` on, newest entry first,
-/// padded with `None`. Each row carries the entry's position in the stored
-/// (oldest-first) list, which is what an edit must be opened with: the
-/// on-screen row counts from the newest entry, so opening with it would edit,
-/// save over or delete a different entry.
+/// The `len` rows a list page shows from row `scroll` on, last-added entry
+/// first, padded with `None`. Each row carries the entry's position in the
+/// stored list (in the order entries were added; a team change re-adds at the
+/// end), which is what an edit must be opened with: the on-screen row counts
+/// from the last-added entry, so opening with it would edit, save over or
+/// delete a different entry.
 pub(super) fn visible_rows_newest_first<T>(
     items: Vec<T>,
     scroll: usize,

@@ -835,8 +835,8 @@ impl TournamentManager {
     ///    running and stop the restarted game's second half ending on its own.
     /// 4. `reset_game` clears the period, timeouts, scores, penalties, fouls and
     ///    warnings, and any owed re-time.
-    /// 5. The Game Block projection is put back to this game's slot, the state before
-    ///    it kicked off. Kickoff moved it on to the following game's slot; left there,
+    /// 5. The Game Block projection is put back to this game's own scheduled start (its
+    ///    slot). Kickoff moved it on to the following game's slot; left there,
     ///    a game with no published start would count down to the wrong slot, and
     ///    `start_game` would then date the restarted game's DELAY from it.
     /// 6. `apply_next_game_start` applies the timing rule and sets the break to the
@@ -13676,7 +13676,8 @@ mod test {
 
     /// Game 6 played and ended (so a result is on record), then game 7 kicked off at
     /// the returned instant with a goal each side, a foul, a warning and a penalty.
-    /// Game 7 had no published start, so its slot is its own kickoff.
+    /// Game 7 had no published start, so the fixture's slot for it ends up one Game
+    /// Block (3600 s) after kickoff (`g + 3600 s`).
     fn restart_fixture() -> (TournamentManager, Instant) {
         initialize();
         let config = GameConfig {

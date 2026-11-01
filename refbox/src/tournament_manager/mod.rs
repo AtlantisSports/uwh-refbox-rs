@@ -808,6 +808,62 @@ impl TournamentManager {
         }
     }
 
+    /// Throw away the game in play and go back to the break before it, counting down to
+    /// the same game again: the mid-game RESTART button.
+    ///
+    /// `info` is the game being restarted — its own number, timing rule and start —
+    /// looked up afresh by the app, since the engine dropped its copy at kickoff.
+    ///
+    /// **Nothing is recorded.** This never calls `end_game`, which is what writes
+    /// `last_game_info` and so what files a result. A restarted game was not played,
+    /// and the result on record stays the previous game's.
+    ///
+    /// **Only during a game.** Between games there is nothing to restart, and the
+    /// break, the next game and the finished game's score are all left exactly as
+    /// they were.
+    ///
+    /// The order below matters; each step is placed to avoid a specific trap:
+    ///
+    /// 1. This game's own scheduled slot is read first, because `reset()` clears it.
+    /// 2. The game is stored as the next game **before** the reset. `reset()` names the
+    ///    fresh stats from `next_game_number()`, which mid-game still reads the game
+    ///    AFTER this one — or a blank on the court's last game. Storing first also
+    ///    clears `no_next_game`, so a restarted last game has a game to count down to.
+    /// 3. `reset_game` clears the period, timeouts, scores, penalties, fouls and
+    ///    warnings, and any owed re-time.
+    /// 4. The Game Block projection is put back to this game's slot, the state before
+    ///    it kicked off. Kickoff moved it on to the following game's slot; left there,
+    ///    a game with no published start would count down to the wrong slot, and
+    ///    `start_game` would then date the restarted game's DELAY from it.
+    /// 5. `apply_next_game_start` applies the timing rule and sets the break to the
+    ///    time until the start, never less than `minimum_break`.
+    /// 6. The updater is notified unconditionally. When the clock was already running
+    ///    it sleeps until the next whole second of the countdown it last saw — the
+    ///    same reason `set_next_game_and_retime` gives — and the paths above only
+    ///    notify when the clock was stopped.
+    pub fn restart_game(&mut self, info: NextGameInfo, now: Instant) -> Result<()> {
+        if self.current_period == GamePeriod::BetweenGames {
+            return Err(TournamentManagerError::NotInGame);
+        }
+
+        let this_slot = self.current_scheduled_start;
+        self.set_next_game(info);
+        self.reset_game(now);
+        if this_slot.is_some() {
+            self.next_scheduled_start = this_slot;
+        }
+        self.apply_next_game_start(now)?;
+        self.send_clock_running(true);
+
+        info!(
+            "{} Restarted game {}; break set to {:?}",
+            self.status_string(now),
+            self.next_game_number(),
+            self.game_clock_time(now),
+        );
+        Ok(())
+    }
+
     fn reset(&mut self) {
         self.scores = Default::default();
         self.penalties.iter_mut().for_each(|(_, p)| p.clear());
@@ -3802,6 +3858,8 @@ pub enum TournamentManagerError {
     SnapshotUnavailable(u32),
     #[error("There is no next game scheduled on this court")]
     NoNextGameOnCourt,
+    #[error("No game is in progress to restart")]
+    NotInGame,
 }
 
 pub type Result<T> = std::result::Result<T, TournamentManagerError>;
@@ -13607,5 +13665,233 @@ mod test {
             tm.generate_snapshot(now).unwrap().next_period_len_secs,
             Some(420)
         );
+    }
+
+    // ---- restart_game: the mid-game RESTART button ----
+
+    /// Game 6 played and ended (so a result is on record), then game 7 kicked off at
+    /// the returned instant with a goal each side, a foul, a warning and a penalty.
+    /// Game 7 had no published start, so its slot is its own kickoff.
+    fn restart_fixture() -> (TournamentManager, Instant) {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            minimum_break: Duration::from_secs(120),
+            game_block: Duration::from_secs(3600),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let g = Instant::now();
+
+        tm.set_next_game(NextGameInfo {
+            number: "6".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(g).unwrap();
+        tm.add_score(Color::White, 3, g);
+        tm.stop_clock(g).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(g);
+        assert_eq!(tm.last_game_info().unwrap().game_number, "6");
+
+        tm.set_next_game(NextGameInfo {
+            number: "7".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(g).unwrap();
+        assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
+        assert_eq!(tm.game_number(), "7");
+
+        tm.add_score(Color::Black, 4, g);
+        tm.add_score(Color::White, 9, g);
+        tm.add_foul(Some(Color::Black), Some(2), Infraction::Obstruction, g)
+            .unwrap();
+        tm.add_warning(Color::White, Some(5), Infraction::Obstruction, g)
+            .unwrap();
+        tm.start_penalty(
+            Color::Black,
+            8,
+            PenaltyKind::TwoMinute,
+            g,
+            Infraction::Unknown,
+        )
+        .unwrap();
+        (tm, g)
+    }
+
+    fn game_7(start_mins: Option<i64>) -> NextGameInfo {
+        NextGameInfo {
+            number: "7".to_string(),
+            timing: None,
+            start_time: start_mins
+                .map(|mins| OffsetDateTime::now_utc() + time::Duration::minutes(mins)),
+        }
+    }
+
+    #[test]
+    fn restart_from_first_half_counts_to_scheduled_start() {
+        let (mut tm, _) = restart_fixture();
+        let before = tm.last_game_info().cloned();
+        let now = Instant::now();
+
+        tm.restart_game(game_7(Some(10)), now).unwrap();
+
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 0, white: 0 });
+        assert!(tm.get_penalties().iter().all(|(_, p)| p.is_empty()));
+        assert!(tm.get_fouls().iter().all(|(_, f)| f.is_empty()));
+        assert!(tm.get_warnings().iter().all(|(_, w)| w.is_empty()));
+        let clock = tm.game_clock_time(now).unwrap();
+        assert!(
+            clock.abs_diff(Duration::from_secs(600)) <= Duration::from_secs(1),
+            "expected about 600 s, got {clock:?}"
+        );
+        assert_eq!(tm.game_number(), "7");
+        assert_eq!(tm.next_game_number(), "7");
+        assert_eq!(
+            tm.last_game_info().cloned(),
+            before,
+            "a restart must not record a result"
+        );
+    }
+
+    #[test]
+    fn restart_with_start_in_past_uses_minimum_break() {
+        let (mut tm, _) = restart_fixture();
+        let now = Instant::now();
+        tm.restart_game(game_7(Some(-5)), now).unwrap();
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(120)));
+    }
+
+    #[test]
+    fn restart_refused_between_games() {
+        let (mut tm, g) = restart_fixture();
+        tm.stop_clock(g).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(g);
+        tm.set_next_game(NextGameInfo {
+            number: "8".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+
+        let now = Instant::now();
+        let clock_before = tm.game_clock_time(now);
+        let running_before = tm.clock_is_running();
+        let next_before = tm.next_game_info().clone();
+        let scores_before = tm.get_scores();
+
+        assert_eq!(
+            tm.restart_game(game_7(Some(10)), now),
+            Err(TMErr::NotInGame)
+        );
+
+        assert_eq!(tm.game_clock_time(now), clock_before);
+        assert_eq!(tm.clock_is_running(), running_before);
+        assert_eq!(tm.next_game_info(), &next_before);
+        assert_eq!(tm.get_scores(), scores_before);
+    }
+
+    #[test]
+    fn restart_last_game_on_court() {
+        let (mut tm, _) = restart_fixture();
+        tm.set_no_next_game();
+        let now = Instant::now();
+
+        tm.restart_game(game_7(Some(10)), now).unwrap();
+
+        assert!(tm.clock_is_running());
+        assert!(matches!(tm.clock_state, ClockState::CountingDown { .. }));
+        assert_eq!(tm.next_game_number(), "7");
+        assert_eq!(tm.current_game_stats, GameStats::new("7"));
+    }
+
+    #[test]
+    fn restart_without_start_time_uses_minimum_break() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            minimum_break: Duration::from_secs(120),
+            game_block: Duration::from_secs(3600),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let g = Instant::now();
+        // Game 7 has no published start, only its Game Block slot, `g`, and kicks off
+        // on it. Kickoff moves the projection one Game Block (an hour) on, to game 8's
+        // slot — the start a restart would wrongly count down to.
+        tm.next_scheduled_start = Some(g);
+        tm.set_next_game(game_7(None));
+        tm.start_play_now(g).unwrap();
+        assert_eq!(tm.current_scheduled_start, Some(g));
+        assert_eq!(tm.next_scheduled_start, Some(g + Duration::from_secs(3600)));
+        let now = Instant::now();
+
+        tm.restart_game(game_7(None), now).unwrap();
+
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(120)));
+    }
+
+    #[test]
+    fn restart_during_ref_timeout() {
+        let (mut tm, g) = restart_fixture();
+        tm.start_ref_timeout(g).unwrap();
+        assert!(!tm.game_clock_running());
+        assert!(tm.timeout_state.is_some());
+        let now = Instant::now();
+
+        tm.restart_game(game_7(Some(10)), now).unwrap();
+
+        assert!(tm.timeout_state.is_none());
+        assert!(matches!(tm.clock_state, ClockState::CountingDown { .. }));
+        let later = now + Duration::from_secs(5);
+        assert!(tm.game_clock_time(later) < tm.game_clock_time(now));
+    }
+
+    #[test]
+    fn restart_applies_the_timing_rule() {
+        let (mut tm, _) = restart_fixture();
+        assert_eq!(tm.config().minimum_break, Duration::from_secs(120));
+        let now = Instant::now();
+        let info = NextGameInfo {
+            timing: Some(finals_timing_rule()),
+            ..game_7(Some(-5))
+        };
+
+        tm.restart_game(info, now).unwrap();
+
+        assert_eq!(tm.config().minimum_break, Duration::from_secs(180));
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(180)));
+    }
+
+    #[test]
+    fn restarted_game_kicks_off_as_the_same_game() {
+        let (mut tm, _) = restart_fixture();
+        tm.timeouts_used.black = 1;
+        let now = Instant::now();
+
+        tm.restart_game(game_7(Some(-5)), now).unwrap();
+        tm.update(now + Duration::from_secs(121)).unwrap();
+
+        assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
+        assert_eq!(tm.game_number(), "7");
+        assert_eq!(tm.timeouts_used.black, 0);
+        assert_eq!(tm.timeouts_used.white, 0);
+    }
+
+    #[test]
+    fn restart_wakes_the_updater() {
+        let (mut tm, _) = restart_fixture();
+        let mut rx = tm.get_start_stop_rx();
+        assert!(tm.game_clock_running());
+        assert!(*rx.borrow_and_update());
+
+        tm.restart_game(game_7(Some(10)), Instant::now()).unwrap();
+
+        assert!(rx.has_changed().unwrap());
+        assert!(*rx.borrow_and_update());
     }
 }

@@ -238,6 +238,7 @@ equal = EQUAL
 # Game Info
 refresh = REFRESH
 refreshing = REFRESHING...
+restart = RESTART
 settings = SETTINGS 
 none = None
 

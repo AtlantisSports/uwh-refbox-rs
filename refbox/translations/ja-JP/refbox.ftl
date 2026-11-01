@@ -233,6 +233,7 @@ equal = 同点
 # 試合情報
 refresh = 更新
 refreshing = 更新中...
+restart = 再起動
 settings = 設定
 none = なし
 

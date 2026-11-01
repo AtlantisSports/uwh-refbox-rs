@@ -233,6 +233,7 @@ equal = PANTAY
 # Impormasyon ng Laro
 refresh = I-REFRESH
 refreshing = NIRI-REFRESH...
+restart = I-RESTART
 settings = MGA SETTING
 none = Wala
 

@@ -236,6 +236,7 @@ equal = IGUAL
 # Informação do Jogo
 refresh = ATUALIZAR
 refreshing = A ATUALIZAR...
+restart = REINICIAR
 settings = DEFINIÇÕES
 none = Nenhum
 

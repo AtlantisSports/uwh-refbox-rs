@@ -233,6 +233,7 @@ equal = EŞİT
 # Oyun Bilgisi
 refresh = YENİLE
 refreshing = YENİLENİYOR...
+restart = YENİDEN BAŞLAT
 settings = AYARLAR
 none = Yok
 

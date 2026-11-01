@@ -232,6 +232,7 @@ equal = SERI
 # Info Pertandingan
 refresh = SEGARKAN
 refreshing = MENYEGARKAN...
+restart = MULAI ULANG
 settings = PENGATURAN
 none = Tidak Ada
 

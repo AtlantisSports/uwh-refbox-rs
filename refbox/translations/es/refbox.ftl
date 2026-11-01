@@ -246,6 +246,7 @@ equal = IGUAL
 # Game Info
 refresh = RECARGAR
 refreshing = RECARGANDO...
+restart = REINICIAR
 settings = CONFIGURACIÓN
 none = Ninguno
 

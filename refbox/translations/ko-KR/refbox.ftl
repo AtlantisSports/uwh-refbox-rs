@@ -235,6 +235,7 @@ equal = 동등
 # 경기 정보
 refresh = 새로고침
 refreshing = 새로고침 중...
+restart = 재시작
 settings = 설정
 none = 없음
 

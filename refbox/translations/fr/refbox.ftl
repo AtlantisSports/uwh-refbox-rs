@@ -239,6 +239,7 @@ equal = ÉGAL
 # Game Info
 refresh = RAFRAÎCHIR
 refreshing = RAFRAÎCHISSANT...
+restart = REDÉMARRER
 settings = PARAMÈTRES 
 none = Aucun
 

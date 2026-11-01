@@ -233,6 +233,7 @@ equal = SAMA
 # Maklumat Perlawanan
 refresh = MUAT SEMULA
 refreshing = MEMUAT SEMULA...
+restart = MULA SEMULA
 settings = TETAPAN
 none = Tiada
 

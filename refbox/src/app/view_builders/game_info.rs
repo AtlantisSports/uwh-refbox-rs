@@ -8,6 +8,34 @@ use uwh_common::{
     bundles::BlackWhiteBundle, config::Game as GameConfig, uwhportal::schedule::Schedule,
 };
 
+/// Which button sits between BACK and SETTINGS on the Game Info page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MiddleButton {
+    /// No portal schedule in use, so there is nothing to refresh or restart from.
+    Hidden,
+    /// A refresh is already in flight.
+    Refreshing,
+    /// Between games: re-fetch the schedule from the portal.
+    Refresh,
+    /// A game is in play (any period other than between games): abandon it and put
+    /// the court back between games, ready to start it again.
+    Restart,
+}
+
+/// Choose the middle button. Kept pure so the rule is tested without building an app
+/// or a view: a test cannot observe which message a rendered button would send.
+fn middle_button(uses_remote: bool, is_refreshing: bool, period: GamePeriod) -> MiddleButton {
+    if !uses_remote {
+        MiddleButton::Hidden
+    } else if is_refreshing {
+        MiddleButton::Refreshing
+    } else if period == GamePeriod::BetweenGames {
+        MiddleButton::Refresh
+    } else {
+        MiddleButton::Restart
+    }
+}
+
 pub(in super::super) fn build_game_info_page<'a>(
     data: ViewData<'_, '_>,
     config: &GameConfig,
@@ -26,7 +54,8 @@ pub(in super::super) fn build_game_info_page<'a>(
         ..
     } = data;
 
-    // A refresh re-fetches the schedule from the portal. Grey the button out
+    // A refresh re-fetches the schedule from the portal, and a restart re-reads the
+    // game's timing from it, so both share one rule. Grey the button out
     // only when the saved login token is expired — the one case a re-login
     // fixes — and leave the operator to re-login via the connection
     // indicator. Every other Red cause leaves `token_expired` false and keeps
@@ -36,22 +65,25 @@ pub(in super::super) fn build_game_info_page<'a>(
     // `Message::RequestPortalRefresh`).
     let token_expired = portal_indicator.is_some_and(|s| s.token_expired);
 
-    let middle_item: Element<_> = if uses_remote {
-        if is_refreshing {
-            make_chrome_button(fl!("refreshing"))
+    let middle_item: Element<_> =
+        match middle_button(uses_remote, is_refreshing, snapshot.current_period) {
+            MiddleButton::Hidden => horizontal_space().into(),
+            MiddleButton::Refreshing => make_chrome_button(fl!("refreshing"))
                 .style(blue_button)
                 .width(Length::Fill)
-                .into()
-        } else {
-            make_chrome_button(fl!("refresh"))
+                .into(),
+            MiddleButton::Refresh => make_chrome_button(fl!("refresh"))
                 .style(blue_button)
                 .width(Length::Fill)
                 .on_press_maybe((!token_expired).then_some(Message::RequestPortalRefresh))
-                .into()
-        }
-    } else {
-        horizontal_space().into()
-    };
+                .into(),
+            // Task 3 points this at its own `RequestGameRestart` message.
+            MiddleButton::Restart => make_chrome_button(fl!("restart"))
+                .style(blue_button)
+                .width(Length::Fill)
+                .on_press_maybe((!token_expired).then_some(Message::RequestPortalRefresh))
+                .into(),
+        };
 
     use super::game_info_table::{game_info_rows, render_game_info_table};
     let table = render_game_info_table(game_info_rows(
@@ -106,4 +138,45 @@ pub(in super::super) fn build_game_info_page<'a>(
     .spacing(SPACING)
     .height(Length::Fill)
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn middle_button_rules() {
+        use GamePeriod::*;
+        use MiddleButton as B;
+
+        let mut cases = vec![
+            (false, false, BetweenGames, B::Hidden),
+            (false, true, BetweenGames, B::Hidden),
+            (false, false, FirstHalf, B::Hidden),
+            (false, true, SuddenDeath, B::Hidden),
+            (true, true, FirstHalf, B::Refreshing),
+            (true, false, BetweenGames, B::Refresh),
+        ];
+        for period in [
+            FirstHalf,
+            HalfTime,
+            SecondHalf,
+            PreOvertime,
+            OvertimeFirstHalf,
+            OvertimeHalfTime,
+            OvertimeSecondHalf,
+            PreSuddenDeath,
+            SuddenDeath,
+        ] {
+            cases.push((true, false, period, B::Restart));
+        }
+
+        for (uses_remote, is_refreshing, period, expected) in cases {
+            assert_eq!(
+                middle_button(uses_remote, is_refreshing, period),
+                expected,
+                "uses_remote={uses_remote}, is_refreshing={is_refreshing}, period={period:?}"
+            );
+        }
+    }
 }

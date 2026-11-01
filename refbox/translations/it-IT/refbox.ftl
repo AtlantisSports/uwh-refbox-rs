@@ -236,6 +236,7 @@ equal = PARI
 # Info Partita
 refresh = AGGIORNA
 refreshing = AGGIORNAMENTO...
+restart = RIAVVIA
 settings = IMPOSTAZIONI
 none = Nessuno
 

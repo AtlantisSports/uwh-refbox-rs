@@ -235,6 +235,7 @@ equal = GELIJK
 # Wedstrijdinfo
 refresh = VERNIEUWEN
 refreshing = VERNIEUWEN...
+restart = HERSTARTEN
 settings = INSTELLINGEN
 none = Geen
 

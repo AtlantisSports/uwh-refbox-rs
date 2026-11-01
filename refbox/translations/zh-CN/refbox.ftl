@@ -233,6 +233,7 @@ equal = 相等
 # 比赛信息
 refresh = 刷新
 refreshing = 刷新中...
+restart = 重启
 settings = 设置
 none = 无
 

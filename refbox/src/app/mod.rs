@@ -1521,6 +1521,16 @@ enum SnapshotTransition {
     GameEnded,
     /// A game began in the ordinary way.
     GameStarted,
+    /// A tick that describes a game the engine has already left. The app last stored
+    /// a between-games snapshot and this one says a game is in play, yet the engine
+    /// itself is between games right now. The usual way to get here is a mid-game
+    /// RESTART: a tick generated just before it was still queued in the updater
+    /// channel when the restart put the engine back between games. Applying it would
+    /// read as a kickoff -- running the kickoff refresh and flashing the abandoned
+    /// game back onto the panel. Dropping it is safe because the updater keeps
+    /// ticking: the next tick is generated from the engine as it is now and carries
+    /// the true state.
+    Stale,
     Nothing,
 }
 
@@ -1540,10 +1550,18 @@ enum SnapshotTransition {
 /// it would read a catch-up that crossed two games as "nothing changed" and skip the
 /// kickoff refresh, leaving the previous game's cap numbers on the grid and parking the
 /// court at 0:00 when the placed game ends.
+///
+/// `engine_period` is the period the engine is in at the moment the snapshot is applied
+/// -- read live, not off any snapshot. It decides only one case: a between-games ->
+/// in-play pair while the engine is between games is `Stale`, not a kickoff. A real
+/// kickoff always has the engine in play by the time its tick is applied. The marker
+/// arms come first and never consult it: a catch-up marker is taken under the same lock
+/// as its snapshot, so the snapshot it rides on is never stale.
 fn snapshot_transition(
     prev: &GameSnapshot,
     next: &GameSnapshot,
     caught_up: Option<CatchUp>,
+    engine_period: GamePeriod,
 ) -> SnapshotTransition {
     match caught_up {
         Some(CatchUp::NewGame) => return SnapshotTransition::CaughtUpToNewGame,
@@ -1559,6 +1577,9 @@ fn snapshot_transition(
             return SnapshotTransition::GameEnded;
         }
         if prev.current_period == GamePeriod::BetweenGames {
+            if engine_period == GamePeriod::BetweenGames {
+                return SnapshotTransition::Stale;
+            }
             return SnapshotTransition::GameStarted;
         }
     }
@@ -1575,13 +1596,18 @@ impl RefBoxApp {
     }
 
     /// Apply a snapshot together with the marker that arrived with it.
+    ///
+    /// Takes the `tm` lock once, briefly, to read the engine's current period, so no
+    /// caller may hold a `tm` guard across this call: the lock does not re-enter, and a
+    /// caller still holding it would deadlock the app.
     fn apply_tick(
         &mut self,
         mut new_snapshot: GameSnapshot,
         caught_up: Option<CatchUp>,
     ) -> Task<Message> {
+        let engine_period = self.tm.lock().current_period();
         let mut task = Task::none();
-        match snapshot_transition(&self.snapshot, &new_snapshot, caught_up) {
+        match snapshot_transition(&self.snapshot, &new_snapshot, caught_up, engine_period) {
             SnapshotTransition::CaughtUpToNewGame | SnapshotTransition::GameStarted => {
                 // A different game is running now, so the next-game info and the
                 // rosters both need the same refresh an ordinary kickoff gives them.
@@ -1591,6 +1617,15 @@ impl RefBoxApp {
             }
             SnapshotTransition::GameEnded => {
                 task = self.handle_game_end(&new_snapshot.game_number);
+            }
+            SnapshotTransition::Stale => {
+                // Neither stored nor sent: the next tick carries the true state.
+                warn!(
+                    "Dropping a stale tick for game {} (engine is between games; app last \
+                     stored game {})",
+                    new_snapshot.game_number, self.snapshot.game_number
+                );
+                return Task::none();
             }
             SnapshotTransition::Nothing => {}
         }
@@ -11432,7 +11467,7 @@ mod snapshot_transition_tests {
         };
 
         assert_eq!(
-            snapshot_transition(&before, &stale, None),
+            snapshot_transition(&before, &stale, None, stale.current_period),
             SnapshotTransition::Nothing
         );
 
@@ -11444,7 +11479,12 @@ mod snapshot_transition_tests {
         };
 
         assert_eq!(
-            snapshot_transition(&before, &caught_up, Some(CatchUp::NewGame)),
+            snapshot_transition(
+                &before,
+                &caught_up,
+                Some(CatchUp::NewGame),
+                caught_up.current_period
+            ),
             SnapshotTransition::CaughtUpToNewGame
         );
     }
@@ -11473,7 +11513,12 @@ mod snapshot_transition_tests {
         };
 
         assert_eq!(
-            snapshot_transition(&already_advanced, &marked, Some(CatchUp::NewGame)),
+            snapshot_transition(
+                &already_advanced,
+                &marked,
+                Some(CatchUp::NewGame),
+                marked.current_period
+            ),
             SnapshotTransition::CaughtUpToNewGame,
             "the engine said the catch-up changed game; the app's own previous \
              snapshot has no vote"
@@ -11499,18 +11544,28 @@ mod snapshot_transition_tests {
         // Which variant the engine sends decides what the app owes the new state, but
         // neither of them may be read as a game having ended.
         assert_eq!(
-            snapshot_transition(&before, &into_break, Some(CatchUp::SameGame)),
+            snapshot_transition(
+                &before,
+                &into_break,
+                Some(CatchUp::SameGame),
+                into_break.current_period
+            ),
             SnapshotTransition::Nothing,
             "the break path leaves the game number alone, so nothing started either"
         );
         assert_eq!(
-            snapshot_transition(&before, &into_break, Some(CatchUp::NewGame)),
+            snapshot_transition(
+                &before,
+                &into_break,
+                Some(CatchUp::NewGame),
+                into_break.current_period
+            ),
             SnapshotTransition::CaughtUpToNewGame
         );
         // The same pair with NO marker is an ordinary game end -- which is exactly the
         // wrong answer, and exactly what a stolen marker produces.
         assert_eq!(
-            snapshot_transition(&before, &into_break, None),
+            snapshot_transition(&before, &into_break, None, into_break.current_period),
             SnapshotTransition::GameEnded
         );
     }
@@ -11529,15 +11584,15 @@ mod snapshot_transition_tests {
         };
 
         assert_eq!(
-            snapshot_transition(&between, &playing, None),
+            snapshot_transition(&between, &playing, None, playing.current_period),
             SnapshotTransition::GameStarted
         );
         assert_eq!(
-            snapshot_transition(&playing, &between, None),
+            snapshot_transition(&playing, &between, None, between.current_period),
             SnapshotTransition::GameEnded
         );
         assert_eq!(
-            snapshot_transition(&playing, &playing, None),
+            snapshot_transition(&playing, &playing, None, playing.current_period),
             SnapshotTransition::Nothing
         );
     }
@@ -11601,7 +11656,7 @@ mod snapshot_transition_tests {
             "the marker must still be there for the tick that produced this snapshot"
         );
         assert_eq!(
-            snapshot_transition(&before, &snapshot, caught_up),
+            snapshot_transition(&before, &snapshot, caught_up, snapshot.current_period),
             SnapshotTransition::CaughtUpToNewGame,
             "the pair the updater sends must ask the app for a kickoff refresh, not a \
              result submission"
@@ -11610,6 +11665,71 @@ mod snapshot_transition_tests {
             tm.take_catch_up_pending(),
             None,
             "reading the marker must clear it, so the next tick is not marked too"
+        );
+    }
+
+    /// A tick generated just before a mid-game RESTART can still be queued when the
+    /// restart puts the engine back between games. If it were applied, the app would
+    /// read "between games -> in play" as a kickoff, run the kickoff refresh, and put
+    /// the in-play game back on the panel for one tick. The engine is the tiebreak: it
+    /// is already between games, so that tick describes a game it has left.
+    #[test]
+    fn a_tick_from_a_game_the_engine_has_left_is_stale() {
+        let between = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            ..Default::default()
+        };
+        let playing = GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            snapshot_transition(&between, &playing, None, GamePeriod::BetweenGames),
+            SnapshotTransition::Stale
+        );
+    }
+
+    /// The same pair with the engine in play is an ordinary kickoff: a real kickoff
+    /// always has the engine in play by the time its tick is applied.
+    #[test]
+    fn a_real_kickoff_is_still_game_started() {
+        let between = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            ..Default::default()
+        };
+        let playing = GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            snapshot_transition(&between, &playing, None, GamePeriod::FirstHalf),
+            SnapshotTransition::GameStarted
+        );
+    }
+
+    /// A catch-up marker is taken under the same lock as its snapshot, so the snapshot
+    /// it rides on is current by construction and must never be dropped as stale.
+    #[test]
+    fn a_catch_up_is_never_stale() {
+        let between = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            ..Default::default()
+        };
+        let playing = GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            snapshot_transition(
+                &between,
+                &playing,
+                Some(CatchUp::NewGame),
+                GamePeriod::BetweenGames
+            ),
+            SnapshotTransition::CaughtUpToNewGame
         );
     }
 }

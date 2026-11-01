@@ -232,6 +232,7 @@ equal = เท่ากัน
 # ข้อมูลเกม
 refresh = รีเฟรช
 refreshing = กำลังรีเฟรช...
+restart = รีสตาร์ท
 settings = การตั้งค่า
 none = ไม่มี
 

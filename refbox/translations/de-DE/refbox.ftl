@@ -236,6 +236,7 @@ equal = GLEICH
 # Spielinfo
 refresh = AKTUALISIEREN
 refreshing = WIRD AKTUALISIERT...
+restart = NEU STARTEN
 settings = EINSTELLUNGEN
 none = Keine
 

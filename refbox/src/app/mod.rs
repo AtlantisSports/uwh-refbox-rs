@@ -1561,8 +1561,10 @@ enum SnapshotTransition {
 /// -- read live, not off any snapshot. It decides only one case: a between-games ->
 /// in-play pair while the engine is between games is `Stale`, not a kickoff. A real
 /// kickoff always has the engine in play by the time its tick is applied. The marker
-/// arms come first and never consult it: a catch-up marker is taken under the same lock
-/// as its snapshot, so the snapshot it rides on is never stale.
+/// arms come first and deliberately bypass the stale rule, because the marker is taken
+/// under the same lock as its snapshot. A catch-up tick queued behind a mid-game
+/// restart would still be applied; that needs a sleep at the instant of the tap, and
+/// it is accepted.
 fn snapshot_transition(
     prev: &GameSnapshot,
     next: &GameSnapshot,
@@ -1726,8 +1728,8 @@ impl RefBoxApp {
         }
 
         // This game's own slot. A game missing from the schedule gives no timing and
-        // no start; `restart_game` then falls back to the nominal break, which is the
-        // best the refbox can do without a slot to count down to.
+        // no start; the countdown then runs to this game's own slot. Mid-game that slot
+        // is already past, so the break comes out at `minimum_break`.
         let (game, timing) = self
             .schedule
             .as_ref()
@@ -1743,7 +1745,8 @@ impl RefBoxApp {
         let mut tm = self.tm.lock();
         if let Err(e) = tm.restart_game(info, now) {
             // `NotInGame` here means the game ended between the check above and this
-            // lock; anything else is an engine refusal. Either way nothing was reset.
+            // lock, and nothing changed. Any other engine error comes from a later step
+            // and may leave a partial reset; that case is not expected in practice.
             drop(tm);
             warn!("RESTART GAME for game {number} refused: {e}");
             self.app_state = AppState::MainPage;
@@ -1772,8 +1775,10 @@ impl RefBoxApp {
         self.app_state = AppState::MainPage;
         trace!("AppState changed to {:?}", self.app_state);
 
-        // Re-read the schedule so a timing change published since kickoff reaches
-        // the countdown. A failed fetch changes nothing: the restart on the rules
+        // Re-read the schedule so a timing change published since kickoff is picked up.
+        // A new timing rule from the fresh schedule is stored and applied when the
+        // restarted game kicks off; the break itself is re-timed only if the game's
+        // start time moved. A failed fetch changes nothing: the restart on the rules
         // already loaded stands.
         match (
             self.current_event_id.clone(),
@@ -11914,8 +11919,10 @@ mod snapshot_transition_tests {
         );
     }
 
-    /// A catch-up marker is taken under the same lock as its snapshot, so the snapshot
-    /// it rides on is current by construction and must never be dropped as stale.
+    /// The catch-up marker arms come first and deliberately bypass the stale rule,
+    /// because the marker is taken under the same lock as its snapshot. A catch-up tick
+    /// queued behind a mid-game restart would still be applied; that needs a sleep at
+    /// the instant of the tap, and it is accepted.
     #[test]
     fn a_catch_up_is_never_stale() {
         let between = GameSnapshot {

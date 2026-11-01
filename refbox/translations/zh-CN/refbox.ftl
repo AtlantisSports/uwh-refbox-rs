@@ -212,6 +212,9 @@ uwhportal-token-no-pending-link = 连接未等待通信。
 uwhportal-token-unusable-key = 站点发送的访问密钥无法在此 Refbox 上使用。
     请再次向站点索取密钥。
 go-back-to-editor = 返回编辑器
+go-back = 返回
+restart-game = 重启比赛
+restart-game-confirm = 重启这场比赛？比分、犯规和罚时将被清除，且不会向 Portal 发送内容。
 discard-changes = 放弃更改
 end-current-game-and-apply-changes = 结束当前比赛并应用所有更改
 end-current-game-and-apply-change = 结束当前比赛并应用更改

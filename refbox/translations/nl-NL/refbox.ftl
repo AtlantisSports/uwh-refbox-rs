@@ -214,6 +214,9 @@ uwhportal-token-no-pending-link = De verbinding verwacht geen communicatie.
 uwhportal-token-unusable-key = De site heeft een toegangssleutel gestuurd die deze Refbox niet kan gebruiken.
     Vraag de sleutel opnieuw op bij de site.
 go-back-to-editor = TERUG NAAR EDITOR
+go-back = TERUG
+restart-game = WEDSTRIJD HERSTARTEN
+restart-game-confirm = Deze wedstrijd herstarten? De score, overtredingen en uitsluitingen gaan verloren en er wordt niets naar het Portal gestuurd.
 discard-changes = WIJZIGINGEN VERWERPEN
 end-current-game-and-apply-changes = HUIDIGE WEDSTRIJD BEËINDIGEN EN WIJZIGINGEN TOEPASSEN
 end-current-game-and-apply-change = HUIDIGE WEDSTRIJD BEËINDIGEN EN WIJZIGING TOEPASSEN

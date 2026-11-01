@@ -211,6 +211,9 @@ uwhportal-token-no-pending-link = Koneksi tidak mengharapkan komunikasi.
 uwhportal-token-unusable-key = Situs mengirim kunci akses yang tidak dapat digunakan Refbox ini.
     Mintalah kunci itu lagi dari situs Anda.
 go-back-to-editor = KEMBALI KE EDITOR
+go-back = KEMBALI
+restart-game = MULAI ULANG PERTANDINGAN
+restart-game-confirm = Mulai ulang pertandingan ini? Skor, pelanggaran, dan penalti akan hilang dan tidak ada yang dikirim ke Portal.
 discard-changes = BUANG PERUBAHAN
 end-current-game-and-apply-changes = AKHIRI PERTANDINGAN DAN TERAPKAN PERUBAHAN
 end-current-game-and-apply-change = AKHIRI PERTANDINGAN DAN TERAPKAN PERUBAHAN

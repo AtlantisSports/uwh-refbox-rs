@@ -217,6 +217,9 @@ uwhportal-token-no-pending-link = The connection is not expecting communication.
 uwhportal-token-unusable-key = The site sent an access key this refbox cannot use.
     Ask the site for the key again.
 go-back-to-editor = GO BACK TO EDITOR
+go-back = GO BACK
+restart-game = RESTART GAME
+restart-game-confirm = Restart this game? The score, fouls and penalties will be lost and nothing is sent to the Portal.
 discard-changes = DISCARD CHANGES
 end-current-game-and-apply-changes = END CURRENT GAME AND APPLY CHANGES
 end-current-game-and-apply-change = END CURRENT GAME AND APPLY CHANGE

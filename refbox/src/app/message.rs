@@ -127,6 +127,10 @@ pub enum Message {
     /// for the same item confirms and removes it from the queue.
     PortalDiscardTapped(ItemId),
     RequestPortalRefresh,
+    /// Emitted when the operator taps RESTART on the Game info page while a game
+    /// is in play. Raises the RESTART GAME confirmation; nothing is reset until the
+    /// operator confirms there.
+    RequestGameRestart,
     /// Emitted when a portal schedule refresh triggered by
     /// `RequestPortalRefresh` ends without delivering a schedule (e.g. the
     /// fetch failed). Clears the Game Info REFRESH button's "Refreshing..."
@@ -441,6 +445,7 @@ impl Message {
             | Self::PortalForceSubmit(_)
             | Self::PortalDiscardTapped(_)
             | Self::RequestPortalRefresh
+            | Self::RequestGameRestart
             | Self::PortalRetryAll
             | Self::ShowWarnings
             | Self::ShowParameterHelp
@@ -550,6 +555,7 @@ impl PartialEq for Message {
             | (Self::ClosePortalAttentionAction, Self::ClosePortalAttentionAction)
             | (Self::PortalUiTick, Self::PortalUiTick)
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
+            | (Self::RequestGameRestart, Self::RequestGameRestart)
             | (Self::PortalRefreshFinished, Self::PortalRefreshFinished)
             | (Self::PortalRetryAll, Self::PortalRetryAll)
             | (Self::ShowWarnings, Self::ShowWarnings)
@@ -799,6 +805,7 @@ impl PartialEq for Message {
             | (Self::PortalForceSubmit(_), _)
             | (Self::PortalDiscardTapped(_), _)
             | (Self::RequestPortalRefresh, _)
+            | (Self::RequestGameRestart, _)
             | (Self::PortalRefreshFinished, _)
             | (Self::PortalRetryAll, _)
             | (Self::ShowWarnings, _)
@@ -1116,6 +1123,10 @@ pub enum ConfirmationOption {
     // be wrong here; `GoBack` already carries the "return with nothing
     // committed" meaning Cancel needs, so only the affirmative is new.
     SwitchSource,
+    // Offered by ConfirmationKind::RestartGame — restarts the game in play. Its
+    // own variant because none of the others means "discard this game and go
+    // back to the break before it"; `GoBack` again serves as the way out.
+    RestartGame,
 }
 
 /// The three actions offered on the operator power page.

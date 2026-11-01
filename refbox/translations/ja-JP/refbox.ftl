@@ -212,6 +212,9 @@ uwhportal-token-no-pending-link = 接続は通信を待っていません。
 uwhportal-token-unusable-key = サイトから送られたアクセスキーは、この Refbox では使用できません。
     サイトにキーをもう一度要求してください。
 go-back-to-editor = 編集画面に戻る
+go-back = 戻る
+restart-game = 試合を再起動
+restart-game-confirm = この試合を再起動しますか？スコア、反則、退水は消去され、Portalには何も送信されません。
 discard-changes = 変更を破棄
 end-current-game-and-apply-changes = 現在の試合を終了して変更を適用
 end-current-game-and-apply-change = 現在の試合を終了して変更を適用

@@ -215,6 +215,9 @@ uwhportal-token-no-pending-link = La connessione non si aspetta comunicazioni.
 uwhportal-token-unusable-key = Il sito ha inviato una chiave di accesso che questa Refbox non può usare.
     Richiedi di nuovo la chiave al sito.
 go-back-to-editor = TORNA ALL'EDITOR
+go-back = TORNA INDIETRO
+restart-game = RIAVVIA PARTITA
+restart-game-confirm = Riavviare questa partita? Il punteggio, i falli e le penalità andranno persi e non verrà inviato nulla al Portal.
 discard-changes = SCARTA MODIFICHE
 end-current-game-and-apply-changes = TERMINA PARTITA E APPLICA MODIFICHE
 end-current-game-and-apply-change = TERMINA PARTITA E APPLICA MODIFICA

@@ -251,6 +251,7 @@ add-foul = ADICIONAR FALTA
 start-now = INICIAR AGORA
 end-timeout = TERMINAR TEMPO DE EQUIPA
 warnings = AVISOS
+fouls-and-warnings = FALTAS E AVISOS
 penalties = PENALIDADES
 dark-score-line-1 = RESULTADO
 dark-score-line-2 = { dark-team-name-caps }

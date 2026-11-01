@@ -248,6 +248,7 @@ add-foul = 反則追加
 start-now = 今すぐ開始
 end-timeout = タイムアウト終了
 warnings = 警告
+fouls-and-warnings = 反則と警告
 penalties = 退水
 dark-score-line-1 = 得点
 dark-score-line-2 = { dark-team-name-caps }

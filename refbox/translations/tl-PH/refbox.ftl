@@ -248,6 +248,7 @@ add-foul = MAGDAGDAG NG POUL
 start-now = MAGSIMULA NA
 end-timeout = TAPUSIN ANG TIMEOUT
 warnings = MGA BABALA
+fouls-and-warnings = MGA POUL AT BABALA
 penalties = MGA PARUSA
 dark-score-line-1 = PUNTOS
 dark-score-line-2 = { dark-team-name-caps }

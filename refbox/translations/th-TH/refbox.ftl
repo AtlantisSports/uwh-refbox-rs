@@ -247,6 +247,7 @@ add-foul = เพิ่มฟาวล์
 start-now = เริ่มเลย
 end-timeout = สิ้นสุดพักทีม
 warnings = การเตือน
+fouls-and-warnings = ฟาวล์และการเตือน
 penalties = โทษ
 dark-score-line-1 = คะแนน
 dark-score-line-2 = { dark-team-name-caps }

@@ -248,6 +248,7 @@ add-foul = FAUL EKLE
 start-now = ŞİMDİ BAŞLAT
 end-timeout = MOLAYI BİTİR
 warnings = UYARILAR
+fouls-and-warnings = FAULLER VE UYARILAR
 penalties = CEZALAR
 dark-score-line-1 = SKOR
 dark-score-line-2 = { dark-team-name-caps }

@@ -250,6 +250,7 @@ add-foul = OVERTREDING TOEVOEGEN
 start-now = NU STARTEN
 end-timeout = TIME-OUT BEËINDIGEN
 warnings = WAARSCHUWINGEN
+fouls-and-warnings = OVERTREDINGEN EN WAARSCHUWINGEN
 penalties = UITSLUITINGEN
 dark-score-line-1 = SCORE
 dark-score-line-2 = { dark-team-name-caps }

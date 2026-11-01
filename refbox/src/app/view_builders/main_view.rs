@@ -237,7 +237,7 @@ pub(in super::super) fn build_main_view<'a>(
 
             let warnings_zone = button(
                 column![
-                    fit_text(fl!("warnings")).height(Length::Shrink),
+                    fit_text(fl!("fouls-and-warnings")).height(Length::Shrink),
                     row(snapshot.warnings.iter().map(|(color, warns)| column(
                         warns
                             .iter()
@@ -340,7 +340,7 @@ pub(in super::super) fn build_main_view<'a>(
             center_col = center_col.push(
                 button(
                     column![
-                        text(fl!("warnings"))
+                        text(fl!("fouls-and-warnings"))
                             .align_y(Vertical::Top)
                             .align_x(Horizontal::Center)
                             .width(Length::Fill),

@@ -281,6 +281,7 @@ add-foul = ADD FOUL
 start-now = START NOW
 end-timeout = END TIMEOUT
 warnings = WARNINGS
+fouls-and-warnings = FOULS AND WARNINGS
 penalties = PENALTIES
 dark-score-line-1 = SCORE
 dark-score-line-2 = { dark-team-name-caps }

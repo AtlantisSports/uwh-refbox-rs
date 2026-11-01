@@ -251,6 +251,7 @@ add-foul = FOUL HINZUFÜGEN
 start-now = JETZT STARTEN
 end-timeout = AUSZEIT BEENDEN
 warnings = VERWARNUNGEN
+fouls-and-warnings = FOULS UND VERWARNUNGEN
 penalties = STRAFZEITEN
 dark-score-line-1 = TORE
 dark-score-line-2 = { dark-team-name-caps }

@@ -247,6 +247,7 @@ add-foul = TAMBAH PELANGGARAN
 start-now = MULAI SEKARANG
 end-timeout = AKHIRI TIME-OUT
 warnings = PERINGATAN
+fouls-and-warnings = PELANGGARAN DAN PERINGATAN
 penalties = PENALTI
 dark-score-line-1 = SKOR
 dark-score-line-2 = { dark-team-name-caps }

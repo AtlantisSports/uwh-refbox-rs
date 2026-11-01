@@ -248,6 +248,7 @@ add-foul = 添加犯规
 start-now = 立即开始
 end-timeout = 结束暂停
 warnings = 警告
+fouls-and-warnings = 犯规和警告
 penalties = 罚时记录
 dark-score-line-1 = 比分
 dark-score-line-2 = { dark-team-name-caps }

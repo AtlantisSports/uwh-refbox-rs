@@ -251,6 +251,7 @@ add-foul = AGGIUNGI FALLO
 start-now = INIZIA ORA
 end-timeout = FINE TIME-OUT
 warnings = AMMONIZIONI
+fouls-and-warnings = FALLI E AMMONIZIONI
 penalties = PENALITÀ
 dark-score-line-1 = PUNTEGGIO
 dark-score-line-2 = { dark-team-name-caps }

@@ -250,6 +250,7 @@ add-foul = 반칙 추가
 start-now = 지금 시작
 end-timeout = 타임아웃 종료
 warnings = 경고
+fouls-and-warnings = 반칙 및 경고
 penalties = 페널티
 dark-score-line-1 = 점수
 dark-score-line-2 = { dark-team-name-caps }

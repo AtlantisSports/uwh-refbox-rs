@@ -253,6 +253,7 @@ add-foul = AJOUTER UNE FAUTE
 start-now = COMMENCER MAINTENANT
 end-timeout = FIN DU TEMPS MORT
 warnings = AVERTISSEMENTS (AVERT.)
+fouls-and-warnings = FAUTES ET AVERTISSEMENTS
 penalties = PÉNALITÉS
 dark-score-line-1 = SCORE
 dark-score-line-2 = { dark-team-name-caps }

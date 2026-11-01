@@ -248,6 +248,7 @@ add-foul = TAMBAH KESALAHAN
 start-now = MULA SEKARANG
 end-timeout = TAMAT MASA REHAT
 warnings = AMARAN
+fouls-and-warnings = KESALAHAN DAN AMARAN
 penalties = PENALTI
 dark-score-line-1 = MARKAH
 dark-score-line-2 = { dark-team-name-caps }

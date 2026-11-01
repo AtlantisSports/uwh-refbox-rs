@@ -149,4 +149,8 @@ Behaviour:
 
 ## Deviations
 
-(none yet)
+- **Task 1:** `restart_game` also clears a pending score-confirmation pause (`time_pause_confirmation`). Left set, a restart tapped during the end-of-game or deciding-goal confirm window stopped the break reading as running and stopped the restarted game's second half ending on its own. Test `restart_during_score_confirm_pause`. `reset_game` keeps the same gap on the existing END CURRENT GAME path, which is out of scope here and offered separately.
+- **Task 3:** the `ConfirmScores` and `AutoConfirmScores` handlers also test the stale rule before changing the screen. A score-confirmation tick queued before a restart would otherwise raise a 0–0 score page for the abandoned game, or end a pause the restart had already cleared.
+- **Task 3:** the ja-JP and zh-CN confirmation text says the score will be "erased" rather than "lost". The refbox's built-in CJK font subset (checked at build time) lacks わ, 失 and 任.
+- **Task 2:** the stale rule is not specific to RESTART. It also drops an in-play tick queued behind END CURRENT GAME AND APPLY, which used to run a spurious kickoff refresh.
+- **Accepted:** a sleep catch-up tick queued at the exact instant of RESTART GAME bypasses the stale rule (catch-up markers always do) and is applied.

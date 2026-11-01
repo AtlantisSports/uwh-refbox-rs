@@ -215,21 +215,22 @@ pub(in super::super) fn game_info_rows(
     // actually finished. Number AND score both come from the recorded result — pairing the
     // clock's game number with an earlier game's score is exactly the fault this fixes,
     // because an abandoned game leaves the clock reporting a game that has no result.
-    // With no recorded result at all, keep the pre-existing appearance.
+    // With no recorded result, no game has finished yet, so the line is dashed: the
+    // clock's number would name the upcoming game (after a RESTART of the first game,
+    // the restarted game itself), not one that has been played.
     if between {
-        let (last_number, last_scores) = match last_game.as_ref() {
-            Some((number, scores)) => (number, Some(*scores)),
-            None => (&snapshot.game_number, None),
+        let last = match last_game.as_ref() {
+            Some((number, scores)) => game_block_row(
+                GameRole::Last,
+                number,
+                None, // prior game's Game Block is intentionally not shown
+                Some(*scores),
+                uses_remote,
+                schedule,
+                teams,
+            ),
+            None => empty_game_block_row(GameRole::Last),
         };
-        let last = game_block_row(
-            GameRole::Last,
-            last_number,
-            None, // prior game's Game Block is intentionally not shown
-            last_scores,
-            uses_remote,
-            schedule,
-            teams,
-        );
         rows.insert(0, last);
     }
 
@@ -309,7 +310,8 @@ fn game_block_row(
 }
 
 /// A game block with nothing to show: same role label and same shape, every value
-/// dashed. Used when the selected court has no further scheduled games.
+/// dashed. Used when the selected court has no further scheduled games, and for the
+/// Last line when no game has finished yet.
 fn empty_game_block_row(role: GameRole) -> Row {
     Row::GameBlock {
         role,
@@ -1084,9 +1086,9 @@ mod tests {
     }
 
     #[test]
-    fn last_block_without_a_recorded_result_keeps_todays_appearance() {
-        // No game has finished yet this session: the block keeps the clock's number and
-        // shows no score, exactly as before this change.
+    fn last_block_without_a_recorded_result_is_dashed() {
+        // No game has finished yet this session (PO ruling 2026-10-31): the clock's
+        // number names the upcoming game, not a finished one, so every value is dashed.
         let snapshot = GameSnapshot {
             current_period: GamePeriod::BetweenGames,
             game_number: "18".to_string(),
@@ -1110,11 +1112,26 @@ mod tests {
                     white,
                     black,
                     ..
-                } => Some((number.clone(), white.score, black.score)),
+                } => Some((
+                    number.clone(),
+                    white.name.clone(),
+                    black.name.clone(),
+                    white.score,
+                    black.score,
+                )),
                 _ => None,
             })
             .unwrap();
-        assert_eq!(last, ("18".to_string(), None, None));
+        assert_eq!(
+            last,
+            (
+                NO_VALUE.to_string(),
+                Some(NO_VALUE.to_string()),
+                Some(NO_VALUE.to_string()),
+                None,
+                None
+            )
+        );
     }
 
     fn ref_labels(rows: &[Row]) -> Vec<String> {

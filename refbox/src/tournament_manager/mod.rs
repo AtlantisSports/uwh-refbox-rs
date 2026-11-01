@@ -227,6 +227,11 @@ pub struct TournamentManager {
     /// present, else the Game Block grid slot). Set at `start_game`. `None` before
     /// the first game. Used by `behind_schedule`.
     current_scheduled_start: Option<Instant>,
+    /// The value `next_scheduled_start` held at this game's kickoff: its Game Block
+    /// grid slot, which can differ from its printed start. Kickoff moves the grid on
+    /// to the following game, so a RESTART reads this to put the grid back exactly.
+    /// Same lifecycle as `current_scheduled_start`.
+    current_grid_slot: Option<Instant>,
     reset_game_time: Duration,
     recent_goal: Option<(Color, u8, GamePeriod, Duration)>,
     current_game_stats: GameStats,
@@ -263,6 +268,7 @@ impl TournamentManager {
             next_scheduled_start: None,
             retime_owed: false,
             current_scheduled_start: None,
+            current_grid_slot: None,
             reset_game_time: config.nominal_break,
             config,
             recent_goal: None,
@@ -835,10 +841,13 @@ impl TournamentManager {
     ///    running and stop the restarted game's second half ending on its own.
     /// 4. `reset_game` clears the period, timeouts, scores, penalties, fouls and
     ///    warnings, and any owed re-time.
-    /// 5. The Game Block projection is put back to this game's own scheduled start (its
-    ///    slot). Kickoff moved it on to the following game's slot; left there,
-    ///    a game with no published start would count down to the wrong slot, and
-    ///    `start_game` would then date the restarted game's DELAY from it.
+    /// 5. The Game Block projection is put back to this game's grid slot as it stood at
+    ///    kickoff, or to the game's scheduled start when there was no grid then (the
+    ///    first manual game). Kickoff moved it on to the following game's slot; left
+    ///    there, a game with no published start would count down to the wrong slot, and
+    ///    `start_game` would then date the restarted game's DELAY from it. The printed
+    ///    start is not used when a grid existed, because it can differ from the slot
+    ///    and every later game's slot is projected from this one.
     /// 6. `apply_next_game_start` applies the timing rule and sets the break to the
     ///    time until the start, never less than `minimum_break`.
     /// 7. The updater is notified unconditionally. When the clock was already running
@@ -850,13 +859,19 @@ impl TournamentManager {
             return Err(TournamentManagerError::NotInGame);
         }
 
-        let this_slot = self.current_scheduled_start;
+        let this_slot = self.current_grid_slot.or(self.current_scheduled_start);
         self.set_next_game(info);
         self.time_pause_confirmation = None;
         self.reset_game(now);
         if this_slot.is_some() {
             self.next_scheduled_start = this_slot;
         }
+        // The game is usually stopped before a restart, and no tick runs while the clock
+        // is stopped, so the jump detector saw nothing during the hold. Rebasing here
+        // stops the held period being reported as lost time on the first tick of the
+        // break and re-placing the game the operator has just restarted by hand — the
+        // same reason `start_clock` gives.
+        self.jump_detector = JumpDetector::default();
         self.apply_next_game_start(now)?;
         self.send_clock_running(true);
 
@@ -876,6 +891,7 @@ impl TournamentManager {
         self.fouls.iter_mut().for_each(|(_, f)| f.clear());
         self.current_game_stats = GameStats::new(self.next_game_number());
         self.current_scheduled_start = None;
+        self.current_grid_slot = None;
         self.has_reset = true;
     }
 
@@ -2159,6 +2175,8 @@ impl TournamentManager {
             self.next_game_scheduled_start(start_time)
                 .unwrap_or(start_time),
         );
+        // The grid slot as it stands before the reassignment below, for a RESTART.
+        self.current_grid_slot = self.next_scheduled_start;
 
         self.game_number = self.next_game_number();
         self.no_next_game = false;
@@ -13839,6 +13857,49 @@ mod test {
         tm.restart_game(game_7(None), now).unwrap();
 
         assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(120)));
+    }
+
+    #[test]
+    fn restart_rebases_the_time_jump_detector() {
+        let (mut tm, g) = restart_fixture();
+        tm.stop_clock(g).unwrap();
+        let wall = OffsetDateTime::UNIX_EPOCH + time::Duration::hours(1);
+        // The last tick before the hold. No tick runs while the clock is stopped.
+        assert_eq!(tm.jump_detector.observe(g, wall), None);
+
+        tm.restart_game(game_7(Some(30)), g).unwrap();
+
+        // The machine slept 20 minutes during the stoppage. The first tick after the
+        // restart must not report that as lost time.
+        assert_eq!(
+            tm.jump_detector
+                .observe(g, wall + time::Duration::minutes(20)),
+            None
+        );
+    }
+
+    #[test]
+    fn restart_restores_the_grid_slot_not_the_printed_start() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            minimum_break: Duration::from_secs(120),
+            game_block: Duration::from_secs(3600),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let g = Instant::now();
+        // Game 7's Game Block slot is `g`, but its published start is five minutes
+        // later. A restart must put the grid back to `g`, not to the printed start.
+        tm.next_scheduled_start = Some(g);
+        tm.set_next_game(game_7(Some(5)));
+        assert_eq!(tm.next_scheduled_start, Some(g));
+        tm.start_play_now(g).unwrap();
+        assert_eq!(tm.next_scheduled_start, Some(g + Duration::from_secs(3600)));
+
+        tm.restart_game(game_7(Some(5)), g).unwrap();
+
+        assert_eq!(tm.next_scheduled_start, Some(g));
     }
 
     #[test]

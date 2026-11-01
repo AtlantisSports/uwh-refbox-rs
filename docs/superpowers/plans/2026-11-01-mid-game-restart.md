@@ -154,3 +154,7 @@ Behaviour:
 - **Task 3:** the ja-JP and zh-CN confirmation text says the score will be "erased" rather than "lost". The refbox's built-in CJK font subset (checked at build time) lacks わ, 失 and 任.
 - **Task 2:** the stale rule is not specific to RESTART. It also drops an in-play tick queued behind END CURRENT GAME AND APPLY, which used to run a spurious kickoff refresh.
 - **Accepted:** a sleep catch-up tick queued at the exact instant of RESTART GAME bypasses the stale rule (catch-up markers always do) and is applied.
+- **Pre-PR review fix wave** (findings #1, #3, #4; the other five are answered in the PR):
+  - `restart_game` rebases the time-jump detector, as `start_clock` does. Otherwise a machine sleep during the stoppage before a RESTART was reported as lost time and re-placed the court. Test `restart_rebases_the_time_jump_detector`.
+  - Step 5 restores the Game Block grid slot as it stood at kickoff (new field `current_grid_slot`) rather than the printed start, which can differ from the slot and from which every later slot is projected. Test `restart_restores_the_grid_slot_not_the_printed_start`.
+  - Out-of-plan file `game_info_table.rs`: the Game Info "Last" line is dashed whenever no game has finished yet (PO ruling 2026-10-31). Restarting the first game of a session showed the restarted game as already played. This also changes the start-of-day look.

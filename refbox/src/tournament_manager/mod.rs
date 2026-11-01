@@ -829,15 +829,19 @@ impl TournamentManager {
     ///    fresh stats from `next_game_number()`, which mid-game still reads the game
     ///    AFTER this one — or a blank on the court's last game. Storing first also
     ///    clears `no_next_game`, so a restarted last game has a game to count down to.
-    /// 3. `reset_game` clears the period, timeouts, scores, penalties, fouls and
+    /// 3. A pending score confirmation is dropped. A restart discards the game, so a
+    ///    pending score confirmation has nothing left to confirm — and `reset_game`
+    ///    does not clear it, so left set it would stop the break clock reading as
+    ///    running and stop the restarted game's second half ending on its own.
+    /// 4. `reset_game` clears the period, timeouts, scores, penalties, fouls and
     ///    warnings, and any owed re-time.
-    /// 4. The Game Block projection is put back to this game's slot, the state before
+    /// 5. The Game Block projection is put back to this game's slot, the state before
     ///    it kicked off. Kickoff moved it on to the following game's slot; left there,
     ///    a game with no published start would count down to the wrong slot, and
     ///    `start_game` would then date the restarted game's DELAY from it.
-    /// 5. `apply_next_game_start` applies the timing rule and sets the break to the
+    /// 6. `apply_next_game_start` applies the timing rule and sets the break to the
     ///    time until the start, never less than `minimum_break`.
-    /// 6. The updater is notified unconditionally. When the clock was already running
+    /// 7. The updater is notified unconditionally. When the clock was already running
     ///    it sleeps until the next whole second of the countdown it last saw — the
     ///    same reason `set_next_game_and_retime` gives — and the paths above only
     ///    notify when the clock was stopped.
@@ -848,6 +852,7 @@ impl TournamentManager {
 
         let this_slot = self.current_scheduled_start;
         self.set_next_game(info);
+        self.time_pause_confirmation = None;
         self.reset_game(now);
         if this_slot.is_some() {
             self.next_scheduled_start = this_slot;
@@ -13893,5 +13898,24 @@ mod test {
 
         assert!(rx.has_changed().unwrap());
         assert!(*rx.borrow_and_update());
+    }
+
+    #[test]
+    fn restart_during_score_confirm_pause() {
+        // End of regulation: the period is still SecondHalf while the score
+        // confirmation is pending, so the restart is accepted and must drop the pause.
+        let (mut tm, g) = restart_fixture();
+        tm.stop_clock(g).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
+        tm.start_clock(g);
+        tm.pause_for_confirm(g).unwrap();
+        assert!(tm.in_score_confirm_pause());
+        assert_eq!(tm.current_period(), GamePeriod::SecondHalf);
+
+        tm.restart_game(game_7(Some(10)), Instant::now()).unwrap();
+
+        assert!(!tm.in_score_confirm_pause());
+        assert!(matches!(tm.clock_state, ClockState::CountingDown { .. }));
+        assert!(tm.game_clock_running());
     }
 }

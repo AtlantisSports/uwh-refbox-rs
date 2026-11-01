@@ -55,6 +55,8 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
                             .rev()
                             .map(|fouls| make_warning_container(fouls, color).into()),
                     )
+                    .spacing(SPACING)
+                    .padding(PADDING)
                     .into(),
                 ),
             )

@@ -212,6 +212,9 @@ uwhportal-token-no-pending-link = Hindi inaasahan ng koneksyon ang komunikasyon.
 uwhportal-token-unusable-key = Nagpadala ang site ng access key na hindi magagamit ng Refbox na ito.
     Hilingin muli ang key sa site.
 go-back-to-editor = BUMALIK SA EDITOR
+go-back = BUMALIK
+restart-game = I-RESTART ANG LARO
+restart-game-confirm = I-restart ang larong ito? Mawawala ang iskor, mga poul at mga parusa, at walang ipapadala sa Portal.
 discard-changes = ITAPON ANG MGA PAGBABAGO
 end-current-game-and-apply-changes = TAPUSIN ANG KASALUKUYANG LARO AT ILAPAT ANG MGA PAGBABAGO
 end-current-game-and-apply-change = TAPUSIN ANG KASALUKUYANG LARO AT ILAPAT ANG PAGBABAGO

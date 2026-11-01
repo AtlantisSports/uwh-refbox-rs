@@ -458,6 +458,12 @@ enum ConfirmationKind {
     /// switch to. Cancel changes nothing at all: the source buttons never leave
     /// a staged choice showing, so there is nothing to snap back.
     SourceSwitchClearsSelection(GameSource),
+    /// Raised by RESTART on the Game info page while a game is in play. Carries
+    /// nothing: the game to restart is whatever the engine is playing when the
+    /// operator confirms, and that is re-read then rather than captured now,
+    /// because the clock keeps running while this page is up and the game can
+    /// end underneath it.
+    RestartGame,
 }
 
 /// Which of the two kinds of site an address belongs to. Decides which saved
@@ -1602,7 +1608,7 @@ impl RefBoxApp {
     /// caller still holding it would deadlock the app.
     fn apply_tick(
         &mut self,
-        mut new_snapshot: GameSnapshot,
+        new_snapshot: GameSnapshot,
         caught_up: Option<CatchUp>,
     ) -> Task<Message> {
         let engine_period = self.tm.lock().current_period();
@@ -1620,6 +1626,8 @@ impl RefBoxApp {
             }
             SnapshotTransition::Stale => {
                 // Neither stored nor sent: the next tick carries the true state.
+                // Returns before `publish_snapshot` on purpose -- a dropped tick must
+                // not become the snapshot the next one is compared against.
                 warn!(
                     "Dropping a stale tick for game {} (engine is between games; app last \
                      stored game {})",
@@ -1630,6 +1638,22 @@ impl RefBoxApp {
             SnapshotTransition::Nothing => {}
         }
 
+        self.publish_snapshot(new_snapshot);
+        task
+    }
+
+    /// Stamp a snapshot with this refbox's event and site, play any sound it calls
+    /// for, send it to the displays and store it as the app's current snapshot.
+    ///
+    /// This is the tail of `apply_tick`, split out for a caller that must publish a
+    /// snapshot WITHOUT running the transition rules: a mid-game restart moves the
+    /// engine from in play to between games, which `snapshot_transition` would read
+    /// as `GameEnded` and answer by filing a result for the abandoned game. Storing
+    /// into `self.snapshot` is what the stale rule compares the next tick against,
+    /// so publishing here is also what makes a queued in-play tick read as stale.
+    ///
+    /// Takes no `tm` lock, but callers have no reason to hold one across it either.
+    fn publish_snapshot(&mut self, mut new_snapshot: GameSnapshot) {
         new_snapshot.event_id = self.current_event_id.clone();
         // The address this refbox's own portal client is pointed at, so a consumer resolving names
         // from a portal looks them up where refbox looks them up. `current_site` is the value the
@@ -1662,7 +1686,102 @@ impl RefBoxApp {
             warn!("Failed to send snapshot to displays: {e:?}");
         }
         self.snapshot = new_snapshot;
-        task
+    }
+
+    /// Restart the game in play, after the operator confirmed RESTART GAME.
+    ///
+    /// The score, fouls and penalties are discarded and the court goes back to the
+    /// break before this same game, counting down to its scheduled start under the
+    /// current timing rules. Nothing is filed for the abandoned game: the snapshot is
+    /// published with `publish_snapshot`, not `apply_snapshot`, because the transition
+    /// rules would read in play -> between games as a game ending and run
+    /// `handle_game_end`.
+    fn restart_current_game(&mut self) -> Task<Message> {
+        // The clock kept running while the confirmation page was up, and a game
+        // ends by itself when its last period runs out -- so the check made when
+        // RESTART was tapped may now be stale. Re-take it here. A game that ended
+        // in the meantime has already had its result filed and its break started;
+        // restarting it now would wipe that result off the panel and run a second
+        // break for a game that is over. The source can also have been switched to
+        // manual since, and RESTART is only offered for a remote schedule (the
+        // restart re-reads this game's slot from it).
+        if !self.uses_remote() {
+            warn!("RESTART GAME confirmed, but the refbox is no longer on a remote schedule");
+            self.app_state = AppState::MainPage;
+            trace!("AppState changed to {:?}", self.app_state);
+            return Task::none();
+        }
+
+        // Read the game number on its own, guard dropped at the end of the
+        // statement: the schedule lookup below borrows `self`, not `tm`.
+        let (period, number) = {
+            let tm = self.tm.lock();
+            (tm.current_period(), tm.game_number())
+        };
+        if period == GamePeriod::BetweenGames {
+            warn!("RESTART GAME confirmed, but game {number} has already ended; nothing changed");
+            self.app_state = AppState::MainPage;
+            trace!("AppState changed to {:?}", self.app_state);
+            return Task::none();
+        }
+
+        // This game's own slot. A game missing from the schedule gives no timing and
+        // no start; `restart_game` then falls back to the nominal break, which is the
+        // best the refbox can do without a slot to count down to.
+        let (game, timing) = self
+            .schedule
+            .as_ref()
+            .map(|schedule| schedule.get_game_and_timing(&number))
+            .unwrap_or((None, None));
+        let info = NextGameInfo {
+            number: number.clone(),
+            timing: timing.cloned(),
+            start_time: game.map(|g| g.start_time),
+        };
+
+        let now = Instant::now();
+        let mut tm = self.tm.lock();
+        if let Err(e) = tm.restart_game(info, now) {
+            // `NotInGame` here means the game ended between the check above and this
+            // lock; anything else is an engine refusal. Either way nothing was reset.
+            drop(tm);
+            warn!("RESTART GAME for game {number} refused: {e}");
+            self.app_state = AppState::MainPage;
+            trace!("AppState changed to {:?}", self.app_state);
+            return Task::none();
+        }
+        self.config.game = tm.config().clone();
+        let snapshot = match tm.generate_snapshot(now) {
+            Some(snapshot) => snapshot,
+            None => {
+                // The engine has restarted; only this one frame is missing. The
+                // updater's next tick carries the between-games state to the panel.
+                drop(tm);
+                warn!("Game {number} restarted, but its snapshot could not be generated");
+                self.app_state = AppState::MainPage;
+                trace!("AppState changed to {:?}", self.app_state);
+                return Task::none();
+            }
+        };
+        // Released before any app code runs. Neither call below takes the lock
+        // today, but it does not re-enter, so a guard held across app code is a
+        // deadlock waiting for the first caller that does.
+        drop(tm);
+
+        self.publish_snapshot(snapshot);
+        self.app_state = AppState::MainPage;
+        trace!("AppState changed to {:?}", self.app_state);
+
+        // Re-read the schedule so a timing change published since kickoff reaches
+        // the countdown. A failed fetch changes nothing: the restart on the rules
+        // already loaded stands.
+        match (
+            self.current_event_id.clone(),
+            self.uwhportal_client.is_some(),
+        ) {
+            (Some(event_id), true) => self.request_schedule(event_id),
+            _ => Task::none(),
+        }
     }
 
     fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
@@ -3668,6 +3787,12 @@ impl RefBoxApp {
                      which is dispatched before this function is reached."
                 )
             }
+            ConfirmationOption::RestartGame => {
+                unreachable!(
+                    "RestartGame is only offered by the RestartGame page, which is \
+                     dispatched before this function is reached."
+                )
+            }
         };
         self.app_state = app_state;
         trace!("AppState changed to {:?}", self.app_state);
@@ -3773,6 +3898,12 @@ impl RefBoxApp {
                 unreachable!(
                     "SwitchSource is only offered by the SourceSwitchClearsSelection page, \
                      which is dispatched before this function is reached."
+                )
+            }
+            ConfirmationOption::RestartGame => {
+                unreachable!(
+                    "RestartGame is only offered by the RestartGame page, which is \
+                     dispatched before this function is reached."
                 )
             }
         };
@@ -5438,6 +5569,14 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
+            Message::RequestGameRestart => {
+                // Only raises the confirmation page. Whether a restart is still
+                // possible is decided when the operator confirms, not here: the
+                // clock keeps running while the page is up.
+                self.app_state = AppState::ConfirmationPage(ConfirmationKind::RestartGame);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
             Message::RequestPortalRefresh => {
                 // Only spin the REFRESH button when there is actually an event
                 // to refresh AND a site the refbox could reach; otherwise
@@ -6844,6 +6983,32 @@ impl RefBoxApp {
                     };
                 }
 
+                // The restart confirmation is its own two-option page, raised from
+                // Game info rather than from settings, so it is handled here and
+                // never reaches `apply_game_confirmation`, whose options all mean
+                // something about an edited game config. GO BACK returns to Game
+                // info with nothing changed.
+                if matches!(
+                    self.app_state,
+                    AppState::ConfirmationPage(ConfirmationKind::RestartGame)
+                ) {
+                    return match selection {
+                        ConfirmationOption::GoBack => {
+                            self.app_state = AppState::GameDetailsPage(false);
+                            trace!("AppState changed to {:?}", self.app_state);
+                            Task::none()
+                        }
+                        ConfirmationOption::RestartGame => self.restart_current_game(),
+                        ConfirmationOption::DiscardChanges
+                        | ConfirmationOption::EndGameAndApply
+                        | ConfirmationOption::KeepGameAndApply
+                        | ConfirmationOption::RestartAndApply
+                        | ConfirmationOption::SwitchSource => {
+                            unreachable!("The RestartGame page offers only GoBack and RestartGame.")
+                        }
+                    };
+                }
+
                 if matches!(
                     self.app_state,
                     AppState::ConfirmationPage(
@@ -6894,16 +7059,43 @@ impl RefBoxApp {
                              page, which is dispatched above."
                         )
                     }
+                    ConfirmationOption::RestartGame => {
+                        unreachable!(
+                            "RestartGame is only offered by the RestartGame page, which is \
+                             dispatched above."
+                        )
+                    }
                 };
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
             Message::ConfirmScores(update) => {
+                // A ConfirmScores tick queued before a mid-game restart can arrive
+                // after it. `apply_tick` drops such a tick, but this handler would
+                // still raise a score page (showing 0-0) for a game that was
+                // abandoned, or end a confirm pause the restart already cleared and
+                // start the break clock. Test it here with the same rule
+                // `apply_tick` uses. Not "the engine is between games": a genuine
+                // tick whose pause the updater already ended has the engine between
+                // games too, and must still raise the page -- but the app's stored
+                // snapshot is then still in play, so it is never stale.
+                let stale = snapshot_transition(
+                    &self.snapshot,
+                    &update.snapshot,
+                    update.caught_up,
+                    self.tm.lock().current_period(),
+                ) == SnapshotTransition::Stale;
                 let mut task = Task::none();
                 if self.config.confirm_score {
+                    // Still handed to `apply_tick`, which drops it with a warning.
                     task = self.apply_tick(update.snapshot, update.caught_up);
+                    if stale {
+                        return task;
+                    }
                     self.app_state = AppState::ConfirmScores(self.snapshot.scores);
                     trace!("AppState changed to {:?}", self.app_state);
+                } else if stale {
+                    warn!("Dropping a stale score-confirmation tick for a restarted game");
                 } else {
                     if update.caught_up.is_some() {
                         // Should be unreachable: `observe_time_jump` refuses to act
@@ -6964,7 +7156,20 @@ impl RefBoxApp {
             Message::AutoConfirmScores(update) => {
                 info!("Autoconfirming");
 
+                // Same queued-before-restart case as `Message::ConfirmScores`, same
+                // rule: a stale tick must not pull the operator off whatever page
+                // they are on for a game that was abandoned.
+                let stale = snapshot_transition(
+                    &self.snapshot,
+                    &update.snapshot,
+                    update.caught_up,
+                    self.tm.lock().current_period(),
+                ) == SnapshotTransition::Stale;
+
                 let task = self.apply_tick(update.snapshot, update.caught_up);
+                if stale {
+                    return task;
+                }
 
                 self.app_state = AppState::MainPage;
 
@@ -11730,6 +11935,47 @@ mod snapshot_transition_tests {
                 GamePeriod::BetweenGames
             ),
             SnapshotTransition::CaughtUpToNewGame
+        );
+    }
+
+    /// The score-confirmation tick that ended the second half can still be queued
+    /// when the operator restarts the game. The restart has already stored a
+    /// between-games snapshot, so that tick reads as "between games -> in play"
+    /// with the engine between games: stale. The ConfirmScores and
+    /// AutoConfirmScores handlers test exactly this before touching the screen,
+    /// so an abandoned game never pops up a score page.
+    #[test]
+    fn a_queued_confirm_scores_tick_after_restart_is_stale() {
+        let restarted = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            ..Default::default()
+        };
+        let queued = GameSnapshot {
+            current_period: GamePeriod::SecondHalf,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            snapshot_transition(&restarted, &queued, None, GamePeriod::BetweenGames),
+            SnapshotTransition::Stale
+        );
+    }
+
+    /// The contrast case the guard must let through: a genuine ConfirmScores tick
+    /// whose pause the updater has already ended. The engine is between games by
+    /// then, but the app's last stored snapshot is still in play, so the pair is
+    /// not stale and the score page must still be raised.
+    #[test]
+    fn a_confirm_scores_tick_whose_pause_ended_is_not_stale() {
+        let playing = GameSnapshot {
+            current_period: GamePeriod::SecondHalf,
+            ..Default::default()
+        };
+        let confirm_tick = playing.clone();
+
+        assert_ne!(
+            snapshot_transition(&playing, &confirm_tick, None, GamePeriod::BetweenGames),
+            SnapshotTransition::Stale
         );
     }
 }

@@ -211,6 +211,9 @@ uwhportal-token-no-pending-link = การเชื่อมต่อไม่�
 uwhportal-token-unusable-key = เว็บไซต์ส่งคีย์การเข้าถึงที่ Refbox นี้ใช้ไม่ได้
     โปรดขอคีย์จากเว็บไซต์อีกครั้ง
 go-back-to-editor = กลับไปยังตัวแก้ไข
+go-back = กลับ
+restart-game = รีสตาร์ทเกม
+restart-game-confirm = รีสตาร์ทเกมนี้หรือไม่? คะแนน ฟาวล์ และโทษจะหายไป และจะไม่มีการส่งข้อมูลใดไปยัง Portal
 discard-changes = ยกเลิกการเปลี่ยนแปลง
 end-current-game-and-apply-changes = สิ้นสุดเกมปัจจุบันและใช้การเปลี่ยนแปลง
 end-current-game-and-apply-change = สิ้นสุดเกมปัจจุบันและใช้การเปลี่ยนแปลง

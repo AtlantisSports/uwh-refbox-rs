@@ -212,6 +212,9 @@ uwhportal-token-no-pending-link = Bağlantı iletişim beklemiyor.
 uwhportal-token-unusable-key = Site, bu Refbox'ın kullanamayacağı bir erişim anahtarı gönderdi.
     Anahtarı siteden tekrar isteyin.
 go-back-to-editor = DÜZENLEYICIYE GERİ DÖN
+go-back = GERİ DÖN
+restart-game = OYUNU YENİDEN BAŞLAT
+restart-game-confirm = Bu oyun yeniden başlatılsın mı? Skor, fauller ve cezalar kaybolacak ve Portal'a hiçbir şey gönderilmeyecek.
 discard-changes = DEĞİŞİKLİKLERİ İPTAL ET
 end-current-game-and-apply-changes = MEVCUT OYUNU BİTİR VE DEĞİŞİKLİKLERİ UYGULA
 end-current-game-and-apply-change = MEVCUT OYUNU BİTİR VE DEĞİŞİKLİĞİ UYGULA

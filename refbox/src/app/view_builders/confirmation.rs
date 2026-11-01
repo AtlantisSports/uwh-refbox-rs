@@ -61,6 +61,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
             "source-switch-clears-selection",
             source = source_display_name(*target, mode)
         ),
+        ConfirmationKind::RestartGame => fl!("restart-game-confirm"),
     };
 
     type ButtonStyleFn = fn(&Theme, Status) -> Style;
@@ -175,6 +176,16 @@ pub(in super::super) fn build_confirmation_page<'a>(
                 fl!("switch-and-clear-selection"),
                 red_button,
                 ConfirmationOption::SwitchSource,
+            ),
+        ],
+        // Same colour rule as the source switch above: green is the way out that
+        // changes nothing, and red is the button that throws the game away.
+        ConfirmationKind::RestartGame => vec![
+            (fl!("go-back"), green_button, ConfirmationOption::GoBack),
+            (
+                fl!("restart-game"),
+                red_button,
+                ConfirmationOption::RestartGame,
             ),
         ],
         // Nothing was committed and nothing is discarded: the single button

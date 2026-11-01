@@ -214,6 +214,9 @@ uwhportal-token-no-pending-link = 연결이 통신을 기다리지 않습니다.
 uwhportal-token-unusable-key = 사이트에서 보낸 액세스 키를 이 Refbox에서 사용할 수 없습니다.
     사이트에 키를 다시 요청하세요.
 go-back-to-editor = 편집기로 돌아가기
+go-back = 돌아가기
+restart-game = 경기 재시작
+restart-game-confirm = 이 경기를 재시작하시겠습니까? 점수, 반칙, 페널티가 사라지며 Portal로 아무것도 전송되지 않습니다.
 discard-changes = 변경 사항 버리기
 end-current-game-and-apply-changes = 현재 경기 종료 및 변경 사항 적용
 end-current-game-and-apply-change = 현재 경기 종료 및 변경 사항 적용

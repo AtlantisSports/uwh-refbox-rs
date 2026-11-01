@@ -77,11 +77,10 @@ pub(in super::super) fn build_game_info_page<'a>(
                 .width(Length::Fill)
                 .on_press_maybe((!token_expired).then_some(Message::RequestPortalRefresh))
                 .into(),
-            // Task 3 points this at its own `RequestGameRestart` message.
             MiddleButton::Restart => make_chrome_button(fl!("restart"))
                 .style(blue_button)
                 .width(Length::Fill)
-                .on_press_maybe((!token_expired).then_some(Message::RequestPortalRefresh))
+                .on_press_maybe((!token_expired).then_some(Message::RequestGameRestart))
                 .into(),
         };
 

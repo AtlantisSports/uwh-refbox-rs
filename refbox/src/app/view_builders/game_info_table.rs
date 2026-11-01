@@ -215,9 +215,9 @@ pub(in super::super) fn game_info_rows(
     // actually finished. Number AND score both come from the recorded result — pairing the
     // clock's game number with an earlier game's score is exactly the fault this fixes,
     // because an abandoned game leaves the clock reporting a game that has no result.
-    // With no recorded result, no game has finished yet, so the line is dashed: the
-    // clock's number would name the upcoming game (after a RESTART of the first game,
-    // the restarted game itself), not one that has been played.
+    // With no recorded result, no game has finished since the refbox started, so the
+    // line is dashed: the clock's number names a game with no result (after a RESTART
+    // of the first game, the restarted game itself), not one that has been played.
     if between {
         let last = match last_game.as_ref() {
             Some((number, scores)) => game_block_row(
@@ -1087,8 +1087,8 @@ mod tests {
 
     #[test]
     fn last_block_without_a_recorded_result_is_dashed() {
-        // No game has finished yet this session (PO ruling 2026-10-31): the clock's
-        // number names the upcoming game, not a finished one, so every value is dashed.
+        // No game has finished since the refbox started (PO ruling 2026-10-31): the
+        // clock's number names a game with no result, so every value is dashed.
         let snapshot = GameSnapshot {
             current_period: GamePeriod::BetweenGames,
             game_number: "18".to_string(),

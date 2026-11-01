@@ -230,7 +230,9 @@ pub struct TournamentManager {
     /// The value `next_scheduled_start` held at this game's kickoff: its Game Block
     /// grid slot, which can differ from its printed start. Kickoff moves the grid on
     /// to the following game, so a RESTART reads this to put the grid back exactly.
-    /// Same lifecycle as `current_scheduled_start`.
+    /// Same lifecycle as `current_scheduled_start`. After a sleep catch-up places a
+    /// game, this holds the slot of the game that was due before the sleep; catch-up
+    /// only places games with printed starts, so the break is unaffected.
     current_grid_slot: Option<Instant>,
     reset_game_time: Duration,
     recent_goal: Option<(Color, u8, GamePeriod, Duration)>,
@@ -843,11 +845,12 @@ impl TournamentManager {
     ///    warnings, and any owed re-time.
     /// 5. The Game Block projection is put back to this game's grid slot as it stood at
     ///    kickoff, or to the game's scheduled start when there was no grid then (the
-    ///    first manual game). Kickoff moved it on to the following game's slot; left
+    ///    session's first game). Kickoff moved it on to the following game's slot; left
     ///    there, a game with no published start would count down to the wrong slot, and
     ///    `start_game` would then date the restarted game's DELAY from it. The printed
     ///    start is not used when a grid existed, because it can differ from the slot
-    ///    and every later game's slot is projected from this one.
+    ///    and every later game's slot is projected from this one. The time-jump
+    ///    detector is rebased here too, for the reason `start_clock` gives.
     /// 6. `apply_next_game_start` applies the timing rule and sets the break to the
     ///    time until the start, never less than `minimum_break`.
     /// 7. The updater is notified unconditionally. When the clock was already running

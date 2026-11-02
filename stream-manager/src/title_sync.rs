@@ -652,6 +652,8 @@ mod tests {
             court: court_and_day.map(|(court, _)| court.to_string()),
             day: court_and_day.map(|(_, day)| day),
             thumbnail: None,
+            highlights: None,
+            live_requested: None,
         }
     }
 

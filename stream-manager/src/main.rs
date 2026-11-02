@@ -12,6 +12,7 @@ mod app;
 mod companion;
 mod config;
 mod google_auth;
+mod highlights;
 mod live;
 mod portal;
 mod prepare;

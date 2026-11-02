@@ -7,6 +7,7 @@ use crate::{
     companion,
     config::{Config, CourtConfig},
     google_auth::{self, GoogleAuth},
+    highlights,
     live::{self, Outcome},
     portal::{self, EventPlan, video_title},
     prepare,
@@ -36,6 +37,7 @@ use tokio::{
     },
     task::JoinHandle,
 };
+use uwh_common::game_snapshot::GameSnapshot;
 
 pub const TOKEN_FILE: &str = "youtube-token.json";
 const COURT_LOG_LINES: usize = 12;
@@ -124,6 +126,8 @@ struct CourtRuntime {
     /// Restart recovery has asked YouTube about this court's videos, or its day was started or
     /// ended by hand, so recovery doesn't look at it again.
     recovered: bool,
+    /// The goals, penalties and fouls of the game in play, for its video's description.
+    highlights: highlights::Tracker,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -204,6 +208,7 @@ impl CourtRuntime {
             removed_reported: Vec::new(),
             companion_error: None,
             recovered: false,
+            highlights: highlights::Tracker::default(),
         }
     }
 
@@ -525,6 +530,7 @@ impl App {
             return;
         }
         let practice = inner.config.practice_mode;
+        let event_slug = inner.config.event_slug.clone();
         let Inner {
             courts,
             plan,
@@ -536,6 +542,7 @@ impl App {
         };
         match event {
             RefboxEvent::Connected => {
+                court.highlights.reset();
                 court.refbox_connected = true;
                 court.refbox_has_data = false;
                 court.refbox_unreadable = None;
@@ -543,6 +550,7 @@ impl App {
                 court.note("Refbox connected".into());
             }
             RefboxEvent::Disconnected => {
+                court.highlights.reset();
                 court.refbox_connected = false;
                 court.refbox_has_data = false;
                 court.refbox_unreadable = None;
@@ -586,10 +594,61 @@ impl App {
                     court.refbox_silent = false;
                     court.note("Refbox responding again".into());
                 }
+                self.follow_highlights(court, &snapshot, &event_slug);
                 if let Some(action) = court.switcher.on_snapshot(&snapshot) {
                     dispatch(court, executors.get(i), plan.as_ref(), action, practice, "");
                 }
             }
+        }
+    }
+
+    /// Notes the goals, penalties and fouls the snapshot shows were just entered, and saves the
+    /// game's list in the event's record. Only an event with a record (its videos prepared) keeps
+    /// one: without videos there is no description to write it into.
+    fn follow_highlights(
+        &self,
+        court: &mut CourtRuntime,
+        snapshot: &GameSnapshot,
+        event_slug: &str,
+    ) {
+        let Ok(file) = prepare::state_path(&self.config_dir, event_slug) else {
+            return;
+        };
+        if !file.exists() {
+            return;
+        }
+        let saved = |game: &str| {
+            prepare::load_state(&file, event_slug)
+                .ok()
+                .and_then(|state| state.highlights.get(game).cloned())
+                .unwrap_or_default()
+        };
+        let before = court
+            .highlights
+            .current()
+            .map(|(game, list)| (game.to_string(), list.clone()));
+        let Some((game, list)) =
+            court
+                .highlights
+                .on_snapshot(snapshot, OffsetDateTime::now_utc(), saved)
+        else {
+            return;
+        };
+        let line = before
+            .filter(|(g, _)| *g == game)
+            .and_then(|(_, before)| highlights::log_line(&game, &before, &list));
+        if let Some(line) = line {
+            court.note(line);
+        }
+        // A game with nothing to list (e.g. the refbox's placeholder before a game is set) isn't
+        // added to the record; one whose last item was taken off is kept, now empty.
+        let saved = prepare::update_state(&file, event_slug, |state| {
+            if !list.items.is_empty() || state.highlights.contains_key(&game) {
+                state.highlights.insert(game.clone(), list);
+            }
+        });
+        if let Err(e) = saved {
+            court.note(format!("Couldn't save Game {game}'s goals and fouls: {e}"));
         }
     }
 

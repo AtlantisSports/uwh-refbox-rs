@@ -44,6 +44,10 @@ pub struct EventState {
     pub playlists: BTreeMap<String, String>,
     /// Game number → its video.
     pub videos: BTreeMap<String, VideoState>,
+    /// Game number → the goals, penalties and fouls seen in the refbox feed, written into the
+    /// game's video description once it is over.
+    #[serde(default)]
+    pub highlights: BTreeMap<String, crate::highlights::GameHighlights>,
     /// The shape of the event's logo boxes, once worked out from every event logo, so every
     /// thumbnail of the event keeps it and the logos aren't all downloaded again.
     #[serde(default)]
@@ -75,19 +79,51 @@ pub struct VideoState {
     /// What the uploaded thumbnail shows (see `thumbnail_key`), once one is uploaded.
     #[serde(default)]
     pub thumbnail: Option<String>,
+    /// The "Game highlights" list (goals, penalties, fouls) added to the description once the
+    /// game is over.
+    #[serde(default)]
+    pub highlights: Option<String>,
+    /// When this program asked YouTube to put the video live: where its recording, and so its
+    /// 0:00, starts.
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub live_requested: Option<OffsetDateTime>,
+}
+
+/// What follows the generated text on YouTube: the link to the next game, then the game's
+/// highlights, each once known.
+fn description_suffix(next_game_link: Option<&str>, highlights: Option<&str>) -> String {
+    let mut suffix = String::new();
+    if let Some(link) = next_game_link {
+        suffix.push_str(&format!("\nNext game: {link}\n"));
+    }
+    if let Some(block) = highlights {
+        suffix.push('\n');
+        suffix.push_str(block);
+    }
+    suffix
 }
 
 /// The description as it should be on YouTube: the generated text plus, once known, the link
-/// to the next game.
-pub fn with_next_link(description: &str, next_game_link: Option<&str>) -> String {
-    match next_game_link {
-        Some(link) => format!(
-            "{description}
-Next game: {link}
-"
-        ),
-        None => description.to_string(),
-    }
+/// to the next game and the game's highlights.
+pub fn full_description(
+    description: &str,
+    next_game_link: Option<&str>,
+    highlights: Option<&str>,
+) -> String {
+    format!(
+        "{description}{}",
+        description_suffix(next_game_link, highlights)
+    )
+}
+
+/// The generated part of a recorded video's description: what's left without the next game's
+/// link and the highlights added after it.
+pub fn generated_description(video: &VideoState) -> &str {
+    let suffix = description_suffix(video.next_game_link.as_deref(), video.highlights.as_deref());
+    video
+        .description
+        .strip_suffix(suffix.as_str())
+        .unwrap_or(&video.description)
 }
 
 /// The event's record file. Refused for a slug that isn't a plain portal event name, so it can
@@ -339,7 +375,11 @@ fn needed_update(
 ) -> Option<(BroadcastSpec, String)> {
     let spec = broadcast_spec(config, plan, game);
     let spec = BroadcastSpec {
-        description: with_next_link(&spec.description, video.next_game_link.as_deref()),
+        description: full_description(
+            &spec.description,
+            video.next_game_link.as_deref(),
+            video.highlights.as_deref(),
+        ),
         ..spec
     };
     // The start is compared using the portal's own time: the stored scheduled start of a past
@@ -1253,9 +1293,13 @@ pub async fn run(
                         court: Some(game.court.clone()),
                         day: Some(game.day),
                         thumbnail: None,
+                        highlights: None,
+                        live_requested: None,
                     };
                     update_state(state_file, &config.event_slug, |state| {
                         state.videos.insert(game.number.clone(), v.clone());
+                        // A list kept for this game number belonged to an earlier video.
+                        state.highlights.remove(&game.number);
                     })?;
                     v
                 }
@@ -1522,6 +1566,8 @@ pub async fn cleanup(
             state.playlists.remove(&title);
         })?;
     }
+    // Lists of games that had no video go too, so a later test starts afresh.
+    update_state(state_file, event_slug, |state| state.highlights.clear())?;
     log(format!("Done. Used {} units so far.", youtube.units_used));
     Ok(())
 }
@@ -1537,6 +1583,7 @@ fn note_deleted(
     deleted.push(game.to_string());
     update_state(state_file, event_slug, |state| {
         state.videos.remove(game);
+        state.highlights.remove(game);
     })?;
     Ok(())
 }
@@ -1675,6 +1722,8 @@ mod tests {
             court: None,
             day: None,
             thumbnail: None,
+            highlights: None,
+            live_requested: None,
         }
     }
 
@@ -2547,6 +2596,8 @@ mod tests {
             court: None,
             day: None,
             thumbnail: None,
+            highlights: None,
+            live_requested: None,
         }
     }
 
@@ -2594,6 +2645,55 @@ mod tests {
             spec.description
                 .ends_with("Next game: https://youtu.be/next\n")
         );
+    }
+
+    #[test]
+    fn a_title_update_keeps_the_next_game_link_and_the_highlights() {
+        let config = Config::default();
+        let plan = one_game_plan("2099-08-01T09:30:00+10:00");
+        let game = &plan.games[0];
+        let spec = broadcast_spec(&config, &plan, game);
+        let mut video = recorded(&spec, String::new());
+        let block = "Game highlights\n0:00 Start\n3:41 Goal — White #7\n".to_string();
+        video.next_game_link = Some("https://youtu.be/next".to_string());
+        video.highlights = Some(block.clone());
+        video.description = full_description(
+            &spec.description,
+            video.next_game_link.as_deref(),
+            Some(&block),
+        );
+        video.portal_start = Some(portal_start(game));
+        // Nothing changed: nothing to send.
+        assert!(needed_update(&config, &plan, game, &video).is_none());
+        // The team names change: the new description still ends with the link and the list.
+        video.title = "old title".to_string();
+        video.description = "old text".to_string()
+            + &description_suffix(video.next_game_link.as_deref(), Some(&block));
+        let (update, _) = needed_update(&config, &plan, game, &video).unwrap();
+        assert!(update.description.starts_with(&spec.description));
+        assert!(
+            update.description.ends_with(
+                "Next game: https://youtu.be/next\n\nGame highlights\n0:00 Start\n3:41 Goal — White #7\n"
+            ),
+            "{}",
+            update.description
+        );
+    }
+
+    #[test]
+    fn the_generated_part_is_what_comes_before_the_link_and_the_highlights() {
+        let plan = one_game_plan("2099-08-01T09:30:00+10:00");
+        let spec = broadcast_spec(&Config::default(), &plan, &plan.games[0]);
+        let mut video = recorded(&spec, String::new());
+        assert_eq!(generated_description(&video), spec.description);
+        video.next_game_link = Some("https://youtu.be/next".to_string());
+        video.highlights = Some("Game highlights\n".to_string());
+        video.description = full_description(
+            &spec.description,
+            video.next_game_link.as_deref(),
+            video.highlights.as_deref(),
+        );
+        assert_eq!(generated_description(&video), spec.description);
     }
 
     #[test]

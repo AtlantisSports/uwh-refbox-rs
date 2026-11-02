@@ -18,8 +18,9 @@ use crate::{
     BoxError,
     app::App,
     config::{CourtConfig, StreamMode, vmix_destination},
+    highlights,
     portal::EventPlan,
-    prepare::{self, VideoState, normalize, with_next_link},
+    prepare::{self, VideoState, normalize},
     switcher::{Action, GameNumber},
     title_sync::{self, SyncReport},
     vmix,
@@ -354,9 +355,12 @@ async fn wait_for_stream(
     }
 }
 
-/// Puts a video live (its stream must already be receiving video).
+/// Puts a video live (its stream must already be receiving video). The moment it asks YouTube is
+/// saved with the video: the recording starts there, a few seconds before the time YouTube gives
+/// as the video's start, so it is the video's 0:00 for the game's highlights.
 async fn go_live(
     yt: &mut YouTube,
+    record: Record<'_>,
     game: &str,
     video: &VideoState,
     log: &mut (dyn FnMut(String) + Send),
@@ -372,7 +376,16 @@ async fn go_live(
         }
         _ => {}
     }
+    let requested = time::OffsetDateTime::now_utc();
     yt.transition(&video.broadcast_id, "live").await?;
+    let saved = prepare::update_state(record.file, record.event_slug, |s| {
+        if let Some(v) = s.videos.get_mut(game) {
+            v.live_requested = Some(requested);
+        }
+    });
+    if let Err(e) = saved {
+        log(format!("Couldn't save when Game {game} went live: {e}"));
+    }
     // YouTube accepted the change, so from here on a failed status check only means "not live
     // yet": it never turns a switch that worked into a failed one.
     let started = tokio::time::Instant::now();
@@ -457,7 +470,7 @@ pub async fn carry_out(
             };
             switch(&mut yt, &ctx, from, to, log).await
         }
-        Action::End(game) => end(&mut yt, app, court, &state, game, log).await,
+        Action::End(game) => end(&mut yt, app, court, &state, &state_file, game, log).await,
     }
 }
 
@@ -487,7 +500,12 @@ async fn start(
         // End day's stop, as for a switch.
         let may_be_leftover = app.stopped_recently(&court.name, vmix_destination(index));
         start_stream(yt, court, index, may_be_leftover, log).await?;
-        go_live(yt, game, &video, log).await?;
+        let file = app.state_file()?;
+        let record = Record {
+            file: &file,
+            event_slug: &state.event_slug,
+        };
+        go_live(yt, record, game, &video, log).await?;
         log(format!(
             "Game {game} is LIVE: https://youtu.be/{}",
             video.broadcast_id
@@ -567,37 +585,89 @@ async fn post_within(
     })
 }
 
-/// Step 5: a "Next game" link in the old video's description, for replay viewers.
-async fn add_next_link(
+/// The event's record: its file and the event it belongs to.
+#[derive(Clone, Copy)]
+struct Record<'a> {
+    file: &'a std::path::Path,
+    event_slug: &'a str,
+}
+
+/// Step 5: the finished game's description gets, in one update, the "Next game" link (`link`, at
+/// a switch) and the game's goals, penalties and fouls with their times in the video, for replay
+/// viewers.
+async fn finish_description(
     yt: &mut YouTube,
-    ctx: &SwitchContext<'_>,
-    from: &str,
-    from_video: &VideoState,
-    link: &str,
+    record: Record<'_>,
+    game: &str,
+    video: &VideoState,
+    link: Option<&str>,
     warnings: &mut Vec<String>,
+    log: &mut (dyn FnMut(String) + Send),
 ) {
-    if from_video.next_game_link.as_deref() == Some(link) {
+    let next = link.or(video.next_game_link.as_deref());
+    // Read afresh: the list grows in the record while the game is played.
+    let list = prepare::load_state(record.file, record.event_slug)
+        .ok()
+        .and_then(|state| state.highlights.get(game).cloned())
+        .unwrap_or_default();
+    let block = if list.items.is_empty() {
+        video.highlights.clone()
+    } else if let Some(start) = video.live_requested {
+        // The video's 0:00: when this program asked YouTube to put it live.
+        highlights::description_block(&list, start)
+    } else {
+        // An older record: YouTube's own start time, a few seconds after the real 0:00.
+        match yt.broadcast_info(&video.broadcast_id).await {
+            Ok(info) => match info.actual_start {
+                Some(start) => highlights::description_block(&list, start),
+                None => {
+                    warnings.push(format!(
+                        "Game {game}'s goals and fouls weren't added: YouTube has no start time for its video"
+                    ));
+                    video.highlights.clone()
+                }
+            },
+            Err(e) => {
+                warnings.push(format!("Couldn't add Game {game}'s goals and fouls: {e}"));
+                video.highlights.clone()
+            }
+        }
+    };
+    if next == video.next_game_link.as_deref() && block == video.highlights {
         return;
     }
     let spec = BroadcastSpec {
-        title: from_video.title.clone(),
-        description: with_next_link(&from_video.description, Some(link)),
-        scheduled_start: from_video.scheduled_start.clone(),
+        title: video.title.clone(),
+        description: prepare::full_description(
+            prepare::generated_description(video),
+            next,
+            block.as_deref(),
+        ),
+        scheduled_start: video.scheduled_start.clone(),
         privacy: String::new(),
     };
-    match yt.update_broadcast(&from_video.broadcast_id, &spec).await {
+    match yt.update_broadcast(&video.broadcast_id, &spec).await {
         Ok(()) => {
-            let saved = prepare::update_state(ctx.state_file, &ctx.state.event_slug, |s| {
-                if let Some(v) = s.videos.get_mut(from) {
+            if block.is_some() && block != video.highlights {
+                log(format!(
+                    "Game {game}: {} goals, penalties and fouls added to its description",
+                    list.items.len()
+                ));
+            }
+            let saved = prepare::update_state(record.file, record.event_slug, |s| {
+                if let Some(v) = s.videos.get_mut(game) {
                     v.description = spec.description.clone();
-                    v.next_game_link = Some(link.to_string());
+                    v.next_game_link = next.map(str::to_string);
+                    v.highlights = block.clone();
                 }
             });
             if let Err(e) = saved {
                 warnings.push(format!("Couldn't save the video list: {e}"));
             }
         }
-        Err(e) => warnings.push(format!("Couldn't add the Next game link: {e}")),
+        Err(e) => warnings.push(format!(
+            "Couldn't update Game {game}'s description (Next game link, goals and fouls): {e}"
+        )),
     }
 }
 
@@ -686,7 +756,11 @@ async fn same_key_switch(
         }
         log(format!("Game {from}'s video ended"));
     }
-    if let Err(e) = go_live(yt, to, &videos.to_video, log).await {
+    let record = Record {
+        file: ctx.state_file,
+        event_slug: &ctx.state.event_slug,
+    };
+    if let Err(e) = go_live(yt, record, to, &videos.to_video, log).await {
         // The old video has already ended, so nothing is live on this court now.
         return Outcome::Failed {
             actually_live: None,
@@ -697,7 +771,19 @@ async fn same_key_switch(
 
     match &videos.from_video {
         Some(from_video) if extras => {
-            add_next_link(yt, ctx, from, from_video, &link, &mut warnings).await;
+            finish_description(
+                yt,
+                Record {
+                    file: ctx.state_file,
+                    event_slug: &ctx.state.event_slug,
+                },
+                from,
+                from_video,
+                Some(&link),
+                &mut warnings,
+                log,
+            )
+            .await;
         }
         Some(_) => {}
         None => warnings.push(format!(
@@ -743,7 +829,11 @@ async fn two_key_switch(
                 }
             };
             // 2: the new video goes live.
-            go_live(yt, to, &videos.to_video, log)
+            let record = Record {
+                file: ctx.state_file,
+                event_slug: &ctx.state.event_slug,
+            };
+            go_live(yt, record, to, &videos.to_video, log)
                 .await
                 .map(|()| report)
         }
@@ -811,9 +901,22 @@ async fn two_key_switch(
         None => warnings.push(unmatched_old_key_warning(from)),
     }
 
-    // 5: "Next game" link in the old video's description, for replay viewers.
+    // 5: "Next game" link and the game's goals and fouls in the old video's description, for
+    // replay viewers.
     if extras {
-        add_next_link(yt, ctx, from, from_video, &link, &mut warnings).await;
+        finish_description(
+            yt,
+            Record {
+                file: ctx.state_file,
+                event_slug: &ctx.state.event_slug,
+            },
+            from,
+            from_video,
+            Some(&link),
+            &mut warnings,
+            log,
+        )
+        .await;
     }
     finished(warnings)
 }
@@ -829,6 +932,7 @@ async fn end(
     app: &App,
     court: &CourtConfig,
     state: &prepare::EventState,
+    state_file: &std::path::Path,
     game: &str,
     log: &mut (dyn FnMut(String) + Send),
 ) -> Outcome {
@@ -837,7 +941,25 @@ async fn end(
     // removed or renumbered its game.
     match state.videos.get(game) {
         Some(video) => match yt.transition(&video.broadcast_id, "complete").await {
-            Ok(()) => log(format!("Game {game}'s video ended")),
+            Ok(()) => {
+                log(format!("Game {game}'s video ended"));
+                // The day's last game gets its goals and fouls here, as the others do at a switch.
+                if extras_allowed(app, court, log) {
+                    finish_description(
+                        yt,
+                        Record {
+                            file: state_file,
+                            event_slug: &state.event_slug,
+                        },
+                        game,
+                        video,
+                        None,
+                        &mut warnings,
+                        log,
+                    )
+                    .await;
+                }
+            }
             Err(e) => warnings.push(format!(
                 "Game {game}'s video may still be live; end it in YouTube Studio ({e})"
             )),
@@ -879,6 +1001,8 @@ mod tests {
             court: None,
             day: None,
             thumbnail: None,
+            highlights: None,
+            live_requested: None,
         }
     }
 

@@ -16,7 +16,7 @@ use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-use time::OffsetDateTime;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 const API: &str = "https://www.googleapis.com/youtube/v3";
@@ -47,6 +47,8 @@ pub struct Playlist {
 pub struct BroadcastInfo {
     pub life_cycle: String,
     pub live_chat_id: Option<String>,
+    /// When the video went live: its 0:00. `None` until it has.
+    pub actual_start: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone)]
@@ -575,6 +577,9 @@ impl YouTube {
                 .unwrap_or("unknown")
                 .to_string(),
             live_chat_id: item["snippet"]["liveChatId"].as_str().map(str::to_string),
+            actual_start: item["snippet"]["actualStartTime"]
+                .as_str()
+                .and_then(|t| OffsetDateTime::parse(t, &Rfc3339).ok()),
         })
     }
 

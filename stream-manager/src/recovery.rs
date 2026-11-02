@@ -179,6 +179,8 @@ mod tests {
             court: None,
             day: None,
             thumbnail: None,
+            highlights: None,
+            live_requested: None,
         };
         let mut state = EventState::default();
         // Game 3 has no video yet.

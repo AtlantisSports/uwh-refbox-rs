@@ -973,6 +973,8 @@ mod tests {
                     court: None,
                     day: None,
                     thumbnail: None,
+                    highlights: None,
+                    live_requested: None,
                 },
             );
         }

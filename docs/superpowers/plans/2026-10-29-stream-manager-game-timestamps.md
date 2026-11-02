@@ -30,7 +30,7 @@ Final score: White 1–1 Black
 3. **When it's written:** once, after the game. Nothing is written during the game.
 4. **Where in the video each line points:**
    - Normally: **15 seconds before the moment the scorekeeper entered it** on the refbox.
-   - If it was entered **during a referee timeout, or within 60 seconds after one ended**: **15
+   - If it was entered **during a referee timeout, or within 10 seconds after one ended (was 60 s; changed to 10 s on 2026-11-02)**: **15
      seconds before that referee timeout started**. This applies to goals, penalties and fouls
      alike.
    - Team timeouts never count.

@@ -19,7 +19,7 @@ use uwh_common::{
 /// points, so viewers see the play that led to it.
 pub const LEAD: Duration = Duration::seconds(15);
 /// An item entered this long after a referee timeout ended still counts as decided in it.
-pub const REF_TIMEOUT_WINDOW: Duration = Duration::seconds(60);
+pub const REF_TIMEOUT_WINDOW: Duration = Duration::seconds(10);
 /// An item entered this long before its video's 0:00 belongs to an earlier video of the game
 /// (one deleted and made again), so it isn't listed.
 pub const STALE: Duration = Duration::minutes(30);
@@ -591,15 +591,15 @@ mod tests {
         s.scores.black = 1;
         let list = feed(&mut t, s, 220);
         assert_eq!(list.items[0].anchor, at(100));
-        // The timeout ends at 300; a penalty 50 s later still counts, a foul 90 s later doesn't.
+        // The timeout ends at 300; a penalty 8 s later still counts, a foul 20 s later doesn't.
         feed(&mut t, snap("5", 1, 0), 300);
         let mut s = snap("5", 1, 0);
         s.penalties.black = vec![penalty(3, 59, Infraction::Obstruction)];
-        let list = feed(&mut t, s.clone(), 350);
+        let list = feed(&mut t, s.clone(), 308);
         assert_eq!(list.items[1].anchor, at(100));
         s.fouls.white = vec![foul(4, Infraction::StickInfringement)];
-        let list = feed(&mut t, s, 390);
-        assert_eq!(list.items[2].anchor, at(390));
+        let list = feed(&mut t, s, 320);
+        assert_eq!(list.items[2].anchor, at(320));
     }
 
     #[test]

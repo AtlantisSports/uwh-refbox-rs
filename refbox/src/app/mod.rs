@@ -7260,7 +7260,12 @@ impl RefBoxApp {
                             // Safety: the clock was stopped at `now` above, so it holds a
                             // time (the same unwrap `Message::EditTime` makes).
                             let held = tm.game_clock_time(now).unwrap();
-                            *game_time = held;
+                            // A break time the operator has already typed on this page
+                            // stands: their TIME EDIT wins over the held break, as it
+                            // does in the engine (`set_game_clock_time`).
+                            if *game_time == self.time_edit_old.0 {
+                                *game_time = held;
+                            }
                             self.time_edit_old.0 = held;
                             *was_running = true;
                         }

@@ -7456,7 +7456,12 @@ impl RefBoxApp {
                                     // break clock is held stopped at 0:00. Noted
                                     // before anything changes it, so that leaving
                                     // that state can restart the clock below.
-                                    let was_court_finished = tm.next_game_number().is_empty();
+                                    // Asked of the engine because it reads the
+                                    // GAME clock: `clock_is_running` reports a
+                                    // timeout's clock instead, which hid a parked
+                                    // court under a running REF TIMEOUT
+                                    // (2026-11-02).
+                                    let leaving_finished_state = tm.court_is_parked();
                                     let decision = next_game_from_schedule(
                                         schedule,
                                         restore_num.as_ref(),
@@ -7480,12 +7485,6 @@ impl RefBoxApp {
                                             "Setting upcoming game info from received schedule: {game:?}"
                                         );
                                         let now = Instant::now();
-                                        // Decided before the info is stored. Storing
-                                        // it cannot change whether the clock runs: a
-                                        // re-time only ever replaces a running
-                                        // countdown with another one.
-                                        let leaving_finished_state =
-                                            was_court_finished && !tm.clock_is_running();
                                         let restoring =
                                             restore_num.is_some() || leaving_finished_state;
                                         let info = NextGameInfo {
@@ -7493,7 +7492,21 @@ impl RefBoxApp {
                                             timing: Some(timing.clone()),
                                             start_time: Some(game.start_time),
                                         };
-                                        let retimed = if restoring {
+                                        // Only consulted when the court is revived.
+                                        let mut revive_failed = false;
+                                        let retimed = if leaving_finished_state {
+                                            // Records the game and starts the
+                                            // countdown to it, unless a timeout is on
+                                            // screen: then the countdown waits for the
+                                            // timeout to end (PO ruling 2026-11-02).
+                                            if let Err(e) = tm.revive_court(info, now) {
+                                                error!(
+                                                    "Could not bring the finished court back to life: {e}"
+                                                );
+                                                revive_failed = true;
+                                            }
+                                            false
+                                        } else if restoring {
                                             // The countdown is set from the start
                                             // below, so there is nothing to re-time.
                                             tm.set_next_game(info);
@@ -7507,17 +7520,27 @@ impl RefBoxApp {
                                             tm.set_next_game_and_retime(info, now)
                                         };
                                         if restoring || retimed {
-                                            let new_game_config = if restoring {
+                                            let new_game_config = if leaving_finished_state {
+                                                // A court coming back to life: its break
+                                                // clock is held stopped at 0:00, which
+                                                // idles the time updater, so without a
+                                                // fresh countdown the table would stay
+                                                // dashed, START NOW greyed and the clock
+                                                // frozen. `revive_court` above started
+                                                // it, or, under a timeout, left it for
+                                                // the timeout's end. Either way it has
+                                                // already applied the game's timing, so
+                                                // the config is copied now.
+                                                if revive_failed {
+                                                    None
+                                                } else {
+                                                    Some(tm.config().clone())
+                                                }
+                                            } else if restoring {
                                                 // Start the live countdown to the
                                                 // scheduled start so a restored session
                                                 // is ready to go (same path the normal
-                                                // between-games transition uses). A
-                                                // court coming back to life needs the
-                                                // same treatment: its break clock is
-                                                // held stopped at 0:00, which idles the
-                                                // time updater, so without this the
-                                                // table would stay dashed, START NOW
-                                                // greyed and the clock frozen.
+                                                // between-games transition uses).
                                                 // why this cannot panic: BetweenGames was
                                                 // just checked and next_game was just set.
                                                 tm.apply_next_game_start(now).unwrap();

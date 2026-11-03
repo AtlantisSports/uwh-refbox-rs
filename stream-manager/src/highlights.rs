@@ -17,7 +17,7 @@ use uwh_common::{
 
 /// How far before its anchor (when it was entered, or when the referee timeout started) each item
 /// points, so viewers see the play that led to it.
-pub const LEAD: Duration = Duration::seconds(15);
+pub const LEAD: Duration = Duration::seconds(20);
 /// An item entered this long after a referee timeout ended still counts as decided in it.
 pub const REF_TIMEOUT_WINDOW: Duration = Duration::seconds(10);
 /// An item entered this long before its video's 0:00 belongs to an earlier video of the game
@@ -552,7 +552,7 @@ mod tests {
     }
 
     #[test]
-    fn a_goal_points_15_seconds_before_it_was_entered() {
+    fn a_goal_points_20_seconds_before_it_was_entered() {
         let mut t = started();
         let mut s = snap("5", 0, 1);
         s.recent_goal = Some((Color::White, 7));
@@ -566,7 +566,7 @@ mod tests {
         assert_eq!(goal.anchor, at(300));
         let block = description_block(&list, at(0)).unwrap();
         assert!(
-            block.contains("4:45 Goal — White #7 (White 1–0 Black)"),
+            block.contains("4:40 Goal — White #7 (White 1–0 Black)"),
             "{block}"
         );
     }
@@ -637,7 +637,7 @@ mod tests {
         // A video made again for the game, starting long after the first goal.
         let block = description_block(&list, at(9_900)).unwrap();
         assert!(!block.contains("Goal — Black"), "{block}");
-        assert!(block.contains("1:25 Goal — White"), "{block}");
+        assert!(block.contains("1:20 Goal — White"), "{block}");
         assert_eq!(
             description_block(
                 &GameHighlights {
@@ -668,7 +668,7 @@ mod tests {
         let list = feed(&mut t, s, 100);
         let block = description_block(&list, at(0)).unwrap();
         assert!(
-            block.contains("1:25 Penalty — Black #3, 2 min (Obstruction)"),
+            block.contains("1:20 Penalty — Black #3, 2 min (Obstruction)"),
             "{block}"
         );
     }
@@ -756,7 +756,7 @@ mod tests {
             ..list
         };
         let block = description_block(&list, at(0)).unwrap();
-        assert!(block.contains("1:25 Goal — White\n"), "{block}");
+        assert!(block.contains("1:20 Goal — White\n"), "{block}");
         assert!(block.contains("Final score: White 2–0 Black"), "{block}");
     }
 

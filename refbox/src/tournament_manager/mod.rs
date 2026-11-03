@@ -14372,6 +14372,61 @@ mod test {
         );
     }
 
+    /// Order A's parked court (under a REF TIMEOUT counting up) with a deferred revive
+    /// of game 13 owed to it. Unlike order B, `clock_is_running` is TRUE here while the
+    /// timeout is set, so these fixtures catch the payoff clearing the timeout too late.
+    fn owed_break_under_a_running_ref_timeout(start: Instant) -> TournamentManager {
+        let mut tm = parked_under_a_running_ref_timeout(start);
+        assert_eq!(
+            tm.revive_court(revived_game("13"), start + Duration::from_secs(20)),
+            Ok(false)
+        );
+        tm
+    }
+
+    #[test]
+    fn ending_a_running_timeout_on_an_owed_break_wakes_the_updater() {
+        // Review Focus 2, order A. Parking the court told the updater the clock stopped;
+        // only clearing the timeout BEFORE `apply_next_game_start` makes it say so again.
+        initialize();
+        let start = Instant::now();
+        let mut tm = owed_break_under_a_running_ref_timeout(start);
+        let rx = tm.get_start_stop_rx();
+        assert!(
+            !*rx.borrow(),
+            "fixture check: parking the court told the updater the clock stopped"
+        );
+
+        tm.end_timeout(start + Duration::from_secs(30)).unwrap();
+
+        assert!(
+            *rx.borrow(),
+            "the updater must be told the break clock now runs"
+        );
+    }
+
+    #[test]
+    fn an_owed_break_under_a_running_timeout_arms_the_mid_break_reset() {
+        // Review Focus 3, order A. Parking the court zeroed the reset point; the deferred
+        // countdown must arm it, which happens only if the timeout is cleared first.
+        initialize();
+        let start = Instant::now();
+        let mut tm = owed_break_under_a_running_ref_timeout(start);
+        assert_eq!(tm.reset_game_time, Duration::ZERO, "fixture check");
+
+        let now = start + Duration::from_secs(30);
+        tm.end_timeout(now).unwrap();
+        let remaining = tm.game_clock_time(now).expect("the break counts down");
+        assert_eq!(
+            tm.reset_game_time,
+            remaining.saturating_sub(Duration::from_secs(20))
+        );
+        assert!(
+            tm.reset_game_time > Duration::ZERO,
+            "the reset point is armed, not left at zero"
+        );
+    }
+
     #[test]
     fn a_deferred_revive_applies_the_games_timing_at_once() {
         // Review Focus 4: the app copies the engine's config only in the schedule

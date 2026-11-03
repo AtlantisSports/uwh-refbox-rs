@@ -29,12 +29,13 @@ Final score: White 1–1 Black
 2. **Who is named:** team colour and cap number only. No player names.
 3. **When it's written:** once, after the game. Nothing is written during the game.
 4. **Where in the video each line points:**
-   - Normally: **15 seconds before the moment the scorekeeper entered it** on the refbox.
-   - If it was entered **during a referee timeout, or within 10 seconds after one ended (was 60 s; changed to 10 s on 2026-11-02)**: **15
+   - Normally: **20 seconds before the moment the scorekeeper entered it** on the refbox (was 15 s;
+     changed to 20 s on 2026-11-03 so viewers see the goal itself, not just the water ref's signal).
+   - If it was entered **during a referee timeout, or within 10 seconds after one ended (was 60 s; changed to 10 s on 2026-11-02)**: **20
      seconds before that referee timeout started**. This applies to goals, penalties and fouls
      alike.
    - Team timeouts never count.
-   - The 15 seconds is fixed, not a setting.
+   - The 20 seconds is fixed, not a setting.
    - A timestamp never goes before the start of the video. It stops at 0:00.
 5. **A penalty names its foul:** "Penalty — Black #3, 1 min (Obstruction)". The length is the
    penalty's time when it first appears, rounded up to whole minutes. A total dismissal shows as
@@ -55,8 +56,8 @@ Final score: White 1–1 Black
    - After the switch to the next game, the finished game's YouTube description ends with the
      "Game highlights" list: 2 goals, 1 penalty (with its foul) and 0 fouls (the deleted one is
      gone).
-   - Clicking each time lands about 15 s before the moment it was entered. The goal entered during
-     the referee timeout lands about 15 s before the timeout started.
+   - Clicking each time lands about 20 s before the moment it was entered. The goal entered during
+     the referee timeout lands about 20 s before the timeout started.
 2. **Restart safety:** closing and reopening Stream Manager mid-game doesn't lose the events entered
    before the restart.
 3. **Nothing else changes:** title, next-game link, thumbnail and playlist behave exactly as
@@ -108,7 +109,7 @@ Stream Manager already receives every refbox snapshot for each court (`refbox.rs
   - In End day, after the last video ends.
 - **Video start time:** YouTube's `actualStartTime` for the finished video. That's one cheap read
   (1 unit), and it's exactly where the video's 0:00 is. The offset of each line is the anchor time
-  minus 15 s minus the start, with a minimum of 0.
+  minus 20 s minus the start, with a minimum of 0.
 - **Quota:** one update per game (50 units), counted as an "extra" like the next-game link, so it's
   skipped when the allowance is low. It's never done before the switch itself.
 - If there are no events, nothing is added (no empty "Game highlights" heading).
@@ -177,3 +178,5 @@ Stream Manager already receives every refbox snapshot for each court (`refbox.rs
   cleared state.
 - **Verified 2026-11-02:** with the saved go-live moment as 0:00, links land 15 s before each entry
   (and 15 s before the referee timeout's start for items decided in one).
+- **Lead-in 15 s → 20 s (2026-11-03):** at 15 s, links landed on the water ref's goal signal.
+  20 s shows the goal itself.

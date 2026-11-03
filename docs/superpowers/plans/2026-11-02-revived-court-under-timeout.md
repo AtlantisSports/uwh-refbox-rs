@@ -174,4 +174,12 @@ and the rulings are in `~/.claude/projects/-home-estraily-projects-uwh-refbox-rs
 
 ## Deviations
 
-(none yet)
+- The test `a_deferred_break_counts_to_the_scheduled_start` accepts a break of up to 20 min + 2 s,
+  where the plan said exactly 20:00. The wall clock and the app's internal stopwatch are read
+  separately, so the break comes out a few microseconds over 20:00.
+- When the app starts up and restores a game onto a court that had finished, it now goes through
+  `revive_court` too. With no timeout on screen it behaves exactly as before; under a timeout it
+  follows the ruled behaviour (the break waits for the timeout to end).
+- The final review found that TIME EDIT, then END REF TIMEOUT, then APPLY crashed the app on a
+  court whose break was waiting for that timeout. END TIMEOUT now holds the break still while
+  TIME EDIT is open, and CANCEL or APPLY resumes it (fixed in the final fix wave).

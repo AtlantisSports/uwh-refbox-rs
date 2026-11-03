@@ -7244,6 +7244,27 @@ impl RefBoxApp {
                 } else {
                     tm.end_timeout(now).unwrap();
                     tm.update(now).unwrap();
+                    // Ending a timeout can start the game clock: a court revived under
+                    // the timeout starts its break the moment the timeout ends (PO ruling
+                    // 2026-11-02). TIME EDIT holds every clock still while it is open, and
+                    // its APPLY refuses to set a running clock, so hold the break here and
+                    // let CANCEL or APPLY resume it. Keyed on the game clock itself, not on
+                    // why it started.
+                    if let AppState::TimeEdit(ref mut was_running, ref mut game_time, _) =
+                        self.app_state
+                    {
+                        if tm.game_clock_running() {
+                            // Cannot fail: no timeout is set any more, so this stops the
+                            // game clock just checked to be running at this same `now`.
+                            tm.stop_clock(now).unwrap();
+                            // Safety: the clock was stopped at `now` above, so it holds a
+                            // time (the same unwrap `Message::EditTime` makes).
+                            let held = tm.game_clock_time(now).unwrap();
+                            *game_time = held;
+                            self.time_edit_old.0 = held;
+                            *was_running = true;
+                        }
+                    }
                 }
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
@@ -7455,7 +7476,9 @@ impl RefBoxApp {
                                     // "this court is finished" state, where the
                                     // break clock is held stopped at 0:00. Noted
                                     // before anything changes it, so that leaving
-                                    // that state can restart the clock below.
+                                    // that state goes through `revive_court` below,
+                                    // which restarts the clock (or, under a
+                                    // timeout, leaves that to the timeout's end).
                                     // Asked of the engine because it reads the
                                     // GAME clock: `clock_is_running` reports a
                                     // timeout's clock instead, which hid a parked

@@ -14427,6 +14427,47 @@ mod test {
         );
     }
 
+    /// The app's TIME EDIT -> END REF TIMEOUT -> APPLY sequence on an owed break: TIME EDIT
+    /// stops the clocks, ending the timeout starts the break, and APPLY sets the game
+    /// clock. The app's END TIMEOUT handler stops the break again while TIME EDIT is
+    /// open; without that second stop, setting the clock is refused (and the app panics).
+    fn assert_time_edit_can_apply_after_ending_the_timeout(
+        mut tm: TournamentManager,
+        now: Instant,
+    ) {
+        tm.stop_clock(now).unwrap();
+        tm.end_timeout(now).unwrap();
+        assert!(
+            tm.game_clock_running(),
+            "ending the timeout starts the break"
+        );
+
+        tm.stop_clock(now).unwrap();
+        assert_eq!(tm.set_game_clock_time(Duration::from_secs(45)), Ok(()));
+    }
+
+    #[test]
+    fn time_edit_can_apply_after_ending_a_stopped_timeout_on_an_owed_break() {
+        // Final review C1, order B.
+        initialize();
+        let start = Instant::now();
+        assert_time_edit_can_apply_after_ending_the_timeout(
+            owed_break(start),
+            start + Duration::from_secs(30),
+        );
+    }
+
+    #[test]
+    fn time_edit_can_apply_after_ending_a_running_timeout_on_an_owed_break() {
+        // Final review C1, order A.
+        initialize();
+        let start = Instant::now();
+        assert_time_edit_can_apply_after_ending_the_timeout(
+            owed_break_under_a_running_ref_timeout(start),
+            start + Duration::from_secs(30),
+        );
+    }
+
     #[test]
     fn a_deferred_revive_applies_the_games_timing_at_once() {
         // Review Focus 4: the app copies the engine's config only in the schedule

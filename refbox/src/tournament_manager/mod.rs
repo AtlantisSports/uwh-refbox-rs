@@ -550,8 +550,13 @@ impl TournamentManager {
             self.clock_state = ClockState::Stopped {
                 clock_time: Duration::ZERO,
             };
-            // Or the updater keeps waking for a clock it believes is running.
-            self.send_clock_running(false);
+            // Or the updater keeps waking for a clock it believes is running. But not
+            // while a ref timeout clock still counts up on screen: telling the updater
+            // "stopped" froze it, as in `set_no_next_game`. `end_timeout` notifies
+            // once that timeout ends with nothing left to restart.
+            if !self.clock_is_running() {
+                self.send_clock_running(false);
+            }
             self.reset_game_time = Duration::ZERO;
         } else {
             self.start_nominal_break(now);
@@ -14621,6 +14626,47 @@ mod test {
             },
             "the break stays parked at 0:00"
         );
+        assert!(rx.has_changed().unwrap(), "the updater must be told");
+        assert!(!*rx.borrow_and_update(), "...that the clock stopped");
+    }
+
+    #[test]
+    fn a_site_switch_under_a_running_ref_timeout_keeps_the_timeout_clock_running() {
+        // The same freeze in the other park site (code review of this branch,
+        // PO ruling 2026-11-03: fold it in). Between games a site switch is refused
+        // only while results are queued, so it can happen under a REF TIMEOUT.
+        initialize();
+        let start = Instant::now();
+        let mut tm = TournamentManager::new(revived_court_config());
+        tm.set_schedule_linked(true);
+        tm.set_next_game(revived_game("12"));
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(300));
+        tm.start_clock(start);
+        tm.start_ref_timeout(start + Duration::from_secs(10))
+            .unwrap();
+        let mut rx = tm.get_start_stop_rx();
+        rx.borrow_and_update();
+
+        tm.reset_for_site_switch(true, start + Duration::from_secs(20));
+
+        assert!(
+            tm.clock_is_running(),
+            "the ref timeout clock still counts up"
+        );
+        assert_eq!(
+            tm.clock_state,
+            ClockState::Stopped {
+                clock_time: Duration::ZERO
+            },
+            "the new site names no game, so the break is parked at 0:00"
+        );
+        assert!(
+            !rx.has_changed().unwrap() || *rx.borrow_and_update(),
+            "the updater must not be told the clock stopped while the timeout clock runs"
+        );
+
+        tm.end_timeout(start + Duration::from_secs(30)).unwrap();
+        assert!(!tm.clock_is_running(), "nothing to restart on the new site");
         assert!(rx.has_changed().unwrap(), "the updater must be told");
         assert!(!*rx.borrow_and_update(), "...that the clock stopped");
     }

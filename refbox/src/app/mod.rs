@@ -3389,7 +3389,7 @@ impl RefBoxApp {
 
             if edited.uses_remote() {
                 // Held until a timeout on screen ends, like a reviving REFRESH.
-                // Safety: precondition checked above (period != BetweenGames / next-game info passed in); error path is unreachable in this control flow.
+                // Safety: the period is BetweenGames (checked above) and the next-game info is passed in; error path is unreachable in this control flow.
                 tm.apply_picked_game(info, Instant::now()).unwrap();
             } else {
                 tm.set_next_game(info);
@@ -3458,7 +3458,7 @@ impl RefBoxApp {
 
             if edited.uses_remote() {
                 // Held until a timeout on screen ends, like a reviving REFRESH.
-                // Safety: precondition checked above (period != BetweenGames / next-game info passed in); error path is unreachable in this control flow.
+                // Safety: the period is BetweenGames (checked above) and the next-game info is passed in; error path is unreachable in this control flow.
                 tm.apply_picked_game(next_game_info, Instant::now())
                     .unwrap();
             } else {

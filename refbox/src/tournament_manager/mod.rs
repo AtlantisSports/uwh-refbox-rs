@@ -1317,9 +1317,11 @@ impl TournamentManager {
         // 2026-11-02; see `revive_court`). This replaces the ordinary restart of the
         // game clock below, which would resume the parked 0:00 countdown and kick off
         // on the next tick (proven order A). The timeout is cleared FIRST:
-        // `apply_next_game_start` tells the time updater the clock runs only when
-        // `clock_is_running` was false on entry, and with the timeout still set that
-        // reports the timeout clock — the updater would sleep and the screen sit on 0:00.
+        // `apply_next_game_start` arms the mid-break reset, and tells the time updater
+        // the clock runs, only when `clock_is_running` was false on entry. With the
+        // timeout still set that reports the timeout clock, so under a running timeout
+        // the reset point would stay at zero and the finished game's score would sit on
+        // screen until kickoff.
         if self.break_owed_after_timeout
             && self.current_period == GamePeriod::BetweenGames
             && self.timeout_state.is_some()

@@ -854,8 +854,13 @@ impl TournamentManager {
             };
             // Or the updater goes on waking for a clock it believes is running, whose
             // next-update instant is now — a hot loop. Same reason `end_game` notifies
-            // unconditionally on this path.
-            self.send_clock_running(false);
+            // on this path. But only when nothing on screen still runs: under a REF
+            // TIMEOUT counting up, `clock_is_running` is the timeout clock, and telling
+            // the updater "stopped" froze that clock on screen. `end_timeout` notifies
+            // instead, once the timeout ends with nothing left to restart.
+            if !self.clock_is_running() {
+                self.send_clock_running(false);
+            }
             // The mid-break reset only runs inside a `CountingDown` arm, so a stopped
             // clock never reaches it and the final score stays on screen.
             self.reset_game_time = Duration::ZERO;
@@ -1360,6 +1365,13 @@ impl TournamentManager {
                     } => {
                         self.start_game_clock(now);
                         self.timeout_state = None;
+                        // The updater was redrawing the timeout clock. If the game
+                        // clock did not restart (a finished court has nothing to count
+                        // down to), nothing runs now and the updater must hear so, or it
+                        // wakes at once, forever — see `set_no_next_game`.
+                        if !self.clock_state.is_running() {
+                            self.send_clock_running(false);
+                        }
                         now.checked_duration_since(start_time)
                             .map(|d| d + time_at_start)
                     }
@@ -14385,23 +14397,31 @@ mod test {
     }
 
     #[test]
-    fn ending_a_running_timeout_on_an_owed_break_wakes_the_updater() {
-        // Review Focus 2, order A. Parking the court told the updater the clock stopped;
-        // only clearing the timeout BEFORE `apply_next_game_start` makes it say so again.
+    fn ending_a_running_timeout_on_an_owed_break_keeps_the_updater_running() {
+        // Review Focus 2, order A. Parking the court used to tell the updater the clock
+        // stopped while the ref timeout clock still counted up, freezing it on screen
+        // (problem 4, fixed 2026-11-03). The updater must agree with the engine
+        // throughout: running under the timeout, and still running once the owed break
+        // takes over.
         initialize();
         let start = Instant::now();
         let mut tm = owed_break_under_a_running_ref_timeout(start);
         let rx = tm.get_start_stop_rx();
         assert!(
-            !*rx.borrow(),
-            "fixture check: parking the court told the updater the clock stopped"
+            tm.clock_is_running(),
+            "fixture check: the timeout clock runs"
+        );
+        assert!(
+            *rx.borrow(),
+            "parking the court must not tell the updater the timeout clock stopped"
         );
 
         tm.end_timeout(start + Duration::from_secs(30)).unwrap();
 
+        assert!(tm.clock_is_running(), "the owed break counts down");
         assert!(
             *rx.borrow(),
-            "the updater must be told the break clock now runs"
+            "the updater must believe the break clock runs"
         );
     }
 
@@ -14521,5 +14541,85 @@ mod test {
         tm.start_play_now(start).unwrap();
         assert_eq!(tm.current_period(), GamePeriod::FirstHalf, "fixture check");
         assert!(!tm.court_is_parked(), "a game in play is not parked");
+    }
+
+    // ---- A court finished under a running ref timeout (PO ruling 2026-11-03) ----
+
+    /// A break counting down, a REF TIMEOUT counting up, then a REFRESH that finishes
+    /// the court -- with the time updater's latch read just before the refresh.
+    fn finished_under_a_running_ref_timeout(
+        start: Instant,
+    ) -> (TournamentManager, watch::Receiver<bool>) {
+        let mut tm = TournamentManager::new(revived_court_config());
+        tm.set_next_game(revived_game("12"));
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(300));
+        tm.start_clock(start);
+        tm.start_ref_timeout(start + Duration::from_secs(10))
+            .unwrap();
+        assert!(
+            matches!(
+                tm.timeout_state,
+                Some(TimeoutState::Ref(ClockState::CountingUp { .. }))
+            ),
+            "fixture check: the ref timeout clock counts up"
+        );
+        let mut rx = tm.get_start_stop_rx();
+        rx.borrow_and_update();
+
+        tm.set_no_next_game();
+        (tm, rx)
+    }
+
+    #[test]
+    fn a_finishing_refresh_under_a_running_ref_timeout_keeps_the_timeout_clock_running() {
+        // Problem 4. `set_no_next_game` told the updater "stopped" whenever
+        // `clock_is_running` was true, which under a ref timeout is the TIMEOUT clock:
+        // the updater stopped redrawing a clock that was still counting up, and the
+        // REF TIMEOUT clock froze on screen.
+        initialize();
+        let start = Instant::now();
+        let (tm, mut rx) = finished_under_a_running_ref_timeout(start);
+
+        assert!(
+            tm.clock_is_running(),
+            "the ref timeout clock still counts up"
+        );
+        assert_eq!(
+            tm.clock_state,
+            ClockState::Stopped {
+                clock_time: Duration::ZERO
+            },
+            "the break is still parked at 0:00"
+        );
+        assert!(
+            !rx.has_changed().unwrap() || *rx.borrow_and_update(),
+            "the updater must not be told the clock stopped while the timeout clock runs"
+        );
+    }
+
+    #[test]
+    fn ending_that_timeout_on_a_finished_court_parks_and_tells_the_updater() {
+        // With nothing to count down to, ending the timeout restarts nothing. The
+        // updater still believes a clock runs, and a stopped clock it believes is
+        // running wakes it at once, forever -- the hot loop `set_no_next_game` names.
+        initialize();
+        let start = Instant::now();
+        let (mut tm, mut rx) = finished_under_a_running_ref_timeout(start);
+        rx.borrow_and_update();
+
+        tm.end_timeout(start + Duration::from_secs(30)).unwrap();
+
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert_eq!(tm.timeout_state, None);
+        assert!(!tm.clock_is_running(), "nothing runs on a finished court");
+        assert_eq!(
+            tm.clock_state,
+            ClockState::Stopped {
+                clock_time: Duration::ZERO
+            },
+            "the break stays parked at 0:00"
+        );
+        assert!(rx.has_changed().unwrap(), "the updater must be told");
+        assert!(!*rx.borrow_and_update(), "...that the clock stopped");
     }
 }

@@ -75,4 +75,11 @@ coordinator GO; a fresh-worktree build is announced to the coordinator first.
 
 ## Deviations
 
-(none yet)
+- Test command: refbox has no lib target, so `cargo test -p refbox --bin refbox` replaces
+  `--lib` (same tests).
+- Team `CountingDown` arm of `end_timeout` left unchanged: `can_start_team_timeout` allows team
+  timeouts only during a half, so none exists between games where the restart can be refused.
+- #4144's `ending_a_running_timeout_on_an_owed_break_wakes_the_updater` asserted, as a fixture
+  check, that parking told the updater "stopped" under a running ref timeout — problem 4
+  itself. Rewritten as `..._keeps_the_updater_running`: the updater agrees with the engine
+  before and after the timeout ends.

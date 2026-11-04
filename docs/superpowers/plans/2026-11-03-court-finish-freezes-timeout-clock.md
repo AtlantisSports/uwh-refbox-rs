@@ -83,3 +83,6 @@ coordinator GO; a fresh-worktree build is announced to the coordinator first.
   check, that parking told the updater "stopped" under a running ref timeout — problem 4
   itself. Rewritten as `..._keeps_the_updater_running`: the updater agrees with the engine
   before and after the timeout ends.
+- Code review found the same freeze in `reset_for_site_switch` (reachable: between games a
+  site switch is refused only while results are queued). PO ruling 2026-11-03: fold it into
+  this branch. Same guard, test `a_site_switch_under_a_running_ref_timeout_keeps_the_timeout_clock_running`.

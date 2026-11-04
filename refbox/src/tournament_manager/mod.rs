@@ -792,46 +792,27 @@ impl TournamentManager {
     /// Returns `Ok(true)` when the break is counting down now, and `Ok(false)` when the
     /// countdown is held until a timeout on screen ends.
     ///
-    /// **Under a timeout the countdown waits** (PO ruling 2026-11-02). The game is
-    /// recorded at once, so the next-game number shows, but no countdown starts while the
-    /// timeout exists: starting it under the timeout was proven order B, a first half
-    /// kicking off with REF TIMEOUT still on screen. `end_timeout` then times the break
-    /// from the stored start, never shorter than the minimum break — so a timeout that
-    /// runs past the start gives the minimum break from the moment it ends.
-    ///
-    /// **The game's timing is applied now, even when the countdown waits.** The app copies
-    /// the engine's config only in the schedule handler that calls this, so a timing rule
-    /// left for `end_timeout` to apply would never reach the app's copy.
+    /// The game is recorded at once; under a timeout the countdown waits for the
+    /// timeout's end — the rule every break countdown follows, set out in
+    /// `apply_next_game_start`.
     pub fn revive_court(&mut self, info: NextGameInfo, now: Instant) -> Result<bool> {
         if self.current_period != GamePeriod::BetweenGames {
             return Err(TournamentManagerError::GameInProgress);
         }
         self.set_next_game(info);
-
-        if self.timeout_state.is_some() {
-            if let Some(timing) = self.next_game.as_ref().and_then(|i| i.timing.as_ref()) {
-                self.config = timing.clone().into();
-            }
-            self.break_owed_after_timeout = true;
-            info!(
-                "{} Court revived during a timeout; the break will count down once it ends",
-                self.status_string(now),
-            );
-            return Ok(false);
-        }
-
-        self.apply_next_game_start(now).map(|()| true)
+        self.apply_next_game_start(now)?;
+        Ok(self.timeout_state.is_none())
     }
 
     /// The operator's Settings pick of the next game, on a schedule-linked court.
     ///
-    /// Follows the same rule as a reviving REFRESH, on any court (PO rulings 2026-11-02
-    /// and 2026-11-03; see `revive_court`): the game is recorded at once, and under a
-    /// timeout the break waits for the timeout to end. Starting it under the timeout
-    /// counted the break down beneath it and kicked off with REF TIMEOUT on screen.
-    /// With no timeout this is the ordinary `apply_next_game_start`.
+    /// The game is recorded at once and the break counts down to it; under a timeout the
+    /// countdown waits for the timeout's end, the same rule as a reviving REFRESH (PO
+    /// rulings 2026-11-02 and 2026-11-03; see `apply_next_game_start`). Not routed
+    /// through `revive_court`, which stays the parked-court REFRESH path.
     pub fn apply_picked_game(&mut self, info: NextGameInfo, now: Instant) -> Result<()> {
-        self.revive_court(info, now).map(|_| ())
+        self.set_next_game(info);
+        self.apply_next_game_start(now)
     }
 
     /// Record that the selected court has no game after the one in progress. Reported
@@ -902,10 +883,12 @@ impl TournamentManager {
             // count down to. The clock is parked, but the updater still has it cached as
             // running, and a stopped clock it believes is running yields a next-wake
             // instant of `now` — a hot loop. The other park sites in this file
-            // (`end_game`, `set_no_next_game`, `reset_for_site_switch`) notify for the
-            // same reason, though `set_no_next_game` and `reset_for_site_switch` only when
-            // nothing on screen still runs. Unconditional is right here: the timeout was
-            // cleared above, so no timeout clock is left running.
+            // (`end_game`, `set_no_next_game`, `reset_for_site_switch`, and `update()`'s
+            // between-games expiry) notify for the same reason, though `set_no_next_game`
+            // and `reset_for_site_switch` only when nothing on screen still runs.
+            // Unconditional is right here: the timeout was cleared above, so no timeout
+            // clock is left running. It is right in `update()` too: no break counts down
+            // under a timeout, since `apply_next_game_start` holds it until the end.
             self.send_clock_running(false);
         }
     }
@@ -1334,19 +1317,28 @@ impl TournamentManager {
         // A court revived under this timeout is owed its break now (PO ruling
         // 2026-11-02; see `revive_court`). This replaces the ordinary restart of the
         // game clock below, which would resume the parked 0:00 countdown and kick off
-        // on the next tick (proven order A). The timeout is cleared FIRST:
-        // `apply_next_game_start` arms the mid-break reset, and tells the time updater
-        // the clock runs, only when `clock_is_running` was false on entry. With the
-        // timeout still set that reports the timeout clock, so under a running timeout
-        // the reset point would stay at zero and the finished game's score would sit on
-        // screen until kickoff.
+        // on the next tick (proven order A). The timeout MUST be cleared first:
+        // `apply_next_game_start` holds any break countdown while a timeout exists, so
+        // with it still set the break would be held again, for good. Clearing it first
+        // also matters because `apply_next_game_start` arms the mid-break reset, and
+        // tells the time updater the clock runs, only when `clock_is_running` was false
+        // on entry, and with a timeout set that reports the timeout clock.
+        //
+        // A live break picked under the timeout keeps its own reset point, as an
+        // ordinary mid-break pick does (review F1): re-arming it against a freshly
+        // floored break moves it, down to 0:00 on a break shorter than
+        // `post_game_duration`. A parked court's reset point is zero and is armed.
         if self.break_owed_after_timeout
             && self.current_period == GamePeriod::BetweenGames
             && self.timeout_state.is_some()
         {
             self.timeout_state = None;
             self.break_owed_after_timeout = false;
+            let own_reset_point = self.reset_game_time;
             self.apply_next_game_start(now)?;
+            if own_reset_point != Duration::ZERO {
+                self.reset_game_time = own_reset_point;
+            }
             info!(
                 "{} Ending timeout; starting the break owed to the revived court: {:?}",
                 self.status_string(now),
@@ -1847,6 +1839,20 @@ impl TournamentManager {
         self.start_clock(now);
     }
 
+    /// Start the break counting down to the next game, timed from its stored start.
+    ///
+    /// **Under a timeout the countdown waits** (PO rulings 2026-11-02 and 2026-11-03).
+    /// Every break countdown comes through here — a Settings pick, a reviving REFRESH,
+    /// the restore after a relaunch — so they all follow one rule. The game is recorded
+    /// by the caller, so the next-game number shows, but no countdown starts while the
+    /// timeout exists: starting it under the timeout was proven order B, a first half
+    /// kicking off with REF TIMEOUT still on screen. `end_timeout` then times the break
+    /// from the stored start, never shorter than the minimum break — so a timeout that
+    /// runs past the start gives the minimum break from the moment it ends.
+    ///
+    /// **The game's timing is applied now, even when the countdown waits.** The app copies
+    /// the engine's config only in the handlers that call this, so a timing rule left for
+    /// `end_timeout` to apply would never reach the app's copy.
     pub fn apply_next_game_start(&mut self, now: Instant) -> Result<()> {
         if self.current_period != GamePeriod::BetweenGames {
             return Err(TournamentManagerError::GameInProgress);
@@ -1862,6 +1868,15 @@ impl TournamentManager {
 
         if let Some(ref timing) = next_game_info.timing {
             self.config = timing.clone().into();
+        }
+
+        if self.timeout_state.is_some() {
+            self.break_owed_after_timeout = true;
+            info!(
+                "{} Next game applied during a timeout; the break will count down once it ends",
+                self.status_string(now),
+            );
+            return Ok(());
         }
 
         let time_remaining_at_start = self.calc_time_to_next_game(now, now);
@@ -14702,7 +14717,6 @@ mod test {
         initialize();
         let start = Instant::now();
         let mut tm = parked_under_a_running_ref_timeout(start);
-        let rx = tm.get_start_stop_rx();
 
         tm.apply_picked_game(revived_game("13"), start + Duration::from_secs(20))
             .unwrap();
@@ -14736,7 +14750,9 @@ mod test {
             Duration::ZERO,
             "the mid-break reset is armed"
         );
-        assert!(*rx.borrow(), "the updater believes the break clock runs");
+        // The updater latch is already `true` here (the timeout clock ran), so a check of
+        // it cannot fail; the `running` send itself is pinned by
+        // `ending_the_timeout_on_an_owed_break_wakes_the_updater` (stopped timeout).
     }
 
     #[test]
@@ -14830,6 +14846,101 @@ mod test {
             "the break must not count down under the stopped timeout"
         );
         assert!(!tm.clock_is_running(), "nothing runs on screen");
+    }
+
+    #[test]
+    fn ending_a_stopped_ref_timeout_after_a_pick_starts_the_owed_break() {
+        // The 11-02 rule: the break counts down once the timeout ends, as for a court
+        // revived under a stopped timeout (#4144).
+        initialize();
+        let start = Instant::now();
+        let mut tm = TournamentManager::new(revived_court_config());
+        tm.set_next_game(revived_game("12"));
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(300));
+        tm.start_clock(start);
+        tm.start_ref_timeout(start + Duration::from_secs(10))
+            .unwrap();
+        tm.stop_clock(start + Duration::from_secs(15)).unwrap();
+        tm.apply_picked_game(revived_game("13"), start + Duration::from_secs(20))
+            .unwrap();
+        let mut rx = tm.get_start_stop_rx();
+        rx.borrow_and_update();
+
+        tm.end_timeout(start + Duration::from_secs(30)).unwrap();
+
+        assert!(
+            tm.clock_state.is_running(),
+            "the break counts down once the timeout ends"
+        );
+        assert!(rx.has_changed().unwrap(), "the updater must be told");
+        assert!(*rx.borrow(), "...that the clock runs");
+    }
+
+    // ---- One rule for every break countdown under a timeout (PO ruling 2026-11-03) ----
+
+    #[test]
+    fn a_break_restored_under_a_running_ref_timeout_waits_for_the_timeout() {
+        // Review F2: the app's restore-after-relaunch path calls `set_next_game` and
+        // `apply_next_game_start` directly, so the hold must live in the latter.
+        initialize();
+        let start = Instant::now();
+        let mut tm = TournamentManager::new(revived_court_config());
+        tm.set_next_game(revived_game("12"));
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(300));
+        tm.start_clock(start);
+        tm.start_ref_timeout(start + Duration::from_secs(10))
+            .unwrap();
+
+        tm.set_next_game(revived_game("13"));
+        tm.apply_next_game_start(start + Duration::from_secs(20))
+            .unwrap();
+
+        assert!(
+            !tm.clock_state.is_running(),
+            "the break must not count down under the timeout"
+        );
+        assert!(
+            tm.break_owed_after_timeout,
+            "the break is owed to the timeout's end"
+        );
+
+        tm.end_timeout(start + Duration::from_secs(30)).unwrap();
+
+        assert_eq!(tm.timeout_state, None);
+        assert!(
+            tm.clock_state.is_running(),
+            "the break counts down once the timeout ends"
+        );
+    }
+
+    #[test]
+    fn a_pick_under_a_timeout_keeps_the_breaks_own_reset_point() {
+        // Review F1. Same as an ordinary mid-break pick, which keeps the reset point (see
+        // `apply_next_game_start`'s arming comment). Re-arming it against the 60 s
+        // minimum break gave 60 - 120 = 0, holding the old score on screen until kickoff.
+        initialize();
+        let start = Instant::now();
+        let mut tm = TournamentManager::new(GameConfig {
+            post_game_duration: Duration::from_secs(120),
+            ..revived_court_config()
+        });
+        tm.set_next_game(revived_game("12"));
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(300));
+        tm.start_clock(start);
+        // An armed reset point the break has not reached yet.
+        tm.reset_game_time = Duration::from_secs(180);
+        tm.start_ref_timeout(start + Duration::from_secs(10))
+            .unwrap();
+
+        tm.apply_picked_game(revived_game("13"), start + Duration::from_secs(20))
+            .unwrap();
+        tm.end_timeout(start + Duration::from_secs(30)).unwrap();
+
+        assert_eq!(
+            tm.reset_game_time,
+            Duration::from_secs(180),
+            "the break keeps its own reset point"
+        );
     }
 
     #[test]

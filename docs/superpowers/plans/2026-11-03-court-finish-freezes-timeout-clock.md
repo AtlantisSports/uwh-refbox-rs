@@ -28,7 +28,7 @@ coordinator GO; a fresh-worktree build is announced to the coordinator first.
 ## Global Constraints
 
 - MSRV 1.85 / edition 2024; clippy `-D warnings`; no new deps; no `unwrap()` outside tests.
-- Engine-only change: `refbox/src/tournament_manager/mod.rs`. No app, UI, translation or `uwh-common` change.
+- Task 1 engine-only; Tasks 2–3 also touch `refbox/src/app/mod.rs`. No UI, translation or `uwh-common` change.
 - Heavy process (state machine): run the whole `tournament_manager` test module, then `just check`.
 
 ## Review Focus
@@ -166,7 +166,7 @@ implements: game recorded at once, countdown waits for the timeout's end.
   If R4 passes because `update()` never reaches the between-games expiry while a ref timeout
   exists, STOP and report — that means the site is unreachable under a timeout and R4 is
   answered by argument, not by a guard.
-- [x] **Step 3: Fix.** Add the `court_is_parked()` branch to `apply_picked_game`. In `update()`'s
+- [x] **Step 3: Fix.** *(Original text below superseded by the REVISION.)* Add the `court_is_parked()` branch to `apply_picked_game`. In `update()`'s
   between-games no-startable-game park, send `false` only when no timeout clock is running
   (`!(self.timeout_state.is_some() && self.clock_is_running())`; the game clock is still
   `CountingDown` at that point, so `!clock_is_running()` would be wrong), with the same comment
@@ -179,9 +179,66 @@ implements: game recorded at once, countdown waits for the timeout's end.
 - [x] **Step 5: GREEN** — whole module, then `just check` (coordinator GO, `-j 4`).
 - [x] **Step 6: R8** — fix this plan's Task 1 Step 1 fixture text to match the tests ("12",
   300 s, `clock_state == Stopped{ZERO}`) and add the Deviations lines below.
-- [ ] **Step 7: Commit** `fix(refbox): hold a settings game pick on a finished court until the timeout ends`
+- [x] **Step 7: Commit** `fix(refbox): hold a settings game pick until the timeout ends` (e0cccb43)
 - [ ] **Step 8: Code review again** (code-review skill, high) on 77594248..HEAD, worktree, base and
   file list passed explicitly.
+
+---
+
+### Task 3: One rule for every break countdown under a timeout + code review round 3
+
+**PO ruling 2026-11-03 ("1"):** the "wait for the timeout" rule moves into the shared step that
+starts every break countdown, `apply_next_game_start`, so Settings picks, REFRESH revives and the
+restore-after-relaunch path (review F2, app ~7574) all follow it. RESTART is unaffected:
+`restart_game` calls `reset_game`, which clears `timeout_state`, before `apply_next_game_start`.
+
+**Files:** `refbox/src/tournament_manager/mod.rs`, `refbox/src/app/mod.rs` (comments only), this plan.
+
+- [x] **Step 1: Failing tests**
+  - F2 `a_break_restored_under_a_running_ref_timeout_waits_for_the_timeout`: 300 s break running
+    (game "12"), `start_ref_timeout`, `set_next_game(revived_game("13"))` +
+    `apply_next_game_start(start+20s)` (the restore path's own calls) → `!clock_state.is_running()`,
+    `break_owed_after_timeout`; `end_timeout` → `clock_state.is_running()`, `timeout_state == None`.
+  - F1 `a_pick_under_a_timeout_keeps_the_breaks_own_reset_point`: config post_game 120 s,
+    minimum/nominal break 60 s; 300 s break running with `tm.reset_game_time = 180 s` set directly
+    (an armed, unfired reset point); `start_ref_timeout`; `apply_picked_game` (start_time None);
+    `end_timeout` → `reset_game_time == 180 s` (before the fix: 60 − 120 saturates to 0, the old
+    score stays on screen until kickoff). Comment: same as an ordinary mid-break pick, which keeps
+    the reset point (see `apply_next_game_start`'s arming comment).
+  - F3 `ending_a_stopped_ref_timeout_after_a_pick_starts_the_owed_break`: extend C4's setup;
+    `rx.borrow_and_update()` after the pick; `end_timeout` → `clock_state.is_running()`,
+    `rx.has_changed()` and `*rx.borrow()`. Comment: the 11-02 rule — the break counts once the
+    timeout ends, as for a revive under a stopped timeout (#4144).
+  - F4: C1's last assertion (`*rx.borrow()` after `end_timeout`) cannot fail — replace it with the
+    same comment R6 carries (latch already `true`; the send is pinned by
+    `ending_the_timeout_on_an_owed_break_wakes_the_updater`).
+- [x] **Step 2: RED** module run → F2 and F1 FAIL; F3 passes (pins existing behaviour). Anything
+  else → stop and report.
+- [x] **Step 3: Fix**
+  - `apply_next_game_start`: after applying the timing rule and BEFORE setting `clock_state`, if
+    `self.timeout_state.is_some()` → `self.break_owed_after_timeout = true`, an `info!` line, and
+    `return Ok(())`. Move the rule's explanation (from `revive_court`'s "Under a timeout the
+    countdown waits" paragraph) into this function's doc, citing the PO rulings 2026-11-02/11-03.
+  - `revive_court`: body becomes `set_next_game(info)` + `apply_next_game_start(now)?` +
+    `Ok(self.timeout_state.is_none())`; doc points to `apply_next_game_start` for the rule.
+  - `apply_picked_game`: body becomes `set_next_game(info)` + `apply_next_game_start(now)` — no
+    longer via `revive_court` (F5: `revive_court` stays the parked-court REFRESH path). Doc updated.
+  - `end_timeout` owed branch (F1): note `self.reset_game_time` before `apply_next_game_start`;
+    if it was non-zero, put it back afterwards (a live break's own reset point, kept as an
+    ordinary mid-break pick keeps it; a parked court's is zero and gets armed). Update the
+    branch's comment: the timeout MUST be cleared first now, or `apply_next_game_start` would
+    hold the break again.
+  - F6: `reset_game`'s comment lists `update()`'s between-games expiry as the fourth park site,
+    unconditional because no break counts down under a timeout once this task lands.
+  - F9: both app `apply_picked_game` Safety comments → "the period is BetweenGames (checked
+    above) and the next-game info is passed in".
+- [x] **Step 4: GREEN** module, `cargo fmt --all`, then `just check` (coordinator GO, `-j 4`).
+- [x] **Step 5: F8 plan fixes:** mark Task 2 Step 3's original text "superseded by the REVISION";
+  tick Task 2 Step 7 with the landed message `fix(refbox): hold a settings game pick until the
+  timeout ends` (e0cccb43); Global Constraints "Engine-only" line → "Task 1 engine-only; Tasks
+  2–3 also touch `refbox/src/app/mod.rs`".
+- [ ] **Step 6: Commit** `fix(refbox): hold every break countdown until the timeout ends` (mine).
+- [ ] **Step 7: Code review** round 4 on 77594248..HEAD (mine).
 
 ## Deviations
 
@@ -203,3 +260,7 @@ implements: game recorded at once, countdown waits for the timeout's end.
   pick restarts it under a timeout (a REFRESH re-time is already deferred via `retime_owed`), so
   no known path runs the expiry while a timeout exists. The RED run proved the first half (the
   R4 test passed on old code); the rest is a caller argument, not a proof.
+- Code review round 3 (e0cccb43), PO ruling 2026-11-03 "1": the hold-under-a-timeout rule
+  moved into `apply_next_game_start` (Task 3). F3 (ending a stopped timeout starts the owed break)
+  answered by the 11-02 rule / #4144 precedent and pinned by a test. F7 (a finishing REFRESH under
+  a STOPPED ref timeout leaves the break unparked) is pre-existing — offered separately with R2/R5.

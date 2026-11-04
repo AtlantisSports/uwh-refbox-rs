@@ -3381,16 +3381,18 @@ impl RefBoxApp {
                 .unwrap_or((None, None));
             let start_time = game.map(|g| g.start_time);
 
-            tm.set_next_game(NextGameInfo {
+            let info = NextGameInfo {
                 number: edited.game_number.clone(),
                 timing: timing.cloned(),
                 start_time,
-            });
+            };
 
             if edited.uses_remote() {
-                // Safety: precondition checked above (period != BetweenGames / next-game info just set); error path is unreachable in this control flow.
-                tm.apply_next_game_start(Instant::now()).unwrap();
+                // Held until a timeout on screen ends, like a reviving REFRESH.
+                // Safety: precondition checked above (period != BetweenGames / next-game info passed in); error path is unreachable in this control flow.
+                tm.apply_picked_game(info, Instant::now()).unwrap();
             } else {
+                tm.set_next_game(info);
                 tm.clear_scheduled_game_start();
             }
 
@@ -3454,11 +3456,13 @@ impl RefBoxApp {
                 }
             };
 
-            tm.set_next_game(next_game_info);
-
             if edited.uses_remote() {
-                // Safety: precondition checked above (period != BetweenGames / next-game info just set); error path is unreachable in this control flow.
-                tm.apply_next_game_start(Instant::now()).unwrap();
+                // Held until a timeout on screen ends, like a reviving REFRESH.
+                // Safety: precondition checked above (period != BetweenGames / next-game info passed in); error path is unreachable in this control flow.
+                tm.apply_picked_game(next_game_info, Instant::now())
+                    .unwrap();
+            } else {
+                tm.set_next_game(next_game_info);
             }
         }
 

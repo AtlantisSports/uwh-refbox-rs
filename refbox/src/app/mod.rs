@@ -7248,9 +7248,10 @@ impl RefBoxApp {
                 } else {
                     tm.end_timeout(now).unwrap();
                     tm.update(now).unwrap();
-                    // Ending a timeout can start the game clock: a court revived under
-                    // the timeout starts its break the moment the timeout ends (PO ruling
-                    // 2026-11-02). TIME EDIT holds every clock still while it is open, and
+                    // Ending a timeout can start the game clock: any game applied under
+                    // the timeout (a REFRESH revive, a Settings pick, or the restore after
+                    // a relaunch) starts its break the moment the timeout ends (PO rulings
+                    // 2026-11-02 and 2026-11-03). TIME EDIT holds every clock still while it is open, and
                     // its APPLY refuses to set a running clock, so hold the break here and
                     // let CANCEL or APPLY resume it. Keyed on the game clock itself, not on
                     // why it started.

@@ -237,8 +237,51 @@ restore-after-relaunch path (review F2, app ~7574) all follow it. RESTART is una
   tick Task 2 Step 7 with the landed message `fix(refbox): hold a settings game pick until the
   timeout ends` (e0cccb43); Global Constraints "Engine-only" line → "Task 1 engine-only; Tasks
   2–3 also touch `refbox/src/app/mod.rs`".
-- [ ] **Step 6: Commit** `fix(refbox): hold every break countdown until the timeout ends` (mine).
-- [ ] **Step 7: Code review** round 4 on 77594248..HEAD (mine).
+- [x] **Step 6: Commit** `fix(refbox): hold every break countdown until the timeout ends` (53d01d68).
+- [x] **Step 7: Code review** round 4 on 77594248..HEAD — ran: 9 findings (Task 4).
+
+---
+
+### Task 4: Code review round 4 — findings only (review of 77594248..53d01d68)
+
+Findings-only commit: implements nothing but round 4's own findings (pr-review.md check 1 exception).
+
+- [x] **Step 1: Failing tests**
+  - G2 `a_break_expiring_under_a_running_ref_timeout_keeps_the_timeout_clock`: 60 s break running
+    (game "12"), `start_ref_timeout(start+10s)`; then FORCE the unreachable state directly
+    (`tm.clock_state = CountingDown{start_time: start, time_remaining_at_start: 60 s}`,
+    `tm.next_game = None; tm.no_next_game = true;` — comment: no known path reaches this; the guard
+    keeps the three park sites giving one answer); rx `borrow_and_update`; `update(start+61s)` →
+    `clock_is_running()`, updater NOT told stopped (`!rx.has_changed().unwrap() || *rx.borrow_and_update()`).
+  - G4 `forgetting_the_next_game_also_forgets_the_owed_break`: 300 s break running, ref timeout,
+    `apply_picked_game("13")` (owed), `clear_portal_next_game()` → `!break_owed_after_timeout`;
+    `end_timeout(later)` returns `Ok` (before: the owed branch ran with no next game → `NoNextGameInfo`).
+- [x] **Step 2: RED** → G2 and G4 FAIL. Anything else → stop and report.
+- [x] **Step 3: Fix**
+  - G2: `update()`'s between-games no-startable-game park sends `false` only when
+    `!(self.timeout_state.is_some() && self.clock_is_running())` (the game clock is still
+    `CountingDown` there, so plain `!clock_is_running()` is wrong). Comment in the other two sites' shape.
+  - G4: `clear_portal_next_game` also sets `break_owed_after_timeout = false` (no game, nothing owed).
+  - G1 (comment only): `end_timeout` owed branch — say exactly what it does: a non-zero reset
+    point is kept; a zero one (a parked court, or a break shorter than `post_game_duration`) is
+    armed afresh against the new break. Drop "as an ordinary mid-break pick does".
+  - G8 (comment only): `reset_game`'s park-site comment — `update()`'s expiry now guards like
+    `set_no_next_game`; drop the "no break counts down under a timeout" claim. In
+    `apply_next_game_start`'s doc, "Every break countdown comes through here" → "Every countdown
+    to a named next game starts here (a Settings pick, a reviving REFRESH, the restore after a relaunch)".
+  - G5 (text only): the `break_owed_after_timeout` field doc (~226), the `end_timeout` owed-branch
+    `info!` line ("…owed to the revived court") and the app EndTimeout comment (~7251, "a court
+    revived under the timeout") → say any game applied under the timeout (a REFRESH revive, a
+    Settings pick, or the restore after a relaunch).
+- [x] **Step 4: GREEN** module, `cargo fmt --all`, `just check` (coordinator GO, `-j 4`).
+- [x] **Step 5: Plan** — tick Task 3 Step 6 (`53d01d68`) and Step 7 (round 4 ran: 9 findings).
+- [ ] **Step 6: Commit** `fix(refbox): close the code review's last timeout-clock gaps` (mine).
+
+Answered, not changed: G3 (one helper that syncs the updater) — same as round 1's F3, a refactor
+outside the approved scope; G6 (`revive_court` and `apply_picked_game` share a body) — two names
+for what each caller means, the rule itself lives once in `apply_next_game_start`; G7 (fixture
+repeats) — `finished_under_a_running_ref_timeout` also hands back the latch read before the park,
+which its tests need.
 
 ## Deviations
 

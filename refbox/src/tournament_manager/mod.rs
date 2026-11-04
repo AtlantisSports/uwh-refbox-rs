@@ -823,6 +823,17 @@ impl TournamentManager {
         self.apply_next_game_start(now).map(|()| true)
     }
 
+    /// The operator's Settings pick of the next game, on a schedule-linked court.
+    ///
+    /// Follows the same rule as a reviving REFRESH, on any court (PO rulings 2026-11-02
+    /// and 2026-11-03; see `revive_court`): the game is recorded at once, and under a
+    /// timeout the break waits for the timeout to end. Starting it under the timeout
+    /// counted the break down beneath it and kicked off with REF TIMEOUT on screen.
+    /// With no timeout this is the ordinary `apply_next_game_start`.
+    pub fn apply_picked_game(&mut self, info: NextGameInfo, now: Instant) -> Result<()> {
+        self.revive_court(info, now).map(|_| ())
+    }
+
     /// Record that the selected court has no game after the one in progress. Reported
     /// as a blank next-game number, and honoured by the between-games countdown and by
     /// `start_play_now`, neither of which will start a game in this state.
@@ -892,7 +903,9 @@ impl TournamentManager {
             // running, and a stopped clock it believes is running yields a next-wake
             // instant of `now` — a hot loop. The other park sites in this file
             // (`end_game`, `set_no_next_game`, `reset_for_site_switch`) notify for the
-            // same reason.
+            // same reason, though `set_no_next_game` and `reset_for_site_switch` only when
+            // nothing on screen still runs. Unconditional is right here: the timeout was
+            // cleared above, so no timeout clock is left running.
             self.send_clock_running(false);
         }
     }
@@ -14426,6 +14439,14 @@ mod test {
         tm.end_timeout(start + Duration::from_secs(30)).unwrap();
 
         assert!(tm.clock_is_running(), "the owed break counts down");
+        assert_ne!(
+            tm.reset_game_time,
+            Duration::ZERO,
+            "the owed break arms the mid-break reset"
+        );
+        // The latch is already `true` here, so this cannot see the `running` send
+        // itself; that send is pinned by
+        // `ending_the_timeout_on_an_owed_break_wakes_the_updater` (stopped timeout).
         assert!(
             *rx.borrow(),
             "the updater must believe the break clock runs"
@@ -14669,5 +14690,170 @@ mod test {
         assert!(!tm.clock_is_running(), "nothing to restart on the new site");
         assert!(rx.has_changed().unwrap(), "the updater must be told");
         assert!(!*rx.borrow_and_update(), "...that the clock stopped");
+    }
+
+    // ---- A game picked in Settings under a timeout (problem C, PO 2026-11-03) ----
+
+    #[test]
+    fn a_game_picked_on_a_court_parked_under_a_running_ref_timeout_waits_for_the_timeout() {
+        // The 11-02 rule a reviving REFRESH follows: the game is recorded at once, the
+        // countdown waits for the timeout to end. Counting down under the timeout kicked
+        // off with REF TIMEOUT on screen and left the old score up.
+        initialize();
+        let start = Instant::now();
+        let mut tm = parked_under_a_running_ref_timeout(start);
+        let rx = tm.get_start_stop_rx();
+
+        tm.apply_picked_game(revived_game("13"), start + Duration::from_secs(20))
+            .unwrap();
+
+        assert_eq!(
+            tm.clock_state,
+            ClockState::Stopped {
+                clock_time: Duration::ZERO
+            },
+            "the break must not count down under the timeout"
+        );
+        assert_eq!(
+            tm.next_game_info().as_ref().map(|i| i.number.as_str()),
+            Some("13"),
+            "the picked game shows at once"
+        );
+        assert!(
+            tm.clock_is_running(),
+            "the ref timeout clock still counts up"
+        );
+
+        tm.end_timeout(start + Duration::from_secs(30)).unwrap();
+
+        assert_eq!(tm.timeout_state, None);
+        assert!(
+            tm.clock_state.is_running(),
+            "the break counts down once the timeout ends"
+        );
+        assert_ne!(
+            tm.reset_game_time,
+            Duration::ZERO,
+            "the mid-break reset is armed"
+        );
+        assert!(*rx.borrow(), "the updater believes the break clock runs");
+    }
+
+    #[test]
+    fn a_game_picked_on_a_parked_court_with_no_timeout_counts_down_at_once() {
+        initialize();
+        let start = Instant::now();
+        let mut tm = parked_court(start);
+        let mut rx = tm.get_start_stop_rx();
+        rx.borrow_and_update();
+
+        tm.apply_picked_game(revived_game("13"), start).unwrap();
+
+        assert!(tm.clock_state.is_running(), "the break counts down at once");
+        assert!(rx.has_changed().unwrap(), "the updater must be told");
+        assert!(*rx.borrow(), "...that the clock runs");
+    }
+
+    #[test]
+    fn a_game_picked_during_a_break_under_a_running_ref_timeout_waits_for_the_timeout() {
+        // Not only a parked court (PO ruling 2026-11-03): any Settings pick under a
+        // timeout records the game at once and holds the break until the timeout ends.
+        // Before, the pick restarted the break under the timeout.
+        initialize();
+        let start = Instant::now();
+        let mut tm = TournamentManager::new(revived_court_config());
+        tm.set_next_game(revived_game("12"));
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(300));
+        tm.start_clock(start);
+        tm.start_ref_timeout(start + Duration::from_secs(10))
+            .unwrap();
+
+        tm.apply_picked_game(revived_game("13"), start + Duration::from_secs(20))
+            .unwrap();
+
+        assert!(
+            !tm.clock_state.is_running(),
+            "the break must not count down under the timeout"
+        );
+        assert_eq!(
+            tm.next_game_info().as_ref().map(|i| i.number.as_str()),
+            Some("13"),
+            "the picked game shows at once"
+        );
+        assert!(
+            tm.break_owed_after_timeout,
+            "the break is owed to the timeout's end"
+        );
+
+        tm.end_timeout(start + Duration::from_secs(30)).unwrap();
+
+        assert_eq!(tm.timeout_state, None);
+        assert!(
+            tm.clock_state.is_running(),
+            "the break counts down once the timeout ends"
+        );
+        assert_ne!(
+            tm.reset_game_time,
+            Duration::ZERO,
+            "the mid-break reset is armed"
+        );
+    }
+
+    #[test]
+    fn a_game_picked_under_a_stopped_ref_timeout_does_not_start_the_break() {
+        // Problem 1, folded into C (2026-11-03). A pick under a STOPPED ref timeout used
+        // to start the break counting down beneath it. TIME EDIT then froze that break,
+        // because `EditTime` reads `clock_is_running`, which reports the stopped timeout
+        // clock. With the pick held until the timeout ends, that state cannot arise.
+        initialize();
+        let start = Instant::now();
+        let mut tm = TournamentManager::new(revived_court_config());
+        tm.set_next_game(revived_game("12"));
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(300));
+        tm.start_clock(start);
+        tm.start_ref_timeout(start + Duration::from_secs(10))
+            .unwrap();
+        tm.stop_clock(start + Duration::from_secs(15)).unwrap();
+        assert!(
+            matches!(
+                tm.timeout_state,
+                Some(TimeoutState::Ref(ClockState::Stopped { .. }))
+            ),
+            "fixture check: the ref timeout clock is stopped"
+        );
+
+        tm.apply_picked_game(revived_game("13"), start + Duration::from_secs(20))
+            .unwrap();
+
+        assert!(
+            !tm.clock_state.is_running(),
+            "the break must not count down under the stopped timeout"
+        );
+        assert!(!tm.clock_is_running(), "nothing runs on screen");
+    }
+
+    #[test]
+    fn a_site_switch_from_a_running_break_with_no_timeout_tells_the_updater_stopped() {
+        initialize();
+        let start = Instant::now();
+        let mut tm = TournamentManager::new(revived_court_config());
+        tm.set_schedule_linked(true);
+        tm.set_next_game(revived_game("12"));
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(300));
+        tm.start_clock(start);
+        let mut rx = tm.get_start_stop_rx();
+        rx.borrow_and_update();
+
+        tm.reset_for_site_switch(true, start + Duration::from_secs(20));
+
+        assert_eq!(
+            tm.clock_state,
+            ClockState::Stopped {
+                clock_time: Duration::ZERO
+            },
+            "the new site names no game, so the break is parked at 0:00"
+        );
+        assert!(rx.has_changed().unwrap(), "the updater must be told");
+        assert!(!*rx.borrow(), "...that the clock stopped");
     }
 }

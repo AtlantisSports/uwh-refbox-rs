@@ -53,7 +53,7 @@ coordinator GO; a fresh-worktree build is announced to the coordinator first.
   exist between games — check `can_start_team_timeout`).
 - Test: same file, `#[cfg(test)]` module, next to the existing `set_no_next_game` park test.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
   - A `a_finishing_refresh_under_a_running_ref_timeout_keeps_the_timeout_clock_running`:
     BetweenGames, next game "11", break 150 s counting down, `start_ref_timeout` (counting up);
     take `get_start_stop_rx()`, `borrow_and_update()`; `set_no_next_game()`. Assert
@@ -63,15 +63,15 @@ coordinator GO; a fresh-worktree build is announced to the coordinator first.
     `borrow_and_update()`; `end_timeout(later)`. Assert period `BetweenGames`,
     `!tm.clock_is_running()`, `game_clock_time == Some(0)`, `rx.has_changed().unwrap()` and
     `!*rx.borrow_and_update()`.
-- [ ] **Step 2: Run, confirm A fails** (updater told stopped) — B may pass or fail; record which.
+- [x] **Step 2: Run, confirm A fails** (updater told stopped) — B may pass or fail; record which.
   `CARGO_BUILD_JOBS=4 cargo test -p refbox --lib tournament_manager -- --test-threads=1 finishing_refresh_under ending_that_timeout`
-- [ ] **Step 3: Fix.** In `set_no_next_game`, keep the park condition and parking; replace the
+- [x] **Step 3: Fix.** In `set_no_next_game`, keep the park condition and parking; replace the
   unconditional `self.send_clock_running(false)` with a send only when `!self.clock_is_running()`
   after parking, and update its comment. In `end_timeout`'s `CountingUp` arm, after clearing the
   timeout, `send_clock_running(false)` when `!self.clock_state.is_running()`.
-- [ ] **Step 4: Run the whole module:** `CARGO_BUILD_JOBS=4 cargo test -p refbox --lib tournament_manager -- --test-threads=1` — all green.
-- [ ] **Step 5: `just check`** (coordinator GO) — green.
-- [ ] **Step 6: Commit** `fix(refbox): keep the ref timeout clock running when the court finishes`
+- [x] **Step 4: Run the whole module:** `CARGO_BUILD_JOBS=4 cargo test -p refbox --lib tournament_manager -- --test-threads=1` — all green.
+- [x] **Step 5: `just check`** (coordinator GO) — green.
+- [x] **Step 6: Commit** `fix(refbox): keep the ref timeout clock running when the court finishes`
 
 ## Deviations
 

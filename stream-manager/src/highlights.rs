@@ -26,6 +26,17 @@ pub const MAX_LEAD_SECS: u32 = 300;
 pub fn lead(secs: u32) -> Duration {
     Duration::seconds(i64::from(secs.min(MAX_LEAD_SECS)))
 }
+
+/// What to tell the operator when the settings file asks for more than [`MAX_LEAD_SECS`], so a
+/// capped value is never silent; `None` when it is used as written.
+pub fn capped_lead_note(secs: u32) -> Option<String> {
+    (secs > MAX_LEAD_SECS).then(|| {
+        format!(
+            "highlights_lead_secs is {secs}, but the most is {MAX_LEAD_SECS}: game highlights \
+             links will point {MAX_LEAD_SECS} s before each entry"
+        )
+    })
+}
 /// An item entered this long after a referee timeout ended still counts as decided in it.
 pub const REF_TIMEOUT_WINDOW: Duration = Duration::seconds(10);
 /// An item entered this long before its video's 0:00 belongs to an earlier video of the game
@@ -783,6 +794,19 @@ mod tests {
         let block = description_block(&list, at(0), lead(30)).unwrap();
         assert!(block.contains("4:30 Goal — White"), "{block}");
         assert_eq!(lead(10_000), Duration::seconds(i64::from(MAX_LEAD_SECS)));
+    }
+
+    #[test]
+    fn a_lead_in_over_the_most_is_reported() {
+        assert_eq!(capped_lead_note(DEFAULT_LEAD_SECS), None);
+        assert_eq!(capped_lead_note(MAX_LEAD_SECS), None);
+        assert_eq!(
+            capped_lead_note(600).as_deref(),
+            Some(
+                "highlights_lead_secs is 600, but the most is 300: game highlights links will \
+                 point 300 s before each entry"
+            )
+        );
     }
 
     #[test]

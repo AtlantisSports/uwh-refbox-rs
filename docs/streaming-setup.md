@@ -355,6 +355,19 @@ Settings and secrets live in `Documents\stream-manager\`:
 | `youtube-allowance.json` | how much of YouTube's daily allowance this PC has used today |
 | `portal-watch-links.json` | the portal keys for setting watch links, one for each event this PC has been linked to (secret) |
 
+**Game highlights lead-in.** Each game's YouTube description lists its goals, penalties and fouls
+with a clickable time. Each time points 20 seconds before the scorekeeper entered it on the
+refbox, so viewers see the play. It isn't on the Settings tab. To change it:
+
+1. Close Stream Manager's window (press **End day** first if a day is running).
+2. Open `config.toml` in Notepad. Change the number in `highlights_lead_secs = 20`, or add that
+   line if it isn't there. At most 300; a bigger number is treated as 300, and the console window
+   says so when Stream Manager starts.
+3. Save the file and start Stream Manager again.
+
+Only edit it while Stream Manager is closed: if it is running, its next settings save puts the old
+number back. The new number applies only to descriptions written after the restart.
+
 **Never put this folder in the code repository.**
 
 If the folder holds a `portal-login.json` from an early test version, delete it: it holds a saved

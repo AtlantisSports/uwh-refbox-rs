@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use log::{LevelFilter, error, info};
+use log::{LevelFilter, error, info, warn};
 use log4rs::{
     append::console::{ConsoleAppender, Target},
     config::{Appender, Config as LogConfig, Logger, Root},
@@ -341,6 +341,9 @@ fn load_config(path: &Path) -> Result<Config, BoxError> {
     config
         .validate()
         .map_err(|e| format!("{e} (in {})", path.display()))?;
+    if let Some(note) = highlights::capped_lead_note(config.highlights_lead_secs) {
+        warn!("{note} (in {})", path.display());
+    }
     if config.button_key.is_empty() {
         config.button_key = access::new_button_key()
             .map_err(|e| format!("Couldn't create the Stream Deck button key: {e}"))?;

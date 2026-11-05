@@ -357,13 +357,17 @@ Settings and secrets live in `Documents\stream-manager\`:
 
 **Game highlights lead-in.** Each game's YouTube description lists its goals, penalties and fouls
 with a clickable time. Each time points 20 seconds before the scorekeeper entered it on the
-refbox, so viewers see the play. It isn't on the Settings tab. To change it:
+refbox, so viewers see the play (for one decided in a referee timeout, 20 seconds before the
+timeout started). It isn't on the Settings tab. To change it:
 
 1. Close Stream Manager's window (press **End day** first if a day is running).
-2. Open `config.toml` in Notepad. Change the number in `highlights_lead_secs = 20`, or add that
-   line if it isn't there. At most 300; a bigger number is treated as 300, and the console window
-   says so when Stream Manager starts.
-3. Save the file and start Stream Manager again.
+2. Open `config.toml` in Notepad and find `highlights_lead_secs = 20`. Change the number: whole
+   seconds only, at most 300 (a bigger number is treated as 300, and the console window says so
+   when Stream Manager starts). If the line isn't there, add it near the top of the file, above
+   the first `[[courts]]` line. Added below that line, it is ignored without any message.
+3. Save the file and start Stream Manager again. If the console window says **`Bad TOML data`**,
+   check the number is a plain whole number (no letters, decimal point or minus sign), then start
+   again.
 
 Only edit it while Stream Manager is closed: if it is running, its next settings save puts the old
 number back. The new number applies only to descriptions written after the restart.

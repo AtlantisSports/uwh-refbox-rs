@@ -37,6 +37,7 @@ pub fn capped_lead_note(secs: u32) -> Option<String> {
         )
     })
 }
+
 /// An item entered this long after a referee timeout ended still counts as decided in it.
 pub const REF_TIMEOUT_WINDOW: Duration = Duration::seconds(10);
 /// An item entered this long before its video's 0:00 belongs to an earlier video of the game
@@ -800,6 +801,7 @@ mod tests {
     fn a_lead_in_over_the_most_is_reported() {
         assert_eq!(capped_lead_note(DEFAULT_LEAD_SECS), None);
         assert_eq!(capped_lead_note(MAX_LEAD_SECS), None);
+        assert!(capped_lead_note(MAX_LEAD_SECS + 1).is_some());
         assert_eq!(
             capped_lead_note(600).as_deref(),
             Some(

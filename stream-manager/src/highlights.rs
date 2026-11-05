@@ -3,7 +3,8 @@
 //! the game is over.
 //!
 //! The feed says what the scorekeeper has entered, not when it happened on the pool floor, so
-//! each item points a little before the moment it was entered ([`LEAD`]). An item entered during a
+//! each item points a little before the moment it was entered (the lead-in: `highlights_lead_secs`
+//! in the settings file, [`DEFAULT_LEAD_SECS`] unless changed). An item entered during a
 //! referee timeout, or soon after one, points before the start of that timeout instead: the refs
 //! stopped play to discuss it, and what they discussed happened before.
 
@@ -15,9 +16,16 @@ use uwh_common::{
     game_snapshot::{GameSnapshot, Infraction, PenaltyTime, TimeoutSnapshot},
 };
 
-/// How far before its anchor (when it was entered, or when the referee timeout started) each item
-/// points, so viewers see the play that led to it.
-pub const LEAD: Duration = Duration::seconds(20);
+/// How many seconds before its anchor (when it was entered, or when the referee timeout started)
+/// each item points by default, so viewers see the play that led to it.
+pub const DEFAULT_LEAD_SECS: u32 = 20;
+/// The longest lead-in a settings file can ask for; more is treated as this.
+pub const MAX_LEAD_SECS: u32 = 300;
+
+/// The lead-in for `secs` from the settings file.
+pub fn lead(secs: u32) -> Duration {
+    Duration::seconds(i64::from(secs.min(MAX_LEAD_SECS)))
+}
 /// An item entered this long after a referee timeout ended still counts as decided in it.
 pub const REF_TIMEOUT_WINDOW: Duration = Duration::seconds(10);
 /// An item entered this long before its video's 0:00 belongs to an earlier video of the game
@@ -92,7 +100,7 @@ pub struct Highlight {
     /// When the scorekeeper entered it (this program's clock).
     #[serde(with = "time::serde::rfc3339")]
     pub entered: OffsetDateTime,
-    /// The moment it points to before [`LEAD`]: when it was entered, or when the referee timeout
+    /// The moment it points to before the lead-in: when it was entered, or when the referee timeout
     /// it was decided in started.
     #[serde(with = "time::serde::rfc3339")]
     pub anchor: OffsetDateTime,
@@ -440,9 +448,13 @@ fn video_time(offset: Duration) -> String {
 const MAX_BLOCK_CHARS: usize = 3500;
 
 /// The "Game highlights" block for a video that went live at `video_start`, or `None` when there
-/// is nothing to list. Each line points [`LEAD`] before its anchor, never before 0:00. If the
-/// list would be too long for YouTube, fouls are left out first.
-pub fn description_block(list: &GameHighlights, video_start: OffsetDateTime) -> Option<String> {
+/// is nothing to list. Each line points `lead` before its anchor, never before 0:00. If the list
+/// would be too long for YouTube, fouls are left out first.
+pub fn description_block(
+    list: &GameHighlights,
+    video_start: OffsetDateTime,
+    lead: Duration,
+) -> Option<String> {
     let mut items: Vec<&Highlight> = list
         .items
         .iter()
@@ -463,7 +475,7 @@ pub fn description_block(list: &GameHighlights, video_start: OffsetDateTime) -> 
     let mut score = [0u8; 2];
     let mut lines = Vec::new();
     for h in &items {
-        let at = video_time(h.anchor - LEAD - video_start);
+        let at = video_time(h.anchor - lead - video_start);
         let mut line = format!("{at} {}", describe(h));
         if h.kind == Kind::Goal {
             let i = usize::from(h.side == Some(Side::White));
@@ -510,6 +522,9 @@ mod tests {
         bundles::{BlackWhiteBundle, OptColorBundle},
         game_snapshot::{GamePeriod, InfractionSnapshot, PenaltySnapshot},
     };
+
+    /// The default lead-in.
+    const LEAD: Duration = Duration::seconds(DEFAULT_LEAD_SECS as i64);
 
     fn at(secs: i64) -> OffsetDateTime {
         OffsetDateTime::from_unix_timestamp(1_800_000_000 + secs).unwrap()
@@ -564,7 +579,7 @@ mod tests {
             (Kind::Goal, Some(Side::White), Some(7))
         );
         assert_eq!(goal.anchor, at(300));
-        let block = description_block(&list, at(0)).unwrap();
+        let block = description_block(&list, at(0), LEAD).unwrap();
         assert!(
             block.contains("4:40 Goal — White #7 (White 1–0 Black)"),
             "{block}"
@@ -635,7 +650,7 @@ mod tests {
         feed(&mut t, snap("5", 1, 0), 100);
         let list = feed(&mut t, snap("5", 1, 1), 10_000);
         // A video made again for the game, starting long after the first goal.
-        let block = description_block(&list, at(9_900)).unwrap();
+        let block = description_block(&list, at(9_900), LEAD).unwrap();
         assert!(!block.contains("Goal — Black"), "{block}");
         assert!(block.contains("1:20 Goal — White"), "{block}");
         assert_eq!(
@@ -644,7 +659,8 @@ mod tests {
                     items: list.items[..1].to_vec(),
                     ..list
                 },
-                at(9_900)
+                at(9_900),
+                LEAD
             ),
             None
         );
@@ -666,7 +682,7 @@ mod tests {
         let mut s = snap("5", 0, 0);
         s.penalties.black = vec![penalty(3, 119, Infraction::Obstruction)];
         let list = feed(&mut t, s, 100);
-        let block = description_block(&list, at(0)).unwrap();
+        let block = description_block(&list, at(0), LEAD).unwrap();
         assert!(
             block.contains("1:20 Penalty — Black #3, 2 min (Obstruction)"),
             "{block}"
@@ -739,7 +755,7 @@ mod tests {
             }],
             score: Some([1, 0]),
         };
-        let block = description_block(&list, at(0)).unwrap();
+        let block = description_block(&list, at(0), LEAD).unwrap();
         assert!(
             block.contains("0:00 Goal — Black (White 0–1 Black)"),
             "{block}"
@@ -755,14 +771,26 @@ mod tests {
             score: Some([0, 2]),
             ..list
         };
-        let block = description_block(&list, at(0)).unwrap();
+        let block = description_block(&list, at(0), LEAD).unwrap();
         assert!(block.contains("1:20 Goal — White\n"), "{block}");
         assert!(block.contains("Final score: White 2–0 Black"), "{block}");
     }
 
     #[test]
+    fn the_lead_in_comes_from_the_settings_and_is_capped() {
+        let mut t = started();
+        let list = feed(&mut t, snap("5", 0, 1), 300);
+        let block = description_block(&list, at(0), lead(30)).unwrap();
+        assert!(block.contains("4:30 Goal — White"), "{block}");
+        assert_eq!(lead(10_000), Duration::seconds(i64::from(MAX_LEAD_SECS)));
+    }
+
+    #[test]
     fn nothing_to_list_gives_no_block() {
-        assert_eq!(description_block(&GameHighlights::default(), at(0)), None);
+        assert_eq!(
+            description_block(&GameHighlights::default(), at(0), LEAD),
+            None
+        );
     }
 
     #[test]
@@ -777,7 +805,7 @@ mod tests {
         }
         s.scores.white = 1;
         let list = feed(&mut t, s, 400);
-        let block = description_block(&list, at(0)).unwrap();
+        let block = description_block(&list, at(0), LEAD).unwrap();
         assert!(block.chars().count() <= MAX_BLOCK_CHARS);
         assert!(block.contains("Goal — White"), "{block}");
         assert!(block.contains("(more fouls not shown)"), "{block}");

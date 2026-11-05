@@ -35,7 +35,8 @@ Final score: White 1–1 Black
      seconds before that referee timeout started**. This applies to goals, penalties and fouls
      alike.
    - Team timeouts never count.
-   - The 20 seconds is fixed, not a setting.
+   - The lead-in is `highlights_lead_secs` in Stream Manager's settings file (`config.toml`),
+     default 20, at most 300. It isn't on the settings page (decided 2026-11-05).
    - A timestamp never goes before the start of the video. It stops at 0:00.
 5. **A penalty names its foul:** "Penalty — Black #3, 1 min (Obstruction)". The length is the
    penalty's time when it first appears, rounded up to whole minutes. A total dismissal shows as
@@ -178,5 +179,7 @@ Stream Manager already receives every refbox snapshot for each court (`refbox.rs
   cleared state.
 - **Verified 2026-11-02:** with the saved go-live moment as 0:00, links land 15 s before each entry
   (and 15 s before the referee timeout's start for items decided in one).
+- **Lead-in adjustable (2026-11-05):** `highlights_lead_secs` in `config.toml` (default 20), settings
+  file only.
 - **Lead-in 15 s → 20 s (2026-11-03):** at 15 s, links landed on the water ref's goal signal.
   20 s shows the goal itself.

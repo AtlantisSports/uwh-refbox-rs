@@ -77,11 +77,20 @@ pub struct Config {
     /// Stream Deck buttons (ADR 026 §4). Empty turns the feature off.
     #[serde(default)]
     pub companion_address: String,
+    /// How many seconds before each goal, penalty or foul was entered on the refbox its link in
+    /// the video's "Game highlights" list points, so viewers see the play that led to it. Not on
+    /// the settings page: change it here, with Stream Manager closed. At most 300.
+    #[serde(default = "default_highlights_lead_secs")]
+    pub highlights_lead_secs: u32,
     pub courts: Vec<CourtConfig>,
 }
 
 fn default_quota_daily_limit() -> u32 {
     10_000
+}
+
+fn default_highlights_lead_secs() -> u32 {
+    crate::highlights::DEFAULT_LEAD_SECS
 }
 
 fn default_quota_share_percent() -> u8 {
@@ -172,6 +181,7 @@ impl Default for Config {
             quota_daily_limit: default_quota_daily_limit(),
             quota_share_percent: default_quota_share_percent(),
             companion_address: String::new(),
+            highlights_lead_secs: default_highlights_lead_secs(),
             courts: vec![CourtConfig {
                 name: "1".to_string(),
                 refbox_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
@@ -388,6 +398,14 @@ mod tests {
         assert!(error.contains("sm_court_1"), "{error}");
         c.courts[1].name = "2".into();
         assert_eq!(c.validate_for_save(&Config::default()), Ok(()));
+    }
+
+    #[test]
+    fn config_without_a_highlights_lead_in_uses_20_seconds() {
+        let config: Config = serde_json::from_str(r#"{ "event_slug": "cup" }"#).unwrap();
+        assert_eq!(config.highlights_lead_secs, 20);
+        let config: Config = serde_json::from_str(r#"{ "highlights_lead_secs": 25 }"#).unwrap();
+        assert_eq!(config.highlights_lead_secs, 25);
     }
 
     #[test]

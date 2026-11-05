@@ -592,18 +592,26 @@ struct Record<'a> {
     event_slug: &'a str,
 }
 
+/// The game whose video has just ended, and the link to the game after it (at a switch).
+struct Finished<'a> {
+    game: &'a str,
+    video: &'a VideoState,
+    link: Option<&'a str>,
+}
+
 /// Step 5: the finished game's description gets, in one update, the "Next game" link (`link`, at
 /// a switch) and the game's goals, penalties and fouls with their times in the video, for replay
 /// viewers.
+/// `lead` is how far before each item its link points (`highlights_lead_secs`).
 async fn finish_description(
     yt: &mut YouTube,
     record: Record<'_>,
-    game: &str,
-    video: &VideoState,
-    link: Option<&str>,
+    finished: Finished<'_>,
+    lead: time::Duration,
     warnings: &mut Vec<String>,
     log: &mut (dyn FnMut(String) + Send),
 ) {
+    let Finished { game, video, link } = finished;
     let next = link.or(video.next_game_link.as_deref());
     // Read afresh: the list grows in the record while the game is played.
     let list = prepare::load_state(record.file, record.event_slug)
@@ -614,12 +622,12 @@ async fn finish_description(
         video.highlights.clone()
     } else if let Some(start) = video.live_requested {
         // The video's 0:00: when this program asked YouTube to put it live.
-        highlights::description_block(&list, start)
+        highlights::description_block(&list, start, lead)
     } else {
         // An older record: YouTube's own start time, a few seconds after the real 0:00.
         match yt.broadcast_info(&video.broadcast_id).await {
             Ok(info) => match info.actual_start {
-                Some(start) => highlights::description_block(&list, start),
+                Some(start) => highlights::description_block(&list, start, lead),
                 None => {
                     warnings.push(format!(
                         "Game {game}'s goals and fouls weren't added: YouTube has no start time for its video"
@@ -777,9 +785,12 @@ async fn same_key_switch(
                     file: ctx.state_file,
                     event_slug: &ctx.state.event_slug,
                 },
-                from,
-                from_video,
-                Some(&link),
+                Finished {
+                    game: from,
+                    video: from_video,
+                    link: Some(&link),
+                },
+                highlights::lead(ctx.app.config().highlights_lead_secs),
                 &mut warnings,
                 log,
             )
@@ -910,9 +921,12 @@ async fn two_key_switch(
                 file: ctx.state_file,
                 event_slug: &ctx.state.event_slug,
             },
-            from,
-            from_video,
-            Some(&link),
+            Finished {
+                game: from,
+                video: from_video,
+                link: Some(&link),
+            },
+            highlights::lead(ctx.app.config().highlights_lead_secs),
             &mut warnings,
             log,
         )
@@ -951,9 +965,12 @@ async fn end(
                             file: state_file,
                             event_slug: &state.event_slug,
                         },
-                        game,
-                        video,
-                        None,
+                        Finished {
+                            game,
+                            video,
+                            link: None,
+                        },
+                        highlights::lead(app.config().highlights_lead_secs),
                         &mut warnings,
                         log,
                     )

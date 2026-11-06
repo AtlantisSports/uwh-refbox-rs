@@ -67,13 +67,16 @@ impl HealthDecisionState {
 pub enum PortalCommand {
     /// Refresh the task's view of the queue. Sent by `PortalManager`
     /// after every queue mutation so the task knows which items to
-    /// attempt on its next tick.
-    QueueUpdated(QueueFile),
+    /// attempt on its next tick. `epoch` is the discard counter (`DiscardEpoch`) the snapshot
+    /// was taken under; the task ignores a snapshot older than the one it holds, and passes the
+    /// value to every post it makes from it.
+    QueueUpdated { queue: QueueFile, epoch: u64 },
     /// One-shot request to (re)post the stats for a single stats-pending
     /// item. Triggered by the operator tapping the item's row or RETRY
     /// ALL. The task attempts stats exactly once and never schedules a
     /// follow-up — stats-pending items are not on the auto-retry cadence.
-    RetryStats(QueuedItem),
+    /// `epoch` is the discard counter the item was handed over under, passed to the post.
+    RetryStats { item: QueuedItem, epoch: u64 },
 }
 
 pub struct BackgroundTaskHandle {
@@ -94,8 +97,10 @@ pub fn spawn(io: impl PortalTaskIo + Send + Sync + 'static) -> BackgroundTaskHan
 #[async_trait::async_trait]
 pub trait PortalTaskIo {
     async fn verify_token(&self) -> Result<(), PortalCallError>;
-    async fn post_scores(&self, item: &QueuedItem) -> Result<(), PortalCallError>;
-    async fn post_stats(&self, item: &QueuedItem) -> Result<(), PortalCallError>;
+    /// `epoch` is the discard counter the item was handed to the task under. A production
+    /// implementation refuses the post, without sending, if the queue has been discarded since.
+    async fn post_scores(&self, item: &QueuedItem, epoch: u64) -> Result<(), PortalCallError>;
+    async fn post_stats(&self, item: &QueuedItem, epoch: u64) -> Result<(), PortalCallError>;
 }
 
 #[derive(Debug)]
@@ -216,6 +221,10 @@ async fn run_task(
     // outcome, so the warning returns if the condition returns.
     let mut not_sent_logged = false;
     let mut queue_snapshot = QueueFile::empty();
+    // The discard counter `queue_snapshot` was taken under. Each `QueueUpdated` is sent from its
+    // own spawned task, so two can arrive out of order; refusing an older one keeps a snapshot
+    // from before a discard from bringing the discarded results back.
+    let mut snapshot_epoch: u64 = 0;
 
     loop {
         tokio::select! {
@@ -227,7 +236,7 @@ async fn run_task(
                     if item.score_sent || !is_item_retry_eligible(item, now) {
                         continue;
                     }
-                    if attempt_item(&io, item, &event_tx).await {
+                    if attempt_item(&io, item, snapshot_epoch, &event_tx).await {
                         last_success = Some(TokioInstant::now());
                     }
                     // Record the attempt on our own snapshot copy so this task
@@ -321,11 +330,14 @@ async fn run_task(
             cmd = command_rx.recv() => {
                 match cmd {
                     None => break,
-                    Some(PortalCommand::QueueUpdated(new_queue)) => {
-                        queue_snapshot = new_queue;
+                    Some(PortalCommand::QueueUpdated { queue, epoch }) => {
+                        if epoch >= snapshot_epoch {
+                            queue_snapshot = queue;
+                            snapshot_epoch = epoch;
+                        }
                     }
-                    Some(PortalCommand::RetryStats(item)) => {
-                        match io.post_stats(&item).await {
+                    Some(PortalCommand::RetryStats { item, epoch }) => {
+                        match io.post_stats(&item, epoch).await {
                             Ok(()) => {
                                 let _ = event_tx
                                     .send(PortalEvent::ItemResolved(item.id.clone()))
@@ -411,9 +423,10 @@ async fn run_task(
 async fn attempt_item(
     io: &impl PortalTaskIo,
     item: &QueuedItem,
+    epoch: u64,
     event_tx: &mpsc::Sender<PortalEvent>,
 ) -> bool {
-    let score_result = io.post_scores(item).await;
+    let score_result = io.post_scores(item, epoch).await;
     if let Err(e) = score_result {
         // The portal's own words are the only thing separating a rejected
         // upload from an unreachable one, and the error already carries them
@@ -426,7 +439,7 @@ async fn attempt_item(
         let _ = event_tx.send(PortalEvent::ItemUpdated).await;
         return false;
     }
-    match io.post_stats(item).await {
+    match io.post_stats(item, epoch).await {
         Ok(()) => {
             let _ = event_tx
                 .send(PortalEvent::ItemResolved(item.id.clone()))
@@ -615,6 +628,9 @@ mod tests {
 
     use std::sync::{Arc, Mutex};
 
+    /// The epochs a `FakeIo` was handed, one per call, in order.
+    type EpochLog = Arc<Mutex<Vec<u64>>>;
+
     struct FakeIo {
         verify_results: Mutex<Vec<Result<(), PortalCallError>>>,
         verify_count: Arc<std::sync::atomic::AtomicU32>,
@@ -622,6 +638,10 @@ mod tests {
         scores_count: Arc<std::sync::atomic::AtomicU32>,
         stats_results: Mutex<Vec<Result<(), PortalCallError>>>,
         stats_count: Arc<std::sync::atomic::AtomicU32>,
+        /// The epoch passed with each `post_scores` call, in order.
+        scores_epochs: EpochLog,
+        /// The epoch passed with each `post_stats` call, in order.
+        stats_epochs: EpochLog,
     }
 
     #[async_trait::async_trait]
@@ -632,13 +652,15 @@ mod tests {
             let mut v = self.verify_results.lock().unwrap();
             if v.is_empty() { Ok(()) } else { v.remove(0) }
         }
-        async fn post_scores(&self, _: &QueuedItem) -> Result<(), PortalCallError> {
+        async fn post_scores(&self, _: &QueuedItem, epoch: u64) -> Result<(), PortalCallError> {
+            self.scores_epochs.lock().unwrap().push(epoch);
             self.scores_count
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let mut v = self.scores_results.lock().unwrap();
             if v.is_empty() { Ok(()) } else { v.remove(0) }
         }
-        async fn post_stats(&self, _: &QueuedItem) -> Result<(), PortalCallError> {
+        async fn post_stats(&self, _: &QueuedItem, epoch: u64) -> Result<(), PortalCallError> {
+            self.stats_epochs.lock().unwrap().push(epoch);
             self.stats_count
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let mut v = self.stats_results.lock().unwrap();
@@ -672,6 +694,8 @@ mod tests {
             scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             stats_results: Mutex::new(vec![]),
             stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let _handle = spawn(io);
 
@@ -702,6 +726,8 @@ mod tests {
             scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             stats_results: Mutex::new(vec![]),
             stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
 
@@ -744,6 +770,8 @@ mod tests {
             scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             stats_results: Mutex::new(vec![]),
             stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
 
@@ -782,6 +810,8 @@ mod tests {
             scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             stats_results: Mutex::new(vec![]),
             stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
 
@@ -832,6 +862,8 @@ mod tests {
             scores_count: scores_count.clone(),
             stats_results: Mutex::new(vec![Ok(())]),
             stats_count: stats_count.clone(),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
 
@@ -839,7 +871,7 @@ mod tests {
         let expected_id = queue.items[0].id.clone();
         handle
             .command_tx
-            .send(PortalCommand::QueueUpdated(queue))
+            .send(PortalCommand::QueueUpdated { queue, epoch: 0 })
             .await
             .unwrap();
 
@@ -876,13 +908,15 @@ mod tests {
             scores_count: scores_count.clone(),
             stats_results: Mutex::new(vec![]),
             stats_count: stats_count.clone(),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
 
         let queue = queue_with_one_eligible_item();
         handle
             .command_tx
-            .send(PortalCommand::QueueUpdated(queue))
+            .send(PortalCommand::QueueUpdated { queue, epoch: 0 })
             .await
             .unwrap();
 
@@ -918,6 +952,8 @@ mod tests {
             scores_count: scores_count.clone(),
             stats_results: Mutex::new(vec![Err(PortalCallError::Failed("server error".into()))]),
             stats_count: stats_count.clone(),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
 
@@ -925,7 +961,7 @@ mod tests {
         let expected_id = queue.items[0].id.clone();
         handle
             .command_tx
-            .send(PortalCommand::QueueUpdated(queue))
+            .send(PortalCommand::QueueUpdated { queue, epoch: 0 })
             .await
             .unwrap();
 
@@ -967,6 +1003,8 @@ mod tests {
             scores_count: scores_count.clone(),
             stats_results: Mutex::new(vec![Ok(())]),
             stats_count: stats_count.clone(),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let handle = spawn(io);
 
@@ -979,7 +1017,7 @@ mod tests {
         };
         handle
             .command_tx
-            .send(PortalCommand::QueueUpdated(queue))
+            .send(PortalCommand::QueueUpdated { queue, epoch: 0 })
             .await
             .unwrap();
 
@@ -1046,6 +1084,8 @@ mod tests {
                 REFUSED_FOR_EVENT_BODY.into(),
             ))]),
             stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
 
@@ -1053,7 +1093,7 @@ mod tests {
         let expected_id = queue.items[0].id.clone();
         handle
             .command_tx
-            .send(PortalCommand::QueueUpdated(queue))
+            .send(PortalCommand::QueueUpdated { queue, epoch: 0 })
             .await
             .unwrap();
 
@@ -1091,6 +1131,8 @@ mod tests {
                 REFUSED_FOR_EVENT_BODY.into(),
             ))]),
             stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
 
@@ -1100,7 +1142,7 @@ mod tests {
         let expected_id = item.id.clone();
         handle
             .command_tx
-            .send(PortalCommand::RetryStats(item))
+            .send(PortalCommand::RetryStats { item, epoch: 0 })
             .await
             .unwrap();
 
@@ -1134,6 +1176,8 @@ mod tests {
             scores_count: scores_count.clone(),
             stats_results: Mutex::new(vec![Ok(())]),
             stats_count: stats_count.clone(),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
 
@@ -1142,7 +1186,7 @@ mod tests {
         let expected_id = item.id.clone();
         handle
             .command_tx
-            .send(PortalCommand::RetryStats(item))
+            .send(PortalCommand::RetryStats { item, epoch: 0 })
             .await
             .unwrap();
 
@@ -1180,6 +1224,8 @@ mod tests {
             scores_count: scores_count.clone(),
             stats_results: Mutex::new(vec![Err(PortalCallError::Failed("forced".into()))]),
             stats_count: stats_count.clone(),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
 
@@ -1187,7 +1233,7 @@ mod tests {
         item.score_sent = true;
         handle
             .command_tx
-            .send(PortalCommand::RetryStats(item))
+            .send(PortalCommand::RetryStats { item, epoch: 0 })
             .await
             .unwrap();
 
@@ -1270,6 +1316,8 @@ mod tests {
             scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             stats_results: Mutex::new(vec![stats_result]),
             stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
 
@@ -1278,7 +1326,7 @@ mod tests {
         let id = queue.items[0].id.clone();
         handle
             .command_tx
-            .send(PortalCommand::QueueUpdated(queue))
+            .send(PortalCommand::QueueUpdated { queue, epoch: 0 })
             .await
             .unwrap();
 
@@ -1311,6 +1359,8 @@ mod tests {
             scores_count: scores_count.clone(),
             stats_results: Mutex::new(vec![stats_result]),
             stats_count: stats_count.clone(),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
 
@@ -1320,7 +1370,7 @@ mod tests {
         let id = item.id.clone();
         handle
             .command_tx
-            .send(PortalCommand::RetryStats(item))
+            .send(PortalCommand::RetryStats { item, epoch: 0 })
             .await
             .unwrap();
 
@@ -1496,6 +1546,8 @@ mod tests {
             scores_count: scores_count.clone(),
             stats_results: Mutex::new(vec![Ok(())]),
             stats_count: stats_count.clone(),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let handle = spawn(io);
 
@@ -1503,7 +1555,10 @@ mod tests {
         // retry-eligible item exists, so no scores/stats calls.
         handle
             .command_tx
-            .send(PortalCommand::QueueUpdated(QueueFile::empty()))
+            .send(PortalCommand::QueueUpdated {
+                queue: QueueFile::empty(),
+                epoch: 0,
+            })
             .await
             .unwrap();
         tokio::task::yield_now().await;
@@ -1520,7 +1575,10 @@ mod tests {
         // task saw the updated snapshot.
         handle
             .command_tx
-            .send(PortalCommand::QueueUpdated(queue_with_one_eligible_item()))
+            .send(PortalCommand::QueueUpdated {
+                queue: queue_with_one_eligible_item(),
+                epoch: 0,
+            })
             .await
             .unwrap();
         tokio::task::yield_now().await;
@@ -1558,11 +1616,16 @@ mod tests {
             scores_count: scores_count.clone(),
             stats_results: Mutex::new(vec![]),
             stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let handle = spawn(io);
         handle
             .command_tx
-            .send(PortalCommand::QueueUpdated(queue_with_one_eligible_item()))
+            .send(PortalCommand::QueueUpdated {
+                queue: queue_with_one_eligible_item(),
+                epoch: 0,
+            })
             .await
             .unwrap();
 
@@ -1591,13 +1654,15 @@ mod tests {
             scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             stats_results: Mutex::new(vec![]),
             stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_epochs: Default::default(),
+            stats_epochs: Default::default(),
         };
         let mut handle = spawn(io);
         let queue = queue_with_one_eligible_item();
         let expected_id = queue.items[0].id.clone();
         handle
             .command_tx
-            .send(PortalCommand::QueueUpdated(queue))
+            .send(PortalCommand::QueueUpdated { queue, epoch: 0 })
             .await
             .unwrap();
 
@@ -1617,6 +1682,106 @@ mod tests {
             )),
             "an attempt must emit ItemAttempted with the item id and attempts == 1, got {events:?}"
         );
+        drop(handle);
+    }
+
+    /// A `FakeIo` whose every call succeeds, plus the epoch logs it records into.
+    fn epoch_recording_io() -> (FakeIo, EpochLog, EpochLog) {
+        let scores_epochs: EpochLog = Default::default();
+        let stats_epochs: EpochLog = Default::default();
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![]),
+            scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            stats_results: Mutex::new(vec![]),
+            stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_epochs: scores_epochs.clone(),
+            stats_epochs: stats_epochs.clone(),
+        };
+        (io, scores_epochs, stats_epochs)
+    }
+
+    /// Let queued commands be received, then run one retry tick.
+    async fn run_one_tick() {
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn each_post_carries_the_epoch_of_its_snapshot() {
+        let (io, scores_epochs, stats_epochs) = epoch_recording_io();
+        let handle = spawn(io);
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated {
+                queue: queue_with_one_eligible_item(),
+                epoch: 7,
+            })
+            .await
+            .unwrap();
+
+        run_one_tick().await;
+
+        assert_eq!(*scores_epochs.lock().unwrap(), vec![7]);
+        assert_eq!(*stats_epochs.lock().unwrap(), vec![7]);
+        drop(handle);
+    }
+
+    /// Snapshots are each sent from their own spawned task, so one taken before a discard can
+    /// arrive after it. It must not bring the discarded results back.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn an_older_snapshot_never_replaces_a_newer_one() {
+        let (io, scores_epochs, stats_epochs) = epoch_recording_io();
+        let handle = spawn(io);
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated {
+                queue: QueueFile::empty(),
+                epoch: 2,
+            })
+            .await
+            .unwrap();
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated {
+                queue: queue_with_one_eligible_item(),
+                epoch: 1,
+            })
+            .await
+            .unwrap();
+
+        run_one_tick().await;
+
+        assert!(
+            scores_epochs.lock().unwrap().is_empty(),
+            "a stale snapshot's item must not be posted"
+        );
+        assert!(stats_epochs.lock().unwrap().is_empty());
+        drop(handle);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn retry_stats_carries_its_epoch() {
+        let (io, scores_epochs, stats_epochs) = epoch_recording_io();
+        let handle = spawn(io);
+        let mut item = mk_queue_item(0);
+        item.score_sent = true;
+        handle
+            .command_tx
+            .send(PortalCommand::RetryStats { item, epoch: 3 })
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(*stats_epochs.lock().unwrap(), vec![3]);
+        assert!(scores_epochs.lock().unwrap().is_empty());
         drop(handle);
     }
 }

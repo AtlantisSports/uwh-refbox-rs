@@ -14,7 +14,7 @@ use crate::{
     config::{Config, CustomSite, GameSource, Mode, RemoteSource, effective_live_updates},
     penalty_editor::*,
     portal_manager::{
-        ItemId, PortalEvent, PortalManager, SelectedEventId, SharedAccessKeys,
+        DiscardEpoch, ItemId, PortalEvent, PortalManager, SelectedEventId, SharedAccessKeys,
         SharedUwhPortalClient, UwhPortalIo,
     },
     sound_controller::*,
@@ -3905,7 +3905,7 @@ impl RefBoxApp {
                 // deliverable to exactly that site after the restart; flushing
                 // them would destroy real game results.
                 if old_source == GameSource::Portal {
-                    if let Err(e) = self.portal_manager.flush_queue_for_tenant_switch() {
+                    if let Err(e) = self.portal_manager.discard_all_queued() {
                         error!("Failed to flush portal queue before restart: {e}");
                         // Continue with restart — the operator pressed Restart and we
                         // must not block. The queue will be treated as stale items for
@@ -4340,6 +4340,9 @@ impl RefBoxApp {
         // `set_current_event_id` on every subsequent write.
         let portal_event_id: SelectedEventId = Arc::new(Mutex::new(None));
         let portal_access_keys: SharedAccessKeys = Arc::new(Mutex::new(Default::default()));
+        // One discard counter, shared by the portal manager and its uploader, so discarding the
+        // retry queue also refuses any post the background task already holds.
+        let portal_discard_epoch: DiscardEpoch = Default::default();
 
         // The live sender runs until `live_frames` is dropped with the app, so its handle is not
         // kept. The same goes for the stats sender and `stats_frames`.
@@ -4419,7 +4422,9 @@ impl RefBoxApp {
                             Arc::clone(client),
                             Arc::clone(&portal_event_id),
                             Arc::clone(&portal_access_keys),
+                            Arc::clone(&portal_discard_epoch),
                         ),
+                        Arc::clone(&portal_discard_epoch),
                     )
                 };
                 match try_new_manager(&config_dir) {
@@ -8751,7 +8756,7 @@ impl RefBoxApp {
                     // arm: a custom site is the same address either side of a
                     // mode change, so its queued results stay deliverable.
                     if self.source == GameSource::Portal {
-                        if let Err(e) = self.portal_manager.flush_queue_for_tenant_switch() {
+                        if let Err(e) = self.portal_manager.discard_all_queued() {
                             error!("Failed to flush portal queue before restart: {e}");
                         }
                     }

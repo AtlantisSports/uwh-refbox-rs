@@ -489,6 +489,7 @@ gi-overtime-half-time-length = Duur Rust Verlenging
 gi-minimum-game-break = Minimale Tijd Tussen Wedstrijden
 gi-stop-clock-last-2 = Klok Stoppen in Laatste 2 Minuten
 gi-ref-chief = Hoofdscheidsrechter
+gi-ref-assistant-chief = Assistent-hoofdscheidsrechter
 gi-ref-timekeeper = Tijdwaarnemer
 gi-ref-timekeeper-helper = Assistent Tijdwaarnemer
 gi-ref-water-1 = Waterscheidsrechter 1

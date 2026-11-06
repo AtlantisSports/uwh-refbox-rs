@@ -487,6 +487,7 @@ gi-overtime-half-time-length = 延長ハーフタイム時間
 gi-minimum-game-break = 試合間最小時間
 gi-stop-clock-last-2 = 残り2分でクロック停止
 gi-ref-chief = 主審
+gi-ref-assistant-chief = 副主審
 gi-ref-timekeeper = タイムキーパー
 gi-ref-timekeeper-helper = タイムキーパー補佐
 gi-ref-water-1 = 水中審判1

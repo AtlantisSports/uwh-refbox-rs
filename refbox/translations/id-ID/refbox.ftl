@@ -486,6 +486,7 @@ gi-overtime-half-time-length = Durasi Jeda Perpanjangan Waktu
 gi-minimum-game-break = Waktu Minimum Antar Pertandingan
 gi-stop-clock-last-2 = Hentikan Jam di 2 Menit Terakhir
 gi-ref-chief = Wasit Kepala
+gi-ref-assistant-chief = Asisten Wasit Kepala
 gi-ref-timekeeper = Pencatat Waktu
 gi-ref-timekeeper-helper = Asisten Pencatat Waktu
 gi-ref-water-1 = Wasit Air 1

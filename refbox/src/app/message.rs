@@ -1127,6 +1127,13 @@ pub enum ConfirmationOption {
     // own variant because none of the others means "discard this game and go
     // back to the break before it"; `GoBack` again serves as the way out.
     RestartGame,
+    // Offered by ConfirmationKind::ResultsWaiting — opens the portal detail
+    // page so the operator can see the results that are waiting to be sent.
+    SeeQueuedResults,
+    // Offered by ConfirmationKind::ResultsWaiting — discards the waiting
+    // results and carries out the switch. Not `SwitchSource`, which means
+    // "switch and clear the selection" and discards nothing.
+    SwitchAnyway,
 }
 
 /// The three actions offered on the operator power page.

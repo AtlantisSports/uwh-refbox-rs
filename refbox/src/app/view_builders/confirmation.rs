@@ -55,7 +55,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
             to_portal = portal_name_for_mode(*to_mode)
         ),
         ConfirmationKind::SiteLockedByGame(_) => fl!("source-locked-game"),
-        ConfirmationKind::SiteLockedByQueue(_) => fl!("source-locked-queue"),
+        ConfirmationKind::ResultsWaiting(_) => fl!("results-waiting-switch"),
         ConfirmationKind::LinkLockedByGame => fl!("link-locked-game"),
         ConfirmationKind::SourceSwitchClearsSelection(target) => fl!(
             "source-switch-clears-selection",
@@ -188,11 +188,25 @@ pub(in super::super) fn build_confirmation_page<'a>(
                 ConfirmationOption::RestartGame,
             ),
         ],
+        // Green goes back with nothing changed, yellow looks at the waiting
+        // results without deciding, and red is the button that throws them
+        // away.
+        ConfirmationKind::ResultsWaiting(_) => vec![
+            (fl!("go-back"), green_button, ConfirmationOption::GoBack),
+            (
+                fl!("see-queued-results"),
+                yellow_button,
+                ConfirmationOption::SeeQueuedResults,
+            ),
+            (
+                fl!("switch-anyway"),
+                red_button,
+                ConfirmationOption::SwitchAnyway,
+            ),
+        ],
         // Nothing was committed and nothing is discarded: the single button
         // returns to the page the operator was on, edit still staged.
-        ConfirmationKind::SiteLockedByGame(_)
-        | ConfirmationKind::SiteLockedByQueue(_)
-        | ConfirmationKind::LinkLockedByGame => {
+        ConfirmationKind::SiteLockedByGame(_) | ConfirmationKind::LinkLockedByGame => {
             vec![(
                 fl!("go-back-to-editor"),
                 green_button,

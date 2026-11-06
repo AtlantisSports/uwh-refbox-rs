@@ -207,7 +207,9 @@ mode-switch-custom-site = Das Wechseln des App-Modus erfordert einen Neustart. I
 source-locked-game = Die Spielquelle kann während eines laufenden Spiels nicht geändert werden.
 source-switch-clears-selection = Der Wechsel zu { $source } löscht die ausgewählte Veranstaltung, das Feld und das Spiel.
 link-locked-game = Während eines laufenden Spiels kann keine Verbindung zur Spielquelle hergestellt werden.
-source-locked-queue = Es warten noch Spielergebnisse auf den Versand. Senden oder verwerfen Sie diese zuerst.
+results-waiting-switch = Es warten noch Spielergebnisse auf den Versand. Wenn Sie jetzt wechseln, werden sie verworfen und gehen verloren.
+see-queued-results = WARTENDE ERGEBNISSE ANZEIGEN
+switch-anyway = TROTZDEM WECHSELN
 uwhportal-token-invalid-code = Ungültiger Code eingegeben.
     Bitte erneut versuchen.
 uwhportal-token-no-pending-link = Die Verbindung erwartet keine Kommunikation.

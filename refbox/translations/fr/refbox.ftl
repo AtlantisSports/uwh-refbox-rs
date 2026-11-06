@@ -208,7 +208,9 @@ mode-switch-custom-site = Changer le mode de l'application nécessite un redéma
 source-locked-game = La source des matchs ne peut pas être modifiée pendant qu'un match est en cours.
 source-switch-clears-selection = Passer à { $source } effacera l'événement, le terrain et le match que vous avez sélectionnés.
 link-locked-game = Il n'est pas possible de se connecter à la source des matchs pendant qu'un match est en cours.
-source-locked-queue = Des résultats de match attendent encore d'être envoyés. Envoyez-les ou supprimez-les d'abord.
+results-waiting-switch = Des résultats de match attendent encore d'être envoyés. Si vous changez maintenant, ils seront supprimés et perdus.
+see-queued-results = VOIR LES RÉSULTATS EN ATTENTE
+switch-anyway = CHANGER QUAND MÊME
 ### Check
 uwhportal-token-invalid-code = Code invalide.
     Veuillez réessayer.

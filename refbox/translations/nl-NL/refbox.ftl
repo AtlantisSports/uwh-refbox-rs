@@ -206,7 +206,9 @@ mode-switch-custom-site = Het wijzigen van de app-modus vereist opnieuw opstarte
 source-locked-game = De wedstrijdbron kan niet worden gewijzigd terwijl een wedstrijd bezig is.
 source-switch-clears-selection = Overschakelen naar { $source } wist het geselecteerde evenement, de baan en de wedstrijd.
 link-locked-game = Er kan geen verbinding met de wedstrijdbron worden gemaakt terwijl een wedstrijd bezig is.
-source-locked-queue = Er wachten nog wedstrijduitslagen om verzonden te worden. Verzend of verwijder deze eerst.
+results-waiting-switch = Er wachten nog wedstrijduitslagen om verzonden te worden. Als je nu overschakelt, worden ze verwijderd en gaan ze verloren.
+see-queued-results = WACHTENDE UITSLAGEN BEKIJKEN
+switch-anyway = TOCH OVERSCHAKELEN
 uwhportal-token-invalid-code = Ongeldige code ingevoerd.
     Probeer het opnieuw.
 uwhportal-token-no-pending-link = De verbinding verwacht geen communicatie.

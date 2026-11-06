@@ -203,7 +203,9 @@ mode-switch-custom-site = Mengubah mode aplikasi memerlukan mulai ulang. Situs k
 source-locked-game = Sumber pertandingan tidak dapat diubah saat pertandingan sedang berlangsung.
 source-switch-clears-selection = Beralih ke { $source } akan menghapus acara, lapangan, dan pertandingan yang telah Anda pilih.
 link-locked-game = Tidak dapat terhubung ke sumber pertandingan saat pertandingan sedang berlangsung.
-source-locked-queue = Masih ada hasil pertandingan yang menunggu untuk dikirim. Kirim atau buang terlebih dahulu.
+results-waiting-switch = Masih ada hasil pertandingan yang menunggu untuk dikirim. Jika Anda beralih sekarang, hasil tersebut akan dibuang dan hilang.
+see-queued-results = LIHAT HASIL DALAM ANTREAN
+switch-anyway = TETAP BERALIH
 uwhportal-token-invalid-code = Kode yang dimasukkan tidak valid.
     Silakan coba lagi.
 uwhportal-token-no-pending-link = Koneksi tidak mengharapkan komunikasi.

@@ -39,10 +39,10 @@ impl health::PortalTaskIo for NullIo {
     async fn verify_token(&self) -> Result<(), health::PortalCallError> {
         Ok(())
     }
-    async fn post_scores(&self, _: &QueuedItem) -> Result<(), health::PortalCallError> {
+    async fn post_scores(&self, _: &QueuedItem, _: u64) -> Result<(), health::PortalCallError> {
         Ok(())
     }
-    async fn post_stats(&self, _: &QueuedItem) -> Result<(), health::PortalCallError> {
+    async fn post_stats(&self, _: &QueuedItem, _: u64) -> Result<(), health::PortalCallError> {
         Ok(())
     }
 }
@@ -113,6 +113,16 @@ impl SiteAccessKeys {
 
 pub type SharedAccessKeys = std::sync::Arc<std::sync::Mutex<SiteAccessKeys>>;
 
+/// How many times this refbox has discarded its whole retry queue.
+///
+/// One counter, shared by the `PortalManager` (the only writer: `discard_all_queued` bumps it)
+/// and the `UwhPortalIo` the background task posts through (the reader). Every queue snapshot
+/// and stats retry handed to the task carries the value it was taken at, and every post carries
+/// that value back to `UwhPortalIo::request_for`, which refuses a post whose value is older than
+/// the counter. That closes the window between the operator discarding the queue and the task
+/// learning about it: a result already in the task's hands can no longer be sent anywhere.
+pub type DiscardEpoch = std::sync::Arc<std::sync::atomic::AtomicU64>;
+
 /// Production `PortalTaskIo` backed by a real `UwhPortalClient`.
 ///
 /// Holds the `UwhPortalClient` handle and the published key store, and is the only writer of
@@ -135,6 +145,8 @@ pub struct UwhPortalIo {
     client: SharedUwhPortalClient,
     event_id: SelectedEventId,
     keys: SharedAccessKeys,
+    /// The discard counter shared with the `PortalManager`; see `DiscardEpoch`.
+    epoch: DiscardEpoch,
 }
 
 impl UwhPortalIo {
@@ -142,11 +154,13 @@ impl UwhPortalIo {
         client: SharedUwhPortalClient,
         event_id: SelectedEventId,
         keys: SharedAccessKeys,
+        epoch: DiscardEpoch,
     ) -> Self {
         Self {
             client,
             event_id,
             keys,
+            epoch,
         }
     }
 
@@ -165,9 +179,19 @@ impl UwhPortalIo {
     ///
     /// Mutating the shared client here is safe because the foreground builds its own client for
     /// every fetch that needs a credential; this task is the only writer left.
+    ///
+    /// `item_epoch` is the discard counter a queued result was handed over at (`None` for a call
+    /// that posts no result, such as `verify_token`). A result whose value is older than the
+    /// counter was discarded after the task received it, and is refused here without sending.
+    /// The comparison happens under the client lock on purpose: `discard_all_queued` bumps the
+    /// counter before the caller repoints, and `repoint_client` swaps the client under this same
+    /// lock, so a post either built its request before the swap (and goes to the old site, where
+    /// the result was queued) or sees the bumped counter and is refused. It can never be built
+    /// against the new site.
     fn request_for<T>(
         &self,
         event: &uwh_common::uwhportal::schedule::EventId,
+        item_epoch: Option<u64>,
         build: impl FnOnce(&uwh_common::uwhportal::UwhPortalClient) -> T,
     ) -> Result<T, health::PortalCallError> {
         // why this cannot panic: `unwrap_or_else(into_inner)` keeps the background task alive
@@ -186,6 +210,13 @@ impl UwhPortalIo {
             .client
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(item_epoch) = item_epoch {
+            if item_epoch < self.epoch.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(health::PortalCallError::NotSent(
+                    "result was discarded on this refbox before it was sent".to_string(),
+                ));
+            }
+        }
         client.set_token(&key).map_err(|why| {
             health::PortalCallError::Failed(format!("a saved access key cannot be sent: {why}"))
         })?;
@@ -288,11 +319,15 @@ impl health::PortalTaskIo for UwhPortalIo {
         // token, so a site that answers an unauthenticated probe with `200` would hold this
         // indicator green over nothing. Reporting a token problem is honest, and it is what a
         // correctly-refusing site would have produced anyway.
-        let fut = self.request_for(&event_id, |client| client.verify_token(&event_id))?;
+        let fut = self.request_for(&event_id, None, |client| client.verify_token(&event_id))?;
         fut.await.map_err(classify_error)
     }
 
-    async fn post_scores(&self, item: &QueuedItem) -> Result<(), health::PortalCallError> {
+    async fn post_scores(
+        &self,
+        item: &QueuedItem,
+        epoch: u64,
+    ) -> Result<(), health::PortalCallError> {
         let event_id = parse_event_id(&item.id.event_id)?;
         let scores = uwh_common::bundles::BlackWhiteBundle {
             black: item.black_score,
@@ -302,18 +337,22 @@ impl health::PortalTaskIo for UwhPortalIo {
         let force = item.force;
         // The key for the event this result was recorded for -- not for whatever the operator is
         // linked to now, and not nothing if they are linked to nothing at all.
-        let fut = self.request_for(&event_id, |client| {
+        let fut = self.request_for(&event_id, Some(epoch), |client| {
             client.post_game_scores(&event_id, &game_number, scores, force)
         })?;
         fut.await.map_err(classify_error)
     }
 
-    async fn post_stats(&self, item: &QueuedItem) -> Result<(), health::PortalCallError> {
+    async fn post_stats(
+        &self,
+        item: &QueuedItem,
+        epoch: u64,
+    ) -> Result<(), health::PortalCallError> {
         let event_id = parse_event_id(&item.id.event_id)?;
         let game_number = item.id.game_number.clone();
         let stats = item.stats.clone();
         // Same rule as the scores above: the key belongs to the event this item was recorded for.
-        let fut = self.request_for(&event_id, |client| {
+        let fut = self.request_for(&event_id, Some(epoch), |client| {
             client.post_game_stats(&event_id, &game_number, stats)
         })?;
         fut.await.map_err(classify_error)
@@ -534,6 +573,9 @@ pub struct PortalManager {
     /// There is deliberately no second-choice directory: see
     /// `docs/superpowers/specs/2026-08-13-degraded-no-write-target-design.md`.
     store: Option<queue::QueueStore>,
+    /// The discard counter shared with this manager's uploader; see `DiscardEpoch`. Bumped only
+    /// by `discard_all_queued`, and read into every snapshot and stats retry sent to the task.
+    discard_epoch: DiscardEpoch,
 }
 
 impl PortalManager {
@@ -561,6 +603,7 @@ impl PortalManager {
             // — never a path in the shared system temp dir, which is the
             // healthy path's second-choice queue directory.
             store: None,
+            discard_epoch: DiscardEpoch::default(),
         };
         m.recompute_indicator();
         m
@@ -570,29 +613,46 @@ impl PortalManager {
         self.indicator_state
     }
 
-    /// Clear the retry queue for a portal-tenant switch: results queued under
-    /// the old tenant cannot be delivered to the new one, so the restarted app
-    /// must not carry them over. Only ever called for the built-in portal — a
-    /// custom site is one address the operator typed, and results queued for it
-    /// stay deliverable to exactly that site after a restart.
+    /// Discard every game result still waiting to be sent, and make sure none of them can still
+    /// be sent by the background task. Returns how many were discarded.
     ///
-    /// A session with no write target does nothing on disk: it never owned a
-    /// queue file, so it has nothing of its own to clear, and clearing someone
-    /// else's would destroy real results. The caller used to reach for the
-    /// directory and write it directly, which bypassed the manager entirely.
-    pub fn flush_queue_for_tenant_switch(&mut self) -> std::io::Result<()> {
-        self.queue.items.clear();
-        self.persist()?;
+    /// Used when the operator chooses to give up on the waiting results, and for a portal-tenant
+    /// switch: results queued under the old tenant cannot be delivered to the new one. It does
+    /// not rely on a restart following it. The background task works from its own copy of the
+    /// queue (see `health::spawn`), and may be part-way through posting one of these results
+    /// right now; bumping the shared discard counter makes `UwhPortalIo::request_for` refuse any
+    /// post handed over before this call, so once this returns `Ok` no discarded result can
+    /// reach any site -- including one the caller repoints to next.
+    ///
+    /// Ordered so a failure changes nothing: the items are put back, the counter is left alone,
+    /// and the error is returned, so the results stay queued and sendable exactly as before.
+    /// Each discarded result is logged, since this is the only record that it was dropped.
+    ///
+    /// A session with no write target does nothing on disk: it never owned a queue file, so it
+    /// has nothing of its own to clear, and clearing someone else's would destroy real results.
+    pub fn discard_all_queued(&mut self) -> std::io::Result<usize> {
+        let discarded = std::mem::take(&mut self.queue.items);
+        if let Err(e) = self.persist() {
+            self.queue.items = discarded;
+            return Err(e);
+        }
+        self.discard_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        for item in &discarded {
+            let kind = if item.score_sent {
+                "stats not sent"
+            } else {
+                "score and stats not sent"
+            };
+            log::warn!(
+                "discarded queued result: event {} game {} ({kind})",
+                item.id.event_id,
+                item.id.game_number
+            );
+        }
         self.recompute_indicator();
-        // Tell the background task too. It works from its own clone of the
-        // queue (see `health::spawn`), so without this it would keep the old
-        // tenant's items and could still post them — while `has_queued_items()`
-        // reports an empty queue, which is what unblocks the source and
-        // site-address controls. Both current callers restart the process
-        // immediately afterwards, so the window is short today, but this method
-        // is public and its name carries no restart precondition.
         self.push_queue_snapshot();
-        Ok(())
+        Ok(discarded.len())
     }
 
     /// Write the queue back, if this session has anywhere to write it.
@@ -760,9 +820,13 @@ impl PortalManager {
     /// background retry task driven by the given `PortalTaskIo`, and
     /// returns the receiver side of the event channel so the caller can
     /// feed it into an iced Subscription.
+    ///
+    /// `epoch` must be the same `DiscardEpoch` handed to `io`, so a discard here refuses the
+    /// posts `io` has not made yet.
     pub fn new(
         config_dir: &std::path::Path,
         io: impl health::PortalTaskIo + Send + Sync + 'static,
+        epoch: DiscardEpoch,
     ) -> std::io::Result<(Self, mpsc::Receiver<PortalEvent>)> {
         // Reading and gaining the right to write are the same step: a healthy
         // session owns the directory it just read, and a read failure
@@ -781,6 +845,7 @@ impl PortalManager {
             command_tx,
             recent_successes: VecDeque::new(),
             store: Some(store),
+            discard_epoch: epoch,
         };
         // Clear any items that already exceeded the expiry limit before this
         // launch (e.g. leftovers carried across a portal switch or reboot).
@@ -864,6 +929,8 @@ impl PortalManager {
             command_tx,
             recent_successes: VecDeque::new(),
             store,
+            // No background task reads it, but `discard_all_queued` still bumps it.
+            discard_epoch: DiscardEpoch::default(),
         };
         m.recompute_indicator();
         (m, rx)
@@ -876,8 +943,11 @@ impl PortalManager {
     fn send_stats_retry(&self, item: &QueuedItem) {
         let tx = self.command_tx.clone();
         let item = item.clone();
+        let epoch = self.discard_epoch.load(std::sync::atomic::Ordering::SeqCst);
         tokio::spawn(async move {
-            let _ = tx.send(health::PortalCommand::RetryStats(item)).await;
+            let _ = tx
+                .send(health::PortalCommand::RetryStats { item, epoch })
+                .await;
         });
     }
 
@@ -901,9 +971,14 @@ impl PortalManager {
     /// after every queue mutation so the task's view stays fresh.
     fn push_queue_snapshot(&self) {
         let tx = self.command_tx.clone();
-        let snap = self.queue.clone();
+        let queue = self.queue.clone();
+        // Read here, in the same synchronous step as the clone, so the snapshot carries the
+        // counter it was actually taken under.
+        let epoch = self.discard_epoch.load(std::sync::atomic::Ordering::SeqCst);
         tokio::spawn(async move {
-            let _ = tx.send(health::PortalCommand::QueueUpdated(snap)).await;
+            let _ = tx
+                .send(health::PortalCommand::QueueUpdated { queue, epoch })
+                .await;
         });
     }
 
@@ -1629,7 +1704,7 @@ mod tests {
     async fn enqueue_game_end_appends_item_and_turns_yellow() {
         // Use a temp dir so the save succeeds.
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
 
         assert_eq!(m.indicator_state().health, HealthState::Green);
 
@@ -1644,7 +1719,7 @@ mod tests {
     #[tokio::test]
     async fn discard_removes_item_and_returns_to_green() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("event".into(), "G1".into(), 0, 0, "{}".into())
             .unwrap();
 
@@ -1686,7 +1761,7 @@ mod tests {
     #[tokio::test]
     async fn sweep_removes_expired_item_archives_it_and_returns_to_green() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("e1".into(), "G1".into(), 3, 2, "{}".into())
             .unwrap();
         // Backdate past the 120h limit.
@@ -1704,7 +1779,7 @@ mod tests {
     #[tokio::test]
     async fn sweep_keeps_a_fresh_item() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("e1".into(), "G1".into(), 0, 0, "{}".into())
             .unwrap();
 
@@ -1734,7 +1809,7 @@ mod tests {
         )
         .unwrap();
 
-        let (m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
 
         assert!(
             m.queue.items.is_empty(),
@@ -1753,7 +1828,7 @@ mod tests {
     #[tokio::test]
     async fn force_submit_flags_force_and_resets_attempt_counters() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("event".into(), "G1".into(), 0, 0, "{}".into())
             .unwrap();
         let id = m.queue.items[0].id.clone();
@@ -1772,7 +1847,7 @@ mod tests {
     #[tokio::test]
     async fn retry_all_unsticks_and_resets_every_item_without_forcing() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
 
         // One stuck game (queued 31 min ago) and one young pending game.
         m.enqueue_game_end("event".into(), "G_STUCK".into(), 0, 0, "{}".into())
@@ -1811,7 +1886,7 @@ mod tests {
     #[tokio::test]
     async fn token_refreshed_clears_flag_and_resets_queue_items() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("event".into(), "G1".into(), 0, 0, "{}".into())
             .unwrap();
         m.token_known_problem = true;
@@ -1996,7 +2071,8 @@ mod tests {
 
         let tmp = tempfile::TempDir::new().unwrap();
         {
-            let (mut healthy, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+            let (mut healthy, _rx) =
+                PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
             healthy
                 .enqueue_game_end("event".into(), "G1".into(), 1, 0, "{}".into())
                 .unwrap();
@@ -2071,7 +2147,7 @@ mod tests {
                 .unwrap();
         }
 
-        let (later, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (later, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         assert_eq!(
             later.queue.items.len(),
             1,
@@ -2083,11 +2159,11 @@ mod tests {
     #[tokio::test]
     async fn tenant_switch_flush_clears_a_queue_this_session_owns() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("old-tenant".into(), "G1".into(), 1, 0, "{}".into())
             .unwrap();
 
-        m.flush_queue_for_tenant_switch().unwrap();
+        m.discard_all_queued().unwrap();
 
         assert!(m.queue.items.is_empty(), "in memory too, not just on disk");
         let (_store, on_disk) = queue::QueueStore::open(tmp.path()).unwrap();
@@ -2108,7 +2184,8 @@ mod tests {
 
         let tmp = tempfile::TempDir::new().unwrap();
         {
-            let (mut healthy, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+            let (mut healthy, _rx) =
+                PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
             healthy
                 .enqueue_game_end("event".into(), "G1".into(), 1, 0, "{}".into())
                 .unwrap();
@@ -2121,7 +2198,7 @@ mod tests {
         {
             let (mut degraded, _rx) = PortalManager::new_degraded(tmp.path());
             degraded_had_no_store = degraded.store.is_none();
-            degraded.flush_queue_for_tenant_switch().unwrap();
+            degraded.discard_all_queued().unwrap();
         }
 
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
@@ -2142,6 +2219,124 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn discard_all_empties_the_queue_on_disk_and_bumps_the_epoch() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let epoch = DiscardEpoch::default();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, epoch.clone()).unwrap();
+        m.enqueue_game_end("event".into(), "G1".into(), 1, 0, "{}".into())
+            .unwrap();
+        m.enqueue_game_end("event".into(), "G2".into(), 2, 3, "{}".into())
+            .unwrap();
+        let before = epoch.load(std::sync::atomic::Ordering::SeqCst);
+
+        assert_eq!(m.discard_all_queued().unwrap(), 2);
+
+        assert!(!m.has_queued_items());
+        let (_store, on_disk) = queue::QueueStore::open(tmp.path()).unwrap();
+        assert!(
+            on_disk.items.is_empty(),
+            "the on-disk queue must be emptied"
+        );
+        assert_eq!(
+            epoch.load(std::sync::atomic::Ordering::SeqCst),
+            before + 1,
+            "the shared discard counter must move on by exactly one"
+        );
+    }
+
+    #[tokio::test]
+    async fn discard_all_on_an_empty_queue_is_a_no_op_that_still_succeeds() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
+        assert_eq!(m.discard_all_queued().unwrap(), 0);
+        assert!(!m.has_queued_items());
+    }
+
+    /// A discard that cannot be saved must change nothing: the results stay queued (and so stay
+    /// sendable), and the counter is not bumped, so the task's posts are not refused.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn discard_all_keeps_everything_when_the_save_fails() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let epoch = DiscardEpoch::default();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, epoch.clone()).unwrap();
+        m.enqueue_game_end("event".into(), "G1".into(), 1, 0, "{}".into())
+            .unwrap();
+        let before = epoch.load(std::sync::atomic::Ordering::SeqCst);
+
+        // Both, because a read-only directory alone stops a new temp file being created but not
+        // an in-place overwrite of the queue file itself.
+        let path = tmp.path().join("portal_queue.json");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let result = m.discard_all_queued();
+
+        std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert!(result.is_err(), "the save must fail: got {result:?}");
+        assert!(
+            m.has_queued_items(),
+            "a discard that could not be saved must leave the results queued"
+        );
+        assert_eq!(
+            epoch.load(std::sync::atomic::Ordering::SeqCst),
+            before,
+            "a failed discard must not refuse the task's posts"
+        );
+    }
+
+    /// A post handed to the task before a discard is refused without leaving the machine, and
+    /// one handed over after it is let through to the network.
+    #[tokio::test]
+    async fn a_post_from_before_a_discard_is_never_sent() {
+        let site = "http://127.0.0.1:1";
+        let event =
+            uwh_common::uwhportal::schedule::EventId::from_full("events/discard-test").unwrap();
+        let mut keys = SiteAccessKeys::default();
+        keys.publish(
+            site.to_string(),
+            vec![crate::config::AccessKey {
+                site: site.to_string(),
+                event: event.clone(),
+                key: "KEY-D".to_string(),
+            }],
+        );
+        // Same 500 ms bound as `test_client`, for the same reason: WSL drops a connection to a
+        // closed loopback port rather than refusing it.
+        let client = uwh_common::uwhportal::UwhPortalClient::new(
+            site,
+            None,
+            false,
+            std::time::Duration::from_millis(500),
+        )
+        .unwrap();
+        let epoch = DiscardEpoch::new(std::sync::atomic::AtomicU64::new(1));
+        let io = UwhPortalIo::new(
+            std::sync::Arc::new(std::sync::Mutex::new(client)),
+            std::sync::Arc::new(std::sync::Mutex::new(None)),
+            std::sync::Arc::new(std::sync::Mutex::new(keys)),
+            epoch,
+        );
+        let mut item = mk_young_item();
+        item.id.event_id = event.full().to_string();
+
+        match health::PortalTaskIo::post_scores(&io, &item, 0).await {
+            Err(health::PortalCallError::NotSent(msg)) => {
+                assert!(msg.contains("discarded"), "{msg}");
+            }
+            other => panic!("a post from before the discard must be refused, got {other:?}"),
+        }
+        match health::PortalTaskIo::post_scores(&io, &item, 1).await {
+            Err(health::PortalCallError::Unreachable(_)) => {}
+            other => panic!("a current post must reach the network, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn degraded_queue_is_found_by_a_later_healthy_start() {
         let tmp = tempfile::TempDir::new().unwrap();
 
@@ -2154,7 +2349,8 @@ mod tests {
         }
 
         // Once the fault is fixed, the next healthy launch must find it.
-        let (healthy, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (healthy, _rx) =
+            PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         assert_eq!(
             healthy.queue.items.len(),
             1,
@@ -2172,7 +2368,8 @@ mod tests {
 
         // Two results are already waiting from an earlier healthy session.
         {
-            let (mut healthy, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+            let (mut healthy, _rx) =
+                PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
             healthy
                 .enqueue_game_end("event".into(), "G1".into(), 1, 0, "{}".into())
                 .unwrap();
@@ -2206,7 +2403,7 @@ mod tests {
     #[tokio::test]
     async fn queue_with_only_stats_pending_item_is_green() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("e".into(), "G1".into(), 3, 2, "{}".into())
             .unwrap();
         // Mark it stats-pending and age it well past the stuck threshold.
@@ -2223,7 +2420,7 @@ mod tests {
     #[tokio::test]
     async fn detail_rows_orders_token_then_stuck_then_pending_oldest_first() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
 
         // One stuck item: queued 40 min ago.
         m.enqueue_game_end("e".into(), "G3".into(), 3, 2, "{}".into())
@@ -2265,7 +2462,7 @@ mod tests {
     #[tokio::test]
     async fn on_item_resolved_removes_queue_item_and_adds_recent_success() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("event".into(), "G1".into(), 3, 2, "{}".into())
             .unwrap();
 
@@ -2286,7 +2483,7 @@ mod tests {
     #[tokio::test]
     async fn recent_successes_caps_at_five_and_evicts_oldest() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
 
         // Push six resolutions, numbered G1..G6.
         for n in 1..=6u32 {
@@ -2312,7 +2509,7 @@ mod tests {
     #[tokio::test]
     async fn on_item_resolved_with_unknown_id_is_noop_and_does_not_duplicate() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
 
         // 1. Enqueue one item (id A).
         m.enqueue_game_end("event".into(), "GA".into(), 1, 0, "{}".into())
@@ -2350,7 +2547,7 @@ mod tests {
     #[tokio::test]
     async fn detail_rows_appends_recent_successes_newest_first() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
 
         // Resolve two items, G1 then G2.
         m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
@@ -2377,7 +2574,7 @@ mod tests {
     #[tokio::test]
     async fn is_stuck_classifies_items_and_is_none_safe_for_unknown_ids() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
 
         // Stuck item: queued 40 minutes ago.
         m.enqueue_game_end("e".into(), "G_STUCK".into(), 0, 0, "{}".into())
@@ -2410,7 +2607,7 @@ mod tests {
     #[tokio::test]
     async fn find_returns_item_or_none() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("e".into(), "G1".into(), 3, 2, "{}".into())
             .unwrap();
         let id = m.queue.items[0].id.clone();
@@ -2432,7 +2629,7 @@ mod tests {
     #[tokio::test]
     async fn force_immediate_retry_clears_last_attempt_at_and_is_noop_for_unknown() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
             .unwrap();
         let id = m.queue.items[0].id.clone();
@@ -2478,7 +2675,7 @@ mod tests {
         // returns Ok(()), the target item's `last_attempt_at` is
         // cleared, and the on-disk queue reflects the change.
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
             .unwrap();
         let id = m.queue.items[0].id.clone();
@@ -2507,7 +2704,7 @@ mod tests {
     #[tokio::test]
     async fn on_score_sent_stats_pending_marks_item_and_stays_green() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("e".into(), "G1".into(), 3, 2, "{}".into())
             .unwrap();
         let id = m.queue.items[0].id.clone();
@@ -2532,7 +2729,7 @@ mod tests {
     #[tokio::test]
     async fn on_stats_may_have_landed_sets_and_persists_the_flag() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("e".into(), "G1".into(), 3, 2, "{}".into())
             .unwrap();
         let id = m.queue.items[0].id.clone();
@@ -2560,7 +2757,7 @@ mod tests {
     #[tokio::test]
     async fn is_stats_pending_reflects_score_sent_flag() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
             .unwrap();
         let id = m.queue.items[0].id.clone();
@@ -2584,7 +2781,7 @@ mod tests {
     #[tokio::test]
     async fn discarding_a_stats_item_empties_the_queue() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
             .unwrap();
         m.queue.items[0].score_sent = true;
@@ -2611,7 +2808,7 @@ mod tests {
     #[tokio::test]
     async fn detail_rows_places_stats_pending_after_pending_before_recent() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
 
         // A score-pending (young) game and a stats-pending game.
         m.enqueue_game_end("e".into(), "G_SCORE".into(), 0, 0, "{}".into())
@@ -2649,7 +2846,7 @@ mod tests {
     #[tokio::test]
     async fn retry_all_preserves_score_sent_and_resets_score_pending() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
         // One stats-pending game and one score-pending game.
         m.enqueue_game_end("e".into(), "G_STATS".into(), 1, 0, "{}".into())
             .unwrap();

@@ -2725,6 +2725,9 @@ impl RefBoxApp {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             *client = new_client;
+            // Under the client lock, with the swap: `request_for` checks the counter under this
+            // lock, so no post handed over for the departed site can be built on the new client.
+            self.portal_manager.note_site_moved();
             keys.publish(
                 published_site(&self.current_site),
                 self.config.access_keys.clone(),

@@ -30,10 +30,11 @@ use std::time::Duration;
 use log::{debug, error, warn};
 use serde::Deserialize;
 use uwh_common::{
-    bundles::BlackWhiteBundle,
+    bundles::{BlackWhiteBundle, OptColorBundle},
     color::Color,
     game_snapshot::{
-        GamePeriod, GameSnapshot, Infraction, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
+        GamePeriod, GameSnapshot, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime,
+        TimeoutSnapshot,
     },
     uwhportal::schedule::{EventId, GameNumber},
 };
@@ -72,7 +73,17 @@ struct Penalty {
     player: Option<String>,
     secs_remaining: Option<u32>,
     total_dismissal: bool,
-    #[allow(dead_code)] // ditto -- see `PenaltySnapshot::infraction` note in `build_snapshot`
+    infraction: String,
+}
+
+/// One foul (no penalty). `fouls` was added to the feed after version 1; an older bridge doesn't
+/// send it, which reads as no fouls.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Foul {
+    team: Option<String>,
+    number: Option<u8>,
+    player: Option<String>,
     infraction: String,
 }
 
@@ -94,6 +105,8 @@ struct GameFeed {
     recent_goal: Option<Goal>,
     next_period_len_secs: Option<u32>,
     penalties: Option<Vec<Penalty>>,
+    #[serde(default)]
+    fouls: Option<Vec<Foul>>,
     event_id: Option<String>,
     portal_base_url: Option<String>,
 }
@@ -125,6 +138,28 @@ fn parse_color(s: &str) -> Option<Color> {
         "WHITE" => Some(Color::White),
         _ => None,
     }
+}
+
+/// The reverse of `Infraction::short_name`, which is what the bridge sends. A name this doesn't
+/// know (a newer refbox's foul) reads as `Unknown`, which shows no description.
+fn parse_infraction(s: &str) -> Infraction {
+    const ALL: [Infraction; 12] = [
+        Infraction::Unknown,
+        Infraction::StickInfringement,
+        Infraction::IllegalAdvancement,
+        Infraction::IllegalSubstitution,
+        Infraction::IllegallyStoppingThePuck,
+        Infraction::OutOfBounds,
+        Infraction::GrabbingTheBarrier,
+        Infraction::Obstruction,
+        Infraction::DelayOfGame,
+        Infraction::UnsportsmanlikeConduct,
+        Infraction::FreeArm,
+        Infraction::FalseStart,
+    ];
+    ALL.into_iter()
+        .find(|infraction| infraction.short_name() == s)
+        .unwrap_or(Infraction::Unknown)
 }
 
 /// The reverse of `overlay-bridge/src/tables.rs`'s `timeout_label` -- deliberately not
@@ -202,12 +237,23 @@ fn build_snapshot(feed: &GameFeed) -> Option<GameSnapshot> {
         penalties[color].push(PenaltySnapshot {
             player_number: p.number,
             time,
-            // The renderer only ever draws a penalty's player number and remaining time
-            // (`flag.rs`'s `synchronize_penalties`/`draw`) -- never `infraction` -- so a
-            // filler value here changes nothing on screen. Reconstructing the real
-            // `Infraction` would need a full reverse lookup of `Infraction::short_name`
-            // for no observable benefit.
-            infraction: Infraction::Unknown,
+            // Shown as the penalty's description bar (`flag.rs`).
+            infraction: parse_infraction(&p.infraction),
+        });
+    }
+
+    let mut fouls: OptColorBundle<Vec<InfractionSnapshot>> = OptColorBundle::default();
+    for f in feed.fouls.iter().flatten() {
+        let color = match f.team.as_deref() {
+            None => None,
+            Some(team) => match parse_color(team) {
+                Some(color) => Some(color),
+                None => continue,
+            },
+        };
+        fouls[color].push(InfractionSnapshot {
+            player_number: f.number,
+            infraction: parse_infraction(&f.infraction),
         });
     }
 
@@ -220,10 +266,11 @@ fn build_snapshot(feed: &GameFeed) -> Option<GameSnapshot> {
             white: feed.white_score.unwrap_or(0),
         },
         penalties,
-        // Confirmed unused anywhere in this renderer (no `.warnings`/`.fouls` access exists
-        // in `pages/` or `flag.rs`), so there is nothing to reconstruct these from.
+        // Confirmed unused anywhere in this renderer (no `.warnings` access exists in `pages/`
+        // or `flag.rs`), so there is nothing to reconstruct these from.
         warnings: BlackWhiteBundle::default(),
-        fouls: Default::default(),
+        // Shown as foul cards (`flag.rs`).
+        fouls,
         is_old_game,
         game_number,
         next_game_number,
@@ -295,20 +342,33 @@ fn build_game_data(
 /// unreachable -- a cap number with no resolved name is simply omitted, matching `flag.rs`'s own
 /// fallback of showing the number alone.
 fn members_with_known_names(feed: &GameFeed, team_code: &str) -> Vec<MemberRaw> {
-    feed.penalties
+    let penalties = feed
+        .penalties
         .iter()
         .flatten()
         .filter(|p| p.team == team_code)
-        .filter_map(|p| {
-            Some(MemberRaw {
-                name: p.player.clone()?,
-                role: None,
-                number: Some(p.number),
-                picture: None,
-                geared_picture: None,
-            })
-        })
-        .collect()
+        .map(|p| (p.number, p.player.as_ref()));
+    let fouls = feed
+        .fouls
+        .iter()
+        .flatten()
+        .filter(|f| f.team.as_deref() == Some(team_code))
+        .filter_map(|f| Some((f.number?, f.player.as_ref())));
+    let mut members: Vec<MemberRaw> = Vec::new();
+    for (number, name) in penalties.chain(fouls) {
+        let Some(name) = name else { continue };
+        if members.iter().any(|m| m.number == Some(number)) {
+            continue;
+        }
+        members.push(MemberRaw {
+            name: name.clone(),
+            role: None,
+            number: Some(number),
+            picture: None,
+            geared_picture: None,
+        });
+    }
+    members
 }
 
 /// One row of the bridge's `GET /roster` table (`overlay-bridge/src/tables.rs`'s `roster`
@@ -1025,5 +1085,66 @@ mod tests {
         assert!(!needs_send(Some(&last), &data, 1));
         assert!(needs_send(Some(&last), &data, 2));
         assert!(needs_send(Some(&last), &other, 1));
+    }
+
+    #[test]
+    fn penalty_fouls_and_fouls_are_read_from_the_feed() {
+        let feed: GameFeed = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1,
+            "connected": true,
+            "period": "First Half",
+            "penalties": [{"team": "BLACK", "number": 12, "player": "Ann",
+                "secsRemaining": 60, "totalDismissal": false, "infraction": "Obstruction"}],
+            "fouls": [
+                {"team": "WHITE", "number": 4, "player": "Bea", "infraction": "Stick Foul"},
+                {"team": null, "number": null, "player": null, "infraction": "Free Arm"},
+                {"team": "BLACK", "number": 2, "player": null, "infraction": "Something New"}
+            ]
+        }))
+        .unwrap();
+        let snapshot = build_snapshot(&feed).unwrap();
+        assert_eq!(
+            snapshot.penalties.black[0].infraction,
+            Infraction::Obstruction
+        );
+        assert_eq!(
+            snapshot.fouls.white,
+            vec![InfractionSnapshot {
+                player_number: Some(4),
+                infraction: Infraction::StickInfringement
+            }]
+        );
+        assert_eq!(snapshot.fouls.equal[0].infraction, Infraction::FreeArm);
+        assert_eq!(snapshot.fouls.black[0].infraction, Infraction::Unknown);
+
+        let white = members_with_known_names(&feed, "WHITE");
+        assert_eq!(white.len(), 1);
+        assert_eq!(white[0].name, "Bea");
+        assert_eq!(white[0].number, Some(4));
+    }
+
+    #[test]
+    fn a_feed_without_fouls_reads_as_no_fouls() {
+        let feed: GameFeed = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1,
+            "connected": true,
+            "period": "First Half"
+        }))
+        .unwrap();
+        let snapshot = build_snapshot(&feed).unwrap();
+        assert!(snapshot.fouls.black.is_empty() && snapshot.fouls.equal.is_empty());
+    }
+
+    #[test]
+    fn every_foul_name_reads_back() {
+        for name in [
+            "Stick Foul",
+            "Obstruction",
+            "Free Arm",
+            "Grabbing The Wall",
+            "False Start",
+        ] {
+            assert_eq!(parse_infraction(name).short_name(), name);
+        }
     }
 }

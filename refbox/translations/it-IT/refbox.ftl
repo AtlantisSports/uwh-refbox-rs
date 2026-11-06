@@ -207,7 +207,9 @@ mode-switch-custom-site = Cambiare la modalità dell'app richiede un riavvio. Il
 source-locked-game = L'origine delle partite non può essere modificata mentre una partita è in corso.
 source-switch-clears-selection = Il passaggio a { $source } eliminerà l'evento, il campo e la partita selezionati.
 link-locked-game = Non è possibile connettersi all'origine delle partite mentre una partita è in corso.
-source-locked-queue = Ci sono ancora risultati di partite in attesa di essere inviati. Inviali o eliminali prima di procedere.
+results-waiting-switch = Ci sono ancora risultati di partite in attesa di essere inviati. Se cambi ora, verranno eliminati e andranno persi.
+see-queued-results = VEDI RISULTATI IN CODA
+switch-anyway = CAMBIA COMUNQUE
 uwhportal-token-invalid-code = Codice inserito non valido.
     Riprova.
 uwhportal-token-no-pending-link = La connessione non si aspetta comunicazioni.

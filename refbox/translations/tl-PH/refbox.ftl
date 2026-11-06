@@ -204,7 +204,9 @@ mode-switch-custom-site = Ang pagbabago ng mode ng app ay nangangailangan ng res
 source-locked-game = Hindi mababago ang pinagkukunan ng laro habang nagaganap ang laro.
 source-switch-clears-selection = Ang paglipat sa { $source } ay magtatanggal ng kaganapan, korte at larong napili mo.
 link-locked-game = Hindi makakakonekta sa pinagkukunan ng laro habang nagaganap ang laro.
-source-locked-queue = May mga resulta ng laro na naghihintay pang maipadala. Ipadala o itapon muna ang mga ito.
+results-waiting-switch = May mga resulta ng laro na naghihintay pang maipadala. Kung lilipat ka ngayon, itatapon at mawawala ang mga ito.
+see-queued-results = TINGNAN ANG MGA NAKAPILANG RESULTA
+switch-anyway = LUMIPAT PA RIN
 uwhportal-token-invalid-code = Maling code ang naipasok.
     Pakisubukan muli.
 uwhportal-token-no-pending-link = Hindi inaasahan ng koneksyon ang komunikasyon.

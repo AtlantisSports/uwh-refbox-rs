@@ -284,6 +284,11 @@ pub struct RefBoxApp {
     /// Monotonic source of revive-timer tokens (never reset; guards stale timers).
     timeout_revive_token: u64,
     portal_manager: PortalManager,
+    /// Where closing the portal detail page should land. `Some` only when the
+    /// page was opened by SEE QUEUED RESULTS on the results-waiting warning, so
+    /// the operator returns to the Settings page they were switching from;
+    /// `None` (opened from the portal tile) returns to the main page.
+    portal_detail_return: Option<ConfigPage>,
     /// Receiver half of the portal-manager background task's event
     /// channel. Wrapped in `Arc<Mutex<Option<_>>>` so an iced
     /// Subscription factory can clone the Arc, `.take()` the Receiver
@@ -449,12 +454,18 @@ enum ConfirmationKind {
         to_mode: Mode,
         source: GameSource,
     },
-    // Raised when an Apply would point the refbox at a different site while it
-    // is unsafe to do so. Each carries the page to return to, so the operator
-    // lands back where they were with their edit still staged rather than being
+    // Raised when an Apply would point the refbox at a different site while a
+    // game is in progress. Carries the page to return to, so the operator lands
+    // back where they were with their edit still staged rather than being
     // thrown out of settings.
     SiteLockedByGame(ConfigPage),
-    SiteLockedByQueue(ConfigPage),
+    /// Raised when a source switch (a source-button tap, or an APPLY that moves
+    /// the site or changes the source) would leave game results waiting to be
+    /// sent. Not a refusal: the operator can go back, look at the waiting
+    /// results, or switch anyway, which discards them. Carries the switch that
+    /// was asked for, so SWITCH ANYWAY can carry it out and GO BACK knows where
+    /// to return.
+    ResultsWaiting(PendingSwitch),
     /// Linking was attempted while a game is in progress. Carries no page: the
     /// ACCESS TOKEN row lives only on the Game config page, so there is one
     /// place to return to.
@@ -890,6 +901,88 @@ fn site_serves(kind: SiteKind, source: GameSource) -> bool {
     }
 }
 
+/// The source switch the results-waiting warning is holding back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PendingSwitch {
+    /// A source-button tap on Game Options, towards this source.
+    Tap(GameSource),
+    /// An APPLY on this Settings page.
+    Apply(ConfigPage),
+}
+
+impl PendingSwitch {
+    /// The Settings page the operator came from, and returns to.
+    fn return_page(self) -> ConfigPage {
+        match self {
+            // The source buttons live on the Game page.
+            PendingSwitch::Tap(_) => ConfigPage::Game,
+            PendingSwitch::Apply(page) => page,
+        }
+    }
+}
+
+/// What an APPLY that might switch the source or site must do first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApplyGuard {
+    /// A game is in progress and the APPLY would move the site. Refuse.
+    RefusedByGame,
+    /// Results are waiting to be sent. Warn, and let the operator decide.
+    WarnResultsWaiting,
+    /// Nothing is at stake. Apply.
+    Proceed,
+}
+
+/// Decide what an APPLY does before anything is committed.
+///
+/// Pure, for the same reason `source_tap_outcome` is: the message loop has no
+/// test harness in this crate.
+///
+/// `moves_site` is whether the APPLY repoints the refbox (or commits CUSTOM
+/// from the SITE editor); `changes_source` is whether it changes the committed
+/// source at all, which includes MANUAL GAMES, a switch that moves no site.
+///
+/// The game refusal applies only to a site move. A game in progress, not
+/// merely a running clock: between games the clock counts down to the next
+/// game and is running by default, which is exactly when an operator sets the
+/// source up. This matches the rule the game-config and switch-to-manual gates
+/// already use.
+///
+/// This refusal carries more than its own message. `apply_game_options`
+/// returns early — before the repoint block in `ApplyConfigPage` ever runs —
+/// on three confirmations that each require exactly this condition:
+/// `GameConfigChangedFromApply`, `GameNumberChangedFromApply` and
+/// `SwitchToManualFromApply`. Refusing here is the only thing keeping a
+/// pending repoint from reaching them. Allowing a site change during a game,
+/// even behind a confirmation, means repointing on those paths too, or the new
+/// source is committed and the client never moves.
+///
+/// A mid-game MANUAL GAMES APPLY moves no site, so it is not refused here: it
+/// is warned about if results wait, and otherwise reaches
+/// `SwitchToManualFromApply` as before.
+fn apply_guard(
+    moves_site: bool,
+    changes_source: bool,
+    game_in_progress: bool,
+    results_queued: bool,
+) -> ApplyGuard {
+    if moves_site && game_in_progress {
+        ApplyGuard::RefusedByGame
+    } else if (moves_site || changes_source) && results_queued {
+        ApplyGuard::WarnResultsWaiting
+    } else {
+        ApplyGuard::Proceed
+    }
+}
+
+/// Where closing the portal detail page lands: back on the Settings page it
+/// was opened from (by SEE QUEUED RESULTS), or the main page otherwise.
+fn portal_detail_close_target(ret: Option<ConfigPage>) -> AppState {
+    match ret {
+        Some(page) => AppState::EditGameConfig(page),
+        None => AppState::MainPage,
+    }
+}
+
 /// What tapping one of the two source buttons on Game Options does.
 ///
 /// Pure, and separate from the handler that acts on it, because the settings
@@ -897,10 +990,10 @@ fn site_serves(kind: SiteKind, source: GameSource) -> bool {
 /// only part of the tap that can be pinned by a test.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SourceTapOutcome {
-    /// A game is in progress. Refuse, and say which reason applies.
+    /// A game is in progress. Refuse, and say so.
     RefusedByGame,
-    /// Results are queued and unsent. Refuse, and say so.
-    RefusedByQueue,
+    /// Results are queued and unsent. Warn that switching discards them.
+    WarnResultsWaiting,
     /// A fully linked game would be cleared. Ask before doing it.
     Confirm,
     /// Nothing is at stake — move now, with no screen in between.
@@ -909,11 +1002,12 @@ enum SourceTapOutcome {
 
 /// Decide what a source-button tap does.
 ///
-/// The refusals outrank everything else: they exist to stop the refbox being
-/// pointed away from a site that a running game or unsent results still depend
-/// on, and nothing makes that safe. They are the same two conditions
-/// `refuse_repoint` applies to an Apply that would repoint the client; the tap
-/// is now a third way to reach the same move, so it asks the same questions.
+/// The game refusal outranks everything else: it stops the refbox being
+/// pointed away from a site a running game still depends on, and nothing makes
+/// that safe. The results-waiting warning comes next, and outranks the
+/// fully-linked confirmation. They are the same two conditions `apply_guard`
+/// applies to an APPLY that would repoint the client; the tap is another way
+/// to reach the same move, so it asks the same questions.
 ///
 /// `fully_linked` is judged on what is *displayed* — the staged values in the
 /// settings editor — not on what is committed. The two are identical unless the
@@ -1053,7 +1147,7 @@ fn source_tap_outcome(
     if game_in_progress {
         SourceTapOutcome::RefusedByGame
     } else if results_queued {
-        SourceTapOutcome::RefusedByQueue
+        SourceTapOutcome::WarnResultsWaiting
     } else if fully_linked {
         SourceTapOutcome::Confirm
     } else {
@@ -2454,34 +2548,101 @@ impl RefBoxApp {
         }
     }
 
-    /// Refuse a repoint that would strand the operator or their results, saying
-    /// which of the two reasons applies. A silent refusal is indistinguishable
-    /// from a broken button, so both cases produce a message rather than a
-    /// greyed-out control.
+    /// Act on a choice made on the results-waiting warning.
+    fn results_waiting_selected(
+        &mut self,
+        pending: PendingSwitch,
+        selection: ConfirmationOption,
+    ) -> Task<Message> {
+        match selection {
+            ConfirmationOption::SeeQueuedResults => {
+                // Closing the detail page brings the operator back here, to
+                // the Settings page they were switching from.
+                self.portal_detail_return = Some(pending.return_page());
+                self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            ConfirmationOption::SwitchAnyway => {
+                // The clock kept running while the warning was up, so a game
+                // may have started since. Re-check FIRST, with the results
+                // treated as already gone, so a switch that would now be
+                // refused discards nothing.
+                let game_in_progress = self.tm.lock().current_period() != GamePeriod::BetweenGames;
+                let refused = match pending {
+                    PendingSwitch::Tap(_) => {
+                        source_tap_outcome(game_in_progress, false, false)
+                            == SourceTapOutcome::RefusedByGame
+                    }
+                    PendingSwitch::Apply(page) => {
+                        let (moves_site, changes_source) = self.apply_switch_facts(page);
+                        apply_guard(moves_site, changes_source, game_in_progress, false)
+                            == ApplyGuard::RefusedByGame
+                    }
+                };
+                if refused {
+                    self.app_state = AppState::ConfirmationPage(
+                        ConfirmationKind::SiteLockedByGame(pending.return_page()),
+                    );
+                    trace!("AppState changed to {:?}", self.app_state);
+                    return Task::none();
+                }
+                // `discard_all_queued` logs each item it discards.
+                if let Err(e) = self.portal_manager.discard_all_queued() {
+                    error!(
+                        "could not discard the waiting results, so the switch was not made: {e}"
+                    );
+                    return Task::none();
+                }
+                match pending {
+                    PendingSwitch::Tap(target) => {
+                        self.app_state = AppState::EditGameConfig(ConfigPage::Game);
+                        trace!("AppState changed to {:?}", self.app_state);
+                        self.switch_to_source(target)
+                    }
+                    PendingSwitch::Apply(page) => {
+                        // Back through the APPLY handler, which now finds
+                        // nothing waiting and applies exactly the staged edits
+                        // — including any confirmation it raises as usual.
+                        self.app_state = AppState::EditGameConfig(page);
+                        trace!("AppState changed to {:?}", self.app_state);
+                        self.update(Message::ApplyConfigPage(page))
+                    }
+                }
+            }
+            // GO BACK, and anything else: nothing was committed, so return to
+            // the page with the edit still staged.
+            _ => {
+                self.app_state = AppState::EditGameConfig(pending.return_page());
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+        }
+    }
+
+    /// What an APPLY on `page` would do to the source and site, as
+    /// `(moves_site, changes_source)`, for `apply_guard`.
     ///
-    /// `page` is where to return to, so the refused edit stays staged and the
-    /// operator can stop the clock (or send the results) and press APPLY again.
-    fn refuse_repoint(&self, page: ConfigPage) -> Option<ConfirmationKind> {
-        // A game in progress, not merely a running clock: between games the
-        // clock counts down to the next game and is running by default, which
-        // is exactly when an operator sets the source up. This matches the rule
-        // the game-config and switch-to-manual gates already use.
-        //
-        // This refusal carries more than its own message. `apply_game_options`
-        // returns early — before the repoint block in `ApplyConfigPage` ever
-        // runs — on three confirmations that each require exactly this
-        // condition: `GameConfigChangedFromApply`, `GameNumberChangedFromApply`
-        // and `SwitchToManualFromApply`. Refusing here is the only thing
-        // keeping a pending repoint from reaching them. Allowing a site change
-        // during a game, even behind a confirmation, means repointing on those
-        // paths too, or the new source is committed and the client never moves.
-        if self.tm.lock().current_period() != GamePeriod::BetweenGames {
-            return Some(ConfirmationKind::SiteLockedByGame(page));
-        }
-        if self.portal_manager.has_queued_items() {
-            return Some(ConfirmationKind::SiteLockedByQueue(page));
-        }
-        None
+    /// `moves_site` covers both controls that can repoint the refbox: a
+    /// pending site change, and the SITE editor's APPLY committing CUSTOM. That
+    /// APPLY is offered whether or not the address was edited, so an operator
+    /// whose event was cleared — the path back from MANUAL — can get onto their
+    /// site again. It can therefore commit a source change with no repoint
+    /// attached, which `pending_site_change` alone would wave through.
+    ///
+    /// `changes_source` is any change to the committed source from the Game or
+    /// App page, which includes MANUAL GAMES — a switch that moves no site but
+    /// still strands any results waiting to be sent.
+    fn apply_switch_facts(&self, page: ConfigPage) -> (bool, bool) {
+        let commits_custom_source =
+            matches!(page, ConfigPage::CustomSite(_)) && self.source != GameSource::Custom;
+        let moves_site = self.pending_site_change(page).is_some() || commits_custom_source;
+        let changes_source = matches!(page, ConfigPage::Game | ConfigPage::App)
+            && self
+                .edited_settings
+                .as_ref()
+                .is_some_and(|edited| edited.source != self.source);
+        (moves_site, changes_source)
     }
 
     /// Point the live client at `target`, with no restart.
@@ -3945,6 +4106,12 @@ impl RefBoxApp {
                      dispatched before this function is reached."
                 )
             }
+            ConfirmationOption::SeeQueuedResults | ConfirmationOption::SwitchAnyway => {
+                unreachable!(
+                    "SeeQueuedResults / SwitchAnyway are only offered by the ResultsWaiting \
+                     page, which is dispatched before this function is reached."
+                )
+            }
         };
         self.app_state = app_state;
         trace!("AppState changed to {:?}", self.app_state);
@@ -4056,6 +4223,12 @@ impl RefBoxApp {
                 unreachable!(
                     "RestartGame is only offered by the RestartGame page, which is \
                      dispatched before this function is reached."
+                )
+            }
+            ConfirmationOption::SeeQueuedResults | ConfirmationOption::SwitchAnyway => {
+                unreachable!(
+                    "SeeQueuedResults / SwitchAnyway are only offered by the ResultsWaiting \
+                     page, which is dispatched before this function is reached."
                 )
             }
         };
@@ -4527,6 +4700,7 @@ impl RefBoxApp {
             timeout_revive: None,
             timeout_revive_token: 0,
             portal_manager,
+            portal_detail_return: None,
             portal_event_rx,
             config_dir,
             install_path,
@@ -5608,12 +5782,14 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::OpenPortalDetailPage => {
+                // Opened from the tile, so closing returns to the main page.
+                self.portal_detail_return = None;
                 self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
             Message::ClosePortalDetailPage => {
-                self.app_state = AppState::MainPage;
+                self.app_state = portal_detail_close_target(self.portal_detail_return.take());
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
@@ -5849,23 +6025,29 @@ impl RefBoxApp {
             }
             Message::ApplyConfigPage(page) => {
                 // Decide up front whether this APPLY moves the refbox to a
-                // different site, and refuse before anything is committed, so a
-                // refusal leaves every edit staged exactly as it was left.
+                // different site or changes the source, and refuse or warn
+                // before anything is committed, so either leaves every edit
+                // staged exactly as it was left. See `apply_guard`.
                 let new_site = self.pending_site_change(page);
-                // The SITE editor's APPLY is offered whether or not the address
-                // was edited, so an operator whose event was cleared — the path
-                // back from MANUAL — can get onto their site again. That means
-                // this APPLY can commit a source change with no repoint attached,
-                // which the `new_site` test alone would wave through, so ask for
-                // the guard explicitly.
-                let commits_custom_source =
-                    matches!(page, ConfigPage::CustomSite(_)) && self.source != GameSource::Custom;
-                if new_site.is_some() || commits_custom_source {
-                    if let Some(refusal) = self.refuse_repoint(page) {
-                        self.app_state = AppState::ConfirmationPage(refusal);
+                let (moves_site, changes_source) = self.apply_switch_facts(page);
+                // Bound to a local so the lock guard ends here.
+                let game_in_progress = self.tm.lock().current_period() != GamePeriod::BetweenGames;
+                let results_queued = self.portal_manager.has_queued_items();
+                match apply_guard(moves_site, changes_source, game_in_progress, results_queued) {
+                    ApplyGuard::RefusedByGame => {
+                        self.app_state =
+                            AppState::ConfirmationPage(ConfirmationKind::SiteLockedByGame(page));
                         trace!("AppState changed to {:?}", self.app_state);
                         return Task::none();
                     }
+                    ApplyGuard::WarnResultsWaiting => {
+                        self.app_state = AppState::ConfirmationPage(
+                            ConfirmationKind::ResultsWaiting(PendingSwitch::Apply(page)),
+                        );
+                        trace!("AppState changed to {:?}", self.app_state);
+                        return Task::none();
+                    }
+                    ApplyGuard::Proceed => {}
                 }
                 match page {
                     ConfigPage::App => {
@@ -5948,8 +6130,8 @@ impl RefBoxApp {
                 //    entirely, and three unrelated mechanisms are all that keep
                 //    a pending repoint from reaching one:
                 //    - The Game arm's four confirmations. Three require a game
-                //      in progress, which `refuse_repoint` has already turned
-                //      back; the fourth requires the incomplete remote state
+                //      in progress, which `apply_guard` has already turned
+                //      back for any APPLY that moves the site; the fourth requires the incomplete remote state
                 //      that leaves the Game page's APPLY with no press action.
                 //    - The App arm's `PortalTenantSwitch`, whose
                 //      `RestartAndApply` handler commits the new source without
@@ -5962,7 +6144,7 @@ impl RefBoxApp {
                 //      answers `None` for an address that will not parse.
                 //    Weaken any of the three and an APPLY can commit a new
                 //    source while the refbox goes on talking to the old site.
-                //    See `refuse_repoint`.
+                //    See `apply_guard`.
                 let mut task = Task::none();
                 let moved_to_custom = new_site
                     .as_ref()
@@ -6935,7 +7117,7 @@ impl RefBoxApp {
                 // A game in progress, not merely a running clock: between
                 // games the clock counts down to the next game and is running
                 // by default, which is exactly when an operator sets the source
-                // up. Same test `refuse_repoint` applies.
+                // up. Same test `ApplyConfigPage` passes to `apply_guard`.
                 //
                 // Bound to a local rather than inlined into the `match` below:
                 // the lock guard is a temporary that would otherwise live to the
@@ -6956,9 +7138,9 @@ impl RefBoxApp {
                     selection_owned && !edited.uwhportal_incomplete()
                 });
                 match source_tap_outcome(game_in_progress, results_queued, fully_linked) {
-                    // Both refusals reuse the existing pages, and carry
-                    // `ConfigPage::Game` so their one button returns the
-                    // operator to the page the buttons live on.
+                    // The refusal carries `ConfigPage::Game` so its one button
+                    // returns the operator to the page the buttons live on; the
+                    // warning's GO BACK lands there too (`return_page`).
                     SourceTapOutcome::RefusedByGame => {
                         self.app_state = AppState::ConfirmationPage(
                             ConfirmationKind::SiteLockedByGame(ConfigPage::Game),
@@ -6966,9 +7148,9 @@ impl RefBoxApp {
                         trace!("AppState changed to {:?}", self.app_state);
                         Task::none()
                     }
-                    SourceTapOutcome::RefusedByQueue => {
+                    SourceTapOutcome::WarnResultsWaiting => {
                         self.app_state = AppState::ConfirmationPage(
-                            ConfirmationKind::SiteLockedByQueue(ConfigPage::Game),
+                            ConfirmationKind::ResultsWaiting(PendingSwitch::Tap(target)),
                         );
                         trace!("AppState changed to {:?}", self.app_state);
                         Task::none()
@@ -7099,18 +7281,25 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::ConfirmationSelected(selection) => {
-                // The site-locked refusals carry the page they were raised
-                // from and offer one button, which returns the operator there
-                // with their edit still staged — nothing was committed and
-                // nothing is discarded.
-                if let AppState::ConfirmationPage(
-                    ConfirmationKind::SiteLockedByGame(page)
-                    | ConfirmationKind::SiteLockedByQueue(page),
-                ) = self.app_state
+                // The site-locked refusal carries the page it was raised from
+                // and offers one button, which returns the operator there with
+                // their edit still staged — nothing was committed and nothing
+                // is discarded.
+                if let AppState::ConfirmationPage(ConfirmationKind::SiteLockedByGame(page)) =
+                    self.app_state
                 {
                     self.app_state = AppState::EditGameConfig(page);
                     trace!("AppState changed to {:?}", self.app_state);
                     return Task::none();
+                }
+
+                // The results-waiting warning: go back with the edit still
+                // staged, look at the waiting results, or discard them and
+                // carry out the switch that was asked for.
+                if let AppState::ConfirmationPage(ConfirmationKind::ResultsWaiting(pending)) =
+                    self.app_state
+                {
+                    return self.results_waiting_selected(pending, selection);
                 }
 
                 // The link refusal carries no page: the ACCESS TOKEN row exists
@@ -7146,13 +7335,30 @@ impl RefBoxApp {
                             // `reset_to_manual_break` does not set the period, so
                             // it would leave the running period with a
                             // break-length clock.
-                            match self.refuse_repoint(ConfigPage::Game) {
-                                Some(kind) => {
-                                    self.app_state = AppState::ConfirmationPage(kind);
+                            //
+                            // Results that arrived while this page was up get
+                            // the results-waiting warning, as the tap would.
+                            let game_in_progress =
+                                self.tm.lock().current_period() != GamePeriod::BetweenGames;
+                            let results_queued = self.portal_manager.has_queued_items();
+                            match source_tap_outcome(game_in_progress, results_queued, false) {
+                                SourceTapOutcome::RefusedByGame => {
+                                    self.app_state = AppState::ConfirmationPage(
+                                        ConfirmationKind::SiteLockedByGame(ConfigPage::Game),
+                                    );
                                     trace!("AppState changed to {:?}", self.app_state);
                                     Task::none()
                                 }
-                                None => {
+                                SourceTapOutcome::WarnResultsWaiting => {
+                                    self.app_state = AppState::ConfirmationPage(
+                                        ConfirmationKind::ResultsWaiting(PendingSwitch::Tap(
+                                            target,
+                                        )),
+                                    );
+                                    trace!("AppState changed to {:?}", self.app_state);
+                                    Task::none()
+                                }
+                                SourceTapOutcome::Confirm | SourceTapOutcome::SwitchNow => {
                                     self.app_state = AppState::EditGameConfig(ConfigPage::Game);
                                     trace!("AppState changed to {:?}", self.app_state);
                                     self.switch_to_source(target)
@@ -7190,7 +7396,9 @@ impl RefBoxApp {
                         | ConfirmationOption::EndGameAndApply
                         | ConfirmationOption::KeepGameAndApply
                         | ConfirmationOption::RestartAndApply
-                        | ConfirmationOption::SwitchSource => {
+                        | ConfirmationOption::SwitchSource
+                        | ConfirmationOption::SeeQueuedResults
+                        | ConfirmationOption::SwitchAnyway => {
                             unreachable!("The RestartGame page offers only GoBack and RestartGame.")
                         }
                     };
@@ -7250,6 +7458,12 @@ impl RefBoxApp {
                         unreachable!(
                             "RestartGame is only offered by the RestartGame page, which is \
                              dispatched above."
+                        )
+                    }
+                    ConfirmationOption::SeeQueuedResults | ConfirmationOption::SwitchAnyway => {
+                        unreachable!(
+                            "SeeQueuedResults / SwitchAnyway are only offered by the \
+                             ResultsWaiting page, which is dispatched above."
                         )
                     }
                 };
@@ -11444,10 +11658,10 @@ mod source_tap_tests {
     }
 
     #[test]
-    fn queued_results_refuse() {
+    fn queued_results_warn() {
         assert_eq!(
             source_tap_outcome(false, true, false),
-            SourceTapOutcome::RefusedByQueue
+            SourceTapOutcome::WarnResultsWaiting
         );
     }
 
@@ -11462,7 +11676,7 @@ mod source_tap_tests {
         );
         assert_eq!(
             source_tap_outcome(false, true, true),
-            SourceTapOutcome::RefusedByQueue
+            SourceTapOutcome::WarnResultsWaiting
         );
     }
 
@@ -11476,6 +11690,64 @@ mod source_tap_tests {
                 SourceTapOutcome::RefusedByGame
             );
         }
+    }
+
+    /// `(moves_site, changes_source, game_in_progress, results_queued)`.
+    #[test]
+    fn apply_guard_table() {
+        use ApplyGuard::*;
+        // A site move during a game is refused, whatever else holds.
+        for changes in [false, true] {
+            for queued in [false, true] {
+                assert_eq!(apply_guard(true, changes, true, queued), RefusedByGame);
+            }
+        }
+        let cases = [
+            ((true, false, false, true), WarnResultsWaiting),
+            // MANUAL GAMES: changes the source without moving the site.
+            ((false, true, false, true), WarnResultsWaiting),
+            // Mid-game MANUAL GAMES is warned about, not refused by the game.
+            ((false, true, true, true), WarnResultsWaiting),
+            // e.g. a Sound-page APPLY: nothing switches, so nothing to warn of.
+            ((false, false, false, true), Proceed),
+            ((true, false, false, false), Proceed),
+            ((false, true, true, false), Proceed),
+        ];
+        for ((moves, changes, game, queued), expected) in cases {
+            assert_eq!(
+                apply_guard(moves, changes, game, queued),
+                expected,
+                "apply_guard({moves}, {changes}, {game}, {queued})"
+            );
+        }
+    }
+
+    #[test]
+    fn pending_switch_returns_to_the_page_it_came_from() {
+        assert_eq!(
+            PendingSwitch::Tap(GameSource::Manual).return_page(),
+            ConfigPage::Game
+        );
+        assert_eq!(
+            PendingSwitch::Apply(ConfigPage::CustomSite(false)).return_page(),
+            ConfigPage::CustomSite(false)
+        );
+        assert_eq!(
+            PendingSwitch::Apply(ConfigPage::App).return_page(),
+            ConfigPage::App
+        );
+    }
+
+    #[test]
+    fn closing_the_detail_page_opened_from_the_warning_returns_to_settings() {
+        assert!(matches!(
+            portal_detail_close_target(Some(ConfigPage::App)),
+            AppState::EditGameConfig(ConfigPage::App)
+        ));
+        assert!(matches!(
+            portal_detail_close_target(None),
+            AppState::MainPage
+        ));
     }
 
     #[test]

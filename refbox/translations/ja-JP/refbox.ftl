@@ -204,7 +204,9 @@ mode-switch-custom-site = アプリのモードを変更するには再起動が
 source-locked-game = 試合進行中は試合データの取得元を変更できません。
 source-switch-clears-selection = { $source } に切り替えると、選択した大会、コート、試合が消去されます。
 link-locked-game = 試合進行中は試合データの取得元に接続できません。
-source-locked-queue = 送信待ちの試合結果があります。先に送信するか破棄してください。
+results-waiting-switch = 送信待ちの試合結果があります。今切り替えると、結果は破棄され、消えてしまいます。
+see-queued-results = 送信待ちの結果を表示
+switch-anyway = このまま切り替える
 uwhportal-token-invalid-code = 無効なコードが入力されました。
     もう一度試してください。
 uwhportal-token-no-pending-link = 接続は通信を待っていません。

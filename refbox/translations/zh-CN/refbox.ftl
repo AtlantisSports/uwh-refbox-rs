@@ -204,7 +204,9 @@ mode-switch-custom-site = 更改应用模式需要重启。您的自定义站点
 source-locked-game = 比赛进行中无法更改比赛来源。
 source-switch-clears-selection = 切换到 { $source } 将清除您已选择的赛事、球场和比赛。
 link-locked-game = 比赛进行中无法连接到比赛来源。
-source-locked-queue = 仍有比赛结果等待发送。请先发送或丢弃它们。
+results-waiting-switch = 仍有比赛结果等待发送。如果立即切换，结果将被丢弃，无法恢复。
+see-queued-results = 显示待发送结果
+switch-anyway = 仍然切换
 uwhportal-token-invalid-code = 输入的代码无效。
     请重试。
 uwhportal-token-no-pending-link = 连接未等待通信。

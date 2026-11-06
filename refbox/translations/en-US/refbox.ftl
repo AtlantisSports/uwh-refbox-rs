@@ -209,7 +209,9 @@ mode-switch-custom-site = Changing the app mode needs a restart. Your custom sit
 source-locked-game = The game source can not be changed while a game is in progress.
 source-switch-clears-selection = Switching to { $source } will clear the event, court and game you have selected.
 link-locked-game = You can not connect to the game source while a game is in progress.
-source-locked-queue = Game results are still waiting to be sent. Send or discard them first.
+results-waiting-switch = Game results are still waiting to be sent. If you switch now, they will be discarded and lost.
+see-queued-results = SEE QUEUED RESULTS
+switch-anyway = SWITCH ANYWAY
 uwhportal-token-invalid-code = Invalid code entered.
     Please try again.
 uwhportal-token-no-pending-link = The connection is not expecting communication.

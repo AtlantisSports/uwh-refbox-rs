@@ -204,7 +204,9 @@ mode-switch-custom-site = Uygulama modunu değiştirmek yeniden başlatma gerekt
 source-locked-game = Oyun kaynağı, bir oyun devam ederken değiştirilemez.
 source-switch-clears-selection = { $source } kaynağına geçmek seçtiğiniz etkinliği, sahayı ve oyunu temizleyecektir.
 link-locked-game = Bir oyun devam ederken oyun kaynağına bağlanılamaz.
-source-locked-queue = Gönderilmeyi bekleyen oyun sonuçları var. Önce bunları gönderin veya silin.
+results-waiting-switch = Gönderilmeyi bekleyen oyun sonuçları var. Şimdi geçerseniz, bunlar silinecek ve kaybolacak.
+see-queued-results = BEKLEYEN SONUÇLARI GÖR
+switch-anyway = YİNE DE GEÇ
 uwhportal-token-invalid-code = Geçersiz kod girildi.
     Lütfen tekrar deneyin.
 uwhportal-token-no-pending-link = Bağlantı iletişim beklemiyor.

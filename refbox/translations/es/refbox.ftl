@@ -215,7 +215,9 @@ mode-switch-custom-site = Cambiar el modo de la aplicación requiere reiniciar. 
 source-locked-game = La fuente de juegos no se puede cambiar mientras un juego está en progreso.
 source-switch-clears-selection = Cambiar a { $source } borrará el evento, la cancha y el juego que ha seleccionado.
 link-locked-game = No se puede conectar con la fuente de juegos mientras un juego está en progreso.
-source-locked-queue = Todavía hay resultados de juegos esperando a ser enviados. Envíalos o descártalos primero.
+results-waiting-switch = Todavía hay resultados de juegos esperando a ser enviados. Si cambias ahora, se descartarán y se perderán.
+see-queued-results = VER RESULTADOS EN COLA
+switch-anyway = CAMBIAR DE TODOS MODOS
 ### Check
 uwhportal-token-invalid-code = Código inválido.
     Por favor, inténtelo de nuevo.

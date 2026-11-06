@@ -972,6 +972,33 @@ fn reply_is_current(issued_at: u64, now: u64) -> bool {
     issued_at == now
 }
 
+/// What to do with a schedule reply as it arrives.
+///
+/// A stale reply (fetched from a site the operator has since left) is discarded even
+/// while TIME EDIT is open, so it can never replace a current reply already held. A
+/// current reply is held while TIME EDIT is open and replayed through every check when
+/// the page closes; otherwise it is acted on at once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScheduleReplyAction {
+    Discard,
+    Hold,
+    Act,
+}
+
+fn schedule_reply_action(
+    in_time_edit: bool,
+    issued_at: u64,
+    site_generation: u64,
+) -> ScheduleReplyAction {
+    if !reply_is_current(issued_at, site_generation) {
+        ScheduleReplyAction::Discard
+    } else if in_time_edit {
+        ScheduleReplyAction::Hold
+    } else {
+        ScheduleReplyAction::Act
+    }
+}
+
 /// Which clock values a TIME EDIT that closes after a held schedule reply must still
 /// set, as (game clock, timeout clock).
 ///
@@ -1763,7 +1790,11 @@ impl RefBoxApp {
             "TIME EDIT closed; acting on the schedule for event {} held while it was open",
             event_id.full()
         );
+        // The replay must not hide the message that closed the page from the
+        // repeated-message guard, or a double-tapped APPLY / CANCEL would run twice.
+        let closing_message = self.last_message.clone();
         tasks.push(self.update(Message::RecvSchedule(event_id, schedule, issued_at)));
+        self.last_message = closing_message;
 
         // 4. Set only what the operator changed, over whatever the reply did.
         let (game, timeout) = time_edit_changes(canceled, self.time_edit_old, edited);
@@ -4678,8 +4709,12 @@ impl RefBoxApp {
                      event {} held while it was open",
                     event_id.full()
                 );
+                // The replay must not hide the message that closed the page from the
+                // repeated-message guard, or a double-tap of it would run twice.
+                let closing_message = self.last_message.clone();
                 let replay =
                     self.handle_message(Message::RecvSchedule(event_id, schedule, issued_at));
+                self.last_message = closing_message;
                 task = Task::batch([task, replay]);
             }
         }
@@ -7527,33 +7562,41 @@ impl RefBoxApp {
             Message::RecvSchedule(event_id, mut schedule, issued_at) => {
                 // TIME EDIT holds every clock still, and this reply can revive a court
                 // and start its break under the page, which the APPLY after it then
-                // crashed on. Hold it until the page closes. Held before every check
-                // below, so the replay runs all of them as if it had just arrived.
-                if matches!(self.app_state, AppState::TimeEdit(..)) {
-                    if self.held_schedule.is_some() {
-                        info!(
-                            "Holding the schedule for event {} until TIME EDIT closes; it \
-                             replaces a schedule already held",
-                            event_id.full()
+                // crashed on. Hold it until the page closes. Held only after the
+                // currency check, so a stale reply never replaces a current one already
+                // held; the replay still runs every check below as if it had just arrived.
+                match schedule_reply_action(
+                    matches!(self.app_state, AppState::TimeEdit(..)),
+                    issued_at,
+                    self.site_generation,
+                ) {
+                    ScheduleReplyAction::Discard => {
+                        warn!(
+                            "Discarding the schedule for event {}: it was fetched from \
+                             site generation {}, and the refbox is now on {}",
+                            event_id.full(),
+                            issued_at,
+                            self.site_generation
                         );
-                    } else {
-                        info!(
-                            "Holding the schedule for event {} until TIME EDIT closes",
-                            event_id.full()
-                        );
+                        return Task::none();
                     }
-                    self.held_schedule = Some((event_id, schedule, issued_at));
-                    return Task::none();
-                }
-                if !reply_is_current(issued_at, self.site_generation) {
-                    warn!(
-                        "Discarding the schedule for event {}: it was fetched from \
-                         site generation {}, and the refbox is now on {}",
-                        event_id.full(),
-                        issued_at,
-                        self.site_generation
-                    );
-                    return Task::none();
+                    ScheduleReplyAction::Hold => {
+                        if self.held_schedule.is_some() {
+                            info!(
+                                "Holding the schedule for event {} until TIME EDIT closes; \
+                                 it replaces a schedule already held",
+                                event_id.full()
+                            );
+                        } else {
+                            info!(
+                                "Holding the schedule for event {} until TIME EDIT closes",
+                                event_id.full()
+                            );
+                        }
+                        self.held_schedule = Some((event_id, schedule, issued_at));
+                        return Task::none();
+                    }
+                    ScheduleReplyAction::Act => {}
                 }
                 // A manual REFRESH (RequestPortalRefresh) spins the Game Info
                 // button until a schedule arrives. Clear it for every success
@@ -11474,6 +11517,37 @@ mod time_edit_changes_tests {
         assert_eq!(
             time_edit_changes(false, (s(0), Some(s(30))), (s(0), Some(s(5)))),
             (None, Some(s(5)))
+        );
+    }
+}
+
+#[cfg(test)]
+mod schedule_reply_action_tests {
+    use super::{ScheduleReplyAction, schedule_reply_action};
+
+    #[test]
+    fn a_stale_reply_is_discarded_even_during_time_edit() {
+        assert_eq!(
+            schedule_reply_action(true, 1, 2),
+            ScheduleReplyAction::Discard
+        );
+    }
+
+    #[test]
+    fn a_current_reply_during_time_edit_is_held() {
+        assert_eq!(schedule_reply_action(true, 2, 2), ScheduleReplyAction::Hold);
+    }
+
+    #[test]
+    fn a_current_reply_outside_time_edit_is_acted_on() {
+        assert_eq!(schedule_reply_action(false, 2, 2), ScheduleReplyAction::Act);
+    }
+
+    #[test]
+    fn a_stale_reply_outside_time_edit_is_discarded() {
+        assert_eq!(
+            schedule_reply_action(false, 1, 2),
+            ScheduleReplyAction::Discard
         );
     }
 }

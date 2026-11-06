@@ -233,6 +233,8 @@ fn build_snapshot(feed: &GameFeed) -> Option<GameSnapshot> {
         next_period_len_secs: feed.next_period_len_secs,
         // Confirmed unused anywhere in this renderer.
         conf_pause_time: None,
+        // The bridge doesn't pass the refbox's language on yet.
+        language: None,
     })
 }
 

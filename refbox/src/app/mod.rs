@@ -684,6 +684,12 @@ fn spawn_stats_sender_if_client(
     ))
 }
 
+/// The language code to publish on snapshots: the first (active) language of the loader, e.g.
+/// `"es"` or `"zh-CN"`. `None` only if the loader somehow has none.
+fn published_language(languages: &[unic_langid::LanguageIdentifier]) -> Option<String> {
+    languages.first().map(ToString::to_string)
+}
+
 /// What the game feed publishes as the site the refbox is using, or `None` when there is nothing
 /// safe to publish.
 ///
@@ -1729,6 +1735,9 @@ impl RefBoxApp {
         // everyone on the pool LAN. An address that will not parse reports `None` rather than a
         // guess -- see `strip_credentials`.
         new_snapshot.portal_base_url = published_site_address(&self.current_site);
+        // The language this refbox's screens are actually in -- a chosen one or the computer's --
+        // so the stream overlay can show its own words in the same language.
+        new_snapshot.language = published_language(&crate::LANGUAGE_LOADER.current_languages());
 
         self.maybe_play_sound(&new_snapshot);
         if let Err(e) = self.update_sender.send_snapshot(
@@ -10024,6 +10033,19 @@ mod site_target_tests {
         target.require_https = true;
         let msg = https_policy_conflict(&target).expect("plain http under the https rule");
         assert!(!msg.contains("hunter2"), "leaked: {msg}");
+    }
+
+    /// The overlay picks its words from this code, so it must be the plain language code.
+    #[test]
+    fn the_game_feed_publishes_the_active_language_code() {
+        let langs: Vec<unic_langid::LanguageIdentifier> = ["es", "en"]
+            .iter()
+            .map(|l| l.parse().expect("valid"))
+            .collect();
+        assert_eq!(published_language(&langs).as_deref(), Some("es"));
+        let chinese: unic_langid::LanguageIdentifier = "zh-CN".parse().expect("valid");
+        assert_eq!(published_language(&[chinese]).as_deref(), Some("zh-CN"));
+        assert_eq!(published_language(&[]), None);
     }
 
     /// The game feed reaches every device on the pool LAN, so it matters more than any log file.

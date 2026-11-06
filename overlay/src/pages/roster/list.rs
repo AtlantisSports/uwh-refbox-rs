@@ -1,4 +1,5 @@
 use super::{Interpolate, Justify, PageRenderer, draw_texture_both, fit_text};
+use crate::pages::centred_on_english;
 use crate::{
     State,
     pages::{draw_text_both, draw_text_both_ex, draw_texture_both_ex},
@@ -366,8 +367,14 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         },
     );
     draw_text_ex(
-        "NEXT GAME",
-        905f32,
+        state.lang.next_game(),
+        centred_on_english(
+            &renderer.assets.font,
+            state.lang.next_game(),
+            "NEXT GAME",
+            905f32,
+            20,
+        ),
         1044f32,
         TextParams {
             font: Some(&renderer.assets.font),

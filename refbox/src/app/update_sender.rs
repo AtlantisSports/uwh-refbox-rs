@@ -1236,6 +1236,7 @@ mod test {
             recent_goal: None,
             next_period_len_secs: Some(180),
             conf_pause_time: None,
+            language: None,
         };
 
         let json_expected = serde_json::to_string(&snapshot).unwrap().into_bytes();
@@ -1368,6 +1369,7 @@ mod test {
             recent_goal: None,
             next_period_len_secs: None,
             conf_pause_time: None,
+            language: None,
         };
 
         let binary_expected = Vec::from(

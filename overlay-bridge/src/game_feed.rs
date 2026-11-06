@@ -25,7 +25,7 @@
 use serde::Serialize;
 use uwh_common::{
     color::Color,
-    game_snapshot::{GameSnapshot, PenaltySnapshot, PenaltyTime},
+    game_snapshot::{GameSnapshot, InfractionSnapshot, PenaltySnapshot, PenaltyTime},
 };
 
 use crate::{
@@ -87,6 +87,21 @@ pub struct Penalty {
     pub infraction: String,
 }
 
+/// One foul (no penalty), as the refbox lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Foul {
+    /// `"BLACK"` or `"WHITE"`, or `None` for a foul the refbox records against neither team.
+    pub team: Option<String>,
+    /// The player's cap number, or `None` when the refbox recorded no player.
+    pub number: Option<u8>,
+    /// The player's name from the roster, or `None` when there is no cap number or it is not on
+    /// the roster -- never a placeholder, as for [`Penalty::player`].
+    pub player: Option<String>,
+    /// The refbox's short name for the foul, as for [`Penalty::infraction`].
+    pub infraction: String,
+}
+
 /// Everything `GET /game` serves.
 ///
 /// **Every field is always serialized, including as `null`.** No field may gain
@@ -124,10 +139,18 @@ pub struct GameFeed {
     /// Every penalty on the snapshot -- neither padded nor truncated, unlike `/penalties`. `None`
     /// only when disconnected; an empty list means there are no penalties.
     pub penalties: Option<Vec<Penalty>>,
+    /// Every foul on the snapshot, in the refbox's own order within each team (Black, then
+    /// White, then fouls against neither team). `None` only when disconnected. Added after
+    /// version 1 shipped; adding a field doesn't bump [`SCHEMA_VERSION`].
+    pub fouls: Option<Vec<Foul>>,
     /// Paired with `portal_base_url`: both or neither.
     pub event_id: Option<String>,
     /// Paired with `event_id`, and served credential-stripped.
     pub portal_base_url: Option<String>,
+    /// The language the refbox's screens are in (`"en"`, `"es"`, `"fr"`, ...), from
+    /// `GameSnapshot::language`, so the overlay can show its words in the same language. `None`
+    /// when disconnected or when the refbox is too old to say. Added after version 1 shipped.
+    pub language: Option<String>,
 }
 
 /// The address with any `user:password@` credential removed, or `None` if that cannot be
@@ -227,6 +250,27 @@ fn penalties_of(snapshot: &GameSnapshot, rosters: &Rosters) -> Vec<Penalty> {
         .collect()
 }
 
+/// Every foul on the snapshot: Black's, then White's, then those against neither team, each in
+/// the refbox's own order (oldest first), with names resolved like [`penalties_of`].
+fn fouls_of(snapshot: &GameSnapshot, rosters: &Rosters) -> Vec<Foul> {
+    let foul = |color: Option<Color>, foul: &InfractionSnapshot| Foul {
+        team: color.map(|color| color_code(color).to_string()),
+        number: foul.player_number,
+        player: color
+            .zip(foul.player_number)
+            .and_then(|(color, number)| rosters[color].get(&number).cloned()),
+        infraction: foul.infraction.short_name().to_string(),
+    };
+    let fouls = &snapshot.fouls;
+    fouls
+        .black
+        .iter()
+        .map(|f| foul(Some(Color::Black), f))
+        .chain(fouls.white.iter().map(|f| foul(Some(Color::White), f)))
+        .chain(fouls.equal.iter().map(|f| foul(None, f)))
+        .collect()
+}
+
 /// A blanked feed: `connected: false` and every game value `null`.
 fn blanked() -> GameFeed {
     GameFeed {
@@ -245,8 +289,10 @@ fn blanked() -> GameFeed {
         recent_goal: None,
         next_period_len_secs: None,
         penalties: None,
+        fouls: None,
         event_id: None,
         portal_base_url: None,
+        language: None,
     }
 }
 
@@ -308,8 +354,10 @@ pub fn game_feed(
         }),
         next_period_len_secs: snapshot.next_period_len_secs,
         penalties: Some(penalties_of(snapshot, rosters)),
+        fouls: Some(fouls_of(snapshot, rosters)),
         event_id,
         portal_base_url,
+        language: snapshot.language.clone(),
     }
 }
 
@@ -481,6 +529,8 @@ mod tests {
         assert_eq!(feed.recent_goal, None);
         assert_eq!(feed.next_period_len_secs, None);
         assert_eq!(feed.penalties, None);
+        assert_eq!(feed.fouls, None);
+        assert_eq!(feed.language, None);
 
         let json = serde_json::to_value(&feed).expect("the feed should serialise");
         for key in [
@@ -499,8 +549,10 @@ mod tests {
             "recentGoal",
             "nextPeriodLenSecs",
             "penalties",
+            "fouls",
             "eventId",
             "portalBaseUrl",
+            "language",
         ] {
             assert!(
                 json.get(key).is_some(),
@@ -626,6 +678,82 @@ mod tests {
             "an unknown cap number serves null, never a placeholder"
         );
     }
+    #[test]
+    fn the_refbox_language_is_passed_on() {
+        let snapshot = GameSnapshot {
+            language: Some("fr".to_string()),
+            ..Default::default()
+        };
+        let feed = game_feed(&display_with(snapshot), None, &Rosters::default(), true);
+        assert_eq!(feed.language.as_deref(), Some("fr"));
+
+        let feed = game_feed(
+            &display_with(GameSnapshot::default()),
+            None,
+            &Rosters::default(),
+            true,
+        );
+        assert_eq!(feed.language, None, "an older refbox sends no language");
+    }
+
+    #[test]
+    fn fouls_carry_team_cap_name_and_foul() {
+        use uwh_common::game_snapshot::InfractionSnapshot;
+        let mut snapshot = GameSnapshot::default();
+        snapshot.fouls.white = vec![InfractionSnapshot {
+            player_number: Some(4),
+            infraction: Infraction::StickInfringement,
+        }];
+        snapshot.fouls.black = vec![InfractionSnapshot {
+            player_number: Some(9),
+            infraction: Infraction::Obstruction,
+        }];
+        snapshot.fouls.equal = vec![InfractionSnapshot {
+            player_number: None,
+            infraction: Infraction::FreeArm,
+        }];
+        let mut rosters = Rosters::default();
+        rosters.white.insert(4, "Known Player".to_string());
+
+        let feed = game_feed(&display_with(snapshot), None, &rosters, true);
+        let fouls = feed.fouls.expect("connected");
+
+        assert_eq!(
+            fouls,
+            vec![
+                Foul {
+                    team: Some("BLACK".to_string()),
+                    number: Some(9),
+                    player: None,
+                    infraction: "Obstruction".to_string(),
+                },
+                Foul {
+                    team: Some("WHITE".to_string()),
+                    number: Some(4),
+                    player: Some("Known Player".to_string()),
+                    infraction: "Stick Foul".to_string(),
+                },
+                Foul {
+                    team: None,
+                    number: None,
+                    player: None,
+                    infraction: "Free Arm".to_string(),
+                },
+            ]
+        );
+        let empty = game_feed(
+            &display_with(GameSnapshot::default()),
+            None,
+            &Rosters::default(),
+            true,
+        );
+        assert_eq!(
+            empty.fouls.as_deref(),
+            Some(&[][..]),
+            "no fouls is an empty list"
+        );
+    }
+
     /// An event id is useless and unsafe on its own: ids are not unique across portal
     /// environments, so `1889-B` is one tournament on the development portal and a different one
     /// on production. A consumer must be able to see which portal the id belongs to, so the two

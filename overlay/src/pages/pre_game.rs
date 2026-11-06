@@ -1,5 +1,6 @@
 use super::Interpolate;
 use super::PageRenderer;
+use super::centred_on_english;
 use super::draw_texture_both;
 use super::fit_text;
 use crate::pages::draw_text_both;
@@ -8,6 +9,7 @@ use crate::pages::draw_texture_both_ex;
 use crate::{State, pages::Justify};
 use coarsetime::Instant;
 use macroquad::prelude::*;
+use uwh_common::game_snapshot::GamePeriod;
 
 impl PageRenderer {
     /// Displayed from 30 seconds before a game begins.
@@ -116,8 +118,14 @@ impl PageRenderer {
                 },
             );
             draw_text_ex(
-                "NEXT GAME",
-                905f32,
+                state.lang.next_game(),
+                centred_on_english(
+                    &self.assets.font,
+                    state.lang.next_game(),
+                    "NEXT GAME",
+                    905f32,
+                    20,
+                ),
                 1044f32,
                 TextParams {
                     font: Some(&self.assets.font),
@@ -263,9 +271,17 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
+        let (x_off, first_half) = fit_text(
+            180f32,
+            state.lang.period(GamePeriod::FirstHalf),
+            20,
+            &self.assets.font,
+            Justify::Center,
+        );
+        // Centred in the same 180 px box as the period name during play.
         draw_text_ex(
-            "1ST HALF",
-            478f32,
+            first_half.as_str(),
+            423f32 + x_off,
             100f32,
             TextParams {
                 font: Some(&self.assets.font),

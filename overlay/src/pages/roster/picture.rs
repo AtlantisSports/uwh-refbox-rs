@@ -113,7 +113,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
             a if (p2..=p3).contains(&a) => {
                 renderer.animation_register0 = Instant::now();
                 (
-                    "REFEREES",
+                    state.lang.referees(),
                     &None,
                     &state.referees,
                     &renderer.assets.red_rpd,

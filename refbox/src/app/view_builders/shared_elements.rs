@@ -949,8 +949,9 @@ pub(super) fn make_game_time_button<'a>(
             Message::EditTime
         });
 
-    // When no portal event is linked, the health tile is not rendered
-    // and the banner falls back to the pre-feature layout. See
+    // The health tile is rendered on a remote source with a linked event, or
+    // on MANUAL while results are still waiting to be sent; otherwise the
+    // banner falls back to the pre-feature layout. See
     // `ViewData.portal_indicator` and ADR 011 amendment 2026-04-23.
     let mut time_row = if let Some(state) = portal_indicator {
         row![make_health_tile(state, tile_size, mode), time_button]

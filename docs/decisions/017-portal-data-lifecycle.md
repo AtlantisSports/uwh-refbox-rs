@@ -243,6 +243,33 @@ repoints the client and is greyed until event, court and game are all set.
 See `docs/superpowers/specs/2026-08-28-source-switch-confirmation-design.md` and
 `docs/superpowers/plans/2026-08-28-source-switch-confirmation.md`.
 
+### Amendment 2026-11-06 — results waiting is a warning, not a refusal
+
+The 2026-08-28 amendment above says the refusal for "results queued and unsent"
+is unchanged. That is no longer true. The refusal could leave a refbox stuck: an
+operator on MANUAL with results waiting had no way to reach them, and no way to
+switch source either.
+
+**Every source or site switch while results are waiting now shows a warning**
+instead of refusing. This covers the source buttons on Game Options, the Settings
+APPLY (including the CUSTOM site page), and, newly, MANUAL GAMES + APPLY, which
+used to slip past the check. The warning reads *"Game results are still waiting
+to be sent. If you switch now, they will be discarded and lost."* and offers
+three choices:
+
+- **GO BACK** returns to the Settings page, with every staged edit intact.
+- **SEE QUEUED RESULTS** opens the waiting-results page; closing it returns to
+  that same Settings page.
+- **SWITCH ANYWAY** discards every waiting result, then makes the switch. The
+  "Switching to X will clear the event, court and game" confirmation is not shown
+  after it.
+
+A discarded result can never be sent afterwards, not even one the background
+task had already picked up. The game-in-progress refusal still comes first and is
+unchanged.
+
+PO rulings of 2026-11-06. Built on `fix/refbox/manual-dead-end-results-waiting`.
+
 ### What is not in scope for this ADR
 
 - Persisting `using_uwhportal` across sessions in `config.toml` (currently

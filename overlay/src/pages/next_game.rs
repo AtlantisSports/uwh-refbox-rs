@@ -1,4 +1,5 @@
 use super::PageRenderer;
+use super::centred_on_english;
 use super::draw_texture_both;
 use super::fit_text;
 use crate::State;
@@ -94,7 +95,7 @@ impl PageRenderer {
         }
         let (x_off, text) = fit_text(
             270f32,
-            &format!("GAME #{}", state.snapshot.game_number()),
+            &format!("{} #{}", state.lang.game(), state.snapshot.game_number()),
             25,
             &self.assets.font,
             Justify::Center,
@@ -164,8 +165,14 @@ impl PageRenderer {
             },
         );
         draw_text_ex(
-            "NEXT GAME",
-            907f32,
+            state.lang.next_game(),
+            centred_on_english(
+                &self.assets.font,
+                state.lang.next_game(),
+                "NEXT GAME",
+                907f32,
+                20,
+            ),
             1044f32,
             TextParams {
                 font: Some(&self.assets.font),

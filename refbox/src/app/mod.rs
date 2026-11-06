@@ -974,6 +974,12 @@ fn apply_guard(
     }
 }
 
+/// Whether an APPLY on `page` must be rejected for an unusable SITE address.
+/// True only on the SITE editor, with an address `parse_custom_site` refuses.
+fn apply_rejects_address(page: ConfigPage, url: &str) -> bool {
+    matches!(page, ConfigPage::CustomSite(_)) && custom_site::parse_custom_site(url).is_err()
+}
+
 /// Where closing the portal detail page lands: back on the Settings page it
 /// was opened from (by SEE QUEUED RESULTS), or the main page otherwise.
 fn portal_detail_close_target(ret: Option<ConfigPage>) -> AppState {
@@ -2851,9 +2857,10 @@ impl RefBoxApp {
     /// reason: a leftover start time from the site the refbox has left, silently
     /// driving the countdown, is confusing.
     ///
-    /// The caller's obligation: `source_tap_outcome` has already cleared this.
-    /// The two refusals are not re-checked here, and the period is therefore
-    /// `BetweenGames`.
+    /// The caller's obligation: the game refusal and the results-waiting
+    /// warning have already been settled — by the tap's `source_tap_outcome`,
+    /// or by SWITCH ANYWAY's re-check — so neither is re-checked here, and the
+    /// period is therefore `BetweenGames`.
     fn switch_to_source(&mut self, target: GameSource) -> Task<Message> {
         // 1. The source itself: live, saved so a relaunch comes back here, and
         //    remembered as the remote to return to from MANUAL.
@@ -6024,6 +6031,23 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::ApplyConfigPage(page) => {
+                // Reject an unusable SITE address before anything else, and in
+                // particular before `apply_guard`: otherwise the results-waiting
+                // warning could come first, SWITCH ANYWAY would discard the
+                // results, and the re-entered APPLY would then reject the address
+                // — the results gone and nothing switched. Rejected here rather
+                // than left to fail later: an operator on the pool deck cannot
+                // debug a URL mid-game. The page stays open with the message and
+                // nothing is committed.
+                let url = self
+                    .edited_settings
+                    .as_ref()
+                    .map(|edited| edited.custom_site.url.as_str());
+                if url.is_some_and(|url| apply_rejects_address(page, url)) {
+                    self.app_state = AppState::EditGameConfig(ConfigPage::CustomSite(true));
+                    trace!("AppState changed to {:?}", self.app_state);
+                    return Task::none();
+                }
                 // Decide up front whether this APPLY moves the refbox to a
                 // different site or changes the source, and refuse or warn
                 // before anything is committed, so either leaves every edit
@@ -6090,14 +6114,9 @@ impl RefBoxApp {
                         // same value; defaulting an absent one instead would
                         // mean saving a blank site over the operator's address.
                         let site = self.edited_settings.as_ref().unwrap().custom_site.clone();
-                        // Reject a bad address here rather than let it fail
-                        // later: an operator on the pool deck cannot debug a
-                        // URL mid-game. The page stays open with the message.
-                        if custom_site::parse_custom_site(&site.url).is_err() {
-                            self.app_state = AppState::EditGameConfig(ConfigPage::CustomSite(true));
-                            trace!("AppState changed to {:?}", self.app_state);
-                            return Task::none();
-                        }
+                        // An unusable address was rejected at the top of this
+                        // handler, before `apply_guard`.
+                        debug_assert!(!apply_rejects_address(page, &site.url));
                         self.config.custom_site = site;
                         // This page is only reachable with CUSTOM chosen, so
                         // applying an address here is an unambiguous "use this
@@ -11720,6 +11739,19 @@ mod source_tap_tests {
                 "apply_guard({moves}, {changes}, {game}, {queued})"
             );
         }
+    }
+
+    #[test]
+    fn a_bad_custom_address_is_rejected_before_any_results_warning() {
+        assert!(apply_rejects_address(
+            ConfigPage::CustomSite(false),
+            "not a url"
+        ));
+        assert!(!apply_rejects_address(
+            ConfigPage::CustomSite(false),
+            "http://192.168.1.5:8080/api/1234-A"
+        ));
+        assert!(!apply_rejects_address(ConfigPage::Game, "not a url"));
     }
 
     #[test]

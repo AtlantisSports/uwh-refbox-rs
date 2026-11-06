@@ -989,6 +989,29 @@ fn portal_detail_close_target(ret: Option<ConfigPage>) -> AppState {
     }
 }
 
+/// What `portal_detail_return` becomes when the Portal tile opens the detail
+/// page from `state`.
+///
+/// The tile is drawn on the results-waiting warning and on the two portal
+/// pages SEE QUEUED RESULTS leads to, so a tap there must not drop the switch
+/// the warning is holding back: closing the detail page goes back to the
+/// warning's Settings page, with the staged edits intact. From the warning
+/// that is the page it came from; from the detail or attention page it is
+/// whatever was already recorded. From anywhere else the tile returns to the
+/// main page, as it always has.
+fn portal_detail_return_on_open(
+    state: &AppState,
+    current: Option<ConfigPage>,
+) -> Option<ConfigPage> {
+    match state {
+        AppState::ConfirmationPage(ConfirmationKind::ResultsWaiting(pending)) => {
+            Some(pending.return_page())
+        }
+        AppState::PortalDetailPage { .. } | AppState::PortalAttentionAction { .. } => current,
+        _ => None,
+    }
+}
+
 /// What tapping one of the two source buttons on Game Options does.
 ///
 /// Pure, and separate from the handler that acts on it, because the settings
@@ -5801,8 +5824,11 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::OpenPortalDetailPage => {
-                // Opened from the tile, so closing returns to the main page.
-                self.portal_detail_return = None;
+                // Opened from the tile. Closing returns to the main page,
+                // unless the tile was tapped on the results-waiting warning
+                // or on a page SEE QUEUED RESULTS led to.
+                self.portal_detail_return =
+                    portal_detail_return_on_open(&self.app_state, self.portal_detail_return);
                 self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
@@ -6162,8 +6188,9 @@ impl RefBoxApp {
                 //    a pending repoint from reaching one:
                 //    - The Game arm's four confirmations. Three require a game
                 //      in progress, which `apply_guard` has already turned
-                //      back for any APPLY that moves the site; the fourth requires the incomplete remote state
-                //      that leaves the Game page's APPLY with no press action.
+                //      back for any APPLY that moves the site; the fourth
+                //      requires the incomplete remote state that leaves the
+                //      Game page's APPLY with no press action.
                 //    - The App arm's `PortalTenantSwitch`, whose
                 //      `RestartAndApply` handler commits the new source without
                 //      repointing the live client, and is safe only because it
@@ -9045,11 +9072,12 @@ impl RefBoxApp {
                     .get(self.active_source(), id)
                     .and_then(|event| event.teams.as_ref())
             }),
-            // The portal health indicator is dormant whenever Using-UWH-Portal
-            // is off OR no event is linked. `Some` only when the feature is on
-            // AND an event is linked; otherwise `None` and the time banner
-            // falls back to the pre-feature layout. See ADR 011 amendments
-            // 2026-04-23 (event-linked gate) and 2026-05-16 (using-uwh-portal gate).
+            // On a remote source the portal health indicator is dormant
+            // whenever Using-UWH-Portal is off OR no event is linked: `Some`
+            // only when the feature is on AND an event is linked; otherwise
+            // `None` and the time banner falls back to the pre-feature layout.
+            // See ADR 011 amendments 2026-04-23 (event-linked gate) and
+            // 2026-05-16 (using-uwh-portal gate).
             // On MANUAL the tile is `Some` while results are still waiting to be
             // sent, so the operator can reach the waiting-results page and
             // discard them; with nothing waiting it stays `None` (ruling
@@ -11830,6 +11858,61 @@ mod source_tap_tests {
             portal_detail_close_target(None),
             AppState::MainPage
         ));
+    }
+
+    #[test]
+    fn the_tile_keeps_the_warnings_return_page() {
+        let item = ItemId {
+            event_id: "e1".to_string(),
+            game_number: "3".to_string(),
+        };
+        let cases: Vec<(AppState, Option<ConfigPage>, Option<ConfigPage>)> = vec![
+            // On the warning: return to the page the switch came from.
+            (
+                AppState::ConfirmationPage(ConfirmationKind::ResultsWaiting(PendingSwitch::Tap(
+                    GameSource::Custom,
+                ))),
+                None,
+                Some(ConfigPage::Game),
+            ),
+            (
+                AppState::ConfirmationPage(ConfirmationKind::ResultsWaiting(PendingSwitch::Apply(
+                    ConfigPage::App,
+                ))),
+                None,
+                Some(ConfigPage::App),
+            ),
+            // On the detail or attention page: keep what was recorded.
+            (
+                AppState::PortalDetailPage { scroll_index: 2 },
+                Some(ConfigPage::App),
+                Some(ConfigPage::App),
+            ),
+            (AppState::PortalDetailPage { scroll_index: 0 }, None, None),
+            (
+                AppState::PortalAttentionAction {
+                    item_id: item,
+                    discard_armed: false,
+                },
+                Some(ConfigPage::Game),
+                Some(ConfigPage::Game),
+            ),
+            // Anywhere else: the main page, even with a stale value recorded.
+            (AppState::MainPage, Some(ConfigPage::Game), None),
+            (AppState::EditGameConfig(ConfigPage::Game), None, None),
+            (
+                AppState::ConfirmationPage(ConfirmationKind::GameNumberChangedFromApply),
+                Some(ConfigPage::Game),
+                None,
+            ),
+        ];
+        for (state, current, expected) in cases {
+            assert_eq!(
+                portal_detail_return_on_open(&state, current),
+                expected,
+                "state {state:?}, current {current:?}"
+            );
+        }
     }
 
     #[test]

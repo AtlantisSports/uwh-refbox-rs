@@ -115,8 +115,8 @@ pub type SharedAccessKeys = std::sync::Arc<std::sync::Mutex<SiteAccessKeys>>;
 
 /// How many times this refbox has discarded its whole retry queue.
 ///
-/// One counter, shared by the `PortalManager` (the only writer: `discard_all_queued` bumps it)
-/// and the `UwhPortalIo` the background task posts through (the reader). Every queue snapshot
+/// One counter, shared by the `PortalManager` (the only writer: `discard_all_queued` and the
+/// single-row `discard` bump it) and the `UwhPortalIo` the background task posts through (the reader). Every queue snapshot
 /// and stats retry handed to the task carries the value it was taken at, and every post carries
 /// that value back to `UwhPortalIo::request_for`, which refuses a post whose value is older than
 /// the counter. That closes the window between the operator discarding the queue and the task
@@ -574,7 +574,8 @@ pub struct PortalManager {
     /// `docs/superpowers/specs/2026-08-13-degraded-no-write-target-design.md`.
     store: Option<queue::QueueStore>,
     /// The discard counter shared with this manager's uploader; see `DiscardEpoch`. Bumped only
-    /// by `discard_all_queued`, and read into every snapshot and stats retry sent to the task.
+    /// by `discard_all_queued` and `discard`, and read into every snapshot and stats retry sent
+    /// to the task.
     discard_epoch: DiscardEpoch,
 }
 
@@ -929,7 +930,7 @@ impl PortalManager {
             command_tx,
             recent_successes: VecDeque::new(),
             store,
-            // No background task reads it, but `discard_all_queued` still bumps it.
+            // No background task reads it, but the discards still bump it.
             discard_epoch: DiscardEpoch::default(),
         };
         m.recompute_indicator();
@@ -1125,9 +1126,15 @@ impl PortalManager {
     /// Operator tapped DISCARD THIS SUBMISSION on the attention action page.
     /// Removes the item from the queue without submitting. Whatever the
     /// portal currently has for that game stands.
+    ///
+    /// Bumps the discard counter once the removal is saved, as `discard_all_queued` does, so a
+    /// post of this row already in the background task's hands is refused rather than sent.
+    /// Posts of the rows still queued are refused once too, and go out from the next snapshot.
     pub fn discard(&mut self, id: &ItemId) -> std::io::Result<()> {
         self.queue.items.retain(|it| it.id != *id);
         self.persist()?;
+        self.discard_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.recompute_indicator();
         self.push_queue_snapshot();
         Ok(())
@@ -2331,6 +2338,66 @@ mod tests {
             other => panic!("a post from before the discard must be refused, got {other:?}"),
         }
         match health::PortalTaskIo::post_scores(&io, &item, 1).await {
+            Err(health::PortalCallError::Unreachable(_)) => {}
+            other => panic!("a current post must reach the network, got {other:?}"),
+        }
+    }
+
+    /// A single-row DISCARD closes the same window as discarding everything: a post of that row
+    /// handed to the task before the discard is refused without leaving the machine.
+    #[tokio::test]
+    async fn a_post_from_before_a_single_row_discard_is_never_sent() {
+        let site = "http://127.0.0.1:1";
+        let event =
+            uwh_common::uwhportal::schedule::EventId::from_full("events/discard-one-test").unwrap();
+        let mut keys = SiteAccessKeys::default();
+        keys.publish(
+            site.to_string(),
+            vec![crate::config::AccessKey {
+                site: site.to_string(),
+                event: event.clone(),
+                key: "KEY-D".to_string(),
+            }],
+        );
+        // Same 500 ms bound as `test_client`, for the same reason: WSL drops a connection to a
+        // closed loopback port rather than refusing it.
+        let client = uwh_common::uwhportal::UwhPortalClient::new(
+            site,
+            None,
+            false,
+            std::time::Duration::from_millis(500),
+        )
+        .unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let epoch = DiscardEpoch::default();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, epoch.clone()).unwrap();
+        let io = UwhPortalIo::new(
+            std::sync::Arc::new(std::sync::Mutex::new(client)),
+            std::sync::Arc::new(std::sync::Mutex::new(None)),
+            std::sync::Arc::new(std::sync::Mutex::new(keys)),
+            epoch.clone(),
+        );
+        m.enqueue_game_end(event.full().to_string(), "G1".into(), 1, 0, "{}".into())
+            .unwrap();
+        let mut item = mk_young_item();
+        item.id = ItemId {
+            event_id: event.full().to_string(),
+            game_number: "G1".to_string(),
+        };
+        // The counter the task's snapshot was taken at, before the operator discards the row.
+        let handed_over_at = epoch.load(std::sync::atomic::Ordering::SeqCst);
+
+        m.discard(&item.id).unwrap();
+        assert!(!m.has_queued_items());
+
+        match health::PortalTaskIo::post_scores(&io, &item, handed_over_at).await {
+            Err(health::PortalCallError::NotSent(msg)) => {
+                assert!(msg.contains("discarded"), "{msg}");
+            }
+            other => panic!("a post from before the discard must be refused, got {other:?}"),
+        }
+        let now = epoch.load(std::sync::atomic::Ordering::SeqCst);
+        match health::PortalTaskIo::post_scores(&io, &item, now).await {
             Err(health::PortalCallError::Unreachable(_)) => {}
             other => panic!("a current post must reach the network, got {other:?}"),
         }

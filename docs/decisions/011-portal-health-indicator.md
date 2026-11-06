@@ -518,6 +518,28 @@ toggle is off) makes the indicator's behaviour internally
 consistent: portal subsystem is invisible AND idle whenever the
 operator has not opted in.
 
+### 2026-11-06 — Tile on MANUAL while results wait; advisory only when queued
+
+Two rules above changed when the refusal to switch source with results waiting
+became a warning (see ADR 017, amendment 2026-11-06).
+
+**The tile now also shows on MANUAL while results are waiting to be sent.** The
+2026-04-23 and 2026-05-16 amendments tie the tile to a remote source with an
+event linked. That still holds on PORTAL and CUSTOM. On MANUAL the tile was
+always hidden, so an operator with results waiting had no way to reach them. It
+now appears for as long as anything is waiting, with the same colours, and a tap
+opens the detail page as usual. When the queue empties, the tile goes and MANUAL
+looks as it did before. On MANUAL the emblem shows the site the waiting results
+are going to.
+
+**The score-confirm advisory shows only when this game's result will be
+queued.** It used to follow the tile. On MANUAL the tile can now be showing
+although the game just ended is not being sent anywhere, and the advisory would
+then promise something untrue. So it is shown only when the result of the game
+being confirmed will actually go into the queue.
+
+PO rulings of 2026-11-06. Built on `fix/refbox/manual-dead-end-results-waiting`.
+
 ## Verified by Unit 7 audit (2026-05-15)
 
 ### Audit scope

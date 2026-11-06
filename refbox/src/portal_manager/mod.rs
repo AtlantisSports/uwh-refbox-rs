@@ -113,14 +113,18 @@ impl SiteAccessKeys {
 
 pub type SharedAccessKeys = std::sync::Arc<std::sync::Mutex<SiteAccessKeys>>;
 
-/// How many times this refbox has discarded its whole retry queue.
+/// How many times this refbox has discarded its whole retry queue or moved to another site.
 ///
-/// One counter, shared by the `PortalManager` (the only writer: `discard_all_queued` and the
-/// single-row `discard` bump it) and the `UwhPortalIo` the background task posts through (the reader). Every queue snapshot
-/// and stats retry handed to the task carries the value it was taken at, and every post carries
-/// that value back to `UwhPortalIo::request_for`, which refuses a post whose value is older than
-/// the counter. That closes the window between the operator discarding the queue and the task
-/// learning about it: a result already in the task's hands can no longer be sent anywhere.
+/// One counter, shared by the `PortalManager` (the only writer: `discard_all_queued` bumps it,
+/// and so does `note_site_moved`, which `repoint_client` calls when it swaps the client) and the
+/// `UwhPortalIo` the background task posts through (the reader). Every queue snapshot and stats
+/// retry handed to the task carries the value it was taken at, and every post carries that value
+/// back to `UwhPortalIo::request_for`, which refuses a post whose value is older than the
+/// counter. That closes the window between the operator discarding the queue and the task
+/// learning about it: a result already in the task's hands can no longer be sent anywhere. The
+/// repoint bump keeps a result handed over for the old site from being built against the new
+/// one; at every warned switch the queue is already empty or just discarded, so it refuses only
+/// results that are no longer queued.
 pub type DiscardEpoch = std::sync::Arc<std::sync::atomic::AtomicU64>;
 
 /// Production `PortalTaskIo` backed by a real `UwhPortalClient`.
@@ -183,11 +187,10 @@ impl UwhPortalIo {
     /// `item_epoch` is the discard counter a queued result was handed over at (`None` for a call
     /// that posts no result, such as `verify_token`). A result whose value is older than the
     /// counter was discarded after the task received it, and is refused here without sending.
-    /// The comparison happens under the client lock on purpose: `discard_all_queued` bumps the
-    /// counter before the caller repoints, and `repoint_client` swaps the client under this same
-    /// lock, so a post either built its request before the swap (and goes to the old site, where
-    /// the result was queued) or sees the bumped counter and is refused. It can never be built
-    /// against the new site.
+    /// The comparison happens under the client lock on purpose: `repoint_client` bumps the
+    /// counter and swaps the client together under this same lock, so a post either built its
+    /// request before the swap (and goes to the old site, where the result was queued) or sees
+    /// the bumped counter and is refused. It can never be built against the new site.
     fn request_for<T>(
         &self,
         event: &uwh_common::uwhportal::schedule::EventId,
@@ -574,8 +577,8 @@ pub struct PortalManager {
     /// `docs/superpowers/specs/2026-08-13-degraded-no-write-target-design.md`.
     store: Option<queue::QueueStore>,
     /// The discard counter shared with this manager's uploader; see `DiscardEpoch`. Bumped only
-    /// by `discard_all_queued` and `discard`, and read into every snapshot and stats retry sent
-    /// to the task.
+    /// by `discard_all_queued` and `note_site_moved`, and read into every snapshot and stats
+    /// retry sent to the task.
     discard_epoch: DiscardEpoch,
 }
 
@@ -930,7 +933,7 @@ impl PortalManager {
             command_tx,
             recent_successes: VecDeque::new(),
             store,
-            // No background task reads it, but the discards still bump it.
+            // No background task reads it, but `discard_all_queued` still bumps it.
             discard_epoch: DiscardEpoch::default(),
         };
         m.recompute_indicator();
@@ -1127,17 +1130,31 @@ impl PortalManager {
     /// Removes the item from the queue without submitting. Whatever the
     /// portal currently has for that game stands.
     ///
-    /// Bumps the discard counter once the removal is saved, as `discard_all_queued` does, so a
-    /// post of this row already in the background task's hands is refused rather than sent.
-    /// Posts of the rows still queued are refused once too, and go out from the next snapshot.
+    /// Ordered so a failure changes nothing, as in `discard_all_queued`: if the removal cannot be
+    /// saved the row is put back and the error returned, so the row stays on screen and queued
+    /// rather than vanishing here while the background task can still send it and the next
+    /// launch brings it back.
     pub fn discard(&mut self, id: &ItemId) -> std::io::Result<()> {
-        self.queue.items.retain(|it| it.id != *id);
-        self.persist()?;
-        self.discard_epoch
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let before = std::mem::take(&mut self.queue.items);
+        self.queue.items = before.iter().filter(|it| it.id != *id).cloned().collect();
+        if let Err(e) = self.persist() {
+            self.queue.items = before;
+            return Err(e);
+        }
         self.recompute_indicator();
         self.push_queue_snapshot();
         Ok(())
+    }
+
+    /// The shared client is being pointed at another site: refuse every post handed to the
+    /// background task before now, so nothing taken for the old site is built against the new.
+    ///
+    /// Called only by `repoint_client`, while it holds the client lock it swaps the client
+    /// under; `UwhPortalIo::request_for` checks the counter under that same lock, so no post can
+    /// see the new client with the old counter.
+    pub fn note_site_moved(&self) {
+        self.discard_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
     /// Apply the result of a periodic `verify_token` probe. `true` = the
@@ -2296,10 +2313,11 @@ mod tests {
         );
     }
 
-    /// A post handed to the task before a discard is refused without leaving the machine, and
-    /// one handed over after it is let through to the network.
-    #[tokio::test]
-    async fn a_post_from_before_a_discard_is_never_sent() {
+    /// The background task's `UwhPortalIo` for the discard-refusal tests: pointed at a closed
+    /// loopback port, holding a key for one event, and reading `epoch` as its discard counter.
+    fn discard_test_io(
+        epoch: DiscardEpoch,
+    ) -> (UwhPortalIo, uwh_common::uwhportal::schedule::EventId) {
         let site = "http://127.0.0.1:1";
         let event =
             uwh_common::uwhportal::schedule::EventId::from_full("events/discard-test").unwrap();
@@ -2321,13 +2339,20 @@ mod tests {
             std::time::Duration::from_millis(500),
         )
         .unwrap();
-        let epoch = DiscardEpoch::new(std::sync::atomic::AtomicU64::new(1));
         let io = UwhPortalIo::new(
             std::sync::Arc::new(std::sync::Mutex::new(client)),
             std::sync::Arc::new(std::sync::Mutex::new(None)),
             std::sync::Arc::new(std::sync::Mutex::new(keys)),
             epoch,
         );
+        (io, event)
+    }
+
+    /// A post handed to the task before a discard is refused without leaving the machine, and
+    /// one handed over after it is let through to the network.
+    #[tokio::test]
+    async fn a_post_from_before_a_discard_is_never_sent() {
+        let (io, event) = discard_test_io(DiscardEpoch::new(std::sync::atomic::AtomicU64::new(1)));
         let mut item = mk_young_item();
         item.id.event_id = event.full().to_string();
 
@@ -2343,64 +2368,67 @@ mod tests {
         }
     }
 
-    /// A single-row DISCARD closes the same window as discarding everything: a post of that row
-    /// handed to the task before the discard is refused without leaving the machine.
+    /// Moving to another site refuses a post handed to the task before the move, so a result
+    /// taken for the old site is never built against the new one; a post handed over after it
+    /// is let through to the network.
     #[tokio::test]
-    async fn a_post_from_before_a_single_row_discard_is_never_sent() {
-        let site = "http://127.0.0.1:1";
-        let event =
-            uwh_common::uwhportal::schedule::EventId::from_full("events/discard-one-test").unwrap();
-        let mut keys = SiteAccessKeys::default();
-        keys.publish(
-            site.to_string(),
-            vec![crate::config::AccessKey {
-                site: site.to_string(),
-                event: event.clone(),
-                key: "KEY-D".to_string(),
-            }],
-        );
-        // Same 500 ms bound as `test_client`, for the same reason: WSL drops a connection to a
-        // closed loopback port rather than refusing it.
-        let client = uwh_common::uwhportal::UwhPortalClient::new(
-            site,
-            None,
-            false,
-            std::time::Duration::from_millis(500),
-        )
-        .unwrap();
+    async fn a_post_from_before_a_site_move_is_never_sent() {
         let tmp = tempfile::TempDir::new().unwrap();
         let epoch = DiscardEpoch::default();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, epoch.clone()).unwrap();
-        let io = UwhPortalIo::new(
-            std::sync::Arc::new(std::sync::Mutex::new(client)),
-            std::sync::Arc::new(std::sync::Mutex::new(None)),
-            std::sync::Arc::new(std::sync::Mutex::new(keys)),
-            epoch.clone(),
-        );
-        m.enqueue_game_end(event.full().to_string(), "G1".into(), 1, 0, "{}".into())
-            .unwrap();
+        let (m, _rx) = PortalManager::new(tmp.path(), NullIo, epoch.clone()).unwrap();
+        let (io, event) = discard_test_io(epoch.clone());
         let mut item = mk_young_item();
-        item.id = ItemId {
-            event_id: event.full().to_string(),
-            game_number: "G1".to_string(),
-        };
-        // The counter the task's snapshot was taken at, before the operator discards the row.
+        item.id.event_id = event.full().to_string();
+        // The counter the task's snapshot was taken at, before the refbox moves site.
         let handed_over_at = epoch.load(std::sync::atomic::Ordering::SeqCst);
 
-        m.discard(&item.id).unwrap();
-        assert!(!m.has_queued_items());
+        m.note_site_moved();
 
         match health::PortalTaskIo::post_scores(&io, &item, handed_over_at).await {
             Err(health::PortalCallError::NotSent(msg)) => {
                 assert!(msg.contains("discarded"), "{msg}");
             }
-            other => panic!("a post from before the discard must be refused, got {other:?}"),
+            other => panic!("a post from before the move must be refused, got {other:?}"),
         }
         let now = epoch.load(std::sync::atomic::Ordering::SeqCst);
         match health::PortalTaskIo::post_scores(&io, &item, now).await {
             Err(health::PortalCallError::Unreachable(_)) => {}
             other => panic!("a current post must reach the network, got {other:?}"),
         }
+    }
+
+    /// A single-row discard that cannot be saved must change nothing: the row stays queued (and
+    /// so stays on screen and sendable), and the error is returned.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn discard_keeps_the_row_when_the_save_fails() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
+        m.enqueue_game_end("event".into(), "G1".into(), 1, 0, "{}".into())
+            .unwrap();
+        let id = ItemId {
+            event_id: "event".to_string(),
+            game_number: "G1".to_string(),
+        };
+
+        // Both, because a read-only directory alone stops a new temp file being created but not
+        // an in-place overwrite of the queue file itself.
+        let path = tmp.path().join("portal_queue.json");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let result = m.discard(&id);
+
+        std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert!(result.is_err(), "the save must fail: got {result:?}");
+        assert!(
+            m.has_queued_items(),
+            "a discard that could not be saved must leave the row queued"
+        );
     }
 
     #[tokio::test]

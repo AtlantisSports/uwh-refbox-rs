@@ -250,10 +250,14 @@ is unchanged. That is no longer true. The refusal could leave a refbox stuck: an
 operator on MANUAL with results waiting had no way to reach them, and no way to
 switch source either.
 
-**Every source or site switch while results are waiting now shows a warning**
+**A source or site switch while results are waiting now shows a warning**
 instead of refusing. This covers the source buttons on Game Options, the Settings
 APPLY (including the CUSTOM site page), and, newly, MANUAL GAMES + APPLY, which
-used to slip past the check. The warning reads *"Game results are still waiting
+used to slip past the check. The Hockey <-> Rugby mode change is not a source or
+site switch for this purpose: on a Portal or custom source the warning shows
+first, as for any switch away from it; on MANUAL there is no warning, and the
+mode change does not discard the waiting results (unchanged, and deliberately out
+of scope). The warning reads *"Game results are still waiting
 to be sent. If you switch now, they will be discarded and lost."* and offers
 three choices:
 
@@ -262,11 +266,16 @@ three choices:
   that same Settings page.
 - **SWITCH ANYWAY** discards every waiting result, then makes the switch. The
   "Switching to X will clear the event, court and game" confirmation is not shown
-  after it.
+  after it. If the switch then needs a further confirmation of its own (the
+  mode-change restart screen, the mid-game MANUAL GAMES screen, or the
+  game-settings-changed screen) and the operator cancels it, the results stay
+  discarded and the switch is not made. The PO accepted this on 2026-11-06 as
+  unlikely in practice.
 
 A discarded result can never be sent afterwards, not even one the background
-task had already picked up. The game-in-progress refusal still comes first and is
-unchanged.
+task had already picked up. Every move of the refbox to another site also stops
+any result the background task picked up for the old site from being sent to the
+new one. The game-in-progress refusal still comes first and is unchanged.
 
 PO rulings of 2026-11-06. Built on `fix/refbox/manual-dead-end-results-waiting`.
 

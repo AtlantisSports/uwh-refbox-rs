@@ -175,6 +175,13 @@ pub struct RefBoxApp {
     // The game/timeout clock times captured when the time-edit screen was opened,
     // used to gray out the Apply button when no change has been made.
     time_edit_old: (Duration, Option<Duration>),
+    /// A schedule reply (the `RecvSchedule` payload) that arrived while TIME EDIT was
+    /// open. TIME EDIT holds every clock still, and a reply can revive a court and
+    /// start its break under it, which the APPLY that followed then crashed on. So the
+    /// reply waits here and is acted on once the page has closed (see
+    /// `finish_time_edit_with_held_schedule`, and the catch-all in `update` for any
+    /// other way off the page). A second reply during one TIME EDIT replaces the first.
+    held_schedule: Option<(EventId, Schedule, u64)>,
     last_message: Message,
     update_sender: UpdateSender,
     uwhportal_client: Option<Arc<Mutex<UwhPortalClient>>>,
@@ -965,6 +972,26 @@ fn reply_is_current(issued_at: u64, now: u64) -> bool {
     issued_at == now
 }
 
+/// Which clock values a TIME EDIT that closes after a held schedule reply must still
+/// set, as (game clock, timeout clock).
+///
+/// Only what the operator changed: the held reply is acted on first and may have moved
+/// the clock (a revived court starts its break), and re-applying a value the operator
+/// never touched would undo that. CANCEL sets nothing. `old` is the pair captured when
+/// the page opened (`time_edit_old`), which a timeout ended on the page may have moved.
+fn time_edit_changes(
+    canceled: bool,
+    old: (Duration, Option<Duration>),
+    new: (Duration, Option<Duration>),
+) -> (Option<Duration>, Option<Duration>) {
+    if canceled {
+        return (None, None);
+    }
+    let game = (new.0 != old.0).then_some(new.0);
+    let timeout = if new.1 != old.1 { new.1 } else { None };
+    (game, timeout)
+}
+
 /// What an App-page APPLY should do with the committed event / court / schedule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LinkCommit {
@@ -1688,6 +1715,91 @@ impl RefBoxApp {
             warn!("Failed to send snapshot to displays: {e:?}");
         }
         self.snapshot = new_snapshot;
+    }
+
+    /// Close TIME EDIT (APPLY or CANCEL) when a schedule reply was held while it was open.
+    ///
+    /// The order matters. The clock is first put back as it was when the page opened,
+    /// without the operator's values; the page is closed; the held reply is then acted
+    /// on exactly as if it had just arrived (it may revive a court and start its
+    /// break); and only then are the values the operator actually changed set, with
+    /// the clock stopped around them. Setting them before the reply was the old order,
+    /// and a revive that started the break made that set fail on a running clock. An
+    /// APPLY that changed nothing therefore behaves like CANCEL (PO ruling).
+    ///
+    /// No engine error on this path is unwrapped: each is logged and the rest carries on.
+    fn finish_time_edit_with_held_schedule(
+        &mut self,
+        canceled: bool,
+        was_running: bool,
+        edited: (Duration, Option<Duration>),
+        held: (EventId, Schedule, u64),
+    ) -> Task<Message> {
+        let mut tasks = Vec::new();
+
+        // 1. Resume the clock as it was, the operator's values not applied yet.
+        let mut tm = self.tm.lock();
+        let now = Instant::now();
+        if was_running {
+            tm.start_clock(now);
+            if let Err(e) = tm.update(now) {
+                error!("Could not update the clock on closing TIME EDIT: {e}");
+            }
+        }
+        let snapshot = tm.generate_snapshot(now);
+        drop(tm);
+        match snapshot {
+            Some(snapshot) => tasks.push(self.apply_snapshot(snapshot)),
+            None => error!("Could not generate a snapshot on closing TIME EDIT"),
+        }
+
+        // 2. Close the page before the replay, or the replay would be held again.
+        self.app_state = self.last_app_state.clone();
+        trace!("AppState changed to {:?}", self.app_state);
+
+        // 3. Act on the held reply, running every check `RecvSchedule` makes.
+        let (event_id, schedule, issued_at) = held;
+        info!(
+            "TIME EDIT closed; acting on the schedule for event {} held while it was open",
+            event_id.full()
+        );
+        tasks.push(self.update(Message::RecvSchedule(event_id, schedule, issued_at)));
+
+        // 4. Set only what the operator changed, over whatever the reply did.
+        let (game, timeout) = time_edit_changes(canceled, self.time_edit_old, edited);
+        if game.is_some() || timeout.is_some() {
+            let mut tm = self.tm.lock();
+            // A fresh instant: the replay read the clock after step 1's `now`.
+            let now = Instant::now();
+            let running = tm.clock_is_running();
+            if let Err(e) = tm.stop_clock(now) {
+                error!("Could not stop the clock to apply TIME EDIT: {e}");
+            }
+            if let Some(time) = game {
+                if let Err(e) = tm.set_game_clock_time(time) {
+                    error!("Could not set the game clock from TIME EDIT: {e}");
+                }
+            }
+            if let Some(time) = timeout {
+                if let Err(e) = tm.set_timeout_clock_time(time) {
+                    warn!("Could not set the timeout clock from TIME EDIT: {e}");
+                }
+            }
+            if running {
+                tm.start_clock(now);
+                if let Err(e) = tm.update(now) {
+                    error!("Could not update the clock after applying TIME EDIT: {e}");
+                }
+            }
+            let snapshot = tm.generate_snapshot(now);
+            drop(tm);
+            match snapshot {
+                Some(snapshot) => tasks.push(self.apply_snapshot(snapshot)),
+                None => error!("Could not generate a snapshot after applying TIME EDIT"),
+            }
+        }
+
+        Task::batch(tasks)
     }
 
     /// Restart the game in play, after the operator confirmed RESTART GAME.
@@ -4339,6 +4451,7 @@ impl RefBoxApp {
             app_state: initial_app_state,
             last_app_state: default_app_state,
             time_edit_old: (Duration::ZERO, None),
+            held_schedule: None,
             last_message: Message::NoAction,
             update_sender,
             uwhportal_client,
@@ -4552,7 +4665,24 @@ impl RefBoxApp {
     /// stopped, so a score, timeout, time edit or settings apply made then must refresh the frame
     /// itself, and a list of call sites would miss the next one added.
     pub(super) fn update(&mut self, message: Message) -> Task<Message> {
-        let task = self.handle_message(message);
+        let mut task = self.handle_message(message);
+        // A schedule reply held while TIME EDIT was open must never be stranded. APPLY
+        // and CANCEL act on it themselves (`finish_time_edit_with_held_schedule`), but
+        // other messages can also take the operator off the page (the health tile, a
+        // timeout ended on the page that ends the game, a score confirmation queued
+        // before the page opened). Whatever closed it, act on the reply now.
+        if self.held_schedule.is_some() && !matches!(self.app_state, AppState::TimeEdit(..)) {
+            if let Some((event_id, schedule, issued_at)) = self.held_schedule.take() {
+                info!(
+                    "TIME EDIT closed without APPLY or CANCEL; acting on the schedule for \
+                     event {} held while it was open",
+                    event_id.full()
+                );
+                let replay =
+                    self.handle_message(Message::RecvSchedule(event_id, schedule, issued_at));
+                task = Task::batch([task, replay]);
+            }
+        }
         self.refresh_live_frame();
         task
     }
@@ -4658,6 +4788,14 @@ impl RefBoxApp {
             }
             Message::TimeEditComplete { canceled } => {
                 if let AppState::TimeEdit(was_running, game_time, timeout_time) = self.app_state {
+                    if let Some(held) = self.held_schedule.take() {
+                        return self.finish_time_edit_with_held_schedule(
+                            canceled,
+                            was_running,
+                            (game_time, timeout_time),
+                            held,
+                        );
+                    }
                     let mut tm = self.tm.lock();
                     let now = Instant::now();
                     if !canceled {
@@ -7387,6 +7525,26 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::RecvSchedule(event_id, mut schedule, issued_at) => {
+                // TIME EDIT holds every clock still, and this reply can revive a court
+                // and start its break under the page, which the APPLY after it then
+                // crashed on. Hold it until the page closes. Held before every check
+                // below, so the replay runs all of them as if it had just arrived.
+                if matches!(self.app_state, AppState::TimeEdit(..)) {
+                    if self.held_schedule.is_some() {
+                        info!(
+                            "Holding the schedule for event {} until TIME EDIT closes; it \
+                             replaces a schedule already held",
+                            event_id.full()
+                        );
+                    } else {
+                        info!(
+                            "Holding the schedule for event {} until TIME EDIT closes",
+                            event_id.full()
+                        );
+                    }
+                    self.held_schedule = Some((event_id, schedule, issued_at));
+                    return Task::none();
+                }
                 if !reply_is_current(issued_at, self.site_generation) {
                     warn!(
                         "Discarding the schedule for event {}: it was fetched from \
@@ -11291,6 +11449,32 @@ mod source_tap_tests {
         // Anything but an exact match is data of uncertain origin, which this
         // guard exists to refuse.
         assert!(!reply_is_current(5, 2));
+    }
+}
+
+#[cfg(test)]
+mod time_edit_changes_tests {
+    use super::*;
+
+    #[test]
+    fn time_edit_changes_returns_only_what_the_operator_changed() {
+        let s = Duration::from_secs;
+        assert_eq!(
+            time_edit_changes(true, (s(0), Some(s(30))), (s(600), Some(s(5)))),
+            (None, None)
+        );
+        assert_eq!(
+            time_edit_changes(false, (s(0), None), (s(0), None)),
+            (None, None)
+        );
+        assert_eq!(
+            time_edit_changes(false, (s(0), Some(s(30))), (s(600), Some(s(30)))),
+            (Some(s(600)), None)
+        );
+        assert_eq!(
+            time_edit_changes(false, (s(0), Some(s(30))), (s(0), Some(s(5)))),
+            (None, Some(s(5)))
+        );
     }
 }
 

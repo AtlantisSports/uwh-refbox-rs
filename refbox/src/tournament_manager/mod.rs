@@ -14306,6 +14306,51 @@ mod test {
         assert_counting_down(&tm, 60);
     }
 
+    // ---- The order TIME EDIT uses when a schedule reply was held while it was open ----
+
+    #[test]
+    fn time_edit_cancel_then_held_revive_counts_to_the_start() {
+        // TIME EDIT opened on a parked court (EditTime stops the clock), CANCEL, then
+        // the held reply revives the court: the break counts down as normal.
+        initialize();
+        let start = Instant::now();
+        let mut tm = parked_court(start);
+        assert_eq!(tm.stop_clock(start), Ok(()));
+        assert_eq!(
+            tm.revive_court(revived_game("13"), start + Duration::from_secs(2)),
+            Ok(true)
+        );
+        assert_counting_down(&tm, 60);
+    }
+
+    #[test]
+    fn time_edit_apply_after_held_revive_keeps_the_operator_time() {
+        // The held reply revives the court first; then the operator's changed time is
+        // set with the clock stopped around it, and the break counts from that time.
+        initialize();
+        let start = Instant::now();
+        let mut tm = parked_court(start);
+        assert_eq!(tm.revive_court(revived_game("13"), start), Ok(true));
+        assert_eq!(tm.stop_clock(start + Duration::from_secs(2)), Ok(()));
+        assert_eq!(tm.set_game_clock_time(Duration::from_secs(600)), Ok(()));
+        tm.start_clock(start + Duration::from_secs(2));
+        assert_counting_down(&tm, 600);
+    }
+
+    #[test]
+    fn apply_before_revive_is_what_crashed() {
+        // The old app order: the revive starts the break, and setting the clock on a
+        // running clock is refused. The app unwrapped this error and crashed.
+        initialize();
+        let start = Instant::now();
+        let mut tm = parked_court(start);
+        assert_eq!(tm.revive_court(revived_game("13"), start), Ok(true));
+        assert_eq!(
+            tm.set_game_clock_time(Duration::ZERO),
+            Err(TournamentManagerError::ClockIsRunning)
+        );
+    }
+
     #[test]
     fn a_deferred_break_counts_to_the_scheduled_start() {
         initialize();

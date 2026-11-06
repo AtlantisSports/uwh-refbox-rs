@@ -184,6 +184,7 @@ pub async fn generate_scoresheets_for_event(
                 resolve_officials(&*portal_client, &event.id, game, &mut name_cache).await;
             // Fallback to CSV for this game if portal provides nothing
             if resolved.chief.is_empty()
+                && resolved.assistant_chief.is_empty()
                 && resolved.water1.is_empty()
                 && resolved.water2.is_empty()
                 && resolved.water3.is_empty()
@@ -303,6 +304,7 @@ pub async fn generate_scoresheets_for_event(
                     black_roster: &black_rows,
                     white_roster: &white_rows,
                     chief: &officials.chief,
+                    assistant_chief: &officials.assistant_chief,
                     water: [&officials.water1, &officials.water2, &officials.water3],
                     timekeeper: &officials.ts_keeper,
                     timekeeper_helper: &officials.ts_helper,
@@ -700,6 +702,7 @@ fn find_timing_rule<'a>(
 #[derive(Default, Clone)]
 struct OfficialNames {
     chief: String,
+    assistant_chief: String,
     water1: String,
     water2: String,
     water3: String,
@@ -753,6 +756,7 @@ async fn resolve_officials(
 
             match a.role.as_str() {
                 "Chief" => names.chief = display,
+                "AssistantChief" => names.assistant_chief = display,
                 "Water1" => names.water1 = display,
                 "Water2" => names.water2 = display,
                 "Water3" => names.water3 = display,
@@ -825,6 +829,8 @@ fn parse_referee_csv(
         let get = |i: usize| rec.get(i).unwrap_or("").trim().to_string();
         let names = OfficialNames {
             chief: get(idx_chief),
+            // The referee CSV has no Assistant Chief column.
+            assistant_chief: String::new(),
             water1: get(idx_w1),
             water2: get(idx_w2),
             water3: get(idx_w3),
@@ -2731,6 +2737,7 @@ pub fn generate_example_rule_sheets(
                     black_roster: &empty_rows,
                     white_roster: &empty_rows,
                     chief: "",
+                    assistant_chief: "",
                     water: ["", "", ""],
                     timekeeper: "",
                     timekeeper_helper: "",
@@ -3285,5 +3292,57 @@ mod tests {
             !html.contains(">Game</th>"),
             "a two-half game must not get the merged label"
         );
+    }
+
+    // Every user id is already in the name cache, so `resolve_officials` never
+    // calls the portal; the client only satisfies the signature. Its address is
+    // unreachable, so a lookup that did go out would fall back to the raw id and
+    // fail the name checks below.
+    #[tokio::test]
+    async fn resolve_officials_fills_assistant_chief_from_its_own_role() {
+        use super::resolve_officials;
+        use std::collections::HashMap;
+        use uwh_common::uwhportal::UwhPortalClient;
+        use uwh_common::uwhportal::schedule::RefereeAssignment;
+
+        let client = UwhPortalClient::new(
+            "http://127.0.0.1:9",
+            None,
+            false,
+            std::time::Duration::from_millis(50),
+        )
+        .unwrap();
+        let assign = |role: &str, uid: &str| RefereeAssignment {
+            role: role.to_string(),
+            user_id: Some(uid.to_string()),
+            team_id: None,
+            display_name: None,
+        };
+        let game = Game {
+            number: "1".to_string(),
+            dark: ScheduledTeam::new_pending_assignment_name("Example Black"),
+            light: ScheduledTeam::new_pending_assignment_name("Example White"),
+            start_time: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
+            court: "1".to_string(),
+            timing_rule: "Standard".to_string(),
+            referee_assignments: Some(vec![
+                assign("Chief", "users/1"),
+                assign("AssistantChief", "users/2"),
+                assign("TimeOrScoreHelper", "users/3"),
+            ]),
+            description: None,
+        };
+        let mut cache = HashMap::from([
+            ("users/1".to_string(), "Alice".to_string()),
+            ("users/2".to_string(), "Ann".to_string()),
+            ("users/3".to_string(), "Bob".to_string()),
+        ]);
+
+        let names =
+            resolve_officials(&client, &EventId::from_partial("1-A"), &game, &mut cache).await;
+
+        assert_eq!(names.chief, "Alice");
+        assert_eq!(names.assistant_chief, "Ann");
+        assert_eq!(names.ts_helper, "Bob");
     }
 }

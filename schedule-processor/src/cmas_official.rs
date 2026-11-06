@@ -121,6 +121,8 @@ pub struct CmasSheetInput<'a> {
     pub black_roster: &'a [SheetRosterRow],
     pub white_roster: &'a [SheetRosterRow],
     pub chief: &'a str,
+    /// Printed under "Assistant Chief Referee:"; empty keeps the blank line.
+    pub assistant_chief: &'a str,
     pub water: [&'a str; 3],
     pub timekeeper: &'a str,
     pub timekeeper_helper: &'a str,
@@ -246,6 +248,12 @@ pub fn render_html_cmas_official(input: &CmasSheetInput<'_>) -> String {
     let start_time = html_escape(input.start_time);
     let date_html = input.date_html;
     let chief = html_escape(input.chief);
+    // `&nbsp;` keeps the blank name line its height when nobody is assigned.
+    let assistant_chief = if input.assistant_chief.is_empty() {
+        "&nbsp;".to_string()
+    } else {
+        html_escape(input.assistant_chief)
+    };
     let water1 = html_escape(input.water[0]);
     let water2 = html_escape(input.water[1]);
     let water3 = html_escape(input.water[2]);
@@ -363,7 +371,7 @@ pub fn render_html_cmas_official(input: &CmasSheetInput<'_>) -> String {
     <tr>
       <td></td><td></td><td class="gap"></td><td></td><td></td><td class="gap"></td><td></td><td></td>
       <td class="nb" colspan="2"></td><td class="nb" colspan="3"></td>
-      <td class="nb"></td><td class="ofnm nb" colspan="7">&nbsp;</td>
+      <td class="nb"></td><td class="ofnm nb" colspan="7">{assistant_chief}</td>
     </tr>
     <tr>
       <td></td><td></td><td class="gap"></td><td></td><td></td><td class="gap"></td><td></td><td></td>
@@ -566,6 +574,7 @@ mod tests {
             black_roster: black,
             white_roster: white,
             chief: "M. ALVAREZ",
+            assistant_chief: "T. NGATA",
             water: ["J. SMITH", "A. CHEN", "R. PATEL"],
             timekeeper: "K. ITO",
             timekeeper_helper: "L. MOORE",
@@ -628,6 +637,41 @@ mod tests {
         assert!(!html.contains("Q & R <Ref>"));
         assert!(html.contains("U19W &amp; &lt;RR&gt;"));
         assert!(!html.contains("U19W & <RR>"));
+    }
+
+    /// The name cell directly under the "Assistant Chief Referee:" label.
+    fn assistant_chief_cell(html: &str) -> &str {
+        let after_label = html
+            .split_once("Assistant Chief Referee:</td>")
+            .expect("the label is printed")
+            .1;
+        let cell_start = after_label
+            .split_once(r#"<td class="ofnm nb" colspan="7">"#)
+            .expect("a name cell follows the label")
+            .1;
+        cell_start
+            .split_once("</td>")
+            .expect("the name cell closes")
+            .0
+    }
+
+    #[test]
+    fn prints_the_assistant_chief_escaped_under_its_label() {
+        let (black, white) = sample_input();
+        let mut input = sample_cmas_input(&black, &white);
+        input.assistant_chief = "T. & <Ngata>";
+        let html = render_html_cmas_official(&input);
+        assert_eq!(assistant_chief_cell(&html), "T. &amp; &lt;Ngata&gt;");
+        assert!(!html.contains("T. & <Ngata>"));
+    }
+
+    #[test]
+    fn empty_assistant_chief_keeps_the_blank_line() {
+        let (black, white) = sample_input();
+        let mut input = sample_cmas_input(&black, &white);
+        input.assistant_chief = "";
+        let html = render_html_cmas_official(&input);
+        assert_eq!(assistant_chief_cell(&html), "&nbsp;");
     }
 
     #[test]
@@ -856,6 +900,7 @@ mod tests {
             black_roster: &black,
             white_roster: &white,
             chief: "M. ALVAREZ",
+            assistant_chief: "T. NGATA",
             water: ["J. SMITH", "A. CHEN", "R. PATEL"],
             timekeeper: "K. ITO",
             timekeeper_helper: "L. MOORE",

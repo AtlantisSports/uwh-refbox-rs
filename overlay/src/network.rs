@@ -720,6 +720,8 @@ pub async fn networking_thread(
         bridge_url: _,
         bridge_port_moved: _,
         refbox_port_moved: _,
+        // Read by the drawing loop, not the network.
+        language: _,
     } = config;
 
     let (snapshot_tx, mut snapshot_rx) = tokio::sync::mpsc::unbounded_channel::<GameSnapshot>();

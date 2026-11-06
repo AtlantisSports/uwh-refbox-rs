@@ -109,6 +109,9 @@ struct GameFeed {
     fouls: Option<Vec<Foul>>,
     event_id: Option<String>,
     portal_base_url: Option<String>,
+    /// The refbox's language, passed on by the bridge. Absent from older bridges.
+    #[serde(default)]
+    language: Option<String>,
 }
 
 /// The reverse of `GamePeriod`'s `Display` impl (`uwh-common/src/game_snapshot.rs`).
@@ -280,8 +283,8 @@ fn build_snapshot(feed: &GameFeed) -> Option<GameSnapshot> {
         next_period_len_secs: feed.next_period_len_secs,
         // Confirmed unused anywhere in this renderer.
         conf_pause_time: None,
-        // The bridge doesn't pass the refbox's language on yet.
-        language: None,
+        // Picks the overlay's language when it follows the refbox (`words.rs`).
+        language: feed.language.clone(),
     })
 }
 

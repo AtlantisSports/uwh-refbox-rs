@@ -32,6 +32,7 @@ mod ndi_runtime;
 mod network;
 use network::{BLACK_TEAM_NAME, WHITE_TEAM_NAME};
 mod pages;
+mod words;
 
 use load_images::Texture;
 
@@ -156,6 +157,10 @@ pub struct AppConfig {
     /// Set once a saved refbox port of 8000 has been moved to 19540; a later 8000 is kept.
     #[serde(default)]
     refbox_port_moved: bool,
+    /// The overlay's language: `"follow-refbox"` (the default), or `"en"`, `"es"` or `"fr"` to
+    /// always use that one. Missing from settings files written before languages existed.
+    #[serde(default)]
+    language: words::LanguageSetting,
 }
 
 impl Default for AppConfig {
@@ -168,6 +173,7 @@ impl Default for AppConfig {
             // A new settings file never held either old port, so there is nothing to move.
             bridge_port_moved: true,
             refbox_port_moved: true,
+            language: words::LanguageSetting::default(),
         }
     }
 }
@@ -182,6 +188,8 @@ pub struct State {
     half_play_duration: Option<u32>,
     event_logo: Option<Texture>,
     sponsor_logo: Option<Texture>,
+    /// The language the overlay's own words are shown in this frame.
+    lang: words::Lang,
 }
 
 // TODO: Change this to return Result. We're not rn cause from_file_with_format
@@ -205,6 +213,19 @@ fn texture_from_image_result(image: network::Image) -> Result<Texture, Box<dyn s
 }
 
 impl State {
+    /// Picks this frame's language, and shows the fallback team names ("BLACK" / "WHITE", used
+    /// when the schedule gives no names) in it.
+    fn set_language(&mut self, setting: words::LanguageSetting) {
+        self.lang = words::Lang::pick(setting, self.snapshot.language.as_deref());
+        for team in [&mut self.black, &mut self.white] {
+            if let Some(name) = self.lang.default_team_name(&team.team_name) {
+                if team.team_name != name {
+                    team.team_name = name.to_string();
+                }
+            }
+        }
+    }
+
     fn update_state(&mut self, received_update: StateUpdate) {
         match received_update {
             StateUpdate::Snapshot(snapshot) => {
@@ -379,6 +400,9 @@ async fn main() {
 
     let (tx, rx) = bounded::<StateUpdate>(3);
 
+    // The networking thread takes the settings; the drawing loop only needs the language.
+    let language_setting = config.language;
+
     #[cfg(not(feature = "bridge"))]
     let net_worker = std::thread::spawn(|| {
         network::networking_thread(tx, config);
@@ -405,6 +429,7 @@ async fn main() {
         half_play_duration: None,
         event_logo: None,
         sponsor_logo: None,
+        lang: words::Lang::default(),
     };
 
     let mut renderer = pages::PageRenderer {
@@ -467,6 +492,7 @@ async fn main() {
 
         if let Ok(received_state) = rx.try_recv() {
             local_state.update_state(received_state);
+            local_state.set_language(language_setting);
             // sync local penalty list
             flag_renderer.synchronize_flags(&local_state);
         }
@@ -506,7 +532,7 @@ async fn main() {
             }
             GamePeriod::FirstHalf | GamePeriod::SecondHalf | GamePeriod::HalfTime => {
                 renderer.in_game_display(&local_state);
-                flag_renderer.draw();
+                flag_renderer.draw(local_state.lang);
             }
             GamePeriod::OvertimeFirstHalf
             | GamePeriod::OvertimeHalfTime
@@ -515,7 +541,7 @@ async fn main() {
             | GamePeriod::PreSuddenDeath
             | GamePeriod::SuddenDeath => {
                 renderer.overtime_and_sudden_death_display(&local_state);
-                flag_renderer.draw();
+                flag_renderer.draw(local_state.lang);
             }
         }
 
@@ -725,6 +751,7 @@ mod tests {
             half_play_duration: Some(600),
             event_logo: None,
             sponsor_logo: None,
+            lang: words::Lang::default(),
         };
 
         // Same event (none at all, as from a local-CSV bridge), so only the game number changes.
@@ -759,6 +786,7 @@ mod tests {
             half_play_duration: Some(600),
             event_logo: None,
             sponsor_logo: None,
+            lang: words::Lang::default(),
         };
 
         state.update_state(StateUpdate::Snapshot(snapshot("event-a")));
@@ -827,6 +855,48 @@ mod tests {
         assert_eq!(old.refbox_port, OLD_REFBOX_PORT);
         assert!(!old.refbox_port_moved);
         assert!(AppConfig::default().refbox_port_moved);
+    }
+
+    #[test]
+    fn a_settings_file_from_before_languages_follows_the_refbox() {
+        let old: AppConfig = serde_json::from_str(
+            r#"{"refbox_ip": "127.0.0.1", "refbox_port": 19540, "uwhportal_url": "https://api.uwhportal.com", "bridge_url": "http://127.0.0.1:8098", "bridge_port_moved": true, "refbox_port_moved": true}"#,
+        )
+        .expect("a settings file without `language` still loads");
+        assert_eq!(old.language, words::LanguageSetting::FollowRefbox);
+        assert_eq!(
+            AppConfig::default().language,
+            words::LanguageSetting::FollowRefbox
+        );
+    }
+
+    #[test]
+    fn the_fallback_team_names_follow_the_language() {
+        let mut state = State {
+            snapshot: GameSnapshot {
+                language: Some("es".to_string()),
+                ..Default::default()
+            },
+            black: TeamInfo::with_name(BLACK_TEAM_NAME),
+            white: TeamInfo::with_name("Atlantis"),
+            referees: Vec::new(),
+            pool: String::new(),
+            start_time: String::new(),
+            half_play_duration: None,
+            event_logo: None,
+            sponsor_logo: None,
+            lang: words::Lang::default(),
+        };
+        state.set_language(words::LanguageSetting::FollowRefbox);
+        assert_eq!(state.lang, words::Lang::Es);
+        assert_eq!(state.black.team_name, "NEGRO");
+        assert_eq!(
+            state.white.team_name, "Atlantis",
+            "a real team name is never translated"
+        );
+
+        state.set_language(words::LanguageSetting::French);
+        assert_eq!(state.black.team_name, "NOIR");
     }
 
     #[test]

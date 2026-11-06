@@ -147,6 +147,10 @@ pub struct GameFeed {
     pub event_id: Option<String>,
     /// Paired with `event_id`, and served credential-stripped.
     pub portal_base_url: Option<String>,
+    /// The language the refbox's screens are in (`"en"`, `"es"`, `"fr"`, ...), from
+    /// `GameSnapshot::language`, so the overlay can show its words in the same language. `None`
+    /// when disconnected or when the refbox is too old to say. Added after version 1 shipped.
+    pub language: Option<String>,
 }
 
 /// The address with any `user:password@` credential removed, or `None` if that cannot be
@@ -288,6 +292,7 @@ fn blanked() -> GameFeed {
         fouls: None,
         event_id: None,
         portal_base_url: None,
+        language: None,
     }
 }
 
@@ -352,6 +357,7 @@ pub fn game_feed(
         fouls: Some(fouls_of(snapshot, rosters)),
         event_id,
         portal_base_url,
+        language: snapshot.language.clone(),
     }
 }
 
@@ -524,6 +530,7 @@ mod tests {
         assert_eq!(feed.next_period_len_secs, None);
         assert_eq!(feed.penalties, None);
         assert_eq!(feed.fouls, None);
+        assert_eq!(feed.language, None);
 
         let json = serde_json::to_value(&feed).expect("the feed should serialise");
         for key in [
@@ -545,6 +552,7 @@ mod tests {
             "fouls",
             "eventId",
             "portalBaseUrl",
+            "language",
         ] {
             assert!(
                 json.get(key).is_some(),
@@ -670,6 +678,24 @@ mod tests {
             "an unknown cap number serves null, never a placeholder"
         );
     }
+    #[test]
+    fn the_refbox_language_is_passed_on() {
+        let snapshot = GameSnapshot {
+            language: Some("fr".to_string()),
+            ..Default::default()
+        };
+        let feed = game_feed(&display_with(snapshot), None, &Rosters::default(), true);
+        assert_eq!(feed.language.as_deref(), Some("fr"));
+
+        let feed = game_feed(
+            &display_with(GameSnapshot::default()),
+            None,
+            &Rosters::default(),
+            true,
+        );
+        assert_eq!(feed.language, None, "an older refbox sends no language");
+    }
+
     #[test]
     fn fouls_carry_team_cap_name_and_foul() {
         use uwh_common::game_snapshot::InfractionSnapshot;

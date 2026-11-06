@@ -10,6 +10,7 @@
 use crate::{
     load_images::{Texture, asset_load},
     pages::{Interpolate, Justify, draw_text_both_ex, draw_texture_both_ex, fit_text},
+    words::Lang,
 };
 use macroquad::prelude::*;
 use uwh_common::{
@@ -242,8 +243,8 @@ fn draw_card(tex: &Texture, x: f32, y: f32, width: f32, color: Color) {
 }
 
 /// The description bar's text, in capitals, or `None` when the foul isn't known.
-fn description_text(infraction: Infraction) -> Option<String> {
-    (infraction != Infraction::Unknown).then(|| infraction.short_name().to_uppercase())
+fn description_text(infraction: Infraction, lang: Lang) -> Option<String> {
+    lang.infraction(infraction).map(str::to_uppercase)
 }
 
 /// The foul card's colour: the penalty card with its red tab turned yellow. Every red pixel,
@@ -336,7 +337,8 @@ impl Renderer {
                 .map(|player| player.name.clone())
                 .unwrap_or_default(),
             (Some(color), None) => team_info(color).team_name.clone(),
-            (None, _) => String::from("Both teams"),
+            // Drawn as "Both teams" in the overlay's language (`draw_flag`).
+            (None, _) => String::new(),
         };
         self.active_flags.push(flag);
     }
@@ -547,7 +549,7 @@ impl Renderer {
     }
 
     /// Responsible for drawing the flags, deleting them, etc.
-    pub fn draw(&mut self) {
+    pub fn draw(&mut self, lang: Lang) {
         let now = get_time();
         // Foul flags whose time is up fade out.
         let (expired, kept): (Vec<Flag>, Vec<Flag>) = std::mem::take(&mut self.active_flags)
@@ -585,6 +587,7 @@ impl Renderer {
                 (idx as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + movement_offset,
                 alpha_offset,
                 now,
+                lang,
             );
         }
         for flag in &mut self.inactive_flags {
@@ -596,6 +599,7 @@ impl Renderer {
                 (flag.vertical_position as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT),
                 alpha_offset,
                 now,
+                lang,
             );
         }
         // delete flags marked as unvisited and that have their alpha_animation_counter below zero (finihed fade out)
@@ -637,7 +641,7 @@ fn flag_order(a: &Flag, b: &Flag) -> std::cmp::Ordering {
 }
 
 /// Draws one flag (card, name, tab text and description bar) with its top at `y`.
-fn draw_flag(textures: &Textures, flag: &Flag, y: f32, alpha: f32, now: f64) {
+fn draw_flag(textures: &Textures, flag: &Flag, y: f32, alpha: f32, now: f64, lang: Lang) {
     let (tex, dark_card) = match flag.flag_type {
         Type::Goal(color, _) => (
             if color == UWHColor::White {
@@ -668,9 +672,10 @@ fn draw_flag(textures: &Textures, flag: &Flag, y: f32, alpha: f32, now: f64) {
         a: alpha,
         ..if dark_card { WHITE } else { BLACK }
     };
-    let name = match flag.player_number {
-        Some(number) => format!("#{} {}", number, flag.player_name),
-        None => flag.player_name.clone(),
+    let name = match (flag.player_number, &flag.flag_type) {
+        (Some(number), _) => format!("#{} {}", number, flag.player_name),
+        (None, Type::Foul(None)) => lang.both_teams().to_string(),
+        (None, _) => flag.player_name.clone(),
     };
     let (_, name) = fit_text(
         CARD_MAX_WIDTH - NAME_X - NAME_END_PADDING,
@@ -706,7 +711,13 @@ fn draw_flag(textures: &Textures, flag: &Flag, y: f32, alpha: f32, now: f64) {
     };
     match flag.flag_type {
         Type::Goal(_, _) => {
-            draw_text_ex("GOAL", 45f32, y + 33f32, tab_text_params(card_text_color));
+            let (x_off, text) = fit_text(94f32, lang.goal(), 30, &textures.font, Justify::Center);
+            draw_text_ex(
+                text.as_str(),
+                35f32 + x_off,
+                y + 33f32,
+                tab_text_params(card_text_color),
+            );
         }
         Type::Penalty(_, timeout, _) => {
             let text = match timeout {
@@ -740,7 +751,7 @@ fn draw_flag(textures: &Textures, flag: &Flag, y: f32, alpha: f32, now: f64) {
             );
         }
         Type::Foul(_) => {
-            let (x_off, text) = fit_text(94f32, "FOUL", 30, &textures.font, Justify::Center);
+            let (x_off, text) = fit_text(94f32, lang.foul(), 30, &textures.font, Justify::Center);
             draw_text_ex(
                 text.as_str(),
                 35f32 + x_off,
@@ -755,7 +766,7 @@ fn draw_flag(textures: &Textures, flag: &Flag, y: f32, alpha: f32, now: f64) {
     if matches!(flag.flag_type, Type::Goal(..)) {
         return;
     }
-    if let Some(text) = description_text(flag.infraction) {
+    if let Some(text) = description_text(flag.infraction, lang) {
         let open = description_open(now - flag.shown_at);
         let style = match flag.flag_type {
             Type::Foul(_) => BarStyle::Foul,
@@ -972,10 +983,14 @@ mod tests {
     #[test]
     fn the_description_is_in_capitals_and_unknown_has_none() {
         assert_eq!(
-            description_text(Infraction::StickInfringement).as_deref(),
+            description_text(Infraction::StickInfringement, Lang::En).as_deref(),
             Some("STICK FOUL")
         );
-        assert_eq!(description_text(Infraction::Unknown), None);
+        assert_eq!(description_text(Infraction::Unknown, Lang::En), None);
+        assert_eq!(
+            description_text(Infraction::FalseStart, Lang::Fr).as_deref(),
+            Some("FAUX DÉPART")
+        );
     }
 
     #[test]

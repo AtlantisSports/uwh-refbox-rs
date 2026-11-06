@@ -1,5 +1,5 @@
 use super::*;
-use crate::portal_manager::HealthState;
+use crate::portal_manager::{HealthState, PortalIndicatorState};
 use iced::{
     Alignment, Element, Length, Theme,
     alignment::Horizontal,
@@ -259,10 +259,23 @@ pub(in super::super) fn build_confirmation_page<'a>(
     .into()
 }
 
+/// Whether the score-confirmation page shows the connection advisory. Its text
+/// promises the score "will still be queued", so it appears only when this
+/// game's result will actually be queued and the connection is Red. On MANUAL
+/// the tile can be showing (results from earlier games waiting) while this
+/// game's result goes nowhere.
+fn game_end_advisory_shown(
+    indicator: Option<PortalIndicatorState>,
+    result_will_be_queued: bool,
+) -> bool {
+    result_will_be_queued && indicator.is_some_and(|s| s.health == HealthState::Red)
+}
+
 pub(in super::super) fn build_score_confirmation_page<'a>(
     data: ViewData<'_, '_>,
     scores: BlackWhiteBundle<u8>,
     confirmation_time: Option<u32>,
+    result_will_be_queued: bool,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -294,9 +307,11 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
     .width(Length::Fill);
 
     let mut body = column![].spacing(SPACING).width(Length::Fill);
-    // When no portal event is linked, no submission-path advisory can
-    // meaningfully apply, so the banner is suppressed entirely.
-    if portal_indicator.is_some_and(|s| s.health == HealthState::Red) {
+    // The advisory shows only when this game's result will be queued (a remote
+    // source with a linked event) and the connection is Red. On MANUAL the
+    // tile may be showing for results still waiting from earlier games, but
+    // this game's result is not queued, so the advisory is suppressed.
+    if game_end_advisory_shown(portal_indicator, result_will_be_queued) {
         body = body.push(
             container(
                 text(fl!("portal-advisory-at-game-end"))
@@ -336,4 +351,29 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
     .height(Length::Fill)
     .align_x(Alignment::Center)
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn indicator(health: HealthState) -> Option<PortalIndicatorState> {
+        Some(PortalIndicatorState {
+            health,
+            ..Default::default()
+        })
+    }
+
+    /// `(indicator, result_will_be_queued)` → advisory shown.
+    #[test]
+    fn game_end_advisory_table() {
+        assert!(game_end_advisory_shown(indicator(HealthState::Red), true));
+        // MANUAL with earlier results waiting: the tile shows, but this game's
+        // result is not queued, so the advisory's promise would be false.
+        assert!(!game_end_advisory_shown(indicator(HealthState::Red), false));
+        for health in [HealthState::Green, HealthState::Yellow] {
+            assert!(!game_end_advisory_shown(indicator(health), true));
+        }
+        assert!(!game_end_advisory_shown(None, true));
+    }
 }

@@ -1161,6 +1161,18 @@ fn source_tap_outcome(
     }
 }
 
+/// Whether the Portal tile is drawn. On a remote source it follows the linked
+/// event, as before. On MANUAL it appears only while results are still waiting
+/// to be sent, so the operator can open the waiting-results page and discard
+/// them (ruling 2026-11-06).
+fn portal_tile_shown(uses_remote: bool, event_linked: bool, results_waiting: bool) -> bool {
+    if uses_remote {
+        event_linked
+    } else {
+        results_waiting
+    }
+}
+
 /// What tapping a row on the portal detail page does.
 ///
 /// Pure, and separate from the handler that acts on it, for the same reason
@@ -9038,15 +9050,26 @@ impl RefBoxApp {
             // AND an event is linked; otherwise `None` and the time banner
             // falls back to the pre-feature layout. See ADR 011 amendments
             // 2026-04-23 (event-linked gate) and 2026-05-16 (using-uwh-portal gate).
-            portal_indicator: if self.uses_remote() {
-                self.current_event_id.as_ref().map(|_| {
-                    let mut state = self.portal_manager.indicator_state();
+            // On MANUAL the tile is `Some` while results are still waiting to be
+            // sent, so the operator can reach the waiting-results page and
+            // discard them; with nothing waiting it stays `None` (ruling
+            // 2026-11-06). See `portal_tile_shown`.
+            portal_indicator: if portal_tile_shown(
+                self.uses_remote(),
+                self.current_event_id.is_some(),
+                self.portal_manager.has_queued_items(),
+            ) {
+                let mut state = self.portal_manager.indicator_state();
+                state.site_is_custom = if self.uses_remote() {
                     // The committed source, not the one staged in the editor:
                     // the tile reports the live connection, so choosing CUSTOM
                     // must not change the emblem until APPLY.
-                    state.site_is_custom = self.source == GameSource::Custom;
-                    state
-                })
+                    self.source == GameSource::Custom
+                } else {
+                    // MANUAL: show the site the waiting results are going to.
+                    self.current_site.kind == SiteKind::Custom
+                };
+                Some(state)
             } else {
                 None
             },
@@ -9195,7 +9218,12 @@ impl RefBoxApp {
                 build_confirmation_page(data, kind)
             }
             AppState::ConfirmScores(scores) =>
-                build_score_confirmation_page(data, scores, self.snapshot.conf_pause_time),
+                build_score_confirmation_page(
+                    data,
+                    scores,
+                    self.snapshot.conf_pause_time,
+                    self.uses_remote() && self.current_event_id.is_some(),
+                ),
             AppState::PortalDetailPage { scroll_index } =>
                 build_portal_detail_page(
                     data,
@@ -11642,6 +11670,28 @@ mod submission_gate_tests {
     fn no_recorded_result_is_not_submitted() {
         // First game of the session, or a fresh restart.
         assert!(!recorded_result_matches_ended_game(None, &"18".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod portal_tile_tests {
+    use super::portal_tile_shown;
+
+    /// `(uses_remote, event_linked, results_waiting)` → tile shown.
+    #[test]
+    fn portal_tile_shown_table() {
+        for waiting in [false, true] {
+            // A remote source with a linked event: shown, as before.
+            assert!(portal_tile_shown(true, true, waiting));
+        }
+        // A remote source with no event: hidden, unchanged.
+        assert!(!portal_tile_shown(true, false, true));
+        for linked in [false, true] {
+            // MANUAL with results waiting: shown, so they can be discarded.
+            assert!(portal_tile_shown(false, linked, true));
+            // MANUAL with nothing waiting: hidden.
+            assert!(!portal_tile_shown(false, linked, false));
+        }
     }
 }
 

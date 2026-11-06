@@ -485,6 +485,7 @@ gi-overtime-half-time-length = ความยาวพักครึ่งต�
 gi-minimum-game-break = เวลาระหว่างเกมขั้นต่ำ
 gi-stop-clock-last-2 = หยุดนาฬิกาใน 2 นาทีสุดท้าย
 gi-ref-chief = หัวหน้าผู้ตัดสิน
+gi-ref-assistant-chief = ผู้ช่วยหัวหน้าผู้ตัดสิน
 gi-ref-timekeeper = กรรมการจับเวลา
 gi-ref-timekeeper-helper = ผู้ช่วยกรรมการจับเวลา
 gi-ref-water-1 = ผู้ตัดสินในน้ำ 1

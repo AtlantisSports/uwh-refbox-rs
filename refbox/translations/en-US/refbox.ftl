@@ -266,6 +266,7 @@ gi-overtime-half-time-length = Overtime Half-Time Length
 gi-minimum-game-break = Minimum Game Break
 gi-stop-clock-last-2 = Stop Clock in Last 2 Min
 gi-ref-chief = Chief Referee
+gi-ref-assistant-chief = Assistant Chief
 gi-ref-timekeeper = Time/Score Keeper
 gi-ref-timekeeper-helper = Time/Score Helper
 gi-ref-water-1 = Water Referee 1

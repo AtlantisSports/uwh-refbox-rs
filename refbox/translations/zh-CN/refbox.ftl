@@ -486,6 +486,7 @@ gi-overtime-half-time-length = 加时赛中场时长
 gi-minimum-game-break = 最短场间时间
 gi-stop-clock-last-2 = 最后2分钟停钟
 gi-ref-chief = 主裁判
+gi-ref-assistant-chief = 副主裁判
 gi-ref-timekeeper = 计时员
 gi-ref-timekeeper-helper = 计时助理员
 gi-ref-water-1 = 水下裁判1

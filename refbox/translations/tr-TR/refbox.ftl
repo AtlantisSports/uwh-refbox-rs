@@ -487,6 +487,7 @@ gi-overtime-half-time-length = Uzatma Devre Arası Süresi
 gi-minimum-game-break = Oyunlar Arası Minimum Süre
 gi-stop-clock-last-2 = Son 2 Dakikada Saati Durdur
 gi-ref-chief = Başhakem
+gi-ref-assistant-chief = Yardımcı Başhakem
 gi-ref-timekeeper = Zaman Ayarlayıcı
 gi-ref-timekeeper-helper = Zaman Ayarlayıcı Yardımcısı
 gi-ref-water-1 = Su Hakemi 1

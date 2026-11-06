@@ -490,6 +490,7 @@ gi-overtime-half-time-length = Halbzeitpausendauer Verlängerung
 gi-minimum-game-break = Minimale Spielpause
 gi-stop-clock-last-2 = Uhr in den letzten 2 Minuten stoppen
 gi-ref-chief = Hauptschiedsrichter
+gi-ref-assistant-chief = Stellv. Hauptschiedsrichter
 gi-ref-timekeeper = Zeitnehmer
 gi-ref-timekeeper-helper = Zeitnehmer-Assistent
 gi-ref-water-1 = Wasserschiedsrichter 1

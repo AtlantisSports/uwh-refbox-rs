@@ -234,14 +234,10 @@ pub(in super::super) fn game_info_rows(
         rows.insert(0, last);
     }
 
-    if uses_remote {
-        if no_current_game {
-            // Keep the layout the finished game used so the table does not change
-            // height when the day ends; dash every name.
-            rows.extend(referee_rows_no_game(&snapshot.game_number, schedule));
-        } else {
-            rows.extend(referee_rows(current_game_num, schedule, teams));
-        }
+    // Referee rows show only roles the Portal assigns. When the court's schedule is
+    // finished there is no game to referee, so there are no referee rows at all.
+    if uses_remote && !no_current_game {
+        rows.extend(referee_rows(current_game_num, schedule, teams));
     }
 
     // Context block AFTER the current block, in-game only: the upcoming game (no score).
@@ -340,34 +336,21 @@ fn referee_rows(
     referee_layout_rows(assignments, teams)
 }
 
-/// Referee rows for a court whose schedule is finished: the layout the just-finished
-/// game used (roles kept, so a team-assignment event keeps its two-row shape) with
-/// every identity stripped, which resolves each name to "-".
-fn referee_rows_no_game(prior_game_number: &GameNumber, schedule: Option<&Schedule>) -> Vec<Row> {
-    let assignments: Vec<RefereeAssignment> = schedule
-        .and_then(|s| s.games.get(prior_game_number))
-        .and_then(|g| g.referee_assignments.as_deref())
-        .unwrap_or(&[])
-        .iter()
-        .map(|a| RefereeAssignment {
-            role: a.role.clone(),
-            user_id: None,
-            team_id: None,
-            display_name: None,
-        })
-        .collect();
-    referee_layout_rows(&assignments, None)
-}
-
-// Build the referee rows for a game. Two fixed layouts, all rows in the chosen
-// layout always shown ("-" for empty):
+// Build the referee rows for a game. A row appears only for a role the Portal has
+// actually assigned — an assignment carrying a person (`user_id`) or a team
+// (`team_id`). Visibility is decided on the assignment, not on the resolved name: a
+// person whose name lookup failed still gets a row, showing "-". Two layouts, each in
+// a fixed order that never changes (absent roles are simply skipped):
 //  * Team layout (a `Referees` role is present — only possible in the portal's Team
-//    assignment mode): Water Referees (from `Referees`) + Deck Referees (from team
+//    assignment mode): Assistant Chief (if assigned), then Deck Referees (from team
 //    `TimeOrScoreKeeper`, with team `TimeOrScoreHelper` absorbed; keeper team wins
-//    if they differ).
-//  * Individual layout (otherwise): Chief / Time-Score Keeper / Helper / Water 1-3,
-//    each filled by a person's name or a per-slot team name.
+//    if they differ), then Water Referees (from `Referees`).
+//  * Individual layout (otherwise): Chief / Assistant Chief / Time-Score Keeper /
+//    Helper / Water 1-3, each filled by a person's name or a per-slot team name.
 fn referee_layout_rows(assignments: &[RefereeAssignment], teams: Option<&TeamList>) -> Vec<Row> {
+    // Only assignments with an identity produce a row.
+    let assigned = |a: &&RefereeAssignment| a.user_id.is_some() || a.team_id.is_some();
+
     // Resolve one assignment to a display string: person name, else team name, else "-".
     let resolve = |a: &RefereeAssignment| -> String {
         if a.user_id.is_some() {
@@ -383,76 +366,63 @@ fn referee_layout_rows(assignments: &[RefereeAssignment], teams: Option<&TeamLis
 
     let team_layout = assignments.iter().any(|a| a.role == "Referees");
 
+    let mut rows = Vec::new();
+    let mut push = |label: String, name: Option<String>| {
+        if let Some(name) = name {
+            rows.push(Row::Referee { label, name });
+        }
+    };
+
     if team_layout {
-        let mut water = "-".to_string();
-        let mut deck = "-".to_string();
+        let mut assistant_chief = None;
+        let mut water = None;
+        let mut deck = None;
         let mut deck_from_keeper = false;
-        for a in assignments {
+        for a in assignments.iter().filter(assigned) {
             match a.role.as_str() {
-                "Referees" => water = resolve(a),
+                "AssistantChief" => assistant_chief = Some(resolve(a)),
+                "Referees" => water = Some(resolve(a)),
                 "TimeOrScoreKeeper" => {
-                    deck = resolve(a);
+                    deck = Some(resolve(a));
                     deck_from_keeper = true;
                 }
                 "TimeOrScoreHelper" if !deck_from_keeper => {
-                    deck = resolve(a);
+                    deck = Some(resolve(a));
                 }
                 _ => {}
             }
         }
-        vec![
-            Row::Referee {
-                label: fl!("gi-ref-deck-referees"),
-                name: deck,
-            },
-            Row::Referee {
-                label: fl!("gi-ref-water-referees"),
-                name: water,
-            },
-        ]
+        push(fl!("gi-ref-assistant-chief"), assistant_chief);
+        push(fl!("gi-ref-deck-referees"), deck);
+        push(fl!("gi-ref-water-referees"), water);
     } else {
-        let mut chief = "-".to_string();
-        let mut keeper = "-".to_string();
-        let mut helper = "-".to_string();
-        let mut water = ["-".to_string(), "-".to_string(), "-".to_string()];
-        for a in assignments {
+        let mut chief = None;
+        let mut assistant_chief = None;
+        let mut keeper = None;
+        let mut helper = None;
+        let mut water: [Option<String>; 3] = [None, None, None];
+        for a in assignments.iter().filter(assigned) {
             match a.role.as_str() {
-                "Chief" => chief = resolve(a),
-                "TimeOrScoreKeeper" => keeper = resolve(a),
-                "TimeOrScoreHelper" => helper = resolve(a),
-                "Water1" => water[0] = resolve(a),
-                "Water2" => water[1] = resolve(a),
-                "Water3" => water[2] = resolve(a),
+                "Chief" => chief = Some(resolve(a)),
+                "AssistantChief" => assistant_chief = Some(resolve(a)),
+                "TimeOrScoreKeeper" => keeper = Some(resolve(a)),
+                "TimeOrScoreHelper" => helper = Some(resolve(a)),
+                "Water1" => water[0] = Some(resolve(a)),
+                "Water2" => water[1] = Some(resolve(a)),
+                "Water3" => water[2] = Some(resolve(a)),
                 _ => {}
             }
         }
-        vec![
-            Row::Referee {
-                label: fl!("gi-ref-chief"),
-                name: chief,
-            },
-            Row::Referee {
-                label: fl!("gi-ref-timekeeper"),
-                name: keeper,
-            },
-            Row::Referee {
-                label: fl!("gi-ref-timekeeper-helper"),
-                name: helper,
-            },
-            Row::Referee {
-                label: fl!("gi-ref-water-1"),
-                name: water[0].clone(),
-            },
-            Row::Referee {
-                label: fl!("gi-ref-water-2"),
-                name: water[1].clone(),
-            },
-            Row::Referee {
-                label: fl!("gi-ref-water-3"),
-                name: water[2].clone(),
-            },
-        ]
+        let [water1, water2, water3] = water;
+        push(fl!("gi-ref-chief"), chief);
+        push(fl!("gi-ref-assistant-chief"), assistant_chief);
+        push(fl!("gi-ref-timekeeper"), keeper);
+        push(fl!("gi-ref-timekeeper-helper"), helper);
+        push(fl!("gi-ref-water-1"), water1);
+        push(fl!("gi-ref-water-2"), water2);
+        push(fl!("gi-ref-water-3"), water3);
     }
+    rows
 }
 
 // Returns (white_name, black_name, display_number). Names are Some only when the
@@ -498,8 +468,9 @@ const CELL_PAD: f32 = PADDING / 2.0; // padding inside each cell
 // one line within their cell instead of wrapping.
 const TABLE_TEXT: f32 = 15.0;
 // Uniform height for every table row; the merged Last-game cell spans two of these.
-// Kept tight so all parameters + referees fit on the Game Information page.
-const ROW_H: f32 = 22.0;
+// Sized so all 7 referee rows fit together with the settings rows on the Game
+// Information page.
+const ROW_H: f32 = 20.0;
 
 type CellStyle = fn(&iced::Theme) -> iced::widget::container::Style;
 
@@ -1199,20 +1170,26 @@ mod tests {
             &[person("Chief", "Alice"), person("TimeOrScoreHelper", "Bob")],
             None,
         );
-        let pairs = ref_pairs(&rows);
-        assert_eq!(pairs.len(), 6); // all individual rows always shown
-        assert!(pairs.contains(&(fl!("gi-ref-chief"), "Alice".to_string())));
-        // Corrected role string ("TimeOrScoreHelper") now resolves into the helper row.
-        assert!(pairs.contains(&(fl!("gi-ref-timekeeper-helper"), "Bob".to_string())));
+        // Only the two assigned roles get rows. The corrected role string
+        // ("TimeOrScoreHelper") resolves into the helper row.
+        assert_eq!(
+            ref_pairs(&rows),
+            vec![
+                (fl!("gi-ref-chief"), "Alice".to_string()),
+                (fl!("gi-ref-timekeeper-helper"), "Bob".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn team_in_numbered_water_slot_is_per_slot() {
         let tl = teamlist();
         let rows = referee_layout_rows(&[team("Water2", "teams/10753-A")], Some(&tl));
-        let pairs = ref_pairs(&rows);
-        assert!(pairs.contains(&(fl!("gi-ref-water-2"), "Sharks".to_string())));
-        assert_eq!(pairs.len(), 6); // individual layout (no Referees role)
+        // Individual layout (no Referees role), and only the assigned slot shows.
+        assert_eq!(
+            ref_pairs(&rows),
+            vec![(fl!("gi-ref-water-2"), "Sharks".to_string())]
+        );
     }
 
     #[test]
@@ -1255,9 +1232,29 @@ mod tests {
     }
 
     #[test]
-    fn referee_rows_always_include_blank_helper_and_all_water() {
-        // Portal on but no schedule => referee section renders its fixed labels with "-".
-        // Both tables list the same referees, including a blank T/S Helper row.
+    fn referee_rows_show_only_assigned_roles_in_fixed_order() {
+        // Given out of order, with Helper, Assistant Chief and Water 2 unassigned:
+        // only the assigned roles appear, in the fixed layout order.
+        let rows = referee_layout_rows(
+            &[
+                person("Water3", "Wendy"),
+                person("TimeOrScoreKeeper", "Kim"),
+                person("Water1", "Walt"),
+                person("Chief", "Alice"),
+            ],
+            None,
+        );
+        assert_eq!(
+            ref_pairs(&rows),
+            vec![
+                (fl!("gi-ref-chief"), "Alice".to_string()),
+                (fl!("gi-ref-timekeeper"), "Kim".to_string()),
+                (fl!("gi-ref-water-1"), "Walt".to_string()),
+                (fl!("gi-ref-water-3"), "Wendy".to_string()),
+            ]
+        );
+
+        // Portal on but no schedule: nothing is assigned, so no referee rows.
         let rows = game_info_rows(
             &GameSnapshot::default(),
             &cfg_all_on(),
@@ -1267,15 +1264,102 @@ mod tests {
             None,
             None,
         );
+        assert!(ref_labels(&rows).is_empty());
+    }
+
+    #[test]
+    fn all_seven_individual_roles_appear_in_fixed_order() {
+        let rows = referee_layout_rows(
+            &[
+                person("Water3", "W3"),
+                person("Water2", "W2"),
+                person("Water1", "W1"),
+                person("TimeOrScoreHelper", "Helper"),
+                person("TimeOrScoreKeeper", "Keeper"),
+                person("AssistantChief", "Assistant"),
+                person("Chief", "Chief"),
+            ],
+            None,
+        );
         assert_eq!(
             ref_labels(&rows),
             vec![
                 fl!("gi-ref-chief"),
+                fl!("gi-ref-assistant-chief"),
                 fl!("gi-ref-timekeeper"),
                 fl!("gi-ref-timekeeper-helper"),
                 fl!("gi-ref-water-1"),
                 fl!("gi-ref-water-2"),
                 fl!("gi-ref-water-3"),
+            ]
+        );
+    }
+
+    #[test]
+    fn assistant_chief_resolves_into_its_own_row_under_chief() {
+        let rows = referee_layout_rows(
+            &[person("AssistantChief", "Ann"), person("Chief", "Alice")],
+            None,
+        );
+        assert_eq!(
+            ref_pairs(&rows),
+            vec![
+                (fl!("gi-ref-chief"), "Alice".to_string()),
+                (fl!("gi-ref-assistant-chief"), "Ann".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn row_visibility_follows_the_assignment_not_the_resolved_name() {
+        // A role with no person and no team is not an assignment: no row.
+        let unassigned = RefereeAssignment {
+            role: "Chief".to_string(),
+            user_id: None,
+            team_id: None,
+            display_name: None,
+        };
+        // A person whose name lookup failed is still assigned: a row showing "-".
+        let nameless = RefereeAssignment {
+            role: "Water1".to_string(),
+            user_id: Some("uid-unknown".to_string()),
+            team_id: None,
+            display_name: None,
+        };
+        let rows = referee_layout_rows(&[unassigned, nameless], None);
+        assert_eq!(
+            ref_pairs(&rows),
+            vec![(fl!("gi-ref-water-1"), "-".to_string())]
+        );
+    }
+
+    #[test]
+    fn team_layout_with_only_water_referees_shows_one_row() {
+        let tl = teamlist();
+        let rows = referee_layout_rows(&[team("Referees", "teams/10753-A")], Some(&tl));
+        assert_eq!(
+            ref_pairs(&rows),
+            vec![(fl!("gi-ref-water-referees"), "Sharks".to_string())]
+        );
+    }
+
+    #[test]
+    fn team_layout_puts_an_assigned_assistant_chief_first() {
+        let tl = teamlist();
+        let rows = referee_layout_rows(
+            &[
+                team("Referees", "teams/10753-A"),
+                team("TimeOrScoreKeeper", "teams/10753-A"),
+                person("AssistantChief", "Ann"),
+            ],
+            Some(&tl),
+        );
+        assert_eq!(
+            ref_pairs(&rows),
+            vec![
+                (fl!("gi-ref-assistant-chief"), "Ann".to_string()),
+                (fl!("gi-ref-deck-referees"), "Sharks".to_string()),
+                (fl!("gi-ref-water-referees"), "Sharks".to_string()),
             ]
         );
     }
@@ -1553,9 +1637,18 @@ mod tests {
     }
 
     #[test]
-    fn referee_rows_keep_the_finished_games_layout_and_dash_the_names() {
-        // The finished game used team assignments: two rows, not six.
+    fn finished_court_shows_no_referee_rows() {
+        // The finished game had a real team assignment, but with no current game
+        // there is nothing to referee: no referee rows at all.
         let mut schedule = make_schedule_with_referees("9", "Court 1");
+        if let Some(game) = schedule.games.get_mut("9") {
+            game.referee_assignments = Some(vec![RefereeAssignment {
+                role: "Referees".to_string(),
+                user_id: None,
+                team_id: Some(TeamId::from_full("teams/10753-A").unwrap()),
+                display_name: None,
+            }]);
+        }
         let rows = game_info_rows(
             &finished_court_snapshot(),
             &cfg_all_on(),
@@ -1565,33 +1658,6 @@ mod tests {
             None,
             None,
         );
-        let refs: Vec<_> = rows
-            .iter()
-            .filter_map(|r| match r {
-                Row::Referee { label, name } => Some((label.clone(), name.clone())),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(refs.len(), 2, "team layout keeps its two rows");
-        assert_eq!(refs[0], (fl!("gi-ref-deck-referees"), "-".to_string()));
-        assert_eq!(refs[1], (fl!("gi-ref-water-referees"), "-".to_string()));
-
-        // With no assignments at all it falls back to the six-row individual layout.
-        schedule.games.get_mut("9").unwrap().referee_assignments = None;
-        let rows = game_info_rows(
-            &finished_court_snapshot(),
-            &cfg_all_on(),
-            cfg_all_on().game_block,
-            true,
-            Some(&schedule),
-            None,
-            None,
-        );
-        assert_eq!(
-            rows.iter()
-                .filter(|r| matches!(r, Row::Referee { .. }))
-                .count(),
-            6
-        );
+        assert!(ref_labels(&rows).is_empty());
     }
 }

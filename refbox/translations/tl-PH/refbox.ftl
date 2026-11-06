@@ -487,6 +487,7 @@ gi-overtime-half-time-length = Haba ng Pahinga sa Overtime
 gi-minimum-game-break = Pinakamaliit na Oras sa Pagitan ng mga Laro
 gi-stop-clock-last-2 = Ihinto ang Orasan sa Huling 2 Minuto
 gi-ref-chief = Punong Referee
+gi-ref-assistant-chief = Katuwang na Punong Referee
 gi-ref-timekeeper = Tagapanatili ng Oras/Puntos
 gi-ref-timekeeper-helper = Katulong na Tagapanatili ng Oras/Puntos
 gi-ref-water-1 = Water Referee 1

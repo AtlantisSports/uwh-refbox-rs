@@ -501,6 +501,7 @@ gi-overtime-half-time-length = Duración del medio tiempo extra
 gi-minimum-game-break = Tiempo mínimo entre partidos
 gi-stop-clock-last-2 = Detener reloj en los Últimos 2 minutos
 gi-ref-chief = Árbitro principal
+gi-ref-assistant-chief = Árbitro principal adjunto
 gi-ref-timekeeper = Timer
 gi-ref-timekeeper-helper = Asistente de marcador
 gi-ref-water-1 = Árbitro de agua 1

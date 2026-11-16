@@ -16,7 +16,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         ..
     } = data;
@@ -97,7 +97,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
             false,
             is_confirmation,
             mode,
-            clock_running,
+            clock,
             portal_indicator,
             None
         ),

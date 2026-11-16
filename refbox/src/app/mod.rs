@@ -65,7 +65,7 @@ use view_data::ViewData;
 mod view_builders;
 use view_builders::{
     beep_test::build_beep_test_page,
-    shared_elements::{crosses_portal, portal_name_for_mode},
+    shared_elements::{GameClockFlags, crosses_portal, portal_name_for_mode},
     *,
 };
 
@@ -1474,6 +1474,25 @@ impl PageEntrySnapshot {
     }
 }
 
+/// Which automatic sound the end of `period` calls for: `(end_starts_play,
+/// end_stops_play)`. A break ends by starting play and a half ends by stopping it.
+/// A sudden death stops play at 0:00 only when it has a maximum and so counts down
+/// (`sd_counts_down`); one without a maximum counts up and has no end to announce.
+fn period_end_sounds(period: GamePeriod, sd_counts_down: bool) -> (bool, bool) {
+    match period {
+        GamePeriod::FirstHalf
+        | GamePeriod::SecondHalf
+        | GamePeriod::OvertimeFirstHalf
+        | GamePeriod::OvertimeSecondHalf => (false, true),
+        GamePeriod::BetweenGames
+        | GamePeriod::HalfTime
+        | GamePeriod::PreOvertime
+        | GamePeriod::OvertimeHalfTime
+        | GamePeriod::PreSuddenDeath => (true, false),
+        GamePeriod::SuddenDeath => (false, sd_counts_down),
+    }
+}
+
 /// One countdown beep this tick when: the audible-countdown setting is on, we are
 /// in a break that precedes a playing period, the whole-second value just changed,
 /// and the new value is in the final 10..=1 window. Reads the RAW snapshot, so it
@@ -1802,7 +1821,16 @@ impl RefBoxApp {
         new_snapshot: GameSnapshot,
         caught_up: Option<CatchUp>,
     ) -> Task<Message> {
-        let engine_period = self.tm.lock().current_period();
+        // Both read under one lock. `sd_counts_down` comes from the engine's live
+        // config, never `self.config.game`, which lags a Portal game's timing (adopted
+        // by the engine at kick-off) until settings are applied.
+        let (engine_period, sd_counts_down) = {
+            let tm = self.tm.lock();
+            (
+                tm.current_period(),
+                !GamePeriod::SuddenDeath.counts_up(tm.config()),
+            )
+        };
         let mut task = Task::none();
         match snapshot_transition(&self.snapshot, &new_snapshot, caught_up, engine_period) {
             SnapshotTransition::CaughtUpToNewGame | SnapshotTransition::GameStarted => {
@@ -1829,7 +1857,7 @@ impl RefBoxApp {
             SnapshotTransition::Nothing => {}
         }
 
-        self.publish_snapshot(new_snapshot);
+        self.publish_snapshot(new_snapshot, sd_counts_down);
         task
     }
 
@@ -1844,7 +1872,7 @@ impl RefBoxApp {
     /// so publishing here is also what makes a queued in-play tick read as stale.
     ///
     /// Takes no `tm` lock, but callers have no reason to hold one across it either.
-    fn publish_snapshot(&mut self, mut new_snapshot: GameSnapshot) {
+    fn publish_snapshot(&mut self, mut new_snapshot: GameSnapshot, sd_counts_down: bool) {
         new_snapshot.event_id = self.current_event_id.clone();
         // The address this refbox's own portal client is pointed at, so a consumer resolving names
         // from a portal looks them up where refbox looks them up. `current_site` is the value the
@@ -1865,7 +1893,7 @@ impl RefBoxApp {
         // guess -- see `strip_credentials`.
         new_snapshot.portal_base_url = published_site_address(&self.current_site);
 
-        self.maybe_play_sound(&new_snapshot);
+        self.maybe_play_sound(&new_snapshot, sd_counts_down);
         if let Err(e) = self.update_sender.send_snapshot(
             new_snapshot.clone(),
             self.config.hardware.white_on_right,
@@ -2044,12 +2072,15 @@ impl RefBoxApp {
                 return Task::none();
             }
         };
+        // Read from the engine while the lock is still held, never from
+        // `self.config.game` (see `apply_tick`).
+        let sd_counts_down = !GamePeriod::SuddenDeath.counts_up(tm.config());
         // Released before any app code runs. Neither call below takes the lock
         // today, but it does not re-enter, so a guard held across app code is a
         // deadlock waiting for the first caller that does.
         drop(tm);
 
-        self.publish_snapshot(snapshot);
+        self.publish_snapshot(snapshot, sd_counts_down);
         self.app_state = AppState::MainPage;
         trace!("AppState changed to {:?}", self.app_state);
 
@@ -2067,7 +2098,7 @@ impl RefBoxApp {
         }
     }
 
-    fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
+    fn maybe_play_sound(&self, new_snapshot: &GameSnapshot, sd_counts_down: bool) {
         // A break that will start nothing must not be announced: no 30-second whistle,
         // no start-of-play buzzer at 0:00 and no countdown beeps on the way there.
         // Once the court's last game has ended the clock stops dead, so the common path
@@ -2090,8 +2121,9 @@ impl RefBoxApp {
             }
             Some(TimeoutSnapshot::Ref(_)) | Some(TimeoutSnapshot::PenaltyShot(_)) => (false, false),
             None => {
-                let prereqs = new_snapshot.current_period != GamePeriod::SuddenDeath
-                    && new_snapshot.secs_in_period != self.snapshot.secs_in_period;
+                // A sudden death without a maximum needs no exclusion here: it is
+                // neither a whistle period nor, per `period_end_sounds`, a buzz period.
+                let prereqs = new_snapshot.secs_in_period != self.snapshot.secs_in_period;
 
                 let is_whistle_period = match new_snapshot.current_period {
                     GamePeriod::BetweenGames
@@ -2106,18 +2138,8 @@ impl RefBoxApp {
                     | GamePeriod::SuddenDeath => false,
                 };
 
-                let (end_starts_play, end_stops_play) = match new_snapshot.current_period {
-                    GamePeriod::FirstHalf
-                    | GamePeriod::SecondHalf
-                    | GamePeriod::OvertimeFirstHalf
-                    | GamePeriod::OvertimeSecondHalf => (false, true),
-                    GamePeriod::BetweenGames
-                    | GamePeriod::HalfTime
-                    | GamePeriod::PreOvertime
-                    | GamePeriod::OvertimeHalfTime
-                    | GamePeriod::PreSuddenDeath => (true, false),
-                    GamePeriod::SuddenDeath => (false, false),
-                };
+                let (end_starts_play, end_stops_play) =
+                    period_end_sounds(new_snapshot.current_period, sd_counts_down);
 
                 let is_buzz_period = end_starts_play && self.config.sound.auto_sound_start_play
                     || end_stops_play && self.config.sound.auto_sound_stop_play;
@@ -9065,11 +9087,24 @@ impl RefBoxApp {
             .as_ref()
             .and_then(|edits| edits.current_event_id.as_ref())
             .or(self.current_event_id.as_ref());
+        let (clock_running, sd_counts_down) = {
+            let tm = self.tm.lock();
+            (
+                tm.clock_is_running(),
+                !GamePeriod::SuddenDeath.counts_up(tm.config()),
+            )
+        };
         let data = ViewData {
             snapshot: &self.snapshot,
             mode: self.config.mode,
             source: self.source,
-            clock_running: self.tm.lock().clock_is_running(),
+            // Both from the engine under one lock. `sd_counts_down` must come from the
+            // engine's live config, never `self.config.game`, which lags a Portal
+            // game's timing (adopted by the engine at kick-off) until APPLY.
+            clock: GameClockFlags {
+                running: clock_running,
+                sd_counts_down,
+            },
             teams: active_event_id.and_then(|id| {
                 self.events
                     .get(self.active_source(), id)
@@ -11671,6 +11706,36 @@ mod countdown_beep_tests {
             GamePeriod::SuddenDeath,
         ] {
             assert!(!should_play_countdown_beep(p, 5, 6, true), "{p:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod period_end_sound_tests {
+    use super::period_end_sounds;
+    use uwh_common::game_snapshot::GamePeriod;
+
+    #[test]
+    fn period_end_sounds_sd() {
+        // A limited sudden death counts down to 0:00 and ends play there, like a half.
+        assert_eq!(
+            period_end_sounds(GamePeriod::SuddenDeath, true),
+            (false, true)
+        );
+        // An unlimited sudden death counts up and has no end to announce.
+        assert_eq!(
+            period_end_sounds(GamePeriod::SuddenDeath, false),
+            (false, false)
+        );
+        for sd_counts_down in [true, false] {
+            assert_eq!(
+                period_end_sounds(GamePeriod::SecondHalf, sd_counts_down),
+                (false, true)
+            );
+            assert_eq!(
+                period_end_sounds(GamePeriod::PreSuddenDeath, sd_counts_down),
+                (true, false)
+            );
         }
     }
 }

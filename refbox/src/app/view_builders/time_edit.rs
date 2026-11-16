@@ -16,7 +16,7 @@ pub(in super::super) fn build_time_edit_view<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         ..
     } = data;
@@ -44,15 +44,7 @@ pub(in super::super) fn build_time_edit_view<'a>(
     let has_changes = time_edit_has_changes(time, timeout_time, old_time, old_timeout_time);
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            true,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, true, mode, clock, portal_indicator, None),
         edit_row,
         text(fl!("Note-Game-time-is-paused"))
             .size(SMALL_TEXT)

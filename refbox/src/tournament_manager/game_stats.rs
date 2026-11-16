@@ -66,7 +66,9 @@ impl GameStats {
     /// Deliberately returns public types so `Event` need not become visible outside this module.
     ///
     /// Note on the period time: `add_goal`'s parameter is named `time_left_in_period`, but in
-    /// sudden death the clock counts UP, so what is recorded there is seconds *elapsed*.
+    /// a sudden death without a maximum the clock counts UP, so what is recorded there is
+    /// seconds *elapsed*. With a maximum it counts down, so it is the time left, as in every
+    /// other period.
     #[cfg(test)]
     pub(crate) fn goals(&self) -> Vec<(u8, String, GamePeriod, f32)> {
         self.events

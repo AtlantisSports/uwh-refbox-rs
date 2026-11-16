@@ -650,7 +650,8 @@ impl From<(SendableSchedule, EventId)> for Schedule {
     }
 }
 
-mod secs_only_duration {
+/// Also used by `crate::config` for its optional durations, so the two cannot drift.
+pub(crate) mod secs_only_duration {
     use serde::{self, Deserialize, Deserializer, Serializer};
     use std::time::Duration;
 

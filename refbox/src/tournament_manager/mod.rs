@@ -1315,7 +1315,11 @@ impl TournamentManager {
                                 && !self.config.sudden_death_allowed)))
                         || (self.current_period == GamePeriod::OvertimeSecondHalf
                             && (self.scores.are_not_equal()
-                                || !self.config.sudden_death_allowed))));
+                                || !self.config.sudden_death_allowed))
+                        // A sudden death with a maximum has run out at 0:00, whatever the
+                        // score. One without a maximum counts up and never stops at 0:00.
+                        || (self.current_period == GamePeriod::SuddenDeath
+                            && !self.current_period.counts_up(&self.config))));
             } else if let ClockState::CountingDown {
                 start_time,
                 time_remaining_at_start,
@@ -2825,9 +2829,14 @@ impl TournamentManager {
                             return Err(TournamentManagerError::InvalidState);
                         }
                         // A sudden death with a maximum reached 0:00 while the shot ran. Leave
-                        // its clock expired at 0:00 so the next tick's `could_end_game` opens
-                        // the score-confirmation window. Return before the tail below: it
-                        // would restart the clock at the full sudden death length.
+                        // its clock expired at 0:00 so the updater's next `could_end_game`
+                        // opens the score-confirmation window; if `update` runs on it first,
+                        // its `(SuddenDeath, false)` backstop ends the game level instead.
+                        // Ending the shot by hand (END TIMEOUT) does not come here:
+                        // `timeout_end_would_end_game` reports this state as game-ending, so
+                        // the app arms the window with `end_game_ending_timeout`. Return before
+                        // the tail below: it would restart the clock at the full sudden death
+                        // length.
                         self.clock_state = ClockState::CountingDown {
                             start_time: min(now, start_time + time_remaining_at_start),
                             time_remaining_at_start: Duration::ZERO,
@@ -3112,16 +3121,28 @@ impl TournamentManager {
     /// confirm handler's `end_confirm_pause` would return `NotPaused` and the app would panic.
     ///
     /// Precondition: only call when the timeout actually ends the game (i.e.
-    /// `timeout_end_would_end_game` returned true), which guarantees the period is Second Half or
-    /// Overtime Second Half; other periods would hit `confirm_pause_duration`'s `unreachable!`.
+    /// `timeout_end_would_end_game` returned true), which guarantees the period is Second Half,
+    /// Overtime Second Half or Sudden Death; other periods would hit `confirm_pause_duration`'s
+    /// `unreachable!`.
     pub fn end_game_ending_timeout(&mut self, now: Instant) -> Result<()> {
         self.halt_clock(now, true)?;
+        // The clock reading the window resumes from if the score is put back level. In a
+        // sudden death with a maximum, a game-ending timeout means the maximum ran out at 0:00,
+        // so record 0:00: then a level score ends the game (`sudden_death_resumes_after_confirm`)
+        // rather than restarting sudden death for a few milliseconds. Everywhere else this is
+        // the 10 ms placeholder it has always been (`end_confirm_pause` reads it only to resume
+        // sudden death).
+        let clock_time = if self.current_period == GamePeriod::SuddenDeath
+            && !self.current_period.counts_up(&self.config)
+        {
+            Duration::ZERO
+        } else {
+            Duration::from_millis(10)
+        };
         self.time_pause_confirmation = Some(ConfirmPause {
             pause_began: now,
             duration_of_pause: self.confirm_pause_duration(),
-            // Resume time is only used if the game continues; a game-ending timeout always ends
-            // the game, so this mirrors `pause_for_confirm`'s non-sudden-death placeholder.
-            clock_time: Duration::from_millis(10),
+            clock_time,
         });
         Ok(())
     }
@@ -15494,5 +15515,54 @@ mod test {
                 "scores {scores:?}, counts_down {counts_down}, clock at pause {clock_at_pause:?}"
             );
         }
+    }
+
+    /// The operator ends a rugby penalty shot by hand (END TIMEOUT) after a sudden death with
+    /// a maximum has reached 0:00 under it. Mirrors the app's `Message::EndTimeout`: the shot
+    /// must be seen to end the game, and the window it opens must end it rather than restart
+    /// sudden death.
+    fn end_rugby_shot_by_hand_at_sd_expiry(final_scores: BlackWhiteBundle<u8>) {
+        initialize();
+        let config = GameConfig {
+            penalty_shot_duration: Duration::from_secs(10),
+            ..sd_max_config()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        running_sd_with(&mut tm, start, Duration::from_secs(4));
+        tm.start_rugby_penalty_shot(start + Duration::from_secs(2))
+            .unwrap();
+
+        let at_zero = start + Duration::from_secs(4);
+        let (kind, _) = tm.updater_tick(at_zero).unwrap();
+        assert_eq!(kind, TickKind::NewSnapshot);
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        assert_eq!(tm.game_clock_time(at_zero), Some(Duration::ZERO));
+
+        let pressed = start + Duration::from_secs(6);
+        assert_eq!(
+            tm.timeout_end_would_end_game(pressed),
+            Ok(true),
+            "ending the shot at 0:00 ends a sudden death with a maximum"
+        );
+        tm.end_game_ending_timeout(pressed).unwrap();
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = pressed + Duration::from_secs(3);
+        tm.set_scores(final_scores, confirm);
+        tm.end_confirm_pause(confirm).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert_eq!(tm.scores, final_scores);
+        assert_eq!(tm.last_game_info().unwrap().scores, final_scores);
+    }
+
+    #[test]
+    fn rugby_shot_ended_by_hand_at_sd_expiry_ends_level() {
+        end_rugby_shot_by_hand_at_sd_expiry(LEVEL);
+    }
+
+    #[test]
+    fn rugby_shot_ended_by_hand_at_sd_expiry_score_edit_ends_with_winner() {
+        end_rugby_shot_by_hand_at_sd_expiry(BLACK_AHEAD);
     }
 }

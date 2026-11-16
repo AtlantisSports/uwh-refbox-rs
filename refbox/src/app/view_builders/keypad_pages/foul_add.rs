@@ -87,11 +87,26 @@ pub(super) fn make_foul_add_page<'a>(
 }
 
 /// Returns true when the foul entry has everything it needs to be saved: an
-/// infraction must always be selected, and an individual foul (Black/White)
-/// also needs a player number. An "equal" foul (`color == None`) has no player,
-/// so it needs only the infraction.
-fn foul_add_can_commit(infraction: Infraction, color: Option<GameColor>, player_num: u32) -> bool {
-    !matches!(infraction, Infraction::Unknown) && (color.is_none() || player_num > 0)
+/// infraction must always be selected. A player number is never required: a
+/// Black/White foul left blank means the player was not recorded, and an
+/// "equal" foul (`color == None`) has no player at all.
+fn foul_add_can_commit(
+    infraction: Infraction,
+    _color: Option<GameColor>,
+    _player_num: u32,
+) -> bool {
+    !matches!(infraction, Infraction::Unknown)
+}
+
+/// The player a foul is saved against: none for an "equal" foul, and none when
+/// the number was left blank (0) on a Black/White foul -- never player 0.
+pub(crate) fn foul_player_number(color: Option<GameColor>, player_num: u32) -> Option<u8> {
+    if color.is_none() || player_num == 0 {
+        None
+    } else {
+        // Cannot panic: the foul keypad caps the number at 99 (`KeypadPage::max_val`).
+        Some(player_num.try_into().unwrap())
+    }
 }
 
 #[cfg(test)]
@@ -110,8 +125,8 @@ mod tests {
     }
 
     #[test]
-    fn foul_individual_needs_number() {
-        assert!(!foul_add_can_commit(
+    fn foul_individual_number_is_optional() {
+        assert!(foul_add_can_commit(
             Infraction::StickInfringement,
             Some(GameColor::Black),
             0
@@ -121,6 +136,23 @@ mod tests {
             Some(GameColor::Black),
             5
         ));
+    }
+
+    #[test]
+    fn foul_individual_without_number_still_needs_infraction() {
+        assert!(!foul_add_can_commit(
+            Infraction::Unknown,
+            Some(GameColor::White),
+            0
+        ));
+    }
+
+    #[test]
+    fn foul_blank_number_is_no_player() {
+        assert_eq!(foul_player_number(Some(GameColor::Black), 0), None);
+        assert_eq!(foul_player_number(Some(GameColor::White), 7), Some(7));
+        assert_eq!(foul_player_number(None, 0), None);
+        assert_eq!(foul_player_number(None, 7), None);
     }
 
     #[test]

@@ -88,7 +88,11 @@ impl Penalty {
         match cur_per.cmp(&self.start_period) {
             Ordering::Equal => {
                 if cur_per.penalties_run(config) {
-                    Ok(cur_per.time_between(self.start_time.try_into()?, cur_time.try_into()?))
+                    Ok(cur_per.time_between(
+                        self.start_time.try_into()?,
+                        cur_time.try_into()?,
+                        config,
+                    ))
                 } else {
                     Ok(SignedDuration::ZERO)
                 }
@@ -566,6 +570,39 @@ mod test {
         assert_eq!(
             penalty.is_complete(GamePeriod::SuddenDeath, Duration::from_secs(310), &config),
             Ok(false)
+        );
+    }
+
+    #[test]
+    fn penalty_in_sd_countdown_counts_served_time() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            sudden_death_max: Some(Duration::from_secs(300)),
+            ..Default::default()
+        };
+
+        // A one-minute penalty starts with 4:30 left on a 5:00 sudden death countdown
+        let penalty = Penalty {
+            player_number: 0,
+            kind: PenaltyKind::OneMinute,
+            start_time: Duration::from_secs(270),
+            start_period: GamePeriod::SuddenDeath,
+            start_instant: Instant::now(),
+            infraction: Infraction::Unknown,
+        };
+        assert_eq!(
+            penalty.time_remaining(GamePeriod::SuddenDeath, Duration::from_secs(240), &config),
+            Ok(SignedDuration::seconds(30))
+        );
+        assert_eq!(
+            penalty.is_complete(GamePeriod::SuddenDeath, Duration::from_secs(240), &config),
+            Ok(false)
+        );
+        assert_eq!(
+            penalty.is_complete(GamePeriod::SuddenDeath, Duration::from_secs(210), &config),
+            Ok(true)
         );
     }
 }

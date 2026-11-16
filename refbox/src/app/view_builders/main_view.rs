@@ -243,7 +243,10 @@ pub(in super::super) fn build_main_view<'a>(
                             .iter()
                             .rev()
                             .take(10)
-                            .map(|warning| make_warning_container(warning, Some(color)).into())
+                            .map(
+                                |warning| make_warning_container(warning, Some(color), false)
+                                    .into()
+                            )
                     )
                     .spacing(1)
                     .width(Length::Fill)
@@ -349,7 +352,10 @@ pub(in super::super) fn build_main_view<'a>(
                                 .iter()
                                 .rev()
                                 .take(10)
-                                .map(|warning| make_warning_container(warning, Some(color)).into())
+                                .map(
+                                    |warning| make_warning_container(warning, Some(color), false)
+                                        .into()
+                                )
                         )
                         .spacing(1)
                         .width(Length::Fill)

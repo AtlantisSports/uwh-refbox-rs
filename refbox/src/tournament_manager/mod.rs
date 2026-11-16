@@ -4092,6 +4092,7 @@ mod displayed_game_config_tests {
             pre_sudden_death_duration: Duration::from_secs(60),
             minimum_break: Duration::from_secs(180),
             game_block: None,
+            sudden_death_max_duration: None,
         }
     }
 
@@ -10748,6 +10749,7 @@ mod test {
             pre_sudden_death_duration: Duration::from_secs(60),
             minimum_break: Duration::from_secs(180),
             game_block: None,
+            sudden_death_max_duration: None,
         }
     }
 

@@ -12198,6 +12198,7 @@ mod court_schedule_for_tests {
             pre_sudden_death_duration: Duration::from_secs(60),
             minimum_break: Duration::from_secs(240),
             game_block: None,
+            sudden_death_max_duration: None,
         }
     }
 

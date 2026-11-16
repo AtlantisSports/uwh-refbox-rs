@@ -1172,6 +1172,7 @@ mod tests {
             pre_sudden_death_duration: Duration::from_secs(60),
             minimum_break: Duration::from_secs(240),
             game_block: Some(Duration::from_secs(1920)),
+            sudden_death_max_duration: None,
         }
     }
 
@@ -1361,6 +1362,9 @@ mod tests {
             pre_sudden_death_duration: _,
             minimum_break: _,
             game_block: _,
+            // No row: the mothballed schedule-processor gets nothing for this
+            // field (PO 2026-11-16).
+            sudden_death_max_duration: _,
         } = a_valid_rule();
     }
 
@@ -1619,6 +1623,7 @@ mod tests {
             pre_sudden_death_duration: Duration::from_secs(60),
             minimum_break: Duration::from_secs(180),
             game_block,
+            sudden_death_max_duration: None,
             single_period: false,
         }
     }

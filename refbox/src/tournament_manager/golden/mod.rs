@@ -726,6 +726,7 @@ mod tests {
             portal_base_url: _,      // not core timing/state; network config, not game state
             recent_goal: _,          // display sugar; verified deterministic, no outcome effect
             next_period_len_secs: _, // not core timing/state
+            language: _,             // display language; set by the app, not the engine
         } = snap;
     }
 

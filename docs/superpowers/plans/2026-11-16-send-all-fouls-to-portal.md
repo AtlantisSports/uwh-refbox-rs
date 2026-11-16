@@ -114,4 +114,8 @@ player/side.
 
 ## Deviations
 
-(none yet)
+- All three tasks' new tests were written first (with stand-in helpers keeping the old behaviour) and run
+  RED together, then GREEN together, instead of one cycle per task: test runs are rationed by the refbox
+  coordinator. Every new test was seen failing on its assertion before its fix.
+- Final review (5 minors): `docs/third-party-integration.md` and
+  `docs/backlog/single-period-game-has-no-confirm-window/NOTE.md` updated, as this change made them wrong.

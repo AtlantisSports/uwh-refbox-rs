@@ -824,6 +824,10 @@ mod tests {
             minimum_break: Duration::from_secs(240),
             // Must be Some: the field is `skip_serializing_if = "Option::is_none"`.
             game_block: Some(Duration::from_secs(1920)),
+            // None on purpose: the mothballed schedule-processor gets no column for
+            // this field (PO 2026-11-16); skip_serializing_if keeps it out of the
+            // JSON, so TIMING_RULE_FIELDS stays unchanged.
+            sudden_death_max_duration: None,
         };
         let serde_json::Value::Object(map) = serde_json::to_value(&rule).unwrap() else {
             panic!("a TimingRule should serialise to a JSON object");

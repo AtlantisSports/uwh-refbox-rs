@@ -291,6 +291,13 @@ pub struct TimingRule {
         with = "secs_only_duration::option"
     )]
     pub game_block: Option<Duration>,
+    #[serde(
+        default,
+        rename = "suddenDeathMaxDuration",
+        skip_serializing_if = "Option::is_none",
+        with = "secs_only_duration::option"
+    )]
+    pub sudden_death_max_duration: Option<Duration>,
 }
 
 #[allow(clippy::from_over_into)]
@@ -325,6 +332,7 @@ impl Into<GameConfig> for TimingRule {
             pre_sudden_death_duration,
             minimum_break,
             game_block,
+            sudden_death_max_duration,
         } = self;
 
         let GameConfig {
@@ -364,6 +372,7 @@ impl Into<GameConfig> for TimingRule {
                 };
                 regulation + minimum_break
             }),
+            sudden_death_max: sudden_death_max_duration,
         }
     }
 }
@@ -1105,6 +1114,7 @@ mod tests {
             pre_sudden_death_duration: Duration::from_secs(60),
             minimum_break: Duration::from_secs(240),
             game_block: None,
+            sudden_death_max_duration: None,
         };
         let serialized = serde_json::to_string(&timing_rule).unwrap();
         assert_eq!(
@@ -1136,6 +1146,7 @@ mod tests {
                 pre_sudden_death_duration: Duration::from_secs(60),
                 minimum_break: Duration::from_secs(240),
                 game_block: None,
+                sudden_death_max_duration: None,
             }
         );
     }
@@ -1452,6 +1463,7 @@ mod tests {
             pre_sudden_death_duration: Duration::ZERO,
             minimum_break: Duration::ZERO,
             game_block: None,
+            sudden_death_max_duration: None,
         };
         let config: GameConfig = rule.into();
         assert!(
@@ -1479,6 +1491,7 @@ mod tests {
             pre_sudden_death_duration: Duration::ZERO,
             minimum_break: Duration::ZERO,
             game_block: None,
+            sudden_death_max_duration: None,
         };
         let config: GameConfig = rule.into();
         assert!(
@@ -1651,6 +1664,7 @@ mod tests {
                 pre_sudden_death_duration: Duration::from_secs(60),
                 minimum_break: Duration::from_secs(240),
                 game_block: None,
+                sudden_death_max_duration: None,
             }],
             standings_order: None,
             final_results_order: None,
@@ -2017,6 +2031,7 @@ mod tests {
                 pre_sudden_death_duration: Duration::from_secs(0),
                 minimum_break: Duration::from_secs(180),
                 game_block: None,
+                sudden_death_max_duration: None,
             }],
             standings_order: None,
             final_results_order: None,
@@ -2047,5 +2062,37 @@ mod tests {
         let sendable: SendableSchedule = original.clone().into();
         let round_tripped: Schedule = (sendable, event_id).into();
         assert_eq!(round_tripped.referees_by_game_number, None);
+    }
+
+    const SD_MAX_RULE_PREFIX: &str = r#"{"name":"RR","teamTimeoutCount":1,"teamTimeoutsCountedPerHalf":true,"overtimeAllowed":true,"suddenDeathAllowed":true,"halfPlayDuration":900,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":180,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240"#;
+
+    #[test]
+    fn timing_rule_sd_max_absent_is_none() {
+        let absent = format!("{SD_MAX_RULE_PREFIX}}}");
+        let rule: TimingRule = serde_json::from_str(&absent).unwrap();
+        assert_eq!(rule.sudden_death_max_duration, None);
+
+        let null = format!(r#"{SD_MAX_RULE_PREFIX},"suddenDeathMaxDuration":null}}"#);
+        let rule: TimingRule = serde_json::from_str(&null).unwrap();
+        assert_eq!(rule.sudden_death_max_duration, None);
+
+        let present = format!(r#"{SD_MAX_RULE_PREFIX},"suddenDeathMaxDuration":300}}"#);
+        let rule: TimingRule = serde_json::from_str(&present).unwrap();
+        assert_eq!(
+            rule.sudden_death_max_duration,
+            Some(Duration::from_secs(300))
+        );
+        let config: GameConfig = rule.into();
+        assert_eq!(config.sudden_death_max, Some(Duration::from_secs(300)));
+    }
+
+    #[test]
+    fn timing_rule_sd_max_zero_converts_raw() {
+        // The conversion stays raw; `sudden_death_limit` applies the zero rule.
+        let zero = format!(r#"{SD_MAX_RULE_PREFIX},"suddenDeathMaxDuration":0}}"#);
+        let rule: TimingRule = serde_json::from_str(&zero).unwrap();
+        let config: GameConfig = rule.into();
+        assert_eq!(config.sudden_death_max, Some(Duration::ZERO));
+        assert_eq!(config.sudden_death_limit(), None);
     }
 }

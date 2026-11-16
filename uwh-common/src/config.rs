@@ -36,6 +36,14 @@ pub struct Game {
     pub minimum_break: Duration,
     #[serde(with = "secs_only_duration")]
     pub game_block: Duration,
+    /// The longest sudden death may run, if any. Read it only through
+    /// `sudden_death_limit`: a zero is played as unlimited (PO ruling 2026-11-16).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "secs_only_duration::option"
+    )]
+    pub sudden_death_max: Option<Duration>,
 }
 
 impl Default for Game {
@@ -58,6 +66,7 @@ impl Default for Game {
             nominal_break: Duration::from_secs(900),
             minimum_break: Duration::from_secs(240),
             game_block: Duration::from_secs(2880),
+            sudden_death_max: None,
         }
     }
 }
@@ -82,6 +91,8 @@ impl Game {
             mut nominal_break,
             mut minimum_break,
             mut game_block,
+            // Old settings files never had a sudden-death maximum: keep the default.
+            sudden_death_max,
         } = Default::default();
 
         let process_duration = |old: &Table, name: &str, save: &mut Duration| {
@@ -180,6 +191,7 @@ impl Game {
             nominal_break,
             minimum_break,
             game_block,
+            sudden_death_max,
         }
     }
 }
@@ -211,6 +223,12 @@ impl Game {
         count * self.team_timeout_duration
     }
 
+    /// The sudden-death maximum to play, or `None` for no maximum. A stored zero
+    /// is treated as no maximum (PO ruling 2026-11-16).
+    pub fn sudden_death_limit(&self) -> Option<Duration> {
+        self.sudden_death_max.filter(|d| !d.is_zero())
+    }
+
     /// Slack between the Game Block and the math minimum (saturating at zero).
     pub fn game_block_buffer(&self) -> Duration {
         self.game_block.saturating_sub(self.game_block_minimum())
@@ -233,6 +251,28 @@ mod secs_only_duration {
         D: Deserializer<'de>,
     {
         Ok(Duration::from_secs(u64::deserialize(deserializer)?))
+    }
+
+    pub mod option {
+        use serde::{Deserialize, Deserializer, Serializer};
+        use std::time::Duration;
+
+        pub fn serialize<S>(dur: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            match dur {
+                Some(d) => serializer.serialize_u64(d.as_secs()),
+                None => serializer.serialize_none(),
+            }
+        }
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            Ok(Option::<u64>::deserialize(deserializer)?.map(Duration::from_secs))
+        }
     }
 }
 
@@ -376,5 +416,72 @@ pub mod test {
         // per-half but single period => 1 period; 2 teams * 2 * 60 = 240
         assert_eq!(g.team_timeout_allotment(), Duration::from_secs(240));
         assert_eq!(g.game_block_buffer(), Duration::from_secs(80)); // 800-720
+    }
+
+    #[test]
+    fn sd_max_absent_from_toml_reads_as_none() {
+        let toml_text = r#"
+num_team_timeouts_allowed = 1
+timeouts_counted_per_half = true
+overtime_allowed = true
+sudden_death_allowed = true
+single_half = false
+half_play_duration = 900
+half_time_duration = 180
+team_timeout_duration = 60
+penalty_shot_duration = 45
+ot_half_play_duration = 300
+ot_half_time_duration = 180
+pre_overtime_break = 180
+pre_sudden_death_duration = 60
+post_game_duration = 120
+nominal_break = 900
+minimum_break = 240
+game_block = 2880
+"#;
+        let gm: Game = toml::from_str(toml_text).unwrap();
+        assert_eq!(gm.sudden_death_max, None);
+        assert_eq!(gm, Game::default());
+    }
+
+    #[test]
+    fn sd_max_round_trips_through_toml() {
+        let gm = Game {
+            sudden_death_max: Some(Duration::from_secs(300)),
+            ..Default::default()
+        };
+        let serialized = toml::to_string(&gm).unwrap();
+        assert!(
+            serialized.contains("sudden_death_max = 300"),
+            "serialized TOML was: {serialized}"
+        );
+        let deser: Game = toml::from_str(&serialized).unwrap();
+        assert_eq!(deser, gm);
+    }
+
+    #[test]
+    fn sd_limit_reads_zero_as_none() {
+        let mut gm = Game {
+            sudden_death_max: None,
+            ..Default::default()
+        };
+        assert_eq!(gm.sudden_death_limit(), None);
+        gm.sudden_death_max = Some(Duration::ZERO);
+        assert_eq!(gm.sudden_death_limit(), None);
+        gm.sudden_death_max = Some(Duration::from_secs(300));
+        assert_eq!(gm.sudden_death_limit(), Some(Duration::from_secs(300)));
+    }
+
+    #[test]
+    fn migrate_keeps_sd_max_none() {
+        let mut old: Table = Default::default();
+        old.insert("half_play_duration".to_string(), toml::Value::Integer(900));
+        old.insert("half_time_duration".to_string(), toml::Value::Integer(180));
+        old.insert(
+            "sudden_death_allowed".to_string(),
+            toml::Value::Boolean(true),
+        );
+        let gm = Game::migrate(&old);
+        assert_eq!(gm.sudden_death_max, None);
     }
 }

@@ -1,4 +1,5 @@
 use super::Mode;
+use super::view_builders::shared_elements::GameClockFlags;
 use crate::config::GameSource;
 use crate::portal_manager::PortalIndicatorState;
 use uwh_common::{game_snapshot::GameSnapshot, uwhportal::schedule::TeamList};
@@ -12,7 +13,11 @@ pub(super) struct ViewData<'a, 'b> {
     /// third-party site needs — refbox cannot know a custom site's admin
     /// screens, so the two cannot be merged into one string.
     pub(super) source: GameSource,
-    pub(super) clock_running: bool,
+    /// Whether the clock runs, and whether the engine's sudden death has a maximum
+    /// and so counts down. Both read from the engine; `sd_counts_down` from its live
+    /// config, never `self.config.game`, which lags a Portal game's timing until
+    /// settings are applied. `sd_counts_down` drives the last-10-seconds flash.
+    pub(super) clock: GameClockFlags,
     pub(super) teams: Option<&'b TeamList>,
     /// `Some` when a portal event is currently linked — the health tile
     /// renders on every banner-bearing page and the state is live. `None`

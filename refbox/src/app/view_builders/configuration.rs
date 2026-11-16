@@ -394,7 +394,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         has_led_panel,
         committed_site_url,
@@ -409,7 +409,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             snapshot,
             settings,
             mode,
-            clock_running,
+            clock,
             portal_indicator,
             show_power_button,
         ),
@@ -419,7 +419,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             settings,
             events,
             mode,
-            clock_running,
+            clock,
             page_entry_snapshot,
             portal_indicator,
             client_serves_staged,
@@ -428,7 +428,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             snapshot,
             settings,
             mode,
-            clock_running,
+            clock,
             page_entry_snapshot,
             portal_indicator,
         ),
@@ -436,7 +436,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             snapshot,
             settings,
             mode,
-            clock_running,
+            clock,
             page_entry_snapshot,
             portal_indicator,
             has_led_panel,
@@ -445,12 +445,12 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             mode,
             snapshot,
             settings,
-            clock_running,
+            clock,
             page_entry_snapshot,
             portal_indicator,
         ),
         ConfigPage::User => {
-            make_user_config_page(snapshot, settings, mode, clock_running, portal_indicator)
+            make_user_config_page(snapshot, settings, mode, clock, portal_indicator)
         }
         ConfigPage::Remotes(index, listening) => make_remote_config_page(
             snapshot,
@@ -458,7 +458,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             index,
             listening,
             mode,
-            clock_running,
+            clock,
             page_entry_snapshot,
             portal_indicator,
         ),
@@ -466,7 +466,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             snapshot,
             settings,
             mode,
-            clock_running,
+            clock,
             page_entry_snapshot,
             portal_indicator,
         ),
@@ -474,7 +474,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             snapshot,
             settings,
             mode,
-            clock_running,
+            clock,
             page_entry_snapshot,
             portal_indicator,
         ),
@@ -483,7 +483,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             settings,
             show_invalid,
             mode,
-            clock_running,
+            clock,
             page_entry_snapshot,
             portal_indicator,
         ),
@@ -494,7 +494,7 @@ fn make_main_config_page<'a>(
     snapshot: &GameSnapshot,
     _settings: &EditableSettings,
     mode: Mode,
-    clock_running: bool,
+    clock: GameClockFlags,
     portal_indicator: Option<PortalIndicatorState>,
     show_power_button: bool,
 ) -> Element<'a, Message> {
@@ -549,15 +549,7 @@ fn make_main_config_page<'a>(
     };
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         row_top,
         row_bottom,
         row![horizontal_space()].height(Length::Fill),
@@ -631,7 +623,7 @@ fn make_user_config_page<'a>(
     snapshot: &GameSnapshot,
     _settings: &EditableSettings,
     mode: Mode,
-    clock_running: bool,
+    clock: GameClockFlags,
     portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
     let tiles = row![
@@ -658,15 +650,7 @@ fn make_user_config_page<'a>(
     );
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         tiles,
         row![view_mode_button, horizontal_space()]
             .spacing(SPACING)
@@ -718,7 +702,7 @@ fn make_event_config_page<'a>(
     settings: &EditableSettings,
     events: &EventStore,
     mode: Mode,
-    clock_running: bool,
+    clock: GameClockFlags,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
     // Whether the live client currently serves the staged source (`source`,
@@ -832,7 +816,7 @@ fn make_event_config_page<'a>(
         false,
         false,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         None,
     )]
@@ -1272,7 +1256,7 @@ fn make_app_config_page<'a>(
     mode: Mode,
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
-    clock_running: bool,
+    clock: GameClockFlags,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
@@ -1306,15 +1290,7 @@ fn make_app_config_page<'a>(
     let (live_updates_value, live_updates_message) = live_updates_tile(settings);
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         row![
             make_value_button(
                 fl!("app-mode"),
@@ -1490,7 +1466,7 @@ fn make_display_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     mode: Mode,
-    clock_running: bool,
+    clock: GameClockFlags,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
     has_led_panel: bool,
@@ -1609,15 +1585,7 @@ fn make_display_config_page<'a>(
     .center_y(Length::Fill);
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         row![sides_btn].spacing(SPACING).height(Length::Fill),
         row![layout_btn, horizontal_space()]
             .spacing(SPACING)
@@ -1641,7 +1609,7 @@ fn make_sound_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     mode: Mode,
-    clock_running: bool,
+    clock: GameClockFlags,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
@@ -1659,15 +1627,7 @@ fn make_sound_config_page<'a>(
     let audio_output_slot: Element<'a, Message> = horizontal_space().into();
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         row![
             make_value_button(
                 fl!("sound-enabled"),
@@ -1800,7 +1760,7 @@ fn make_remote_config_page<'a>(
     index: usize,
     listening: bool,
     mode: Mode,
-    clock_running: bool,
+    clock: GameClockFlags,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
@@ -1876,15 +1836,7 @@ fn make_remote_config_page<'a>(
     .style(orange_button);
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         row![
             make_scroll_list(
                 buttons.unwrap(),
@@ -2161,7 +2113,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         ..
     } = data;
@@ -2263,7 +2215,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         false,
         false,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         None
     )]
@@ -2410,7 +2362,7 @@ pub(in super::super) fn build_countdown_editor<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         ..
     } = data;
@@ -2418,15 +2370,7 @@ pub(in super::super) fn build_countdown_editor<'a>(
     let has_changes = countdown_edit_has_changes(settings, show_countdown, audible_countdown);
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         // One line, always: `no_wrap` shrinks a long translation instead of
         // breaking it. (iced 0.13's own `Wrapping::None` is accepted but never
         // applied -- see `fit_text`.) The default `Fill` width and height centre
@@ -2475,7 +2419,7 @@ pub(in super::super) fn build_parameter_help_page<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         ..
     } = data;
@@ -2508,15 +2452,7 @@ pub(in super::super) fn build_parameter_help_page<'a>(
     let body = body.replace('\n', " ");
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         container(text(title).size(MEDIUM_TEXT)).center_x(Length::Fill),
         text(body).size(SMALL_TEXT).width(Length::Fill),
         vertical_space(),
@@ -2538,7 +2474,7 @@ fn make_buzzer_select_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     mode: Mode,
-    clock_running: bool,
+    clock: GameClockFlags,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
@@ -2550,7 +2486,7 @@ fn make_buzzer_select_page<'a>(
         false,
         false,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         None
     )]
@@ -2605,7 +2541,7 @@ fn make_custom_site_page<'a>(
     settings: &EditableSettings,
     show_invalid: bool,
     mode: Mode,
-    clock_running: bool,
+    clock: GameClockFlags,
     // Kept, though this page's APPLY no longer consults it: the snapshot is what
     // CANCEL reverts to, and the Cancel/Back label rollout will want it here.
     _page_entry_snapshot: Option<&PageEntrySnapshot>,
@@ -2616,7 +2552,7 @@ fn make_custom_site_page<'a>(
         false,
         false,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         None
     )]
@@ -2690,7 +2626,7 @@ fn make_language_select_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     mode: Mode,
-    clock_running: bool,
+    clock: GameClockFlags,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
@@ -2709,15 +2645,7 @@ fn make_language_select_page<'a>(
     let [lang_row_1, lang_row_2, lang_row_3, lang_row_4] = make_language_grid_rows(selected);
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         lang_row_1,
         lang_row_2,
         lang_row_3,
@@ -2791,7 +2719,7 @@ pub(in super::super) fn make_updates_page<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         ..
     } = data;
@@ -2807,15 +2735,8 @@ pub(in super::super) fn make_updates_page<'a>(
     let is_confirm = matches!(state, UpdateUiState::RevertConfirm);
 
     // 1. Time banner
-    let time_banner = make_game_time_button(
-        snapshot,
-        false,
-        false,
-        mode,
-        clock_running,
-        portal_indicator,
-        None,
-    );
+    let time_banner =
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None);
 
     // 2. Current version (left half) + primary action button (right half)
     // The Updates page is a column of one-off actions, not content tiles: every

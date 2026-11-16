@@ -31,7 +31,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         teams,
         portal_indicator,
         ..
@@ -147,15 +147,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
     .width(Length::FillPortion(4));
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         row![
             scroll_list,
             column![

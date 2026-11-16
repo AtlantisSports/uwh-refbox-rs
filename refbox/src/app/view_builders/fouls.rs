@@ -16,7 +16,7 @@ pub(in super::super) fn build_foul_overview_page<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         ..
     } = data;
@@ -31,15 +31,7 @@ pub(in super::super) fn build_foul_overview_page<'a>(
     );
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         row![
             make_foul_list(warnings.black, indices.black, Some(GameColor::Black)),
             make_foul_list(warnings.equal, indices.equal, None),

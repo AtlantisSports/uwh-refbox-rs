@@ -602,12 +602,48 @@ const NO_TIME: &str = "--:--";
 /// nothing to translate, and every grid keeps its shape either way.
 pub(super) const NO_VALUE: &str = "-";
 
+/// Whether the game clock shows red this second when no timeout is running: on the
+/// even seconds of a timed period's last 10, and at 30 seconds left in a break. A
+/// sudden death flashes only when it has a maximum and so counts down
+/// (`sd_counts_down`); one without a maximum counts up and never does.
+pub(super) fn game_clock_is_red(
+    period: GamePeriod,
+    secs_in_period: u32,
+    sd_counts_down: bool,
+) -> bool {
+    let is_alert_period = match period {
+        GamePeriod::BetweenGames
+        | GamePeriod::HalfTime
+        | GamePeriod::PreOvertime
+        | GamePeriod::OvertimeHalfTime
+        | GamePeriod::PreSuddenDeath => true,
+        GamePeriod::FirstHalf
+        | GamePeriod::SecondHalf
+        | GamePeriod::OvertimeFirstHalf
+        | GamePeriod::OvertimeSecondHalf
+        | GamePeriod::SuddenDeath => false,
+    };
+
+    // Not a sudden death that counts up (clippy's form of
+    // `!(period == SuddenDeath && !sd_counts_down)`).
+    (period != GamePeriod::SuddenDeath || sd_counts_down)
+        && ((secs_in_period <= 10 && (secs_in_period % 2 == 0) && (secs_in_period != 0))
+            || (is_alert_period && secs_in_period == 30))
+}
+
+/// The game clock's state as the time banner needs it, both read from the engine.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in super::super) struct GameClockFlags {
+    pub running: bool,
+    pub sd_counts_down: bool,
+}
+
 pub(super) fn make_game_time_button<'a>(
     snapshot: &GameSnapshot,
     tall: bool,
     editing_time: bool,
     mode: Mode,
-    clock_running: bool,
+    clock: GameClockFlags,
     portal_indicator: Option<PortalIndicatorState>,
     overrun_label: Option<String>,
 ) -> Row<'a, Message> {
@@ -619,26 +655,11 @@ pub(super) fn make_game_time_button<'a>(
                 (time <= 10 && (time % 2 == 0) && (time != 0)) || time == 15
             }
             Some(TimeoutSnapshot::Ref(_)) | Some(TimeoutSnapshot::PenaltyShot(_)) => false,
-            None => {
-                let is_alert_period = match snapshot.current_period {
-                    GamePeriod::BetweenGames
-                    | GamePeriod::HalfTime
-                    | GamePeriod::PreOvertime
-                    | GamePeriod::OvertimeHalfTime
-                    | GamePeriod::PreSuddenDeath => true,
-                    GamePeriod::FirstHalf
-                    | GamePeriod::SecondHalf
-                    | GamePeriod::OvertimeFirstHalf
-                    | GamePeriod::OvertimeSecondHalf
-                    | GamePeriod::SuddenDeath => false,
-                };
-
-                snapshot.current_period != GamePeriod::SuddenDeath
-                    && ((snapshot.secs_in_period <= 10
-                        && (snapshot.secs_in_period % 2 == 0)
-                        && (snapshot.secs_in_period != 0))
-                        || (is_alert_period && snapshot.secs_in_period == 30))
-            }
+            None => game_clock_is_red(
+                snapshot.current_period,
+                snapshot.secs_in_period,
+                clock.sd_counts_down,
+            ),
         }
     };
 
@@ -965,7 +986,7 @@ pub(super) fn make_game_time_button<'a>(
 
     if mode == Mode::Rugby {
         let play_pause_icon = container(
-            Svg::new(svg::Handle::from_memory(if clock_running {
+            Svg::new(svg::Handle::from_memory(if clock.running {
                 &include_bytes!("../../../resources/pause.svg")[..]
             } else {
                 &include_bytes!("../../../resources/play_arrow.svg")[..]
@@ -981,7 +1002,7 @@ pub(super) fn make_game_time_button<'a>(
             .height(button_height)
             .width(Length::Fixed(MIN_BUTTON_SIZE));
         if !editing_time {
-            play_pause_button = play_pause_button.on_press(if clock_running {
+            play_pause_button = play_pause_button.on_press(if clock.running {
                 Message::StopClock
             } else {
                 Message::StartClock
@@ -1984,6 +2005,21 @@ pub(super) fn any_pending_change(hints: impl IntoIterator<Item = FormatHint>) ->
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn game_clock_red_last_ten_in_limited_sd() {
+        use super::game_clock_is_red;
+        use uwh_common::game_snapshot::GamePeriod;
+        // A limited sudden death counts down, so its last 10 seconds flash like a half's.
+        assert!(game_clock_is_red(GamePeriod::SuddenDeath, 8, true));
+        // An unlimited sudden death counts up and never flashes.
+        assert!(!game_clock_is_red(GamePeriod::SuddenDeath, 8, false));
+        // The flash is on even seconds only.
+        assert!(!game_clock_is_red(GamePeriod::SuddenDeath, 7, true));
+        for sd_counts_down in [true, false] {
+            assert!(game_clock_is_red(GamePeriod::SecondHalf, 8, sd_counts_down));
+        }
+    }
+
     /// The seam between "which typeface" and "what that typeface is called".
     /// One language per face, and each named family asserted, so a face wired
     /// to the wrong group -- which no compiler would notice -- fails here.

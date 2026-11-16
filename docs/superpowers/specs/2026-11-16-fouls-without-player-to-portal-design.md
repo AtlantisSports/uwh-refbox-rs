@@ -8,7 +8,8 @@
 Today the refbox sends the Portal only fouls that name both a team and a player. Fouls the refs recorded without a
 player, and "both teams at fault" (Equal) fouls, never reach the Portal, so its foul counts are incomplete. The
 Portal currently rejects such fouls (and with them the whole game's stats), which is why they were held back
-(docs/backlog/portal-accept-team-and-equal-fouls/NOTE.md). The PO has ruled the Portal will accept them.
+(an untracked backlog note, `docs/backlog/portal-accept-team-and-equal-fouls/NOTE.md`, kept in the
+main checkout only; the Portal side is uwhportal#564). The PO has ruled the Portal will accept them.
 
 ## What the PO ruled
 

@@ -468,12 +468,12 @@ pub struct Config {
 ///
 /// What it costs -- recorded here so a future reader does not re-derive it as a
 /// bug, because none of this follows from cap numbers being unavailable:
-/// - Team warnings and equal fouls go with it, and neither ever needed a player
-///   number. Both predicates read
-///   `!matches!(infraction, Infraction::Unknown) && (no_player || player_num > 0)`,
+/// - Team warnings and every foul go with it, and none of them needs a player
+///   number. `warning_add_can_commit` reads
+///   `!matches!(infraction, Infraction::Unknown) && (no_player || player_num > 0)`
+///   and `foul_add_can_commit` only `!matches!(infraction, Infraction::Unknown)`,
 ///   so with an infraction chosen `warning_add_can_commit(i, true, 0)` and
-///   `foul_add_can_commit(i, None, 0)` are true at `player_num == 0` -- the
-///   team/equal case satisfies the second half outright. (An infraction is
+///   `foul_add_can_commit(i, _, 0)` are true at `player_num == 0`. (An infraction is
 ///   still required, as `warning_needs_infraction` and `foul_needs_infraction`
 ///   pin.) `main_view` gates the ADD FOUL and ADD WARNING buttons, the warnings
 ///   panel and the warnings summary on this flag, so all of that disappears too.

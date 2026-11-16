@@ -2224,8 +2224,9 @@ impl TournamentManager {
         }
 
         // Every foul is sent to the portal: a foul with no player recorded goes with a null
-        // player, and an equal ("both teams at fault") foul with a null side. The portal accepts
-        // both (uwhportal#564).
+        // player, and an equal ("both teams at fault") foul with a null side. A portal without
+        // uwhportal#564 rejects the whole upload for either, so this must not reach a release
+        // before that portal change is live in production.
         for color in [Some(Color::Black), Some(Color::White), None] {
             for foul in self.fouls[color].iter() {
                 self.current_game_stats.add_foul(foul, color);

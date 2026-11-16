@@ -90,6 +90,10 @@ pub(super) fn make_foul_add_page<'a>(
 /// infraction must always be selected. A player number is never required: a
 /// Black/White foul left blank means the player was not recorded, and an
 /// "equal" foul (`color == None`) has no player at all.
+///
+/// The team and player number stay in the signature even though the rule ignores
+/// them, so `foul_gate_depends_only_on_the_infraction` can pin their irrelevance:
+/// reintroducing either fails a test rather than silently re-blocking the operator.
 fn foul_add_can_commit(
     infraction: Infraction,
     _color: Option<GameColor>,
@@ -145,6 +149,16 @@ mod tests {
             Some(GameColor::White),
             0
         ));
+    }
+
+    #[test]
+    fn foul_gate_depends_only_on_the_infraction() {
+        for color in [None, Some(GameColor::Black), Some(GameColor::White)] {
+            for num in [0, 7, 99] {
+                assert!(foul_add_can_commit(Infraction::Obstruction, color, num));
+                assert!(!foul_add_can_commit(Infraction::Unknown, color, num));
+            }
+        }
     }
 
     #[test]

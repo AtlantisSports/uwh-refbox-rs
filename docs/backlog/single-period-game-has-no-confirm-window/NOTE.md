@@ -24,7 +24,7 @@ still works.
 An entry made on that still-open keypad **is discarded, not recorded against the finished game.**
 By the time the whistle has gone, `end_game` has already copied the game's penalties and fouls
 into `current_game_stats` and frozen `last_game_info`
-(`refbox/src/tournament_manager/mod.rs:1412-1435`), and the portal upload is built from that frozen
+(`end_game` in `refbox/src/tournament_manager/mod.rs`), and the portal upload is built from that frozen
 copy. (Every foul is copied, including one with no player recorded and an equal foul.) A foul added afterwards goes only into
 `self.fouls`, stamped `BetweenGames`, where `reset()` (`mod.rs:520-528`) clears it — at the
 mid-break changeover, or, when the finished game is the last on the court and no changeover is ever

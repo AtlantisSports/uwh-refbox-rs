@@ -59,6 +59,19 @@ fn recent_goal_showing(
     goal_period == current_period && goal_time.saturating_sub(cur_time) <= RECENT_GOAL_TIME
 }
 
+/// Whether sudden death carries on once its score-confirmation window closes. It carries on
+/// only when the score is level (the deciding goal was disallowed) and there is time left to
+/// play: a sudden death with a maximum that paused at 0:00 has run out, so it ends level. A
+/// pure function because the app's confirm handlers return `Task`s that tests cannot observe.
+fn sudden_death_resumes_after_confirm(
+    scores: BlackWhiteBundle<u8>,
+    counts_down: bool,
+    clock_at_pause: Duration,
+) -> bool {
+    let ran_out = counts_down && clock_at_pause.is_zero();
+    !scores.are_not_equal() && !ran_out
+}
+
 /// How many times the tick will try to build a snapshot before giving up.
 ///
 /// The same five attempts the app's original loop made, but NOT byte-identical to it: the
@@ -2407,9 +2420,13 @@ impl TournamentManager {
             .checked_duration_since(start_time)
             .ok_or(TournamentManagerError::InvalidNowValue)?;
 
+        // A sudden death with a maximum ends at 0:00 like the second half does. One without a
+        // maximum counts up and never runs out, so it is never accepted here.
         Ok(time >= time_remaining_at_start
             && (self.current_period == GamePeriod::SecondHalf
-                || (self.current_period == GamePeriod::OvertimeSecondHalf)))
+                || (self.current_period == GamePeriod::OvertimeSecondHalf)
+                || (self.current_period == GamePeriod::SuddenDeath
+                    && !self.current_period.counts_up(&self.config))))
     }
 
     pub fn pause_has_ended(&self, now: Instant) -> bool {
@@ -2561,11 +2578,18 @@ impl TournamentManager {
                         self.current_period = GamePeriod::SuddenDeath;
                         need_cull = true;
                     }
-                    (GamePeriod::SuddenDeath, _) => {
-                        error!(
-                            "{} Impossible state: in sudden death with clock counting down",
+                    (GamePeriod::SuddenDeath, true) => {
+                        info!(
+                            "{} Extending Sudden Death for unfinished penalty shot",
                             self.status_string(now)
-                        )
+                        );
+                        leave_game_clock_running = false;
+                    }
+                    (GamePeriod::SuddenDeath, false) => {
+                        // Only a sudden death with a maximum counts down. `could_end_game`
+                        // normally catches its 0:00 first and opens the score-confirmation
+                        // window; this is the backstop, ending the game level.
+                        self.end_game(now);
                     }
                 }
                 if leave_game_clock_running {
@@ -2793,11 +2817,23 @@ impl TournamentManager {
                         self.end_overtime_second_half(now);
                     }
                     GamePeriod::SuddenDeath => {
-                        error!(
-                            "{} Penalty shot ended during sudden death with clock stopped",
-                            self.status_string(now)
-                        );
-                        return Err(TournamentManagerError::InvalidState);
+                        if self.current_period.counts_up(&self.config) {
+                            error!(
+                                "{} Penalty shot ended during sudden death with clock stopped",
+                                self.status_string(now)
+                            );
+                            return Err(TournamentManagerError::InvalidState);
+                        }
+                        // A sudden death with a maximum reached 0:00 while the shot ran. Leave
+                        // its clock expired at 0:00 so the next tick's `could_end_game` opens
+                        // the score-confirmation window. Return before the tail below: it
+                        // would restart the clock at the full sudden death length.
+                        self.clock_state = ClockState::CountingDown {
+                            start_time: min(now, start_time + time_remaining_at_start),
+                            time_remaining_at_start: Duration::ZERO,
+                        };
+                        self.timeout_state = None;
+                        return Ok(());
                     }
                     GamePeriod::BetweenGames
                     | GamePeriod::HalfTime
@@ -3301,7 +3337,9 @@ impl TournamentManager {
         info!("Current Period: {}", self.current_period);
 
         let clock_at_pause = match self.current_period {
-            GamePeriod::SuddenDeath => self.clock_state.clock_time(now).unwrap(),
+            // A sudden death counting down to its maximum reads `None` once `now` is past its
+            // 0:00, and that is exactly when expiry pauses it: read that as 0:00.
+            GamePeriod::SuddenDeath => self.clock_state.clock_time(now).unwrap_or(Duration::ZERO),
             GamePeriod::SecondHalf | GamePeriod::OvertimeSecondHalf => Duration::from_millis(10),
             GamePeriod::BetweenGames
             | GamePeriod::FirstHalf
@@ -3355,10 +3393,16 @@ impl TournamentManager {
                     }
                 }
                 GamePeriod::SuddenDeath => {
-                    if !scores.are_not_equal() {
+                    if sudden_death_resumes_after_confirm(
+                        scores,
+                        !self.current_period.counts_up(&self.config),
+                        confirm_pause.clock_time,
+                    ) {
                         // The tie was restored, so the deciding goal was disallowed. Clear its
                         // scorer: the recent-goal expiry in `generate_snapshot` only works on a
-                        // clock counting down, so on sudden death's it would never fire.
+                        // clock counting down, so on a sudden death without a maximum it would
+                        // never fire, and on one with a maximum the disallowed scorer would
+                        // stay on screen for up to 15 more seconds.
                         self.recent_goal = None;
                         GamePeriod::SuddenDeath
                     } else {
@@ -3378,7 +3422,9 @@ impl TournamentManager {
             info!("Current Period: {}", self.current_period);
 
             let pause_duration = now.duration_since(confirm_pause.pause_began);
-            let time_into_sd = confirm_pause.clock_time;
+            // The sudden death clock as it read when paused (time played without a maximum,
+            // time left with one), copied out because `end_game` below needs `self` mutably.
+            let sd_clock_at_pause = confirm_pause.clock_time;
 
             let next_period_remaining_duration = if self.current_period == GamePeriod::BetweenGames
             {
@@ -3418,7 +3464,7 @@ impl TournamentManager {
                         start_time: now,
                         time_remaining_at_start: next_period_remaining_duration,
                     },
-                    GamePeriod::SuddenDeath => self.play_clock(now, time_into_sd),
+                    GamePeriod::SuddenDeath => self.play_clock(now, sd_clock_at_pause),
                     _ => unreachable!(),
                 };
             }
@@ -11416,9 +11462,9 @@ mod test {
     /// continues. Nothing tested that arm before or after, in either role.
     ///
     /// What matters is WHERE play resumes. The window parks the clock at 10 ms, and only
-    /// `time_into_sd` carries the real sudden-death reading across it; lose that and a restored
-    /// tie silently restarts sudden death from zero, handing both teams back the time they had
-    /// already played. Found by code review, 2026-09-15.
+    /// `sd_clock_at_pause` carries the real sudden-death reading across it; lose that and a
+    /// restored tie silently restarts sudden death from zero, handing both teams back the time
+    /// they had already played. Found by code review, 2026-09-15.
     #[test]
     fn test_restoring_a_tie_resumes_sudden_death_where_it_left_off() {
         initialize();
@@ -15269,5 +15315,184 @@ mod test {
             tm.next_update_time(now),
             Some(now + Duration::from_millis(750))
         );
+    }
+
+    /// Puts `tm` in a limited sudden death with `left` on a running clock started at `start`.
+    fn running_sd_with(tm: &mut TournamentManager, start: Instant, left: Duration) {
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, left);
+        tm.set_game_start(start);
+        tm.start_game_clock(start);
+        assert_eq!(tm.game_clock_time(start), Some(left));
+    }
+
+    /// The instant the open score-confirmation window closes on its own.
+    fn window_closes_at(tm: &TournamentManager) -> Instant {
+        let pause = tm
+            .time_pause_confirmation
+            .as_ref()
+            .expect("the confirmation window should be open");
+        pause.pause_began + pause.duration_of_pause
+    }
+
+    const LEVEL: BlackWhiteBundle<u8> = BlackWhiteBundle { black: 0, white: 0 };
+    const BLACK_AHEAD: BlackWhiteBundle<u8> = BlackWhiteBundle { black: 1, white: 0 };
+
+    #[test]
+    fn sd_expiry_ends_level_via_window() {
+        initialize();
+        let mut tm = TournamentManager::new(sd_max_config());
+        let start = Instant::now();
+        running_sd_with(&mut tm, start, Duration::from_secs(2));
+
+        let (kind, _) = tm.updater_tick(start + Duration::from_secs(1)).unwrap();
+        assert_eq!(kind, TickKind::NewSnapshot);
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+
+        let (kind, _) = tm.updater_tick(start + Duration::from_secs(3)).unwrap();
+        assert_eq!(kind, TickKind::ConfirmScores, "0:00 opens the window");
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+
+        let after = window_closes_at(&tm) + Duration::from_secs(1);
+        let (kind, _) = tm.updater_tick(after).unwrap();
+        assert_eq!(kind, TickKind::AutoConfirmScores);
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert_eq!(tm.scores, LEVEL);
+        assert_eq!(tm.last_game_info().unwrap().scores, LEVEL);
+    }
+
+    #[test]
+    fn expiry_window_score_edit_ends_with_winner() {
+        initialize();
+        let mut tm = TournamentManager::new(sd_max_config());
+        let start = Instant::now();
+        running_sd_with(&mut tm, start, Duration::from_secs(2));
+
+        let at_expiry = start + Duration::from_secs(3);
+        let (kind, _) = tm.updater_tick(at_expiry).unwrap();
+        assert_eq!(kind, TickKind::ConfirmScores);
+
+        let edit = at_expiry + Duration::from_secs(2);
+        tm.set_scores(BLACK_AHEAD, edit);
+        tm.end_confirm_pause(edit).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert_eq!(tm.scores, BLACK_AHEAD);
+        assert_eq!(tm.last_game_info().unwrap().scores, BLACK_AHEAD);
+    }
+
+    #[test]
+    fn disallowed_goal_resumes_remaining_countdown() {
+        initialize();
+        let mut tm = TournamentManager::new(sd_max_config());
+        let start = Instant::now();
+        running_sd_with(&mut tm, start, Duration::from_secs(10));
+
+        let goal_at = start + Duration::from_secs(7);
+        let (kind, _) = tm.updater_tick(goal_at).unwrap();
+        assert_eq!(kind, TickKind::NewSnapshot);
+        assert_eq!(tm.game_clock_time(goal_at), Some(Duration::from_secs(3)));
+        tm.add_deciding_goal(Color::Black, 4, goal_at).unwrap();
+        assert!(tm.in_score_confirm_pause());
+
+        let resume = goal_at + Duration::from_secs(5);
+        tm.set_scores(LEVEL, resume);
+        tm.end_confirm_pause(resume).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        assert_eq!(tm.game_clock_time(resume), Some(Duration::from_secs(3)));
+
+        let later = resume + Duration::from_secs(1);
+        let (kind, _) = tm.updater_tick(later).unwrap();
+        assert_eq!(kind, TickKind::NewSnapshot);
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        assert_eq!(
+            tm.game_clock_time(later),
+            Some(Duration::from_secs(2)),
+            "the remaining time counts down"
+        );
+    }
+
+    #[test]
+    fn rugby_shot_at_sd_expiry_waits_then_confirms() {
+        initialize();
+        let config = GameConfig {
+            penalty_shot_duration: Duration::from_secs(10),
+            ..sd_max_config()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        running_sd_with(&mut tm, start, Duration::from_secs(4));
+        tm.start_rugby_penalty_shot(start + Duration::from_secs(2))
+            .unwrap();
+
+        // The game clock reaches 0:00 at +4 s; the shot runs until +12 s.
+        for secs in [4, 5, 8, 11] {
+            let t = start + Duration::from_secs(secs);
+            let (kind, _) = tm.updater_tick(t).unwrap();
+            assert_eq!(kind, TickKind::NewSnapshot, "at +{secs} s");
+            assert_eq!(tm.current_period, GamePeriod::SuddenDeath, "at +{secs} s");
+            assert_eq!(tm.game_clock_time(t), Some(Duration::ZERO), "at +{secs} s");
+        }
+
+        let shot_over = start + Duration::from_secs(12);
+        let (kind, _) = tm.updater_tick(shot_over).unwrap();
+        assert_eq!(kind, TickKind::ConfirmScores);
+
+        let after = window_closes_at(&tm) + Duration::from_secs(1);
+        let (kind, _) = tm.updater_tick(after).unwrap();
+        assert_eq!(kind, TickKind::AutoConfirmScores);
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert_eq!(tm.last_game_info().unwrap().scores, LEVEL);
+    }
+
+    #[test]
+    fn sd_expiry_sleep_parks_then_ends() {
+        initialize();
+        let mut tm = TournamentManager::new(sd_max_config());
+        let start = Instant::now();
+        running_sd_with(&mut tm, start, Duration::from_secs(2));
+
+        // Manual mode (no schedule): more time lost than is left parks sudden death at 0:00.
+        let wake = start + Duration::from_secs(1);
+        tm.absorb_lost_time(wake, Duration::from_secs(10));
+        assert_eq!(
+            tm.clock_state,
+            ClockState::Stopped {
+                clock_time: Duration::ZERO
+            }
+        );
+        let (kind, _) = tm.updater_tick(wake).unwrap();
+        assert_eq!(kind, TickKind::NewSnapshot);
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        assert_eq!(tm.game_clock_time(wake), Some(Duration::ZERO));
+
+        let restart = wake + Duration::from_secs(20);
+        tm.start_clock(restart);
+        let (kind, _) = tm.updater_tick(restart).unwrap();
+        assert_eq!(kind, TickKind::ConfirmScores);
+
+        let after = window_closes_at(&tm) + Duration::from_secs(1);
+        let (kind, _) = tm.updater_tick(after).unwrap();
+        assert_eq!(kind, TickKind::AutoConfirmScores);
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert_eq!(tm.last_game_info().unwrap().scores, LEVEL);
+    }
+
+    #[test]
+    fn sudden_death_resumes_after_confirm_rules() {
+        let s = Duration::from_secs;
+        // (scores, counts_down, clock_at_pause, resumes)
+        let table = [
+            (LEVEL, true, s(0), false),
+            (LEVEL, true, s(3), true),
+            (LEVEL, false, s(0), true),
+            (BLACK_AHEAD, true, s(3), false),
+            (BLACK_AHEAD, false, s(30), false),
+        ];
+        for (scores, counts_down, clock_at_pause, resumes) in table {
+            assert_eq!(
+                sudden_death_resumes_after_confirm(scores, counts_down, clock_at_pause),
+                resumes,
+                "scores {scores:?}, counts_down {counts_down}, clock at pause {clock_at_pause:?}"
+            );
+        }
     }
 }

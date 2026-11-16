@@ -23,7 +23,7 @@ pub(in super::super) fn build_time_edit_view<'a>(
 
     let mut edit_row = row![
         horizontal_space(),
-        make_time_editor(fl!("game-time"), time, false, None),
+        make_time_editor(fl!("game-time"), time, false, None, true),
         horizontal_space()
     ]
     .spacing(SPACING)
@@ -37,6 +37,7 @@ pub(in super::super) fn build_time_edit_view<'a>(
                 timeout_time.unwrap(),
                 true,
                 None,
+                true,
             ))
             .push(horizontal_space());
     }

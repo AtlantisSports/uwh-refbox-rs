@@ -1043,14 +1043,22 @@ fn make_event_config_page<'a>(
                             BoolGameParameter::OvertimeAllowed,
                         )),
                     ),
-                    make_value_button(
-                        fl!("sudden-death-allowed"),
-                        bool_string(config.sudden_death_allowed),
-                        (false, true),
-                        Some(Message::ToggleBoolParameter(
-                            BoolGameParameter::SuddenDeathAllowed,
-                        )),
-                    )
+                    // NO, YES (allowed with no maximum), or MAX over the
+                    // maximum time. `sudden_death_limit` decides what a stored
+                    // zero means, so it shows as YES here.
+                    match (config.sudden_death_allowed, config.sudden_death_limit()) {
+                        (true, Some(max)) => make_max_time_value_button(
+                            fl!("sudden-death-allowed"),
+                            max,
+                            Some(Message::EditSuddenDeath),
+                        ),
+                        (allowed, _) => make_value_button(
+                            fl!("sudden-death-allowed"),
+                            bool_string(allowed),
+                            (false, true),
+                            Some(Message::EditSuddenDeath),
+                        ),
+                    }
                 ]
                 .spacing(SPACING)
                 .height(Length::Fill),
@@ -1899,7 +1907,7 @@ fn param_edit_has_changes(
 ///
 /// Sudden Death also culls, but is the exception, and not because it skips it: it
 /// installs a counting-*up* clock, which never reports no time left.
-const MIN_PERIOD_LENGTH: Duration = Duration::from_secs(1);
+pub(super) const MIN_PERIOD_LENGTH: Duration = Duration::from_secs(1);
 
 /// Whether the pending value is shorter than [`MIN_PERIOD_LENGTH`], for a parameter
 /// where that is not a legal setting. Refused by greying out APPLY.
@@ -2238,7 +2246,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     let editor_row = row![
         horizontal_space().width(Length::Fixed(MIN_BUTTON_SIZE)),
         horizontal_space(),
-        make_time_editor(title, length, false, value_color),
+        make_time_editor(title, length, false, value_color, true),
         horizontal_space(),
         help_button,
     ]

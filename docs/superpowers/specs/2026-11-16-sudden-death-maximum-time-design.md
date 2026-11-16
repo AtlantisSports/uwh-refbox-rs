@@ -48,7 +48,8 @@ Today the refbox cannot do this: sudden death's clock counts **up** with no end 
 
 - A display that shows "GOLDEN GOAL", "OVERTIME", or anything other than "SUDDEN DEATH" during this period.
 - Zero (0:00) used to mean "no maximum". A mode belongs in an explicit choice, not a magic value — the same lesson
-  as the zero-length half-time replaced by the `singlePeriod` flag.
+  as the zero-length half-time replaced by the `singlePeriod` flag. (This is about the setting's meaning. The crash
+  safety net for a zero that arrives as bad data is a separate ruling; see "A zero maximum" below.)
 - A sudden death that reaches 0:00 and keeps going, restarts, or ends with a winner the refbox invented.
 - Any existing event (no maximum set, or a portal that never sends the field) behaving differently from today.
 
@@ -133,16 +134,20 @@ length:
 
 ### Design-session calls not individually walked with the PO (builder may revisit, flag in the PR)
 
-- **Game Info page.** `game_info_table.rs` lists "sudden death allowed"; it should show the maximum the same way the
-  settings button does (`MAX` + time), so the two pages agree.
+- **Game Info page — PO ruling 2026-11-16 (first-hand, confirming a ruling relayed from the Portal).**
+  `game_info_table.rs` (also shown on the main page between games) shows sudden death as ONE value: `NO`, `YES`, or the
+  time alone (e.g. `5:00`). No `MAX` word: the table's value column is too narrow for it in every language. The
+  settings button keeps its two-line `MAX` / `5:00`.
 - **Score-confirmation window at 0:00.** P2 says "the way the end of a game is handled"; for a normal game end that
   includes the score-confirmation window, so a level 0:00 sudden death gets it too. **Trap:** `end_confirm_pause`
   (~l.3351) reads a level score in `SuddenDeath` as "the deciding goal was disallowed, carry on" and stays in sudden
   death. The plan must tell "goal disallowed" apart from "time expired" there, or a level 0:00 resumes sudden death.
-- **A zero maximum is refused, never read as "no maximum".** Settings page: SET with 0:00 cannot be applied (APPLY
-  greyed, as other invalid lengths are). Portal: a `0` maximum is refused the same way the refbox refuses other
-  zero-length periods (precedent: a zero half-time is refused without the `singlePeriod` flag). Absent/null is the only
-  "no maximum".
+- **A zero maximum is never an operator's choice.** Settings page: SET with 0:00 cannot be applied (APPLY greyed, as
+  other invalid lengths are). Portal: the Portal refuses a `0` maximum on its side. **Corrected 2026-11-16 at plan
+  time:** this line used to say the refbox refuses it "the same way it refuses other zero-length periods", but the
+  refbox has no refusal for Portal values at all. **PO ruling ("1"):** if a zero maximum reaches the refbox anyway
+  (Portal bug, hand-edited settings file), sudden death is played as today, with no maximum, and a warning is logged.
+  It never crashes and never invents a result. Absent/null remains the only *intended* "no maximum".
 - **Rugby mode: a rugby penalty shot running at 0:00 is waited for**, exactly as the refbox already extends a half
   for an unfinished rugby penalty shot ("Extending Second Half for unfinished penalty shot", ~l.2522). The maximum
   applies in rugby mode as in hockey.

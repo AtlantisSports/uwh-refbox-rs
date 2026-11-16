@@ -2570,20 +2570,8 @@ impl TournamentManager {
                 }
                 if leave_game_clock_running {
                     if self.current_period != GamePeriod::BetweenGames {
-                        self.clock_state = if self.current_period != GamePeriod::SuddenDeath {
-                            ClockState::CountingDown {
-                                start_time: start_time + time_remaining_at_start,
-                                time_remaining_at_start: self
-                                    .current_period
-                                    .duration(&self.config)
-                                    .unwrap(),
-                            }
-                        } else {
-                            ClockState::CountingUp {
-                                start_time: start_time + time_remaining_at_start,
-                                time_at_start: Duration::ZERO,
-                            }
-                        };
+                        self.clock_state =
+                            self.fresh_period_clock(start_time + time_remaining_at_start);
                         if need_cull {
                             self.cull_penalties(now)?;
                         }
@@ -2838,6 +2826,43 @@ impl TournamentManager {
         self.start_stop_rx.clone()
     }
 
+    /// The running game clock for the current period, showing `clock_time` at `start_time`:
+    /// counting up for a sudden death with no maximum, counting down for everything else
+    /// (including a sudden death with a maximum, where `clock_time` is the time left).
+    fn play_clock(&self, start_time: Instant, clock_time: Duration) -> ClockState {
+        if self.current_period.counts_up(&self.config) {
+            ClockState::CountingUp {
+                start_time,
+                time_at_start: clock_time,
+            }
+        } else {
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start: clock_time,
+            }
+        }
+    }
+
+    /// The clock for a period that has just begun at `start_time`: its full length counting
+    /// down, or 0:00 counting up for a sudden death with no maximum. Call it once, on entering
+    /// the period.
+    fn fresh_period_clock(&self, start_time: Instant) -> ClockState {
+        if self.current_period == GamePeriod::SuddenDeath
+            && self.config.sudden_death_max.is_some()
+            && self.config.sudden_death_limit().is_none()
+        {
+            warn!(
+                "Sudden death maximum is 0:00, which is not a real length: playing sudden death without a maximum"
+            );
+        }
+        self.play_clock(
+            start_time,
+            self.current_period
+                .duration(&self.config)
+                .unwrap_or_default(),
+        )
+    }
+
     // Returns true if the clock was started, false if it was already running
     fn start_game_clock(&mut self, now: Instant) -> bool {
         if self.current_period == GamePeriod::BetweenGames && self.no_startable_next_game() {
@@ -2856,20 +2881,7 @@ impl TournamentManager {
 
         if let ClockState::Stopped { clock_time } = self.clock_state {
             info!("{} Starting the game clock", self.status_string(now));
-            match self.current_period {
-                GamePeriod::SuddenDeath => {
-                    self.clock_state = ClockState::CountingUp {
-                        start_time: now,
-                        time_at_start: clock_time,
-                    };
-                }
-                _ => {
-                    self.clock_state = ClockState::CountingDown {
-                        start_time: now,
-                        time_remaining_at_start: clock_time,
-                    };
-                }
-            }
+            self.clock_state = self.play_clock(now, clock_time);
             true
         } else {
             false
@@ -3129,17 +3141,11 @@ impl TournamentManager {
             }
         }
         self.clock_state = match self.current_period {
-            p @ GamePeriod::FirstHalf
-            | p @ GamePeriod::SecondHalf
-            | p @ GamePeriod::OvertimeFirstHalf
-            | p @ GamePeriod::OvertimeSecondHalf => ClockState::CountingDown {
-                start_time: now,
-                time_remaining_at_start: p.duration(&self.config).unwrap(),
-            },
-            GamePeriod::SuddenDeath => ClockState::CountingUp {
-                start_time: now,
-                time_at_start: Duration::ZERO,
-            },
+            GamePeriod::FirstHalf
+            | GamePeriod::SecondHalf
+            | GamePeriod::OvertimeFirstHalf
+            | GamePeriod::OvertimeSecondHalf
+            | GamePeriod::SuddenDeath => self.fresh_period_clock(now),
             _ => unreachable!(),
         };
         if need_cull {
@@ -3412,10 +3418,7 @@ impl TournamentManager {
                         start_time: now,
                         time_remaining_at_start: next_period_remaining_duration,
                     },
-                    GamePeriod::SuddenDeath => ClockState::CountingUp {
-                        start_time: (now),
-                        time_at_start: (time_into_sd),
-                    },
+                    GamePeriod::SuddenDeath => self.play_clock(now, time_into_sd),
                     _ => unreachable!(),
                 };
             }
@@ -3793,7 +3796,7 @@ impl TournamentManager {
             (Some(TimeoutState::Ref(cs)), _) | (Some(TimeoutState::PenaltyShot(cs)), _) => {
                 cs.clock_time(now).map(now_plus_invert_subsec)
             }
-            (None, GamePeriod::SuddenDeath) => {
+            (None, period) if period.counts_up(&self.config) => {
                 self.clock_state.clock_time(now).map(now_plus_invert_subsec)
             }
             // cases where the clock is counting down
@@ -3801,7 +3804,7 @@ impl TournamentManager {
             (Some(TimeoutState::RugbyPenaltyShot(cs)), period) => {
                 let time_to_pen_update = cs.clock_time(now).map(now_plus_subsec);
                 let time_to_period_update = self.clock_state.clock_time(now).map(|ct| {
-                    if period == GamePeriod::SuddenDeath {
+                    if period.counts_up(&self.config) {
                         now_plus_invert_subsec(ct)
                     } else {
                         now_plus_subsec(ct)
@@ -15083,5 +15086,188 @@ mod test {
         );
         assert!(rx.has_changed().unwrap(), "the updater must be told");
         assert!(!*rx.borrow(), "...that the clock stopped");
+    }
+
+    fn sd_max_config() -> GameConfig {
+        GameConfig {
+            sudden_death_max: Some(Duration::from_secs(300)),
+            ..Default::default()
+        }
+    }
+
+    /// Puts `tm` in `PreSuddenDeath` with 10 s left, running from `start`, then ticks the
+    /// shipping updater at the break's expiry so the engine itself enters sudden death.
+    /// Returns the instant sudden death began.
+    fn tick_into_sudden_death(tm: &mut TournamentManager, start: Instant) -> Instant {
+        tm.set_period_and_game_clock_time(GamePeriod::PreSuddenDeath, Duration::from_secs(10));
+        tm.set_game_start(start);
+        tm.start_game_clock(start);
+        let sd_start = start + Duration::from_secs(10);
+        let (kind, _) = tm.updater_tick(sd_start).unwrap();
+        assert_eq!(kind, TickKind::NewSnapshot);
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        sd_start
+    }
+
+    #[test]
+    fn sd_with_max_enters_counting_down() {
+        initialize();
+        let mut tm = TournamentManager::new(sd_max_config());
+        let start = Instant::now();
+        let sd_start = tick_into_sudden_death(&mut tm, start);
+
+        assert_eq!(tm.game_clock_time(sd_start), Some(Duration::from_secs(300)));
+        let later = sd_start + Duration::from_secs(10);
+        tm.updater_tick(later).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        assert_eq!(tm.game_clock_time(later), Some(Duration::from_secs(290)));
+    }
+
+    #[test]
+    fn sd_with_max_after_overtime_counts_down() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            ..sd_max_config()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::OvertimeFirstHalf, Duration::from_secs(10));
+        tm.set_game_start(start);
+        tm.start_game_clock(start);
+
+        // Level all the way: overtime first half, overtime half time, overtime second half,
+        // the confirm window, then the break before sudden death.
+        let mut now = start;
+        let mut seen = vec![tm.current_period];
+        while tm.current_period != GamePeriod::SuddenDeath {
+            now += Duration::from_secs(1);
+            assert!(
+                now < start + Duration::from_secs(3600),
+                "never reached sudden death; periods seen: {seen:?}"
+            );
+            tm.updater_tick(now).unwrap();
+            if seen.last() != Some(&tm.current_period) {
+                seen.push(tm.current_period);
+            }
+        }
+        assert_eq!(
+            seen,
+            vec![
+                GamePeriod::OvertimeFirstHalf,
+                GamePeriod::OvertimeHalfTime,
+                GamePeriod::OvertimeSecondHalf,
+                GamePeriod::PreSuddenDeath,
+                GamePeriod::SuddenDeath,
+            ]
+        );
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(300)));
+        let later = now + Duration::from_secs(10);
+        tm.updater_tick(later).unwrap();
+        assert_eq!(tm.game_clock_time(later), Some(Duration::from_secs(290)));
+    }
+
+    #[test]
+    fn sd_start_play_now_counts_down() {
+        initialize();
+        let mut tm = TournamentManager::new(sd_max_config());
+        let now = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::PreSuddenDeath, Duration::from_secs(15));
+        assert_eq!(tm.start_play_now(now), Ok(()));
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(300)));
+        let later = now + Duration::from_secs(10);
+        tm.updater_tick(later).unwrap();
+        assert_eq!(tm.game_clock_time(later), Some(Duration::from_secs(290)));
+    }
+
+    #[test]
+    fn ref_timeout_resumes_sd_countdown() {
+        initialize();
+        let mut tm = TournamentManager::new(sd_max_config());
+        let start = Instant::now();
+        let sd_start = tick_into_sudden_death(&mut tm, start);
+
+        let to_start = sd_start + Duration::from_secs(60);
+        tm.updater_tick(to_start).unwrap();
+        assert_eq!(tm.game_clock_time(to_start), Some(Duration::from_secs(240)));
+        tm.start_ref_timeout(to_start).unwrap();
+
+        let mid = to_start + Duration::from_secs(15);
+        tm.updater_tick(mid).unwrap();
+        assert_eq!(tm.game_clock_time(mid), Some(Duration::from_secs(240)));
+
+        let to_end = to_start + Duration::from_secs(30);
+        tm.end_timeout(to_end).unwrap();
+        assert_eq!(tm.game_clock_time(to_end), Some(Duration::from_secs(240)));
+
+        let later = to_end + Duration::from_secs(10);
+        tm.updater_tick(later).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        assert_eq!(tm.game_clock_time(later), Some(Duration::from_secs(230)));
+    }
+
+    #[test]
+    fn sd_with_max_next_update_time_on_the_countdown_second() {
+        initialize();
+        let mut tm = TournamentManager::new(sd_max_config());
+        let now = Instant::now();
+        // 4:59.75 left: the display next changes when 4:59 is reached, 0.75 s from now. A
+        // fractional clock is what tells the two roundings apart: from a whole-second start
+        // both give the same instant.
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_millis(299_750));
+        tm.start_game_clock(now);
+        assert_eq!(
+            tm.next_update_time(now),
+            Some(now + Duration::from_millis(750))
+        );
+        let later = now + Duration::from_secs(1);
+        assert_eq!(
+            tm.game_clock_time(later),
+            Some(Duration::from_millis(298_750))
+        );
+    }
+
+    #[test]
+    fn sd_zero_max_plays_unlimited() {
+        initialize();
+        let config = GameConfig {
+            sudden_death_max: Some(Duration::ZERO),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        let sd_start = tick_into_sudden_death(&mut tm, start);
+
+        assert_eq!(tm.game_clock_time(sd_start), Some(Duration::ZERO));
+        let later = sd_start + Duration::from_secs(10);
+        tm.updater_tick(later).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        assert_eq!(tm.game_clock_time(later), Some(Duration::from_secs(10)));
+    }
+
+    #[test]
+    fn sd_without_max_unchanged() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let start = Instant::now();
+        let sd_start = tick_into_sudden_death(&mut tm, start);
+
+        assert_eq!(tm.game_clock_time(sd_start), Some(Duration::ZERO));
+        // Far past any maximum an event could set: still sudden death, still counting up.
+        let later = sd_start + Duration::from_secs(3 * 3600);
+        let (kind, _) = tm.updater_tick(later).unwrap();
+        assert_eq!(kind, TickKind::NewSnapshot);
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        assert_eq!(
+            tm.game_clock_time(later),
+            Some(Duration::from_secs(3 * 3600))
+        );
+        // `next_update_time` keeps counting-up rounding.
+        let now = later + Duration::from_millis(250);
+        assert_eq!(
+            tm.next_update_time(now),
+            Some(now + Duration::from_millis(750))
+        );
     }
 }

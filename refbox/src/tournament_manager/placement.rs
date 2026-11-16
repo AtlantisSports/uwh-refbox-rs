@@ -59,7 +59,8 @@ pub(crate) enum Placement {
 ///
 /// It models regulation only — the overtime and sudden-death lengths depend on the
 /// score, and [`place`] works from the schedule, which knows nothing about scores.
-/// Sudden death has no length at all: it counts up until somebody scores.
+/// Sudden death lasts until somebody scores, or until its maximum runs out when it has one;
+/// whether it is played at all depends on the score.
 ///
 /// Lives here, beside [`period_at`], so that anyone extending the model has both
 /// halves of the decision in front of them. A caller that acts on a placement for a

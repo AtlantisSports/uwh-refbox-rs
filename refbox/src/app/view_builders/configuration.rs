@@ -1905,8 +1905,11 @@ fn param_edit_has_changes(
 /// unwraps — panicking with the game-state lock held, which poisons it and takes
 /// the whole app down.
 ///
-/// Sudden Death also culls, but is the exception, and not because it skips it: it
-/// installs a counting-*up* clock, which never reports no time left.
+/// Sudden Death also culls on entry. Without a maximum it is safe at any setting: it
+/// installs a counting-*up* clock, which never reports no time left. With a maximum it
+/// installs a countdown like a half, so the maximum is held to this same floor by the
+/// sudden-death page (`sudden_death_edit.rs`); a stored zero maximum is played as no
+/// maximum (`sudden_death_limit`), so it never installs a zero-length countdown.
 pub(super) const MIN_PERIOD_LENGTH: Duration = Duration::from_secs(1);
 
 /// Whether the pending value is shorter than [`MIN_PERIOD_LENGTH`], for a parameter

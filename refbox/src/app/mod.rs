@@ -1830,10 +1830,7 @@ impl RefBoxApp {
         // by the engine at kick-off) until settings are applied.
         let (engine_period, sd_counts_down) = {
             let tm = self.tm.lock();
-            (
-                tm.current_period(),
-                !GamePeriod::SuddenDeath.counts_up(tm.config()),
-            )
+            (tm.current_period(), tm.sd_counts_down())
         };
         let mut task = Task::none();
         match snapshot_transition(&self.snapshot, &new_snapshot, caught_up, engine_period) {
@@ -2078,7 +2075,7 @@ impl RefBoxApp {
         };
         // Read from the engine while the lock is still held, never from
         // `self.config.game` (see `apply_tick`).
-        let sd_counts_down = !GamePeriod::SuddenDeath.counts_up(tm.config());
+        let sd_counts_down = tm.sd_counts_down();
         // Released before any app code runs. Neither call below takes the lock
         // today, but it does not re-enter, so a guard held across app code is a
         // deadlock waiting for the first caller that does.
@@ -9129,10 +9126,7 @@ impl RefBoxApp {
             .or(self.current_event_id.as_ref());
         let (clock_running, sd_counts_down) = {
             let tm = self.tm.lock();
-            (
-                tm.clock_is_running(),
-                !GamePeriod::SuddenDeath.counts_up(tm.config()),
-            )
+            (tm.clock_is_running(), tm.sd_counts_down())
         };
         let data = ViewData {
             snapshot: &self.snapshot,

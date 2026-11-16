@@ -1019,42 +1019,35 @@ pub(super) fn make_time_editor<'a, T: IntoFragment<'a>>(
     time: Duration,
     timeout: bool,
     value_color: Option<iced::Color>,
+    enabled: bool,
 ) -> Container<'a, Message> {
     let wide = time > Duration::from_secs(MAX_STRINGABLE_SECS as u64);
+    // A disabled editor draws its buttons greyed and sends nothing.
+    let change = |increase: bool, secs: u64| {
+        enabled.then_some(Message::ChangeTime {
+            increase,
+            secs,
+            timeout,
+        })
+    };
 
     let min_edits = column![
         make_small_button("+", LARGE_TEXT)
             .style(blue_button)
-            .on_press(Message::ChangeTime {
-                increase: true,
-                secs: 60,
-                timeout,
-            }),
+            .on_press_maybe(change(true, 60)),
         make_small_button("-", LARGE_TEXT)
             .style(blue_button)
-            .on_press(Message::ChangeTime {
-                increase: false,
-                secs: 60,
-                timeout,
-            }),
+            .on_press_maybe(change(false, 60)),
     ]
     .spacing(SPACING);
 
     let sec_edits = column![
         make_small_button("+", LARGE_TEXT)
             .style(blue_button)
-            .on_press(Message::ChangeTime {
-                increase: true,
-                secs: 1,
-                timeout,
-            }),
+            .on_press_maybe(change(true, 1)),
         make_small_button("-", LARGE_TEXT)
             .style(blue_button)
-            .on_press(Message::ChangeTime {
-                increase: false,
-                secs: 1,
-                timeout,
-            }),
+            .on_press_maybe(change(false, 1)),
     ]
     .spacing(SPACING);
 
@@ -1070,11 +1063,7 @@ pub(super) fn make_time_editor<'a, T: IntoFragment<'a>>(
             horizontal_space(),
             make_small_button(fl!("zero"), MEDIUM_TEXT)
                 .style(blue_button)
-                .on_press(Message::ChangeTime {
-                    increase: false,
-                    secs: u64::MAX,
-                    timeout,
-                }),
+                .on_press_maybe(change(false, u64::MAX)),
             horizontal_space(),
         ],
     ]
@@ -1750,6 +1739,52 @@ where
         // This is not confined to filling tiles: it also moves the label down a
         // few pixels in every fixed-height value button, bringing them into line
         // with `make_chrome_button`, whose `fit_text` already centres itself.
+        .height(Length::Fill)
+        .padding(PADDING),
+    )
+    .height(Length::Fill)
+    .width(Length::Fill)
+    .style(light_gray_button);
+
+    if let Some(message) = message {
+        button = button.on_press(message);
+    }
+    button
+}
+
+/// [`make_value_button`] for a time value with a word over it: the SUDDEN DEATH
+/// tile's `MAX` over its maximum time. The word is at the size
+/// `make_value_button` uses for a label and the time at the size it uses for a
+/// large value, each fitted to the value's share of the width.
+pub(super) fn make_max_time_value_button<'a>(
+    first_label: impl IntoFragment<'a>,
+    max: Duration,
+    message: Option<Message>,
+) -> Button<'a, Message> {
+    let mut button = button(
+        row![
+            fit_text(first_label)
+                .size(SMALL_TEXT)
+                .align_x(Horizontal::Left)
+                .width(Length::FillPortion(3))
+                .height(Length::Shrink),
+            column![
+                fit_text(fl!("sd-max"))
+                    .size(SMALL_TEXT)
+                    .align_x(Horizontal::Right)
+                    .width(Length::Fill)
+                    .height(Length::Shrink),
+                fit_text(time_string(max))
+                    .size(MEDIUM_TEXT)
+                    .align_x(Horizontal::Right)
+                    .width(Length::Fill)
+                    .height(Length::Shrink),
+            ]
+            .width(Length::FillPortion(2)),
+        ]
+        .spacing(SPACING)
+        .align_y(Alignment::Center)
+        // Fills the button for the reason given in `make_value_button`.
         .height(Length::Fill)
         .padding(PADDING),
     )

@@ -54,5 +54,8 @@ pub(super) use score_edit::*;
 pub mod shared_elements;
 pub(super) use shared_elements::*;
 
+pub mod sudden_death_edit;
+pub(super) use sudden_death_edit::*;
+
 pub mod time_edit;
 pub(super) use time_edit::*;

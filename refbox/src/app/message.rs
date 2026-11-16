@@ -163,6 +163,14 @@ pub enum Message {
     /// SHOW COUNTDOWN and AUDIBLE COUNTDOWN, and `ParameterEditComplete` closes
     /// it, like the length editors.
     EditCountdown,
+    /// Open the SUDDEN DEATH page from the Game page. It stages whether sudden
+    /// death is allowed and its maximum time, and `ParameterEditComplete`
+    /// closes it, like the length editors.
+    EditSuddenDeath,
+    /// SUDDEN DEATH page: NO / YES.
+    SetSuddenDeathAllowed(bool),
+    /// SUDDEN DEATH page: MAXIMUM TIME NONE (`false`) / SET (`true`).
+    SetSuddenDeathMaxSet(bool),
     SelectParameter(ListableParameter),
     ParameterEditComplete {
         canceled: bool,
@@ -458,6 +466,9 @@ impl Message {
             | Self::ConfigEditComplete
             | Self::EditParameter(_)
             | Self::EditCountdown
+            | Self::EditSuddenDeath
+            | Self::SetSuddenDeathAllowed(_)
+            | Self::SetSuddenDeathMaxSet(_)
             | Self::SelectParameter(_)
             | Self::ParameterEditComplete { .. }
             | Self::ParameterSelected(_, _)
@@ -561,6 +572,7 @@ impl PartialEq for Message {
             | (Self::ShowWarnings, Self::ShowWarnings)
             | (Self::ShowParameterHelp, Self::ShowParameterHelp)
             | (Self::EditCountdown, Self::EditCountdown)
+            | (Self::EditSuddenDeath, Self::EditSuddenDeath)
             | (Self::CloseParameterHelp, Self::CloseParameterHelp)
             | (Self::EditGameConfig, Self::EditGameConfig)
             | (Self::ConfigEditComplete, Self::ConfigEditComplete)
@@ -763,6 +775,8 @@ impl PartialEq for Message {
             (Self::SetCourtCount(a), Self::SetCourtCount(b)) => a == b,
             (Self::SetTeamTimeoutCount(a), Self::SetTeamTimeoutCount(b)) => a == b,
             (Self::SetTeamTimeoutLength(a), Self::SetTeamTimeoutLength(b)) => a == b,
+            (Self::SetSuddenDeathAllowed(a), Self::SetSuddenDeathAllowed(b)) => a == b,
+            (Self::SetSuddenDeathMaxSet(a), Self::SetSuddenDeathMaxSet(b)) => a == b,
             (Self::UpdatesCheckDone(a), Self::UpdatesCheckDone(b)) => a == b,
             (Self::UpdatesDownloaded(a), Self::UpdatesDownloaded(b)) => a == b,
             (Self::UpdatesVerified(a), Self::UpdatesVerified(b)) => a == b,
@@ -819,6 +833,9 @@ impl PartialEq for Message {
             | (Self::ConfigEditComplete, _)
             | (Self::EditParameter(_), _)
             | (Self::EditCountdown, _)
+            | (Self::EditSuddenDeath, _)
+            | (Self::SetSuddenDeathAllowed(_), _)
+            | (Self::SetSuddenDeathMaxSet(_), _)
             | (Self::SelectParameter(_), _)
             | (Self::ParameterEditComplete { .. }, _)
             | (Self::ParameterSelected(_, _), _)
@@ -978,7 +995,6 @@ pub enum ListableParameter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoolGameParameter {
     OvertimeAllowed,
-    SuddenDeathAllowed,
     // Emitted by the 2 Halves / 1 Period selector in the Half Length parameter
     // editor (surfaced per the former ADR-009 Task 14 TODO). Toggles the staged
     // `single_half` choice held in AppState::ParameterEditor.

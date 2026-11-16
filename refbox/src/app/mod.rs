@@ -377,6 +377,10 @@ enum AppState {
         show_countdown: bool,
         audible_countdown: bool,
     },
+    /// The SUDDEN DEATH page, reached from Game Options. Its staged choices
+    /// reach the Game page's edit on APPLY and are dropped on CANCEL, like a
+    /// length editor's Duration.
+    SuddenDeathEditor(SuddenDeathEdit),
     ParameterList(ListableParameter, usize),
     ConfirmationPage(ConfirmationKind),
     ConfirmScores(BlackWhiteBundle<u8>),
@@ -5108,6 +5112,7 @@ impl RefBoxApp {
                         }
                     }
                     AppState::ParameterEditor(_, ref mut dur, _) => (dur, false),
+                    AppState::SuddenDeathEditor(ref mut edit) => (&mut edit.length, false),
                     AppState::KeypadPage(KeypadPage::TeamTimeouts(ref mut dur, _), _) => {
                         (dur, false)
                     }
@@ -6820,6 +6825,32 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::EditSuddenDeath => {
+                // Seeded like `EditParameter`: from the Game page's staged edit
+                // when present, so reopening shows what the operator just chose.
+                let config = self
+                    .edited_settings
+                    .as_ref()
+                    .map(|s| &s.config)
+                    .unwrap_or(&self.config.game);
+                self.app_state = AppState::SuddenDeathEditor(sudden_death_edit_seed(config));
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::SetSuddenDeathAllowed(allowed) => {
+                if let AppState::SuddenDeathEditor(ref mut edit) = self.app_state {
+                    edit.allowed = allowed;
+                    trace!("AppState changed to {:?}", self.app_state);
+                }
+                Task::none()
+            }
+            Message::SetSuddenDeathMaxSet(max_set) => {
+                if let AppState::SuddenDeathEditor(ref mut edit) = self.app_state {
+                    edit.max_set = max_set;
+                    trace!("AppState changed to {:?}", self.app_state);
+                }
+                Task::none()
+            }
             Message::SelectParameter(param) => {
                 let index = match param {
                     ListableParameter::Event => Some(0),
@@ -6928,6 +6959,14 @@ impl RefBoxApp {
                             show_countdown,
                             audible_countdown,
                         ),
+                        AppState::SuddenDeathEditor(edit) => sudden_death_edit_commit(
+                            edit,
+                            // why this cannot panic: the SUDDEN DEATH page is
+                            // opened only by `EditSuddenDeath`, from Game Options,
+                            // while `edited_settings` is populated; every path
+                            // that clears it also moves `app_state` off this page.
+                            &mut self.edited_settings.as_mut().unwrap().config,
+                        ),
                         _ => unreachable!(),
                     }
                 }
@@ -6944,6 +6983,10 @@ impl RefBoxApp {
                     AppState::ParameterEditor(_, _, _) => {
                         AppState::EditGameConfig(ConfigPage::Game)
                     }
+                    // Set directly, like the countdown page below: the Game
+                    // page's entry snapshot must stay the one taken when it
+                    // opened, or the staged change would look like no change.
+                    AppState::SuddenDeathEditor(_) => AppState::EditGameConfig(ConfigPage::Game),
                     // Set directly, not through a page change: re-capturing the
                     // App page's entry snapshot here would make the staged
                     // countdown change look like no change, and APPLY would
@@ -7168,9 +7211,6 @@ impl RefBoxApp {
                         match param {
                             BoolGameParameter::OvertimeAllowed => {
                                 edited_settings.config.overtime_allowed ^= true
-                            }
-                            BoolGameParameter::SuddenDeathAllowed => {
-                                edited_settings.config.sudden_death_allowed ^= true
                             }
                             BoolGameParameter::WhiteOnRight => {
                                 edited_settings.white_on_right ^= true
@@ -9358,6 +9398,13 @@ impl RefBoxApp {
             AppState::ParameterEditorHelp(param, dur, single_half) => {
                 build_parameter_help_page(data, param, dur, single_half)
             }
+            AppState::SuddenDeathEditor(edit) => build_sudden_death_editor(
+                data,
+                edit,
+                self.edited_settings
+                    .as_ref()
+                    .map_or(&self.config.game, |s| &s.config),
+            ),
             AppState::CountdownEditor {
                 show_countdown,
                 audible_countdown,

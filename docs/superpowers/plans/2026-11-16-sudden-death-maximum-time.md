@@ -226,3 +226,38 @@ The spec's six acceptance items, plus Review Focus 4. Rough order: (1) settings 
 
 - 2026-11-16 (plan time): the spec said a Portal zero maximum is "refused the same way the refbox refuses other zero-length periods". The refbox has no such refusal; Portal values are checked only by the Portal (and the mothballed schedule-processor). **PO ruling, "1":** a zero maximum plays as unlimited sudden death and logs a warning. The spec has been corrected to match.
 - Found while planning, **out of scope**: `handle_rugby_pen_shot_end`'s tail calls `self.current_period.duration(&self.config).unwrap()` after `end_second_half` / `end_overtime_second_half` may have moved the game to `BetweenGames`, where `duration` is `None`. A rugby penalty shot outlasting a level second half with no overtime or sudden death looks like a panic. This plan avoids that tail for sudden death; the existing path goes to the PO as a separate item.
+- 2026-11-16, **Task 8 sweep** (every `SuddenDeath` / `CountingUp` / `sudden_death` hit outside test code, grouped by file; test-only files and modules — `golden/`, `zero_probe.rs`, `led-panel-sim/src/test.rs`, every `mod test` — are not listed):
+  - `uwh-common/src/config.rs` (`sudden_death_max`, `sudden_death_limit`, old-file upgrade) and `uwh-common/src/uwhportal/schedule.rs` (Portal `suddenDeathMaxDuration` both ways): handled in Task 1.
+  - `uwh-common/src/game_snapshot.rs`: `counts_up`, `duration`, `time_elapsed_at`, `time_between`, `next_period_dur` handled in Task 2; the period list, `Display` and the wire numbers 8/9 are not affected (the period itself did not change).
+  - `schedule-processor` (`csv_parser.rs`, `schedule_checks.rs`, `scoresheets.rs`, `json_loader.rs`): the new field was threaded through in Task 1; the rest is the pre-sudden-death break and the yes/no switch, not affected.
+  - `refbox/src/tournament_manager/mod.rs`: the clock start/resume sites (`play_clock`, `fresh_period_clock`, `start_game_clock`, `start_play_now`, `next_update_time`) handled in Task 3; ending at 0:00 (`could_end_game`, `check_time_remaining`, the `update()` sudden-death arms, `handle_rugby_pen_shot_end`, `timeout_end_would_end_game`, `pause_for_confirm`, `end_confirm_pause`, `sudden_death_resumes_after_confirm`) handled in Task 4. Not affected: the timeout/penalty-shot permission checks (sudden death is still a play period), the timeout clocks (`CountingUp` there is the timeout's own clock), `confirm_pause_duration`, `status_string`, `models_period`/`absorb_lost_time` (still leaves sudden death alone after a clock jump — still right, the length still depends on the score), and `remaining_play` (sudden death adds nothing to the schedule projection, left as is on purpose by the spec).
+  - `refbox/src/tournament_manager/penalty.rs`: handled in Task 2 (penalties count against the sudden-death countdown); its loop never steps *through* sudden death (it is the last period), so its `duration(..).unwrap()` is not reached for it.
+  - `refbox/src/tournament_manager/placement.rs`: not affected — sudden death stays outside the schedule arithmetic.
+  - `refbox/src/app/mod.rs`: buzzer, red clock and flash (`period_end_sounds`, `game_clock_is_red`, the three `sd_counts_down` reads) handled in Task 5; the settings page messages and `SuddenDeathEditor` handled in Task 6. Not affected: the sudden-death goal paths (`AddNewScore`, score edit, keypad goal — already go through the confirm window), `manual_alarm_hold_duration`, the pre-sudden-death break length editor.
+  - `refbox/src/app/update_sender.rs`: the panel hide-time in the pre-sudden-death break handled in Task 5.
+  - `refbox/src/app/view_builders/shared_elements.rs`: clock colour and flash handled in Task 5; the period names are not affected.
+  - `refbox/src/app/message.rs`, `view_builders/configuration.rs`, `view_builders/sudden_death_edit.rs`, `view_builders/mod.rs`: handled in Task 6.
+  - `refbox/src/app/view_builders/game_info_table.rs`: handled in Task 7.
+  - `refbox/src/app/view_builders/main_view.rs`: not affected (which buttons show in a play period).
+  - `refbox/src/live_updates/mod.rs`: hits are test-only; not affected (relays period and clock as sent).
+  - `matrix-drawing`, `led-panel-sim`, `overlay`, `overlay-bridge`: not affected — they colour and label by period and show whatever time the refbox sends (`led-panel-sim/src/main.rs` hits are demo snapshots; `overlay-bridge` hit is a doc comment).
+  - `stream-manager` (not in the workspace map): one comment only, not affected.
+  - No hit was found that a counting-down sudden death breaks; no code change came out of the sweep.
+- **Rulings made while building (plain English):**
+  - R1: if the operator chooses NO for sudden death but leaves a maximum of 0:00 set, the 0:00 is saved but never used (sudden death is off, and a zero maximum plays as no maximum anyway).
+  - The "next period length" for sudden death is only reported when sudden death is switched on, the same way overtime is.
+  - vMix: during the break before sudden death, the "next period length" (`next_period_len_secs`) now shows the sudden-death maximum when one is set (it used to be blank). The PR must say so.
+  - Two new on/off values for the clock (running, sudden death counting down) were bundled into one small `GameClockFlags` value instead of silencing the code checker's "too many inputs" warning.
+  - Task 4 fix: if a rugby penalty shot is ended by hand exactly when a sudden death with a maximum reaches 0:00, the score-confirmation window now opens (before the fix the game ended without it).
+  - Task 6: the old internal "sudden death allowed" switch on the settings page (`BoolGameParameter::SuddenDeathAllowed`) was removed, because the new sudden-death page replaces it.
+  - Task 6: NO + maximum SET + 0:00 stores a one-microsecond value, which is saved to the settings file as 0 — harmless while sudden death is off (same reasoning as R1).
+  - Portal goal times: with a maximum set, a sudden-death goal's period time sent to the Portal is now the time *left* on the clock, like every other period (the field is "time left in period"); sudden death without a maximum still sends time elapsed, as today. The PR must say so, and the Portal side is told through the coordinators.
+- **Deferred minors** (found by task reviews, judged not worth fixing now):
+  - Task 4: the "sudden death ran out" backstop can also be reached after a TIME EDIT or a score confirmation — the same as the second half today.
+  - Task 4: one sleep test covers a state today's wake-up handling never produces.
+  - Task 5: no test ties the buzzer/flash flag to the engine's settings (walk step 4 covers it).
+  - Task 5: the red-clock test lacks the edge cases at 0 s and 10 s.
+  - Task 6: NO + SET + 0:00 stores one microsecond rather than exactly zero (fix if wanted: round to whole seconds when saving).
+  - Task 6: the maximum-time button repeats existing button scaffolding; a duplicate style alias; no whole-app test of the new edit/apply messages.
+  - Task 7: no test case for a stored zero maximum showing as YES.
+  - Task 8 sweep: three comments now only describe a sudden death without a maximum — `game_stats.rs` (test-only `goals()` note: a counting-down sudden death records time *left*, like every other period), `placement.rs` ("sudden death has no length at all") and `absorb_lost_time` ("counts up until somebody scores"). Behaviour is right; wording only.

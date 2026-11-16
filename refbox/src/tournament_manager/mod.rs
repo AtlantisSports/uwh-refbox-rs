@@ -3718,6 +3718,8 @@ impl TournamentManager {
             recent_goal: self.recent_goal.map(|(c, n, _, _)| (c, n)),
             next_period_len_secs,
             conf_pause_time,
+            // Filled in by the app when it publishes the snapshot, like `event_id`.
+            language: None,
         })
     }
 

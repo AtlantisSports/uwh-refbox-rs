@@ -82,6 +82,12 @@ pub struct GameSnapshot {
     pub recent_goal: Option<(Color, u8)>,
     pub next_period_len_secs: Option<u32>,
     pub conf_pause_time: Option<u32>,
+    /// The language the sending refbox's screens are in, as a language code (`"en"`, `"es"`,
+    /// `"fr"`, `"zh-CN"`, ...), so a display such as the stream overlay can show its own words in
+    /// the same language. `None` from a refbox too old to report it, and on snapshots synthesized
+    /// outside a game (the beep test). A consumer that doesn't have the language should fall back
+    /// to its own default rather than treat it as an error.
+    pub language: Option<String>,
 }
 
 #[cfg(feature = "std")]
@@ -1175,6 +1181,35 @@ mod test {
             serde_json::from_value(value).expect("a line predating the field must still parse");
 
         assert_eq!(snapshot.portal_base_url, None);
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn a_snapshot_line_without_a_language_deserializes_as_absent() {
+        // An older refbox sends no `language` key; it must read as absent, not fail.
+        let mut value = serde_json::to_value(GameSnapshot::default()).expect("serialize");
+        value
+            .as_object_mut()
+            .expect("a snapshot serializes as a JSON object")
+            .remove("language")
+            .expect("the key should have been there to remove");
+
+        let snapshot: GameSnapshot =
+            serde_json::from_value(value).expect("a line predating the field must still parse");
+
+        assert_eq!(snapshot.language, None);
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn a_snapshot_language_survives_the_round_trip() {
+        let snapshot = GameSnapshot {
+            language: Some("es".to_string()),
+            ..Default::default()
+        };
+        let line = serde_json::to_string(&snapshot).expect("serialize");
+        let back: GameSnapshot = serde_json::from_str(&line).expect("deserialize");
+        assert_eq!(back.language.as_deref(), Some("es"));
     }
 
     #[test]

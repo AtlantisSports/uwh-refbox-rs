@@ -1,4 +1,4 @@
-use super::{Interpolate, PageRenderer, draw_texture_both, fit_text};
+use super::{Interpolate, PageRenderer, draw_flag_line, draw_texture_both, fit_text};
 use crate::{
     State, draw_timeout_flag,
     pages::{Justify, draw_text_both, draw_text_both_ex, draw_texture_both_ex},
@@ -72,51 +72,29 @@ impl PageRenderer {
                         timeout_alpha_offset,
                         205f32
                     );
-                    draw_text_both_ex!(
+                    draw_flag_line(
+                        &self.assets.font,
+                        state.lang.referee_timeout().0,
                         "REFEREE",
                         675f32 + timeout_offset,
                         67f32,
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..BLACK
-                            },
-                            ..Default::default()
+                        120f32,
+                        Color {
+                            a: timeout_alpha_offset,
+                            ..BLACK
                         },
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..WHITE
-                            },
-                            ..Default::default()
-                        }
                     );
-                    draw_text_both_ex!(
+                    draw_flag_line(
+                        &self.assets.font,
+                        state.lang.referee_timeout().1,
                         "TIMEOUT",
                         680f32 + timeout_offset,
                         95f32,
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..BLACK
-                            },
-                            ..Default::default()
+                        120f32,
+                        Color {
+                            a: timeout_alpha_offset,
+                            ..BLACK
                         },
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..WHITE
-                            },
-                            ..Default::default()
-                        }
                     );
                 }
                 TimeoutSnapshot::PenaltyShot(_) => {
@@ -126,51 +104,29 @@ impl PageRenderer {
                         timeout_alpha_offset,
                         205f32
                     );
-                    draw_text_both_ex!(
+                    draw_flag_line(
+                        &self.assets.font,
+                        state.lang.penalty_shot().0,
                         "PENALTY",
                         675f32 + timeout_offset,
                         67f32,
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..BLACK
-                            },
-                            ..Default::default()
+                        120f32,
+                        Color {
+                            a: timeout_alpha_offset,
+                            ..BLACK
                         },
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..WHITE
-                            },
-                            ..Default::default()
-                        }
                     );
-                    draw_text_both_ex!(
+                    draw_flag_line(
+                        &self.assets.font,
+                        state.lang.penalty_shot().1,
                         "SHOT",
                         690f32 + timeout_offset,
                         95f32,
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..BLACK
-                            },
-                            ..Default::default()
+                        120f32,
+                        Color {
+                            a: timeout_alpha_offset,
+                            ..BLACK
                         },
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..WHITE
-                            },
-                            ..Default::default()
-                        }
                     );
                 }
                 _ => {}
@@ -249,12 +205,12 @@ impl PageRenderer {
             },
         );
         let ot_text = match state.snapshot.current_period {
-            GamePeriod::OvertimeFirstHalf => "OVERTIME 1ST HALF",
-            GamePeriod::OvertimeSecondHalf => "OVERTIME 2ND HALF",
-            GamePeriod::OvertimeHalfTime => "OVERTIME HALF TIME",
-            GamePeriod::SuddenDeath => "SUDDEN DEATH",
-            GamePeriod::PreSuddenDeath => "PRE SUDDEN DEATH",
-            _ => "PRE OVERTIME",
+            period @ (GamePeriod::OvertimeFirstHalf
+            | GamePeriod::OvertimeSecondHalf
+            | GamePeriod::OvertimeHalfTime
+            | GamePeriod::SuddenDeath
+            | GamePeriod::PreSuddenDeath) => state.lang.period(period),
+            _ => state.lang.period(GamePeriod::PreOvertime),
         };
         let (x_off, text) = fit_text(200f32, ot_text, 20, &self.assets.font, Justify::Center);
         draw_text_ex(

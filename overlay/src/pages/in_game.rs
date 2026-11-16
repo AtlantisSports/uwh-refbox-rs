@@ -1,4 +1,4 @@
-use super::{Interpolate, PageRenderer, draw_texture_both, fit_text};
+use super::{Interpolate, PageRenderer, draw_flag_line, draw_texture_both, fit_text};
 use crate::{
     State,
     pages::{Justify, draw_text_both, draw_text_both_ex, draw_texture_both_ex},
@@ -98,51 +98,29 @@ impl PageRenderer {
                         timeout_alpha_offset,
                         205f32
                     );
-                    draw_text_both_ex!(
+                    draw_flag_line(
+                        &self.assets.font,
+                        state.lang.referee_timeout().0,
                         "REFEREE",
                         675f32 + timeout_offset,
                         67f32,
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..BLACK
-                            },
-                            ..Default::default()
+                        120f32,
+                        Color {
+                            a: timeout_alpha_offset,
+                            ..BLACK
                         },
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..WHITE
-                            },
-                            ..Default::default()
-                        }
                     );
-                    draw_text_both_ex!(
+                    draw_flag_line(
+                        &self.assets.font,
+                        state.lang.referee_timeout().1,
                         "TIMEOUT",
                         680f32 + timeout_offset,
                         95f32,
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..BLACK
-                            },
-                            ..Default::default()
+                        120f32,
+                        Color {
+                            a: timeout_alpha_offset,
+                            ..BLACK
                         },
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..WHITE
-                            },
-                            ..Default::default()
-                        }
                     );
                 }
                 TimeoutSnapshot::White(time) => {
@@ -153,51 +131,29 @@ impl PageRenderer {
                         276f32
                     );
                     if timeout_offset > -175f32 {
-                        draw_text_both_ex!(
+                        draw_flag_line(
+                            &self.assets.font,
+                            state.lang.team_timeout(false).0,
                             "WHITE",
                             675f32 + timeout_offset,
                             67f32,
-                            TextParams {
-                                font: Some(&self.assets.font),
-                                font_size: 20,
-                                color: Color {
-                                    a: timeout_alpha_offset,
-                                    ..BLACK
-                                },
-                                ..Default::default()
+                            100f32,
+                            Color {
+                                a: timeout_alpha_offset,
+                                ..BLACK
                             },
-                            TextParams {
-                                font: Some(&self.assets.font),
-                                font_size: 20,
-                                color: Color {
-                                    a: timeout_alpha_offset,
-                                    ..WHITE
-                                },
-                                ..Default::default()
-                            }
                         );
-                        draw_text_both_ex!(
+                        draw_flag_line(
+                            &self.assets.font,
+                            state.lang.team_timeout(false).1,
                             "TIMEOUT",
                             665f32 + timeout_offset,
                             95f32,
-                            TextParams {
-                                font: Some(&self.assets.font),
-                                font_size: 20,
-                                color: Color {
-                                    a: timeout_alpha_offset,
-                                    ..BLACK
-                                },
-                                ..Default::default()
+                            100f32,
+                            Color {
+                                a: timeout_alpha_offset,
+                                ..BLACK
                             },
-                            TextParams {
-                                font: Some(&self.assets.font),
-                                font_size: 20,
-                                color: Color {
-                                    a: timeout_alpha_offset,
-                                    ..WHITE
-                                },
-                                ..Default::default()
-                            }
                         );
                     }
                     draw_text_both_ex!(
@@ -232,33 +188,29 @@ impl PageRenderer {
                         276f32
                     );
                     if timeout_offset > -175f32 {
-                        draw_text_both!(
+                        draw_flag_line(
+                            &self.assets.font,
+                            state.lang.team_timeout(true).0,
                             "BLACK",
                             675f32 + timeout_offset,
                             67f32,
-                            TextParams {
-                                font: Some(&self.assets.font),
-                                font_size: 20,
-                                color: Color {
-                                    a: timeout_alpha_offset,
-                                    ..WHITE
-                                },
-                                ..Default::default()
-                            }
+                            100f32,
+                            Color {
+                                a: timeout_alpha_offset,
+                                ..WHITE
+                            },
                         );
-                        draw_text_both!(
+                        draw_flag_line(
+                            &self.assets.font,
+                            state.lang.team_timeout(true).1,
                             "TIMEOUT",
                             665f32 + timeout_offset,
                             95f32,
-                            TextParams {
-                                font: Some(&self.assets.font),
-                                font_size: 20,
-                                color: Color {
-                                    a: timeout_alpha_offset,
-                                    ..WHITE
-                                },
-                                ..Default::default()
-                            }
+                            100f32,
+                            Color {
+                                a: timeout_alpha_offset,
+                                ..WHITE
+                            },
                         );
                     }
                     draw_text_both!(
@@ -283,51 +235,29 @@ impl PageRenderer {
                         timeout_alpha_offset,
                         205f32
                     );
-                    draw_text_both_ex!(
+                    draw_flag_line(
+                        &self.assets.font,
+                        state.lang.penalty_shot().0,
                         "PENALTY",
                         675f32 + timeout_offset,
                         67f32,
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..BLACK
-                            },
-                            ..Default::default()
+                        120f32,
+                        Color {
+                            a: timeout_alpha_offset,
+                            ..BLACK
                         },
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..WHITE
-                            },
-                            ..Default::default()
-                        }
                     );
-                    draw_text_both_ex!(
+                    draw_flag_line(
+                        &self.assets.font,
+                        state.lang.penalty_shot().1,
                         "SHOT",
                         690f32 + timeout_offset,
                         95f32,
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..BLACK
-                            },
-                            ..Default::default()
+                        120f32,
+                        Color {
+                            a: timeout_alpha_offset,
+                            ..BLACK
                         },
-                        TextParams {
-                            font: Some(&self.assets.font),
-                            font_size: 20,
-                            color: Color {
-                                a: timeout_alpha_offset,
-                                ..WHITE
-                            },
-                            ..Default::default()
-                        }
                     );
                 }
             }
@@ -397,11 +327,7 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
-        let text = match state.snapshot.current_period {
-            GamePeriod::FirstHalf => "1ST HALF",
-            GamePeriod::SecondHalf => "2ND HALF",
-            _ => "HALF TIME",
-        };
+        let text = state.lang.period(state.snapshot.current_period);
         let (x_off, text) = fit_text(180f32, text, 20, &self.assets.font, Justify::Center);
         draw_text_ex(
             &text,

@@ -1027,6 +1027,7 @@ mod tests {
             recent_goal: None,
             next_period_len_secs: Some(20),
             conf_pause_time: None,
+            language: None,
         }
     }
 

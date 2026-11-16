@@ -165,6 +165,59 @@ pub fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> 
     buffer.trim().parse().unwrap_or_default()
 }
 
+/// Where to start `text` so it is centred on the spot where `english` (drawn from `english_x`)
+/// is centred: English stays exactly where it was, and a translation sits centred on it.
+pub fn centred_on_english(
+    font: &Font,
+    text: &str,
+    english: &str,
+    english_x: f32,
+    size: u16,
+) -> f32 {
+    let centre = english_x + measure_text(english, Some(font), size, 1.0).width / 2.0;
+    centre - measure_text(text, Some(font), size, 1.0).width / 2.0
+}
+
+/// Draws one line of a timeout or penalty-shot flag in either half of the canvas. The line is
+/// centred where the English word sits (`english` drawn at `english_x`), so English looks exactly as
+/// before, and a longer translation is shrunk (from 20 down to 12) until it is no wider than
+/// `max_width`. `color` (with its fade already applied) is the text's colour; the transparency
+/// half gets white with the same fade.
+pub fn draw_flag_line(
+    font: &Font,
+    text: &str,
+    english: &str,
+    english_x: f32,
+    y: f32,
+    max_width: f32,
+    color: Color,
+) {
+    const SIZE: u16 = 20;
+    const MIN_SIZE: u16 = 12;
+    let centre = english_x + measure_text(english, Some(font), SIZE, 1.0).width / 2.0;
+    let mut size = SIZE;
+    while size > MIN_SIZE && measure_text(text, Some(font), size, 1.0).width > max_width {
+        size -= 1;
+    }
+    let x = centre - measure_text(text, Some(font), size, 1.0).width / 2.0;
+    let params = |color: Color| TextParams {
+        font: Some(font),
+        font_size: size,
+        color,
+        ..Default::default()
+    };
+    draw_text_both_ex!(
+        text,
+        x,
+        y,
+        params(color),
+        params(Color {
+            a: color.a,
+            ..WHITE
+        })
+    );
+}
+
 pub struct PageRenderer {
     /// Holds state for progression of an animation
     pub animation_register1: Instant,

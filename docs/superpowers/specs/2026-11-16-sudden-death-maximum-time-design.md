@@ -103,8 +103,9 @@ length:
 └──────────────────────────────────────┘
 ```
 
-- `NO` selected → the MAXIMUM TIME row and the time setter are greyed out (not pressable), but still show the
-  stored choice, as TEAM TIMEOUTS does when the count is 0.
+- `NO` selected → the MAXIMUM TIME row and the time setter are greyed out (not pressable), styled as TEAM
+  TIMEOUTS does when the count is 0: NONE and SET look the same while greyed, and the stored choice shows again in
+  colour when YES is chosen (PO ruling 2026-11-25).
 - `NONE` selected → the time setter is greyed out.
 - `SET` selected → the time setter is live.
 - New words: **`MAX`** and **`MAXIMUM TIME`**, in capitals like the rest of the page (PO: "1" to all-caps),

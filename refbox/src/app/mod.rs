@@ -5503,11 +5503,7 @@ impl RefBoxApp {
                         player_num,
                     ) = self.app_state
                     {
-                        let player_num = if color.is_none() {
-                            None
-                        } else {
-                            Some(player_num.try_into().unwrap())
-                        };
+                        let player_num = foul_player_number(color, player_num);
 
                         if deleted {
                             if let Some((old_color, index)) = origin {

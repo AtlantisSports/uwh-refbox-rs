@@ -2223,15 +2223,13 @@ impl TournamentManager {
             }
         }
 
-        // Only fully-attributed fouls (a specific player AND a specific team) are sent to the
-        // portal: the portal currently rejects a foul with a null player or side, which 400s the
-        // whole upload. Team fouls (no player) and "both teams at fault" fouls (no team) are held
-        // back until the portal accepts them — see docs/backlog/portal-accept-team-and-equal-fouls.
-        for color in [Color::Black, Color::White] {
-            for foul in self.fouls[Some(color)].iter() {
-                if foul.player_number.is_some() {
-                    self.current_game_stats.add_foul(foul, Some(color));
-                }
+        // Every foul is sent to the portal: a foul with no player recorded goes with a null
+        // player, and an equal ("both teams at fault") foul with a null side. A portal without
+        // uwhportal#564 rejects the whole upload for either, so this must not reach a release
+        // before that portal change is live in production.
+        for color in [Some(Color::Black), Some(Color::White), None] {
+            for foul in self.fouls[color].iter() {
+                self.current_game_stats.add_foul(foul, color);
             }
         }
 
@@ -4548,7 +4546,7 @@ mod test {
         assert!(tm.penalties.black.is_empty(), "precondition: the cull ran");
         assert_eq!(penalties(&tm), 1, "once after the cull");
 
-        // End the game the way `end_game_sends_only_fully_attributed_fouls` does, then
+        // End the game the way `end_game_sends_every_foul` does, then
         // start the next one: it must begin with an empty list.
         tm.add_score(Color::White, 9, g + s(710));
         let end = g + s(720);
@@ -4561,7 +4559,7 @@ mod test {
     }
 
     #[test]
-    fn end_game_sends_only_fully_attributed_fouls() {
+    fn end_game_sends_every_foul() {
         initialize();
         let config = GameConfig {
             half_play_duration: Duration::from_secs(900),
@@ -4574,13 +4572,13 @@ mod test {
         // Warning: tracked, never sent to the portal.
         tm.add_warning(Color::Black, Some(5), Infraction::Unknown, g)
             .unwrap();
-        // Fully-attributed foul (player + team): SENT.
+        // Foul with a player and a team.
         tm.add_foul(Some(Color::White), Some(7), Infraction::Obstruction, g)
             .unwrap();
-        // Team foul (team but no player): held back until the portal accepts it.
+        // Foul with a team but no player recorded.
         tm.add_foul(Some(Color::Black), None, Infraction::DelayOfGame, g)
             .unwrap();
-        // "Both teams at fault" foul (no team): held back.
+        // Equal ("both teams at fault") foul: no team, no player.
         tm.add_foul(None, None, Infraction::FreeArm, g).unwrap();
 
         tm.stop_clock(g).unwrap();
@@ -4590,22 +4588,23 @@ mod test {
         let json = tm.last_game_info().unwrap().stats.as_json();
         let events: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap();
 
-        // No warnings, and no foul with a null player or side reaches the portal.
         assert!(events.iter().all(|e| e["$type"] != "warning"));
-        assert!(
-            events
-                .iter()
-                .all(|e| !e["playerCapNumber"].is_null() && !e["side"].is_null()),
-            "only fully-attributed fouls should be sent"
-        );
 
-        // Exactly the one attributed foul is present.
         let fouls: Vec<&serde_json::Value> =
             events.iter().filter(|e| e["$type"] == "foul").collect();
-        assert_eq!(fouls.len(), 1);
-        assert_eq!(fouls[0]["side"], "light");
-        assert_eq!(fouls[0]["playerCapNumber"], 7);
-        assert_eq!(fouls[0]["called"], "Obstruction");
+        assert_eq!(fouls.len(), 3, "every foul is sent: {fouls:?}");
+
+        let player = fouls.iter().find(|e| e["side"] == "light").unwrap();
+        assert_eq!(player["playerCapNumber"], 7);
+        assert_eq!(player["called"], "Obstruction");
+
+        let no_player = fouls.iter().find(|e| e["side"] == "dark").unwrap();
+        assert!(no_player["playerCapNumber"].is_null());
+        assert_eq!(no_player["called"], "DelayOfGame");
+
+        let equal = fouls.iter().find(|e| e["side"].is_null()).unwrap();
+        assert!(equal["playerCapNumber"].is_null());
+        assert_eq!(equal["called"], "FreeArm");
     }
 
     #[test]

@@ -1531,8 +1531,8 @@ All three kinds share five fields, then each adds its own:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `playerCapNumber` | integer (`foul`: integer or `null`) | The player's cap number. `null` on a `foul` only, for a team-level infraction ("both at fault") with no specific player. **On a `goal` or `penalty`, `0` means "the operator did not record a number"** — see the warning below. |
-| `side` | string (`foul`: string or `null`) | `"dark"` or `"light"` — same black/white convention as push-scores. `null` on a `foul` only, alongside a `null` `playerCapNumber`. |
+| `playerCapNumber` | integer (`foul`: integer or `null`) | The player's cap number. `null` on a `foul` only, in two cases: a `"dark"`/`"light"` foul where the operator did not record which player, or an equal ("both at fault") foul, whose `side` is also `null`. **On a `goal` or `penalty`, `0` means "the operator did not record a number"** — see the warning below. |
+| `side` | string (`foul`: string or `null`) | `"dark"` or `"light"` — same black/white convention as push-scores. `null` on a `foul` only, for an equal ("both at fault") foul; its `playerCapNumber` is then `null` too. |
 | `gamePeriod` | string | refbox's internal period name — one of `BetweenGames`, `FirstHalf`, `HalfTime`, `SecondHalf`, `PreOvertime`, `OvertimeFirstHalf`, `OvertimeHalfTime`, `OvertimeSecondHalf`, `PreSuddenDeath`, `SuddenDeath` (`uwh-common/src/game_snapshot.rs:157-169`) |
 | `periodTime` | number (seconds, may have a fractional part) | The game clock's value the instant the event was recorded. During a timed half (regulation or overtime) this counts **down** — time remaining in the period. During Sudden Death, which has no fixed length, the clock instead counts **up** from zero — so `periodTime` there is time *elapsed*, not remaining (`refbox/src/tournament_manager/mod.rs:1855-1868`). |
 | `occurredOn` | timestamp | See [the two timestamp formats](#the-two-timestamp-formats) — this is always the `occurredOn` (fractional) form, never the `startsOn` form |

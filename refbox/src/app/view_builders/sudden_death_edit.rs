@@ -2,7 +2,7 @@ use super::configuration::MIN_PERIOD_LENGTH;
 use super::fit_text::fit_text;
 use super::*;
 use iced::{
-    Alignment, Length, Theme,
+    Length, Theme,
     alignment::Horizontal,
     widget::{
         button::{Status, Style},
@@ -72,11 +72,15 @@ pub(in super::super) fn sudden_death_edit_commit(edit: SuddenDeathEdit, config: 
     config.sudden_death_max = edit.max_set.then_some(edit.length);
 }
 
-/// One two-way choice row, styled like the team-timeout page: the chosen
-/// button is blue, the other grey. When `enabled` is false neither button
-/// presses, but the chosen one still shows, so a greyed row keeps its stored
-/// choice visible.
-fn make_choice_row<'a>(
+/// One two-way choice: its label on a line of its own above the two buttons,
+/// styled like the team-timeout page: the chosen button is blue, the other
+/// grey. When `enabled` is false neither button presses and both take the
+/// disabled look, as on the team-timeout page; the stored choice shows again
+/// once the choice is enabled (PO ruling 2026-11-25).
+///
+/// The label never wraps: a second line would make the page taller than the
+/// window. A long translation shrinks instead.
+fn make_choice<'a>(
     label: String,
     (first, second): (String, String),
     second_chosen: bool,
@@ -98,21 +102,20 @@ fn make_choice_row<'a>(
             b.on_press(message)
         }
     };
-    row![
+    column![
+        fit_text(label)
+            .size(SMALL_PLUS_TEXT)
+            .no_wrap()
+            .align_x(Horizontal::Left)
+            .width(Length::Fill)
+            .height(Length::Shrink),
         row![
-            fit_text(label)
-                .size(SMALL_PLUS_TEXT)
-                .align_x(Horizontal::Left)
-                .width(Length::Fill)
-                .height(Length::Shrink),
+            choice(first, !second_chosen, messages.0),
+            choice(second, second_chosen, messages.1),
         ]
-        .align_y(Alignment::Center)
-        .width(Length::Fill)
-        .height(Length::Fixed(MIN_BUTTON_SIZE)),
-        choice(first, !second_chosen, messages.0),
-        choice(second, second_chosen, messages.1),
+        .spacing(SPACING),
     ]
-    .spacing(SPACING)
+    .width(Length::Fill)
     .into()
 }
 
@@ -139,28 +142,36 @@ pub(in super::super) fn build_sudden_death_editor<'a>(
 
     column![
         make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
-        make_choice_row(
-            fl!("sudden-death"),
-            (fl!("no"), fl!("yes")),
-            edit.allowed,
-            (
-                Message::SetSuddenDeathAllowed(false),
-                Message::SetSuddenDeathAllowed(true),
-            ),
-            true,
-        ),
-        make_choice_row(
-            fl!("maximum-time"),
-            (fl!("sd-max-none"), fl!("sd-max-set")),
-            edit.max_set,
-            (
-                Message::SetSuddenDeathMaxSet(false),
-                Message::SetSuddenDeathMaxSet(true),
-            ),
-            edit.allowed,
-        ),
+        // The choices sit beside the time editor, not above it, so the page is
+        // no taller than a length editor's. The row takes the editor's height;
+        // the choices column fills it, the gap between the two choices taking
+        // what the labels and buttons leave.
         row![
-            horizontal_space(),
+            column![
+                make_choice(
+                    fl!("sudden-death"),
+                    (fl!("no"), fl!("yes")),
+                    edit.allowed,
+                    (
+                        Message::SetSuddenDeathAllowed(false),
+                        Message::SetSuddenDeathAllowed(true),
+                    ),
+                    true,
+                ),
+                vertical_space(),
+                make_choice(
+                    fl!("maximum-time"),
+                    (fl!("sd-max-none"), fl!("sd-max-set")),
+                    edit.max_set,
+                    (
+                        Message::SetSuddenDeathMaxSet(false),
+                        Message::SetSuddenDeathMaxSet(true),
+                    ),
+                    edit.allowed,
+                ),
+            ]
+            .width(Length::Fill)
+            .height(Length::Fill),
             make_time_editor(
                 fl!("maximum-time"),
                 edit.length,
@@ -168,8 +179,11 @@ pub(in super::super) fn build_sudden_death_editor<'a>(
                 value_color,
                 edit.allowed && edit.max_set,
             ),
-            horizontal_space(),
-        ],
+        ]
+        .spacing(SPACING)
+        // Shrink, set after the children: the choices column's `Fill` would
+        // otherwise make the row fill the page.
+        .height(Length::Shrink),
         vertical_space(),
         row![
             make_chrome_button(cancel_or_back_label(has_changes))

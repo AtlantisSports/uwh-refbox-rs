@@ -3,13 +3,12 @@
 //! installs it when the operator asks, so a fresh streaming PC needs no manual NDI setup. NDI® is
 //! a registered trademark of Vizrt NDI AB (https://ndi.video).
 //!
-//! On Windows the overlay is linked so that NDI's DLL is only loaded when NDI is first used (see
-//! `build.rs`), which lets the overlay start without it.
+//! On Windows grafton-ndi loads the DLL at runtime, so the overlay can start without it.
 //! 1. At start-up a background thread only looks for the engine, where NDI's own installer puts
 //!    it (and next to `overlay.exe`). It never installs anything by itself.
 //! 2. Each folder that holds the engine is tried in turn, loading it by its full path before any
-//!    NDI call, until one loads. If Windows can't load any of them, the overlay carries on
-//!    without NDI and says why, rather than crashing at the first NDI call.
+//!    NDI output starts, until grafton-ndi selects a usable runtime. If none loads, the overlay
+//!    carries on without NDI and says why.
 //! 3. If it isn't there, the local preview shows an **Install NDI** button. Only when the operator
 //!    clicks it does the overlay download NDI's official runtime installer
 //!    (`ndi.link/NDIRedistV6`, the link NDI's distribution guidelines point applications to),
@@ -333,7 +332,7 @@ pub fn within_size_limit(so_far: u64, more: u64) -> Result<u64, String> {
         .ok_or_else(|| "the download is far larger than NDI's installer".to_string())
 }
 
-#[cfg(not(windows))]
+#[cfg(not(all(windows, feature = "ndi")))]
 fn look_for_engine() -> EngineStatus {
     // Elsewhere the NDI library is found by the system's normal library search, as before.
     EngineStatus::Ready
@@ -344,7 +343,7 @@ fn install_engine(_progress: &dyn Fn(&str)) -> Result<(), String> {
     Err("Installing NDI is only automated on Windows".to_string())
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "ndi"))]
 fn look_for_engine() -> EngineStatus {
     windows::find_engine()
 }
@@ -365,10 +364,13 @@ mod windows {
 
     use super::MANUAL_HELP;
 
-    pub const ENGINE_DLL: &str = "Processing.NDI.Lib.x64.dll";
+    #[cfg(feature = "ndi")]
+    const ENGINE_DLL: &str = "Processing.NDI.Lib.x64.dll";
     /// NDI's official, versioned link to its runtime installer.
     const INSTALLER_URL: &str = "https://ndi.link/NDIRedistV6";
+    #[cfg(any(feature = "ndi", test))]
     const RUNTIME_ENV: &str = "NDI_RUNTIME_DIR_V6";
+    #[cfg(feature = "ndi")]
     const DEFAULT_RUNTIME_DIR: &str = r"C:\Program Files\NDI\NDI 6 Runtime\v6";
     const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
     const READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -383,6 +385,7 @@ mod windows {
     /// in a system environment variable, read first: this process's own copy of the environment
     /// is from before any install it just ran, so it is stale after one. Each folder is worked
     /// out only when the ones before it haven't loaded.
+    #[cfg(feature = "ndi")]
     pub(super) fn find_engine() -> super::EngineStatus {
         let candidates: [fn() -> Option<PathBuf>; 4] = [
             || system_environment_value(RUNTIME_ENV).map(PathBuf::from),
@@ -397,47 +400,14 @@ mod windows {
         super::load_first_engine(
             candidates.into_iter().map(|candidate| candidate()),
             |dir| dir.join(ENGINE_DLL).is_file(),
-            preload_engine,
+            |dir| {
+                // A successful selection stays available to Ndi::new() on the render thread.
+                let options = grafton_ndi::RuntimeOptions::new().library_path(dir.join(ENGINE_DLL));
+                grafton_ndi::Runtime::select(&options)
+                    .map(|_| ())
+                    .map_err(|error| error.to_string())
+            },
         )
-    }
-
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn LoadLibraryExW(
-            name: *const u16,
-            file: *mut std::ffi::c_void,
-            flags: u32,
-        ) -> *mut std::ffi::c_void;
-    }
-    /// Lets the engine's own dependencies be found in its folder.
-    const LOAD_WITH_ALTERED_SEARCH_PATH: u32 = 0x0000_0008;
-
-    /// Loads the engine by its full path before any NDI call. If Windows can't load it, the overlay
-    /// carries on without NDI and says why; otherwise the delayed load of
-    /// `Processing.NDI.Lib.x64.dll` (see `build.rs`) finds this already-loaded copy by name, so it
-    /// can no longer fail and crash the overlay. The module is never unloaded.
-    pub(super) fn preload_engine(dir: &Path) -> Result<(), String> {
-        use std::os::windows::ffi::OsStrExt;
-        let path = dir.join(ENGINE_DLL);
-        let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
-        // SAFETY: `wide` is a NUL-terminated UTF-16 path that lives until the call returns; no file
-        // handle is passed (null), and the flags are a documented LoadLibraryExW value.
-        let module = unsafe {
-            LoadLibraryExW(
-                wide.as_ptr(),
-                std::ptr::null_mut(),
-                LOAD_WITH_ALTERED_SEARCH_PATH,
-            )
-        };
-        if module.is_null() {
-            Err(format!(
-                "Windows couldn't load the NDI engine {}: {}",
-                path.display(),
-                std::io::Error::last_os_error()
-            ))
-        } else {
-            Ok(())
-        }
     }
 
     /// `%SystemRoot%\System32\<rest>`, so a same-named program elsewhere on the PATH is never run.
@@ -460,6 +430,7 @@ mod windows {
 
     /// Reads a machine-wide environment variable as stored now (not as it was when this process
     /// started).
+    #[cfg(feature = "ndi")]
     fn system_environment_value(name: &str) -> Option<String> {
         let output = Command::new(system32("reg.exe"))
             .args([
@@ -475,6 +446,7 @@ mod windows {
 
     /// Picks the value out of `reg query` output such as
     /// `    NDI_RUNTIME_DIR_V6    REG_SZ    C:\Program Files\NDI\NDI 6 Runtime\v6`.
+    #[cfg(any(feature = "ndi", test))]
     pub(super) fn parse_reg_query(output: &str, name: &str) -> Option<String> {
         output.lines().find_map(|line| {
             let rest = line.trim_start().strip_prefix(name)?;

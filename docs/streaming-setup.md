@@ -90,13 +90,6 @@ Install them **before travelling**, not at the venue.
 3. **Rust**: https://rustup.rs. The repo pins its Rust version (`rust-toolchain.toml`), and the
    right one installs automatically on the first build.
    - **Check:** `cargo --version` prints a version.
-4. **For the overlay only:**
-   - the **NDI SDK** (https://ndi.video/for-developers/ndi-sdk/download/), default location
-     `C:\Program Files\NDI\NDI 6 SDK`. Installing it means accepting the NDI SDK licence.
-   - **LLVM/Clang** (https://github.com/llvm/llvm-project/releases, Windows installer), with
-     **"Add LLVM to the system PATH"** ticked
-   - **Check:** `clang --version` prints a version. If it doesn't, run this in the same window
-     before building: `$env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"`
 
 ⛔ **STOP — ask a human** before installing software, if you are Claude.
 

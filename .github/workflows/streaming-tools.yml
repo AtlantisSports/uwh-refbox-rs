@@ -22,7 +22,6 @@ on:
       - "Cargo.lock"
       - "docs/streaming-setup.md"
       - ".github/workflows/streaming-tools.yml"
-      - ".github/actions/setup-ndi-windows/**"
   push:
     branches: [ "master" ]
     paths:
@@ -33,7 +32,6 @@ on:
       - "Cargo.lock"
       - "docs/streaming-setup.md"
       - ".github/workflows/streaming-tools.yml"
-      - ".github/actions/setup-ndi-windows/**"
   workflow_dispatch:
   workflow_call:
 
@@ -44,7 +42,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
-    - uses: ./.github/actions/setup-ndi-windows
     - uses: Swatinem/rust-cache@v2
     - name: Versions
       run: cargo --version && rustc --version

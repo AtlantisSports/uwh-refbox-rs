@@ -1,4 +1,4 @@
-use grafton_ndi::{Error, NDI, PixelFormat, Sender, SenderOptions, VideoFrame};
+use grafton_ndi::{Error, FrameRate, Ndi, PixelFormat, Sender, SenderOptions, VideoFrame};
 use log::warn;
 use macroquad::{
     camera::{Camera2D, set_camera},
@@ -25,28 +25,29 @@ const OUT_HEIGHT: u32 = 1080;
 /// key) canvas described in `pages::mod`'s `draw_texture_both!` macro, so the existing rendering
 /// and asset pipeline (`load_images.rs`, `alphagen`) is untouched.
 pub struct NdiOutput {
-    _ndi: NDI,
+    _ndi: Ndi,
     sender: Sender,
+    frame_rate: FrameRate,
 }
 
 impl NdiOutput {
     pub fn new(stream_name: &str) -> Result<Self, Error> {
-        let ndi = NDI::new()?;
-        let options = SenderOptions::builder(stream_name)
-            .clock_video(true)
-            .build();
+        let ndi = Ndi::new()?;
+        let options = SenderOptions::new(stream_name).clock_video(true);
         let sender = Sender::new(&ndi, &options)?;
-        Ok(Self { _ndi: ndi, sender })
+        Ok(Self {
+            _ndi: ndi,
+            sender,
+            frame_rate: FrameRate::new(60, 1)?,
+        })
     }
 
     /// `picture` must be the finished RGBA picture from [`KeyCombiner::combine`].
     pub fn send_frame(&mut self, picture: &Image) {
-        let (width, height) = (usize::from(picture.width), usize::from(picture.height));
-
         let mut frame = match VideoFrame::builder()
-            .resolution(width as i32, height as i32)
-            .pixel_format(PixelFormat::RGBA)
-            .frame_rate(60, 1)
+            .resolution(u32::from(picture.width), u32::from(picture.height))
+            .pixel_format(PixelFormat::Rgba)
+            .frame_rate(self.frame_rate)
             .build()
         {
             Ok(frame) => frame,
@@ -67,7 +68,9 @@ impl NdiOutput {
         };
         dst.copy_from_slice(src);
 
-        self.sender.send_video(&frame);
+        if let Err(e) = self.sender.send_video(&frame) {
+            warn!("Failed to send NDI video frame: {e}");
+        }
     }
 }
 

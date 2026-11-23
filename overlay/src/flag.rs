@@ -842,18 +842,28 @@ fn draw_flag(textures: &Textures, flag: &Flag, y: f32, alpha: f32, now: f64, lan
                         }
                     )
                 }
-                PenaltyTime::TotalDismissal => String::from("TD"),
+                PenaltyTime::TotalDismissal => String::from(lang.total_dismissal()),
             };
-            let (x_off, text) = fit_text(94f32, &text, 30, &textures.font, Justify::Center);
+            // A longer word than "TD" (French "EXP. DÉF.") is shown in smaller letters.
+            let mut font_size = 30u16;
+            while font_size > 14
+                && measure_text(&text, Some(&textures.font), font_size, 1.0).width > 94f32
+            {
+                font_size -= 1;
+            }
+            let (x_off, text) = fit_text(94f32, &text, font_size, &textures.font, Justify::Center);
             // Light neon yellow on the red tab for both teams: easy to read on the red.
             draw_text_ex(
                 text.as_str(),
                 35f32 + x_off,
-                y + 33f32,
-                tab_text_params(Color {
-                    a: alpha,
-                    ..PENALTY_TIME_YELLOW
-                }),
+                y + 33f32 - f32::from(30 - font_size) * 0.35,
+                TextParams {
+                    font_size,
+                    ..tab_text_params(Color {
+                        a: alpha,
+                        ..PENALTY_TIME_YELLOW
+                    })
+                },
             );
         }
         Type::Foul(_) => {

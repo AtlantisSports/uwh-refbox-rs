@@ -65,6 +65,11 @@ impl Lang {
         self.of("FOUL", "FALTA", "FAUTE")
     }
 
+    /// The penalty card's tab for a total dismissal (French: "expulsion définitive").
+    pub const fn total_dismissal(self) -> &'static str {
+        self.of("TD", "TD", "EXP. DÉF.")
+    }
+
     /// The name on a foul card for a foul against neither team.
     pub const fn both_teams(self) -> &'static str {
         self.of("Both teams", "Ambos equipos", "Les deux équipes")
@@ -75,7 +80,7 @@ impl Lang {
         match self {
             Self::En => ("REFEREE", "TIMEOUT"),
             Self::Es => ("TIEMPO MUERTO", "ÁRBITRO"),
-            Self::Fr => ("TEMPS MORT", "ARBITRE"),
+            Self::Fr => ("TEMPS MORT", "ARBITRES"),
         }
     }
 
@@ -105,18 +110,18 @@ impl Lang {
             GamePeriod::FirstHalf => self.of("1ST HALF", "1ª MITAD", "1re PÉRIODE"),
             GamePeriod::SecondHalf => self.of("2ND HALF", "2ª MITAD", "2e PÉRIODE"),
             GamePeriod::OvertimeFirstHalf => {
-                self.of("OVERTIME 1ST HALF", "PRÓRROGA 1ª MITAD", "1re PROLONGATION")
+                self.of("OVERTIME 1ST HALF", "PRÓRROGA 1ª MITAD", "PROLONG. 1")
             }
             GamePeriod::OvertimeSecondHalf => {
-                self.of("OVERTIME 2ND HALF", "PRÓRROGA 2ª MITAD", "2e PROLONGATION")
+                self.of("OVERTIME 2ND HALF", "PRÓRROGA 2ª MITAD", "PROLONG. 2")
             }
             GamePeriod::OvertimeHalfTime => {
                 self.of("OVERTIME HALF TIME", "DESC. PRÓRROGA", "MI-TEMPS PROLONG.")
             }
-            GamePeriod::PreOvertime => self.of("PRE OVERTIME", "ANTES PRÓRROGA", "AVANT PROLONG."),
+            GamePeriod::PreOvertime => self.of("PRE OVERTIME", "PRE PRÓRROGA", "AVANT PROLONG."),
             GamePeriod::SuddenDeath => self.of("SUDDEN DEATH", "MUERTE SÚBITA", "MORT SUBITE"),
             GamePeriod::PreSuddenDeath => {
-                self.of("PRE SUDDEN DEATH", "ANTES M. SÚBITA", "AVANT MORT SUBITE")
+                self.of("PRE SUDDEN DEATH", "PRE M. SÚBITA", "AVANT MORT SUBITE")
             }
             GamePeriod::HalfTime | GamePeriod::BetweenGames => {
                 self.of("HALF TIME", "DESCANSO", "MI-TEMPS")
@@ -130,13 +135,15 @@ impl Lang {
         let (es, fr) = match infraction {
             Infraction::Unknown => return None,
             Infraction::StickInfringement => ("Infracción con el palo", "Faute de crosse"),
-            Infraction::IllegalAdvancement => ("Avance ilegal", "Avancée irrégulière"),
+            Infraction::IllegalAdvancement => ("Avance ilegal", "Avancée illégale du palet"),
             Infraction::IllegalSubstitution => ("Sustitución ilegal", "Changement incorrect"),
-            Infraction::IllegallyStoppingThePuck => ("Parada ilegal", "Arrêt irrégulier"),
-            Infraction::OutOfBounds => ("Pastilla fuera", "Palet sorti"),
-            Infraction::GrabbingTheBarrier => ("Agarrarse a la barrera", "Agripper la barrière"),
+            Infraction::IllegallyStoppingThePuck => ("Parada ilegal", "Arrêt irrégulier du palet"),
+            Infraction::OutOfBounds => ("Pastilla fuera", "Sortie du palet"),
+            Infraction::GrabbingTheBarrier => {
+                ("Agarrarse a la barrera", "S'agripper à la barrière")
+            }
             Infraction::Obstruction => ("Obstrucción", "Obstruction"),
-            Infraction::DelayOfGame => ("Quemar tiempo", "Retarder le jeu"),
+            Infraction::DelayOfGame => ("Demorar el juego", "Retarder le jeu"),
             Infraction::UnsportsmanlikeConduct => {
                 ("Conducta antideportiva", "Conduite antisportive")
             }
@@ -144,7 +151,7 @@ impl Lang {
                 "Uso ilegal del brazo libre",
                 "Usage irrégulier du bras libre",
             ),
-            Infraction::FalseStart => ("Saque nulo", "Faux départ"),
+            Infraction::FalseStart => ("Salida en falso", "Faux départ"),
         };
         Some(self.of(infraction.short_name(), es, fr))
     }
@@ -212,7 +219,7 @@ mod tests {
         );
         assert_eq!(
             Lang::Es.infraction(Infraction::FalseStart),
-            Some("Saque nulo")
+            Some("Salida en falso")
         );
     }
 

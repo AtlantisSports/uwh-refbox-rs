@@ -23,6 +23,7 @@ runs:
         # publishes a new installer, the build stops with the new hash in the log: check it
         # and add it here.
         $accepted = @(
+          'F37604EE01CB788CCB954B5B4E5888328EA391D9610E9A8EAB65AC68191784BA', # NDI SDK 6.4.0.2
           '4D5DD36A1C7C7634F408BF459B068787CCE6F5310A3EFE832D76B1DDEB54E499',
           '97E8993C6B94213A950E6ACBE9AA4D35831D137324D762F7C74851D3FEEF80D9'
         )

@@ -4993,6 +4993,14 @@ impl RefBoxApp {
             self.last_message = message.clone();
         }
 
+        if tap_outlived_its_screen(&message, &self.app_state) {
+            warn!(
+                "Ignoring {message:?}: its screen has already closed (now on {:?})",
+                self.app_state
+            );
+            return Task::none();
+        }
+
         match message {
             Message::NewSnapshot(update) => self.apply_tick(update.snapshot, update.caught_up),
             Message::EditTime => {
@@ -7748,11 +7756,16 @@ impl RefBoxApp {
                 let mut tm = self.tm.lock();
                 let now = Instant::now();
                 // The Cancel button is only rendered for an active team timeout
-                // inside its grace window, so this call is valid by construction.
+                // inside its grace window, but a second tap, or the timeout ending
+                // between the screen being drawn and the tap landing, still reaches
+                // here with no timeout left to cancel. There is nothing to undo then.
                 // Unlike EndTimeout, no `timeout_end_would_end_game` check is needed:
                 // a team timeout only happens mid-half with the game clock stopped, so
                 // cancelling it can never end the game — it just resumes play.
-                tm.cancel_team_timeout(now).unwrap();
+                if let Err(e) = tm.cancel_team_timeout(now) {
+                    warn!("Ignoring CANCEL TIMEOUT: {e}");
+                    return Task::none();
+                }
                 tm.update(now).unwrap();
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
@@ -11287,6 +11300,113 @@ impl UpdaterFailures {
             retry_after: updater_retry_delay(self.consecutive),
             report,
         }
+    }
+}
+
+/// Whether `message` is a tap that only means something on one screen, arriving after
+/// the app has already left that screen.
+///
+/// A second tap can be delivered after the first one has moved the app on: the repeat
+/// filter in `handle_message` only drops a message equal to the one just before it, and
+/// a clock tick landing between two taps defeats it. The confirmation window closing by
+/// itself has the same effect on a tap already in flight. The handlers for these
+/// messages assume their screen is up and crash when it is not, so such a tap is
+/// dropped before it reaches them.
+fn tap_outlived_its_screen(message: &Message, state: &AppState) -> bool {
+    match message {
+        Message::ScoreConfirmation { .. } => !matches!(state, AppState::ConfirmScores(_)),
+        Message::ScoreEditComplete { .. } => !matches!(state, AppState::ScoreEdit { .. }),
+        Message::AddScoreComplete { .. } => {
+            !matches!(state, AppState::KeypadPage(KeypadPage::AddScore { .. }, _))
+        }
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod stale_tap_gate_tests {
+    use super::*;
+
+    fn scores() -> BlackWhiteBundle<u8> {
+        BlackWhiteBundle { black: 2, white: 1 }
+    }
+
+    fn add_goal_page() -> AppState {
+        AppState::KeypadPage(
+            KeypadPage::AddScore {
+                color: Color::Black,
+                team_score: false,
+            },
+            7,
+        )
+    }
+
+    /// The operator taps YES or NO just as the window closes by itself: the app is
+    /// already back on the main page when the tap arrives, which used to crash it.
+    #[test]
+    fn confirmation_after_the_window_closed_is_dropped() {
+        for correct in [true, false] {
+            assert!(tap_outlived_its_screen(
+                &Message::ScoreConfirmation { correct },
+                &AppState::MainPage
+            ));
+        }
+    }
+
+    /// Done on the add-goal keypad in sudden death opens the confirm screen. A late
+    /// second tap from the keypad must not act there, and a late Cancel must not pull
+    /// the operator off it while the window is still open.
+    #[test]
+    fn stale_add_goal_cancel_does_not_leave_the_confirm_screen() {
+        for canceled in [true, false] {
+            assert!(tap_outlived_its_screen(
+                &Message::AddScoreComplete { canceled },
+                &AppState::ConfirmScores(scores())
+            ));
+        }
+    }
+
+    #[test]
+    fn repeat_score_edit_done_is_dropped() {
+        let done = Message::ScoreEditComplete { canceled: false };
+        assert!(tap_outlived_its_screen(&done, &AppState::MainPage));
+        assert!(tap_outlived_its_screen(
+            &done,
+            &AppState::ConfirmScores(scores())
+        ));
+    }
+
+    #[test]
+    fn first_tap_on_its_own_screen_passes() {
+        assert!(!tap_outlived_its_screen(
+            &Message::ScoreConfirmation { correct: true },
+            &AppState::ConfirmScores(scores())
+        ));
+        assert!(!tap_outlived_its_screen(
+            &Message::ScoreEditComplete { canceled: false },
+            &AppState::ScoreEdit {
+                scores: scores(),
+                is_confirmation: true,
+            }
+        ));
+        for canceled in [true, false] {
+            assert!(!tap_outlived_its_screen(
+                &Message::AddScoreComplete { canceled },
+                &add_goal_page()
+            ));
+        }
+    }
+
+    #[test]
+    fn other_messages_are_never_gated() {
+        assert!(!tap_outlived_its_screen(
+            &Message::NoAction,
+            &AppState::MainPage
+        ));
+        assert!(!tap_outlived_its_screen(
+            &Message::CancelTimeout,
+            &AppState::MainPage
+        ));
     }
 }
 

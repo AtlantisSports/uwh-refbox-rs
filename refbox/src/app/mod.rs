@@ -1142,6 +1142,25 @@ fn time_edit_changes(
     (game, timeout)
 }
 
+/// Whether a message that took the operator off the TIME EDIT page by some route other
+/// than APPLY or CANCEL must resume the clock.
+///
+/// TIME EDIT is a pause (PO ruling 2026-11-05): opening it stops every clock, and only
+/// APPLY and CANCEL restarted it, so a side route (the Portal health tile, a late Portal
+/// login reply) used to leave a running game frozen. Such a route acts like CANCEL: the
+/// clock resumes if it was running when the page opened. Never when APPLY or CANCEL
+/// closed it (they resume it themselves, and a refused start on a parked court must not
+/// be tried twice), when it is already running, or while a score confirmation is
+/// pending (the confirm flow owns the clock then).
+fn side_exit_resumes_clock(
+    was_running: bool,
+    closed_by_apply_or_cancel: bool,
+    clock_running: bool,
+    confirm_pause_pending: bool,
+) -> bool {
+    was_running && !closed_by_apply_or_cancel && !clock_running && !confirm_pause_pending
+}
+
 /// What an App-page APPLY should do with the committed event / court / schedule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LinkCommit {
@@ -4920,7 +4939,44 @@ impl RefBoxApp {
     /// stopped, so a score, timeout, time edit or settings apply made then must refresh the frame
     /// itself, and a list of call sites would miss the next one added.
     pub(super) fn update(&mut self, message: Message) -> Task<Message> {
+        let time_edit_was_running = match self.app_state {
+            AppState::TimeEdit(was_running, ..) => Some(was_running),
+            _ => None,
+        };
+        let closed_by_apply_or_cancel = matches!(message, Message::TimeEditComplete { .. });
         let mut task = self.handle_message(message);
+        // Any route off the TIME EDIT page other than APPLY or CANCEL acts like CANCEL:
+        // resume the clock if it was running when the page opened. Handled here, once,
+        // for every message, rather than in each route that can close the page. Before
+        // the held-reply replay below, so the reply is acted on under a running clock,
+        // the order `finish_time_edit_with_held_schedule` uses.
+        if let Some(was_running) = time_edit_was_running {
+            if !matches!(self.app_state, AppState::TimeEdit(..)) {
+                let mut tm = self.tm.lock();
+                if side_exit_resumes_clock(
+                    was_running,
+                    closed_by_apply_or_cancel,
+                    tm.clock_is_running(),
+                    tm.in_score_confirm_pause(),
+                ) {
+                    info!("TIME EDIT left without APPLY or CANCEL; resuming the clock");
+                    let now = Instant::now();
+                    tm.start_clock(now);
+                    if let Err(e) = tm.update(now) {
+                        error!("Could not update the clock on leaving TIME EDIT: {e}");
+                    }
+                    let snapshot = tm.generate_snapshot(now);
+                    drop(tm);
+                    match snapshot {
+                        Some(snapshot) => {
+                            let resumed = self.apply_snapshot(snapshot);
+                            task = Task::batch([task, resumed]);
+                        }
+                        None => error!("Could not generate a snapshot on leaving TIME EDIT"),
+                    }
+                }
+            }
+        }
         // A schedule reply held while TIME EDIT was open must never be stranded. APPLY
         // and CANCEL act on it themselves (`finish_time_edit_with_held_schedule`), but
         // other messages can also take the operator off the page (the health tile, a
@@ -5055,26 +5111,47 @@ impl RefBoxApp {
                             held,
                         );
                     }
+                    // No engine error on this path is unwrapped: each is logged and the
+                    // rest carries on, as `finish_time_edit_with_held_schedule` does.
                     let mut tm = self.tm.lock();
                     let now = Instant::now();
                     if !canceled {
-                        tm.set_game_clock_time(game_time).unwrap();
+                        if let Err(e) = tm.set_game_clock_time(game_time) {
+                            error!("Could not set the game clock from TIME EDIT: {e}");
+                        }
                         if let Some(time) = timeout_time {
-                            tm.set_timeout_clock_time(time).unwrap();
+                            if let Err(e) = tm.set_timeout_clock_time(time) {
+                                error!("Could not set the timeout clock from TIME EDIT: {e}");
+                            }
                         }
                     }
                     if was_running {
                         tm.start_clock(now);
-                        tm.update(now).unwrap();
+                        if let Err(e) = tm.update(now) {
+                            error!("Could not update the clock on closing TIME EDIT: {e}");
+                        }
                     }
-                    let snapshot = tm.generate_snapshot(now).unwrap();
+                    let snapshot = tm.generate_snapshot(now);
                     drop(tm);
-                    let task = self.apply_snapshot(snapshot);
+                    let task = match snapshot {
+                        Some(snapshot) => self.apply_snapshot(snapshot),
+                        None => {
+                            error!("Could not generate a snapshot on closing TIME EDIT");
+                            Task::none()
+                        }
+                    };
                     self.app_state = self.last_app_state.clone();
                     trace!("AppState changed to {:?}", self.app_state);
                     task
                 } else {
-                    unreachable!();
+                    // APPLY and CANCEL in one frame, or a repeat with a tick between them,
+                    // can both be delivered before the screen redraws: the page is closed
+                    // already, so there is nothing left to do.
+                    warn!(
+                        "TIME EDIT closed already; ignoring a late {}",
+                        if canceled { "CANCEL" } else { "APPLY" }
+                    );
+                    Task::none()
                 }
             }
             Message::StartPlayNow => {
@@ -7756,7 +7833,14 @@ impl RefBoxApp {
                 tm.update(now).unwrap();
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
-                self.apply_snapshot(snapshot)
+                let task = self.apply_snapshot(snapshot);
+                // Cancelled from inside TIME EDIT: the timeout is gone, so the page must
+                // stop holding a timeout value, as `EndTimeout` does. Otherwise APPLY
+                // sets a timeout clock the engine no longer has.
+                if let AppState::TimeEdit(_, _, ref mut timeout) = self.app_state {
+                    *timeout = None;
+                }
+                task
             }
             Message::RecvEventList(e_list) => {
                 let mut tasks = vec![];
@@ -11965,6 +12049,40 @@ mod time_edit_changes_tests {
             time_edit_changes(false, (s(0), Some(s(30))), (s(0), Some(s(5)))),
             (None, Some(s(5)))
         );
+    }
+}
+
+#[cfg(test)]
+mod side_exit_resumes_clock_tests {
+    use super::side_exit_resumes_clock;
+
+    #[test]
+    fn side_exit_resumes_clock_when_it_was_running() {
+        // The Portal health tile, opened from TIME EDIT on a running game.
+        assert!(side_exit_resumes_clock(true, false, false, false));
+    }
+
+    #[test]
+    fn side_exit_resumes_clock_not_when_opened_stopped() {
+        assert!(!side_exit_resumes_clock(false, false, false, false));
+    }
+
+    #[test]
+    fn side_exit_resumes_clock_not_after_apply_or_cancel() {
+        // APPLY / CANCEL resume it themselves; on a parked court their start is
+        // refused, and it must not be tried a second time.
+        assert!(!side_exit_resumes_clock(true, true, false, false));
+    }
+
+    #[test]
+    fn side_exit_resumes_clock_not_while_a_score_confirmation_is_pending() {
+        // END TIMEOUT that ends the game: the confirm flow owns the clock.
+        assert!(!side_exit_resumes_clock(true, false, false, true));
+    }
+
+    #[test]
+    fn side_exit_resumes_clock_not_when_already_running() {
+        assert!(!side_exit_resumes_clock(true, false, true, false));
     }
 }
 

@@ -435,9 +435,18 @@ fn resolve_game(
 ) -> (Option<String>, Option<String>, String) {
     if uses_remote {
         if let Some(game) = schedule.and_then(|s| s.games.get(game_number)) {
-            let black = limit_team_name_len(&get_team_name(&game.dark, teams), TEAM_NAME_LEN_LIMIT);
-            let white =
-                limit_team_name_len(&get_team_name(&game.light, teams), TEAM_NAME_LEN_LIMIT);
+            let black = side_name(
+                &game.dark,
+                game.dark_partner.as_ref(),
+                teams,
+                TEAM_NAME_LEN_LIMIT,
+            );
+            let white = side_name(
+                &game.light,
+                game.light_partner.as_ref(),
+                teams,
+                TEAM_NAME_LEN_LIMIT,
+            );
             return (Some(white), Some(black), game.number.to_string());
         }
         // Portal on but this game isn't in the schedule: leave the names empty.
@@ -1661,5 +1670,27 @@ mod tests {
             None,
         );
         assert!(ref_labels(&rows).is_empty());
+    }
+
+    #[test]
+    fn pod_game_info_shows_both_partners() {
+        use uwh_common::uwhportal::schedule::ScheduledTeam;
+        let mut schedule = make_schedule_with_referees("12", "Court 1");
+        if let Some(game) = schedule.games.get_mut("12") {
+            game.dark = ScheduledTeam::new_pending_assignment_name("Sydney Sharks");
+            game.dark_partner = Some(ScheduledTeam::new_pending_assignment_name(
+                "Brisbane Barras",
+            ));
+            game.light = ScheduledTeam::new_pending_assignment_name("Perth Rays");
+            game.light_partner = Some(ScheduledTeam::new_pending_assignment_name("Melbourne Eels"));
+        }
+        assert_eq!(
+            resolve_game(&"12".into(), true, Some(&schedule), None),
+            (
+                Some("Perth Rays + Melbourne Eels".to_string()),
+                Some("Sydney Sharks + Brisbane Barras".to_string()),
+                "12".to_string()
+            )
+        );
     }
 }

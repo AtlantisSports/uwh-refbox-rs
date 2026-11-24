@@ -223,6 +223,8 @@ mod tests {
             ("ES", Lang::Es),
             ("es-ES", Lang::Es),
             ("Fr", Lang::Fr),
+            (" es ", Lang::Es),
+            ("fr_CA", Lang::Fr),
             ("follow-refbox", Lang::En),
             ("spanish", Lang::En),
         ] {

@@ -454,6 +454,8 @@ async fn main() {
         sponsor_logo: None,
         lang: words::Lang::default(),
     };
+    // The overlay's language shows from the first frame, not only once the first update arrives.
+    local_state.set_language(language);
 
     let mut renderer = pages::PageRenderer {
         animation_register0: Instant::now(),

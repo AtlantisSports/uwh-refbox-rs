@@ -148,15 +148,17 @@ impl Flag {
 /// their place in the list.
 type FoulKey = (Option<UWHColor>, Option<u8>, Infraction);
 
-/// Whether a player's penalty bar shows again: they got another penalty (`count` went up) or
-/// their newest penalty's foul changed (corrected on the refbox). One running out does neither.
+/// Whether a player's penalty bar shows again: they got another penalty (`count` went up) or,
+/// with the same number of penalties, their newest penalty's foul changed (corrected on the
+/// refbox). One running out (`count` went down) never does, even when that changes which
+/// penalty is newest.
 fn penalty_needs_reshow(
     prev_count: usize,
     prev_infraction: Infraction,
     count: usize,
     newest: Infraction,
 ) -> bool {
-    count > prev_count || newest != prev_infraction
+    count > prev_count || (count == prev_count && newest != prev_infraction)
 }
 
 /// Matches a team's previous foul list to its new one, keeping as many fouls in place as
@@ -515,8 +517,9 @@ impl Renderer {
                         // Another penalty, or a correction on the refbox, shows the bar again.
                         if penalty_needs_reshow(*penalty_count, *infraction, count, newest) {
                             *shown_at = get_time();
-                            *infraction = newest;
                         }
+                        // Always show the newest foul, even when the bar doesn't slide out again.
+                        *infraction = newest;
                         *penalty_count = count;
                     }
                     _ => unreachable!(),
@@ -951,6 +954,10 @@ mod tests {
         assert!(
             penalty_needs_reshow(1, Obstruction, 1, FreeArm),
             "corrected"
+        );
+        assert!(
+            !penalty_needs_reshow(2, FreeArm, 1, Obstruction),
+            "the newer one ran out"
         );
     }
 

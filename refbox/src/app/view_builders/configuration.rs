@@ -3019,6 +3019,8 @@ mod tests {
             start_time: datetime!(2026-01-01 0:00 UTC),
             court: court.to_string(),
             timing_rule: "RR".to_string(),
+            dark_partner: None,
+            light_partner: None,
             referee_assignments: None,
             description: None,
         };

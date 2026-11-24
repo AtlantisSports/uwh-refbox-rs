@@ -2101,6 +2101,8 @@ mod tests {
             start_time: time::macros::datetime!(2026-08-05 09:00 UTC),
             court: "Court 1".to_string(),
             timing_rule: "Standard".to_string(),
+            dark_partner: None,
+            light_partner: None,
             referee_assignments: None,
             description: None,
         };

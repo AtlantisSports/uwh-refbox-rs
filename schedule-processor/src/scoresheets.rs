@@ -2646,6 +2646,8 @@ pub fn generate_example_rule_sheets(
             start_time: start,
             court: "1".to_string(),
             timing_rule: tr.name.clone(),
+            dark_partner: None,
+            light_partner: None,
             referee_assignments: None,
             description: Some(format!("Example: {}", slug.replace('_', " "))),
         };
@@ -3146,6 +3148,8 @@ mod tests {
             start_time: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
             court: "1".to_string(),
             timing_rule: tr.name.clone(),
+            dark_partner: None,
+            light_partner: None,
             referee_assignments: None,
             description: None,
         }
@@ -3325,6 +3329,8 @@ mod tests {
             start_time: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
             court: "1".to_string(),
             timing_rule: "Standard".to_string(),
+            dark_partner: None,
+            light_partner: None,
             referee_assignments: Some(vec![
                 assign("Chief", "users/1"),
                 assign("AssistantChief", "users/2"),

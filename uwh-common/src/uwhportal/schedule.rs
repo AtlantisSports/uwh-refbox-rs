@@ -227,6 +227,14 @@ pub struct Game {
     pub number: GameNumber,
     pub dark: ScheduledTeam,
     pub light: ScheduledTeam,
+    /// The second team on the dark side of a pod game. `None` on non-pod games
+    /// and on schedules cached before the Portal sent this field.
+    #[serde(default, rename = "darkPartner")]
+    pub dark_partner: Option<ScheduledTeam>,
+    /// The second team on the light side of a pod game. `None` on non-pod games
+    /// and on schedules cached before the Portal sent this field.
+    #[serde(default, rename = "lightPartner")]
+    pub light_partner: Option<ScheduledTeam>,
     #[serde(with = "iso8601_4dig_year_no_subsecs", rename = "startsOn")]
     pub start_time: OffsetDateTime,
     pub court: String,
@@ -985,6 +993,8 @@ mod tests {
             court: "A".to_string(),
             description: None,
             timing_rule: "RR".to_string(),
+            dark_partner: None,
+            light_partner: None,
             referee_assignments: None,
         };
         let serialized = serde_json::to_string(&game).unwrap();
@@ -1008,9 +1018,72 @@ mod tests {
                 court: "A".to_string(),
                 description: None,
                 timing_rule: "RR".to_string(),
+                dark_partner: None,
+                light_partner: None,
                 referee_assignments: None,
             }
         );
+    }
+
+    fn pod_game_json(partners: &str, is_pod_format: bool) -> String {
+        format!(
+            r#"{{"identifier":"3f2b","number":"12","startsOn":"2026-11-28T09:30:00+11:00",
+ "dark":{{"teamId":"teams/123-A","resultOf":null,"seededBy":null,"pendingAssignmentName":null}},
+ "light":{{"teamId":"teams/456-A","resultOf":null,"seededBy":null,"pendingAssignmentName":null}},
+ {partners}
+ "score":null,"timingRule":{{"identifier":null,"name":"Pool"}},"description":null,"court":"Court 1",
+ "watchUrl":null,"refereeAssignments":null,"hasScore":false,"isPodFormat":{is_pod_format}}}"#
+        )
+    }
+
+    const BOTH_PARTNERS: &str = r#""darkPartner":{"teamId":"teams/789-A","resultOf":null,"seededBy":null,"pendingAssignmentName":null},"lightPartner":{"teamId":"teams/321-A","resultOf":null,"seededBy":null,"pendingAssignmentName":null},"#;
+
+    #[test]
+    fn game_with_pod_partners_reads_both_partners() {
+        let game: Game = serde_json::from_str(&pod_game_json(BOTH_PARTNERS, true)).unwrap();
+        assert_eq!(
+            game.dark_partner,
+            Some(ScheduledTeam::new_team_id(TeamId::from_partial("789-A")))
+        );
+        assert_eq!(
+            game.light_partner,
+            Some(ScheduledTeam::new_team_id(TeamId::from_partial("321-A")))
+        );
+    }
+
+    #[test]
+    fn game_with_null_partners_reads_as_no_partner() {
+        let game: Game = serde_json::from_str(&pod_game_json(
+            r#""darkPartner":null,"lightPartner":null,"#,
+            false,
+        ))
+        .unwrap();
+        assert_eq!(game.dark_partner, None);
+        assert_eq!(game.light_partner, None);
+    }
+
+    #[test]
+    fn game_without_partner_fields_reads_as_no_partner() {
+        let game: Game = serde_json::from_str(&pod_game_json("", false)).unwrap();
+        assert_eq!(game.dark_partner, None);
+        assert_eq!(game.light_partner, None);
+    }
+
+    #[test]
+    fn game_without_partners_writes_no_partner_keys() {
+        let game: Game = serde_json::from_str(&pod_game_json("", false)).unwrap();
+        assert_eq!(game.dark_partner, None);
+        let serialized = serde_json::to_string(&game).unwrap();
+        assert!(!serialized.contains("darkPartner"), "{serialized}");
+        assert!(!serialized.contains("lightPartner"), "{serialized}");
+    }
+
+    #[test]
+    fn game_with_partners_round_trips() {
+        let game: Game = serde_json::from_str(&pod_game_json(BOTH_PARTNERS, true)).unwrap();
+        let serialized = serde_json::to_string(&game).unwrap();
+        let reread: Game = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(reread, game);
     }
 
     #[test]
@@ -1462,6 +1535,8 @@ mod tests {
                     court: "A".to_string(),
                     description: None,
                     timing_rule: "RR".to_string(),
+                    dark_partner: None,
+                    light_partner: None,
                     referee_assignments: None,
                 },
                 Game {
@@ -1472,6 +1547,8 @@ mod tests {
                     court: "A".to_string(),
                     description: None,
                     timing_rule: "RR".to_string(),
+                    dark_partner: None,
+                    light_partner: None,
                     referee_assignments: None,
                 },
                 Game {
@@ -1482,6 +1559,8 @@ mod tests {
                     court: "A".to_string(),
                     description: None,
                     timing_rule: "RR".to_string(),
+                    dark_partner: None,
+                    light_partner: None,
                     referee_assignments: None,
                 },
                 Game {
@@ -1492,6 +1571,8 @@ mod tests {
                     court: "A".to_string(),
                     description: None,
                     timing_rule: "RR".to_string(),
+                    dark_partner: None,
+                    light_partner: None,
                     referee_assignments: None,
                 },
             ]
@@ -1698,6 +1779,8 @@ mod tests {
             start_time: start,
             court: court.to_string(),
             timing_rule: "Standard".to_string(),
+            dark_partner: None,
+            light_partner: None,
             referee_assignments: None,
             description: None,
         }
@@ -1905,6 +1988,8 @@ mod tests {
             court: "A".to_string(),
             description: None,
             timing_rule: "RR".to_string(),
+            dark_partner: None,
+            light_partner: None,
             referee_assignments: None,
         };
         Schedule {

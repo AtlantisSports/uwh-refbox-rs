@@ -10762,6 +10762,8 @@ mod refresh_next_game_tests {
             start_time: start,
             court: court.to_string(),
             timing_rule: "Standard".to_string(),
+            dark_partner: None,
+            light_partner: None,
             referee_assignments: None,
             description: None,
         }
@@ -12171,6 +12173,8 @@ mod court_schedule_for_tests {
             start_time: OffsetDateTime::UNIX_EPOCH,
             court: court.to_string(),
             timing_rule: rule.to_string(),
+            dark_partner: None,
+            light_partner: None,
             referee_assignments: None,
             description: None,
         }
@@ -12304,6 +12308,8 @@ mod rosters_for_scheduled_game_tests {
             start_time: OffsetDateTime::UNIX_EPOCH,
             court: court.to_string(),
             timing_rule: "RR".to_string(),
+            dark_partner: None,
+            light_partner: None,
             referee_assignments: None,
             description: None,
         }

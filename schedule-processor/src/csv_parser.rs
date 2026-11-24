@@ -351,6 +351,8 @@ pub(crate) fn parse_games(
             light,
             start_time,
             description: None,
+            dark_partner: None,
+            light_partner: None,
             referee_assignments: None,
         };
         debug!("Parsed game: {}", game.number);

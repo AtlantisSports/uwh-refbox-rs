@@ -333,27 +333,42 @@ pub struct Renderer {
     seen_fouls: Option<OptColorBundle<Vec<FoulKey>>>,
 }
 
+/// The team a flag belongs to, or `None` for a foul against neither team.
+fn flag_team(flag_type: &Type) -> Option<UWHColor> {
+    match *flag_type {
+        Type::Goal(color, _) | Type::Penalty(color, _, _) => Some(color),
+        Type::Foul(color) => color,
+    }
+}
+
+/// The name a flag shows: the player's name from `team`'s roster, the team's name when there is
+/// no player, or "Both teams" when there is no team. Empty when the player isn't on the roster
+/// (yet).
+pub(crate) fn resolve_name(
+    team: Option<UWHColor>,
+    number: Option<u8>,
+    game_state: &crate::State,
+) -> String {
+    let team_info = |color| match color {
+        UWHColor::Black => &game_state.black,
+        UWHColor::White => &game_state.white,
+    };
+    match (team, number) {
+        (Some(color), Some(number)) => team_info(color)
+            .get_players()
+            .find(|player| player.number.unwrap() == number)
+            .map(|player| player.name.clone())
+            .unwrap_or_default(),
+        (Some(color), None) => team_info(color).team_name.clone(),
+        (None, _) => String::from("Both teams"),
+    }
+}
+
 impl Renderer {
     pub fn add_flag(&mut self, mut flag: Flag, game_state: &crate::State) {
         flag.vertical_position = self.active_flags.len() as u32;
         flag.shown_at = get_time();
-        let team = match flag.flag_type {
-            Type::Goal(color, _) | Type::Penalty(color, _, _) => Some(color),
-            Type::Foul(color) => color,
-        };
-        let team_info = |color| match color {
-            UWHColor::Black => &game_state.black,
-            UWHColor::White => &game_state.white,
-        };
-        flag.player_name = match (team, flag.player_number) {
-            (Some(color), Some(number)) => team_info(color)
-                .get_players()
-                .find(|player| player.number.unwrap() == number)
-                .map(|player| player.name.clone())
-                .unwrap_or_default(),
-            (Some(color), None) => team_info(color).team_name.clone(),
-            (None, _) => String::from("Both teams"),
-        };
+        flag.player_name = resolve_name(flag_team(&flag.flag_type), flag.player_number, game_state);
         self.active_flags.push(flag);
     }
 
@@ -391,6 +406,13 @@ impl Renderer {
         self.synchronize_penalties(UWHColor::Black, game_state);
         self.synchronize_penalties(UWHColor::White, game_state);
         self.synchronize_fouls(game_state);
+        // A card can appear before its player's roster arrives; fill the name in once it does.
+        for flag in &mut self.active_flags {
+            if flag.player_name.is_empty() {
+                flag.player_name =
+                    resolve_name(flag_team(&flag.flag_type), flag.player_number, game_state);
+            }
+        }
     }
 
     fn synchronize_goals(&mut self, game_state: &crate::State) {
@@ -856,10 +878,8 @@ fn draw_description(
     if open <= 0f32 || alpha <= 0f32 {
         return;
     }
-    let full_width = 2f32.mul_add(
-        BAR_PADDING,
-        measure_text(text, Some(&textures.font), BAR_FONT_SIZE, 1f32).width,
-    );
+    let text_width = measure_text(text, Some(&textures.font), BAR_FONT_SIZE, 1f32).width;
+    let full_width = 2f32.mul_add(BAR_PADDING, text_width);
     let width = full_width * open.min(1f32);
     let key = |a: f32| Color {
         a: a * alpha,
@@ -906,11 +926,16 @@ fn draw_description(
     // While the bar slides, show only the letters it already covers.
     let room = width - BAR_PADDING;
     let mut shown = String::new();
-    for c in text.chars() {
-        shown.push(c);
-        if measure_text(&shown, Some(&textures.font), BAR_FONT_SIZE, 1f32).width > room {
-            shown.pop();
-            break;
+    if open >= 1f32 || text_width <= room {
+        // Fully out, or the whole text already fits: no need to measure it letter by letter.
+        shown.push_str(text);
+    } else {
+        for c in text.chars() {
+            shown.push(c);
+            if measure_text(&shown, Some(&textures.font), BAR_FONT_SIZE, 1f32).width > room {
+                shown.pop();
+                break;
+            }
         }
     }
     if shown.is_empty() {

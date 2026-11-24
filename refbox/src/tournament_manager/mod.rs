@@ -3606,9 +3606,11 @@ impl TournamentManager {
     }
 
     /// Play time left before this game can end, including overtime once it is under
-    /// way. Sudden death is open-ended, so it contributes nothing beyond the clock in
-    /// hand; overtime is only counted from the pre-overtime break onwards, because
-    /// until then it is not known whether it will be played at all.
+    /// way. Sudden death contributes nothing, not even the time left on a maximum: it
+    /// stays outside the schedule arithmetic on purpose (see the sudden-death maximum
+    /// spec), so a limited sudden death is under-counted here. Overtime is only counted
+    /// from the pre-overtime break onwards, because until then it is not known whether
+    /// it will be played at all.
     fn remaining_play(&self, now: Instant) -> Duration {
         let remaining_current = self.clock_state.clock_time(now).unwrap_or(Duration::ZERO);
         let cfg = &self.config;
@@ -15493,7 +15495,9 @@ mod test {
         let start = Instant::now();
         running_sd_with(&mut tm, start, Duration::from_secs(2));
 
-        // Manual mode (no schedule): more time lost than is left parks sudden death at 0:00.
+        // Pins `absorb_lost_time`'s own handling only: in the app it is not reached in
+        // sudden death today (`observe_time_jump` returns early, as `models_period` excludes
+        // it). Called directly, more time lost than is left parks sudden death at 0:00.
         let wake = start + Duration::from_secs(1);
         tm.absorb_lost_time(wake, Duration::from_secs(10));
         assert_eq!(

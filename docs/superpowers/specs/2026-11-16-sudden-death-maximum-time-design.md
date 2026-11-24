@@ -2,7 +2,8 @@
 
 **Status:** ✅ PO-APPROVED 2026-11-16, as written ("1"), including P1–P6 and the design-session calls C1–C5
 (Game Info page; confirm window at a level 0:00; zero maximum refused; rugby waits for a penalty shot; merge gated on
-the field name, now satisfied). Portal field name AGREED (`suddenDeathMaxDuration`). Nothing is built. No plan yet.
+the field name, now satisfied). Portal field name AGREED (`suddenDeathMaxDuration`). Built on
+`feat/uwh-common/sudden-death-maximum` from the plan `docs/superpowers/plans/2026-11-16-sudden-death-maximum-time.md`.
 **Source:** portal register `#183` (uwh-portal `docs/superpowers/specs/2026-09-26-feature-requests-register.md`,
 branch `docs/feature-requests-register`), handed to the refbox design lane under the PO's "split by workspace"
 ruling (2026-11-02). The portal keeps its server piece (the timing-rule field and the existing `TiedGameCoinFlip`);

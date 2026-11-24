@@ -117,7 +117,7 @@ mod tests {
     ///    zeroed overtime durations. That combination is refused by `check_flag_gated_durations`,
     ///    and it contradicts `finals_timing_rule()` in the tournament manager, which already reads
     ///    that rule as sudden-death-only. Corrected to `false` rather than given invented lengths.
-    /// 2 & 3. A `singlePeriod: false` key added to each of the two rules, because the Portal marks
+    /// 2. and 3. A `singlePeriod: false` key added to each of the two rules, because the Portal marks
     ///    that field required and rejects its absence at model binding, so a real export under the
     ///    current contract carries it.
     /// 4. A `gameBlock` added to each rule (1500s for RR, 1860s for FINALS). The export predates

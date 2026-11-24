@@ -15,7 +15,7 @@ use macroquad::prelude::*;
 use uwh_common::{
     bundles::OptColorBundle,
     color::Color as UWHColor,
-    game_snapshot::{Infraction, InfractionSnapshot, PenaltyTime},
+    game_snapshot::{Infraction, PenaltyTime},
 };
 
 /// Distance from the top of the screen from where the flags are rendered
@@ -116,6 +116,10 @@ pub struct Flag {
     vertical_position: u32,
     alpha_animation_counter: f32,
     movement_animation_counter: f32,
+    /// Penalty flags: how many running penalties the player had at the last snapshot.
+    penalty_count: usize,
+    /// Foul flags: the foul's index in its team's list in the last snapshot.
+    foul_index: Option<usize>,
 }
 
 impl Flag {
@@ -134,54 +138,61 @@ impl Flag {
             alpha_animation_counter: 0f32,
             vertical_position: 0,
             movement_animation_counter: 0f32,
+            penalty_count: 0,
+            foul_index: None,
         }
-    }
-
-    fn is_foul_matching(&self, key: &FoulKey) -> bool {
-        matches!(self.flag_type, Type::Foul(color) if color == key.0)
-            && self.player_number == key.1
-            && self.infraction == key.2
     }
 }
 
-/// What tells two fouls apart: team, cap number and foul. Identical fouls are counted.
+/// What tells two fouls apart: team, cap number and foul. Identical fouls are told apart by
+/// their place in the list.
 type FoulKey = (Option<UWHColor>, Option<u8>, Infraction);
 
-/// How many of each foul the refbox lists.
-fn foul_counts(fouls: &OptColorBundle<Vec<InfractionSnapshot>>) -> Vec<(FoulKey, usize)> {
-    let mut counts: Vec<(FoulKey, usize)> = Vec::new();
-    for (color, list) in fouls.iter() {
-        for foul in list {
-            let key = (color, foul.player_number, foul.infraction);
-            match counts.iter_mut().find(|(k, _)| *k == key) {
-                Some((_, count)) => *count += 1,
-                None => counts.push((key, 1)),
-            }
-        }
-    }
-    counts
+/// Whether a player's penalty bar shows again: they got another penalty (`count` went up) or
+/// their newest penalty's foul changed (corrected on the refbox). One running out does neither.
+fn penalty_needs_reshow(
+    prev_count: usize,
+    prev_infraction: Infraction,
+    count: usize,
+    newest: Infraction,
+) -> bool {
+    count > prev_count || newest != prev_infraction
 }
 
-fn count_of(counts: &[(FoulKey, usize)], key: &FoulKey) -> usize {
-    counts
-        .iter()
-        .find(|(k, _)| k == key)
-        .map_or(0, |(_, count)| *count)
-}
-
-/// For every foul whose count changed: how many were added (positive) or removed (negative).
-fn foul_changes(before: &[(FoulKey, usize)], after: &[(FoulKey, usize)]) -> Vec<(FoulKey, isize)> {
-    let mut changes: Vec<(FoulKey, isize)> = Vec::new();
-    for (key, _) in after.iter().chain(before.iter()) {
-        if changes.iter().any(|(k, _)| k == key) {
-            continue;
-        }
-        let delta = count_of(after, key) as isize - count_of(before, key) as isize;
-        if delta != 0 {
-            changes.push((*key, delta));
+/// Matches a team's previous foul list to its new one, keeping as many fouls in place as
+/// possible (longest common subsequence). Returns, for each old index, its index in `new` (`None`:
+/// deleted), and the new indices that were added. Among identical fouls the earlier ones are
+/// matched first, so when it can't be told which of a run was deleted, the newest is.
+fn align_fouls(old: &[FoulKey], new: &[FoulKey]) -> (Vec<Option<usize>>, Vec<usize>) {
+    // lcs[i][j]: the longest common subsequence of `old[i..]` and `new[j..]`.
+    let mut lcs = vec![vec![0usize; new.len() + 1]; old.len() + 1];
+    for i in (0..old.len()).rev() {
+        for j in (0..new.len()).rev() {
+            lcs[i][j] = if old[i] == new[j] {
+                lcs[i + 1][j + 1] + 1
+            } else {
+                lcs[i + 1][j].max(lcs[i][j + 1])
+            };
         }
     }
-    changes
+    let mut mapping = vec![None; old.len()];
+    let mut matched = vec![false; new.len()];
+    let (mut i, mut j) = (0, 0);
+    while i < old.len() && j < new.len() {
+        if old[i] == new[j] {
+            mapping[i] = Some(j);
+            matched[j] = true;
+            i += 1;
+            j += 1;
+        } else if lcs[i][j + 1] >= lcs[i + 1][j] {
+            // Skip the new entry first, so the earlier old entry stays in line for a match.
+            j += 1;
+        } else {
+            i += 1;
+        }
+    }
+    let added = (0..new.len()).filter(|&j| !matched[j]).collect();
+    (mapping, added)
 }
 
 /// How far out the description bar is (0 = hidden, 1 = fully out), `since_shown` seconds after the
@@ -314,9 +325,10 @@ pub struct Renderer {
     active_flags: Vec<Flag>,
     inactive_flags: Vec<Flag>,
     textures: Textures,
-    /// The fouls listed in the last snapshot. `None` until the first snapshot arrives, which only
-    /// sets the starting point: fouls already on the refbox when the overlay starts aren't shown.
-    seen_fouls: Option<Vec<(FoulKey, usize)>>,
+    /// Each team's fouls, in order, as listed in the last snapshot. `None` until the first
+    /// snapshot arrives, which only sets the starting point: fouls already on the refbox when the
+    /// overlay starts aren't shown.
+    seen_fouls: Option<OptColorBundle<Vec<FoulKey>>>,
 }
 
 impl Renderer {
@@ -455,9 +467,20 @@ impl Renderer {
             }
         }
 
+        let penalties = &game_state.snapshot.penalties[team_color];
+        let running = |player_number: u8| {
+            penalties.iter().filter(move |p| {
+                p.player_number == player_number && !matches!(p.time, PenaltyTime::Seconds(0))
+            })
+        };
         // update or create local penalty flags for current team_color, marking each as visited if updated.
-        for penalty in &game_state.snapshot.penalties[team_color] {
+        for penalty in penalties {
             if !matches!(penalty.time, PenaltyTime::Seconds(0)) {
+                // The player's running penalties, in the order the refbox gave them.
+                let count = running(penalty.player_number).count();
+                let newest = running(penalty.player_number)
+                    .next_back()
+                    .map_or(penalty.infraction, |p| p.infraction);
                 // find the penalty in the local list, create a new penalty if it doesn't exist.
                 let flag_pos = self
                     .active_flags
@@ -467,15 +490,14 @@ impl Renderer {
                             && flag.player_number == Some(penalty.player_number)
                     })
                     .unwrap_or_else(|| {
-                        self.add_flag(
-                            Flag::new(
-                                String::new(),
-                                Some(penalty.player_number),
-                                Type::Penalty(team_color, penalty.time, true),
-                                penalty.infraction,
-                            ),
-                            game_state,
+                        let mut flag = Flag::new(
+                            String::new(),
+                            Some(penalty.player_number),
+                            Type::Penalty(team_color, penalty.time, true),
+                            newest,
                         );
+                        flag.penalty_count = count;
+                        self.add_flag(flag, game_state);
                         self.active_flags.len() - 1
                     });
 
@@ -484,12 +506,18 @@ impl Renderer {
                     Flag {
                         flag_type: Type::Penalty(_, time, is_visited),
                         infraction,
+                        shown_at,
+                        penalty_count,
                         ..
                     } => {
                         *time = penalty.time;
                         *is_visited = true;
-                        // A foul corrected on the refbox while the bar is out shows the correction.
-                        *infraction = penalty.infraction;
+                        // Another penalty, or a correction on the refbox, shows the bar again.
+                        if penalty_needs_reshow(*penalty_count, *infraction, count, newest) {
+                            *shown_at = get_time();
+                            *infraction = newest;
+                        }
+                        *penalty_count = count;
                     }
                     _ => unreachable!(),
                 }
@@ -515,34 +543,51 @@ impl Renderer {
         self.active_flags.sort_by(flag_order);
     }
 
-    /// Shows a foul flag for each foul added on the refbox, and takes one down for each foul
-    /// deleted there. Fouls are told apart by team, cap number and foul, and identical ones are
-    /// counted, since the refbox's list carries no ids.
+    /// Shows a foul flag for each foul added on the refbox, and takes down the flag of each foul
+    /// deleted there. The refbox's lists carry no ids, so each team's list is matched to the
+    /// previous one in order (see [`align_fouls`]).
     fn synchronize_fouls(&mut self, game_state: &crate::State) {
-        let counts = foul_counts(&game_state.snapshot.fouls);
-        let Some(before) = self.seen_fouls.replace(counts.clone()) else {
+        let keys: OptColorBundle<Vec<FoulKey>> = game_state
+            .snapshot
+            .fouls
+            .iter()
+            .map(|(color, list)| {
+                let team_keys = list
+                    .iter()
+                    .map(|foul| (color, foul.player_number, foul.infraction))
+                    .collect();
+                (color, team_keys)
+            })
+            .collect();
+        let Some(before) = self.seen_fouls.replace(keys.clone()) else {
             return;
         };
-        for (key, delta) in foul_changes(&before, &counts) {
-            if delta > 0 {
-                for _ in 0..delta {
-                    self.add_flag(
-                        Flag::new(String::new(), key.1, Type::Foul(key.0), key.2),
-                        game_state,
-                    );
-                }
-            } else {
-                for _ in 0..-delta {
-                    // The newest matching flag still on screen, if any (it may have timed out).
-                    if let Some(pos) = self
-                        .active_flags
-                        .iter()
-                        .rposition(|flag| flag.is_foul_matching(&key))
-                    {
-                        let flag = self.active_flags.remove(pos);
-                        self.inactive_flags.push(flag);
+        for ((team, old), (_, new)) in before.iter().zip(keys.iter()) {
+            if old == new {
+                continue;
+            }
+            let (mapping, added) = align_fouls(old, new);
+            let mut kept = Vec::with_capacity(self.active_flags.len());
+            for mut flag in std::mem::take(&mut self.active_flags) {
+                let index = match (&flag.flag_type, flag.foul_index) {
+                    (Type::Foul(color), Some(index)) if *color == team => Some(index),
+                    _ => None,
+                };
+                match index.map(|index| mapping.get(index).copied().flatten()) {
+                    None => kept.push(flag),
+                    Some(Some(moved_to)) => {
+                        flag.foul_index = Some(moved_to);
+                        kept.push(flag);
                     }
+                    Some(None) => self.inactive_flags.push(flag),
                 }
+            }
+            self.active_flags = kept;
+            for index in added {
+                let key = new[index];
+                let mut flag = Flag::new(String::new(), key.1, Type::Foul(key.0), key.2);
+                flag.foul_index = Some(index);
+                self.add_flag(flag, game_state);
             }
         }
         self.active_flags.sort_by(flag_order);
@@ -894,50 +939,61 @@ fn draw_description(
 mod tests {
     use super::*;
 
-    fn foul(number: Option<u8>, infraction: Infraction) -> InfractionSnapshot {
-        InfractionSnapshot {
-            player_number: number,
-            infraction,
-        }
+    #[test]
+    fn a_second_penalty_or_a_new_foul_reshows_the_bar() {
+        use Infraction::{FreeArm, Obstruction};
+        assert!(penalty_needs_reshow(1, Obstruction, 2, FreeArm));
+        assert!(!penalty_needs_reshow(1, Obstruction, 1, Obstruction));
+        assert!(
+            !penalty_needs_reshow(2, Obstruction, 1, Obstruction),
+            "one expired"
+        );
+        assert!(
+            penalty_needs_reshow(1, Obstruction, 1, FreeArm),
+            "corrected"
+        );
     }
 
-    #[test]
-    fn a_new_foul_is_one_change_and_an_unchanged_list_is_none() {
-        let mut fouls = OptColorBundle::<Vec<InfractionSnapshot>>::default();
-        fouls
-            .white
-            .push(foul(Some(4), Infraction::StickInfringement));
-        let before = foul_counts(&fouls);
-        assert!(foul_changes(&before, &before).is_empty());
+    const A: FoulKey = (Some(UWHColor::White), Some(1), Infraction::FreeArm);
+    const B: FoulKey = (Some(UWHColor::White), Some(2), Infraction::Obstruction);
+    const C: FoulKey = (
+        Some(UWHColor::White),
+        Some(3),
+        Infraction::StickInfringement,
+    );
+    const D: FoulKey = (Some(UWHColor::White), Some(4), Infraction::DelayOfGame);
 
-        fouls.black.push(foul(Some(9), Infraction::Obstruction));
-        let after = foul_counts(&fouls);
+    #[test]
+    fn deleting_an_older_duplicate_removes_that_one() {
         assert_eq!(
-            foul_changes(&before, &after),
-            vec![((Some(UWHColor::Black), Some(9), Infraction::Obstruction), 1)]
+            align_fouls(&[A, B, A], &[B, A]),
+            (vec![None, Some(0), Some(1)], vec![])
         );
     }
 
     #[test]
-    fn identical_fouls_are_counted_and_a_deleted_one_is_a_removal() {
-        let mut fouls = OptColorBundle::<Vec<InfractionSnapshot>>::default();
-        fouls.white.push(foul(Some(4), Infraction::FreeArm));
-        let one = foul_counts(&fouls);
-        fouls.white.push(foul(Some(4), Infraction::FreeArm));
-        let two = foul_counts(&fouls);
-        let key = (Some(UWHColor::White), Some(4), Infraction::FreeArm);
-        assert_eq!(foul_changes(&one, &two), vec![(key, 1)]);
-        assert_eq!(foul_changes(&two, &one), vec![(key, -1)]);
-        assert_eq!(foul_changes(&one, &[]), vec![(key, -1)]);
+    fn deleting_one_of_adjacent_duplicates_removes_the_newest() {
+        assert_eq!(align_fouls(&[A, A], &[A]), (vec![Some(0), None], vec![]));
     }
 
     #[test]
-    fn a_foul_against_neither_team_has_no_colour() {
-        let mut fouls = OptColorBundle::<Vec<InfractionSnapshot>>::default();
-        fouls.equal.push(foul(None, Infraction::DelayOfGame));
+    fn a_foul_edited_in_place_is_a_removal_and_an_addition() {
         assert_eq!(
-            foul_counts(&fouls),
-            vec![((None, None, Infraction::DelayOfGame), 1)]
+            align_fouls(&[A, B, C], &[A, D, C]),
+            (vec![Some(0), None, Some(2)], vec![1])
+        );
+    }
+
+    #[test]
+    fn an_appended_foul_is_an_addition() {
+        assert_eq!(align_fouls(&[A], &[A, B]), (vec![Some(0)], vec![1]));
+    }
+
+    #[test]
+    fn an_unchanged_list_maps_every_foul_to_itself() {
+        assert_eq!(
+            align_fouls(&[A, B, A, C], &[A, B, A, C]),
+            (vec![Some(0), Some(1), Some(2), Some(3)], vec![])
         );
     }
 

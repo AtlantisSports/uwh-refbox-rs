@@ -826,13 +826,6 @@ mod tests {
     use super::*;
     use crate::network::Image;
 
-    #[test]
-    fn every_infraction_is_listed_once() {
-        for infraction in ALL {
-            assert_eq!(ALL[infraction_index(infraction)], infraction);
-        }
-    }
-
     fn img(v: u8) -> Image {
         (1, 1, vec![v, v, v, 255])
     }

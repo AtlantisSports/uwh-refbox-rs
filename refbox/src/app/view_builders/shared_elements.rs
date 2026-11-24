@@ -1121,13 +1121,29 @@ pub(super) fn penalty_string(penalties: &[PenaltySnapshot]) -> String {
 }
 
 pub(super) fn game_string_long(game: &Game, teams: Option<&TeamList>, len_limit: usize) -> String {
-    let black = get_team_name(&game.dark, teams);
-    let white = get_team_name(&game.light, teams);
-
-    let black = limit_team_name_len(&black, len_limit);
-    let white = limit_team_name_len(&white, len_limit);
+    let black = side_name(&game.dark, game.dark_partner.as_ref(), teams, len_limit);
+    let white = side_name(&game.light, game.light_partner.as_ref(), teams, len_limit);
 
     format!("{} - {} vs {}", game.number, black, white)
+}
+
+/// The name shown for one side of a game. A round-robin pod side has a partner
+/// team: both names are shown joined by " + ", each cut to half the limit.
+pub(super) fn side_name(
+    team: &ScheduledTeam,
+    partner: Option<&ScheduledTeam>,
+    teams: Option<&TeamList>,
+    len_limit: usize,
+) -> String {
+    match partner {
+        None => limit_team_name_len(&get_team_name(team, teams), len_limit),
+        Some(partner) => {
+            let half = len_limit / 2;
+            let a = limit_team_name_len(&get_team_name(team, teams), half);
+            let b = limit_team_name_len(&get_team_name(partner, teams), half);
+            format!("{a} + {b}")
+        }
+    }
 }
 
 pub(super) fn get_team_name(team: &ScheduledTeam, teams: Option<&TeamList>) -> String {
@@ -2126,6 +2142,85 @@ mod tests {
         assert!(
             rendered.contains(&expected),
             "expected the next game to be dashed, got: {rendered}"
+        );
+    }
+
+    fn t(name: &str) -> ScheduledTeam {
+        ScheduledTeam::new_pending_assignment_name(name)
+    }
+
+    fn pod_game(
+        dark: &str,
+        dark_partner: Option<&str>,
+        light: &str,
+        light_partner: Option<&str>,
+    ) -> Game {
+        Game {
+            number: "14".to_string(),
+            dark: t(dark),
+            light: t(light),
+            start_time: time::macros::datetime!(2026-08-05 09:00 UTC),
+            court: "Court 1".to_string(),
+            timing_rule: "Standard".to_string(),
+            dark_partner: dark_partner.map(t),
+            light_partner: light_partner.map(t),
+            referee_assignments: None,
+            description: None,
+        }
+    }
+
+    #[test]
+    fn side_name_without_partner_matches_todays_text() {
+        assert_eq!(
+            side_name(&t("Sydney Sharks"), None, None, 15),
+            limit_team_name_len("Sydney Sharks", 15)
+        );
+        assert_eq!(
+            side_name(&t("Sydney Sharks"), None, None, 40),
+            limit_team_name_len("Sydney Sharks", 40)
+        );
+        assert_eq!(
+            side_name(&t("Brisbane Barracudas"), None, None, 15),
+            limit_team_name_len("Brisbane Barracudas", 15)
+        );
+    }
+
+    #[test]
+    fn side_name_short_partners_join_in_full() {
+        assert_eq!(
+            side_name(&t("Pod A"), Some(&t("Pod B")), None, 15),
+            "Pod A + Pod B"
+        );
+    }
+
+    #[test]
+    fn side_name_long_partners_each_get_half() {
+        assert_eq!(
+            side_name(&t("Sydney Sharks"), Some(&t("Brisbane Barras")), None, 15),
+            "Sydney... + Brisba..."
+        );
+    }
+
+    #[test]
+    fn game_string_long_shows_both_pod_partners() {
+        let game = pod_game(
+            "Sydney Sharks",
+            Some("Brisbane Barras"),
+            "Perth Rays",
+            Some("Melbourne Eels"),
+        );
+        assert_eq!(
+            game_string_long(&game, None, 15),
+            "14 - Sydney... + Brisba... vs Perth ... + Melbou..."
+        );
+    }
+
+    #[test]
+    fn game_string_long_one_sided_partner() {
+        let game = pod_game("Pod A", Some("Pod B"), "Pod C", None);
+        assert_eq!(
+            game_string_long(&game, None, 15),
+            "14 - Pod A + Pod B vs Pod C"
         );
     }
 }

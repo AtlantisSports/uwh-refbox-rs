@@ -771,7 +771,7 @@ mod tests {
     }
 
     #[test]
-    fn a_name_missing_when_the_card_appeared_is_filled_in_later() {
+    fn resolve_name_finds_a_player_added_after_the_card_appeared() {
         use uwh_common::color::Color as UWHColor;
         let mut state = State {
             snapshot: GameSnapshot::default(),

@@ -117,8 +117,9 @@ pub struct Flag {
     vertical_position: u32,
     alpha_animation_counter: f32,
     movement_animation_counter: f32,
-    /// Penalty flags: how many running penalties the player had at the last snapshot.
-    penalty_count: usize,
+    /// Penalty flags: the infractions of the player's running penalties at the last snapshot, in
+    /// no particular order.
+    seen_penalties: Vec<Infraction>,
     /// Foul flags: the foul's index in its team's list in the last snapshot.
     foul_index: Option<usize>,
 }
@@ -139,7 +140,7 @@ impl Flag {
             alpha_animation_counter: 0f32,
             vertical_position: 0,
             movement_animation_counter: 0f32,
-            penalty_count: 0,
+            seen_penalties: Vec::new(),
             foul_index: None,
         }
     }
@@ -149,17 +150,22 @@ impl Flag {
 /// their place in the list.
 type FoulKey = (Option<UWHColor>, Option<u8>, Infraction);
 
-/// Whether a player's penalty bar shows again: they got another penalty (`count` went up) or,
-/// with the same number of penalties, their newest penalty's foul changed (corrected on the
-/// refbox). One running out (`count` went down) never does, even when that changes which
-/// penalty is newest.
-fn penalty_needs_reshow(
-    prev_count: usize,
-    prev_infraction: Infraction,
-    count: usize,
-    newest: Infraction,
-) -> bool {
-    count > prev_count || (count == prev_count && newest != prev_infraction)
+/// A foul among a player's running penalties `now` that was not among them at the last snapshot
+/// (`prev`): `Some` when a penalty was added or corrected on the refbox, `None` when nothing is
+/// new (the same penalties, or only some running out). Both lists are compared as unordered
+/// collections, counting repeats: the bridge sends penalties sorted by time left, so a penalty's
+/// place in the list says nothing about how new it is.
+fn penalty_added(prev: &[Infraction], now: &[Infraction]) -> Option<Infraction> {
+    let mut unmatched = prev.to_vec();
+    for &infraction in now {
+        match unmatched.iter().position(|&p| p == infraction) {
+            Some(i) => {
+                unmatched.swap_remove(i);
+            }
+            None => return Some(infraction),
+        }
+    }
+    None
 }
 
 /// Matches a team's previous foul list to its new one, keeping as many fouls in place as
@@ -501,11 +507,10 @@ impl Renderer {
         // update or create local penalty flags for current team_color, marking each as visited if updated.
         for penalty in penalties {
             if !matches!(penalty.time, PenaltyTime::Seconds(0)) {
-                // The player's running penalties, in the order the refbox gave them.
-                let count = running(penalty.player_number).count();
-                let newest = running(penalty.player_number)
-                    .next_back()
-                    .map_or(penalty.infraction, |p| p.infraction);
+                // The player's running penalties, in no particular order.
+                let now: Vec<Infraction> = running(penalty.player_number)
+                    .map(|p| p.infraction)
+                    .collect();
                 // find the penalty in the local list, create a new penalty if it doesn't exist.
                 let flag_pos = self
                     .active_flags
@@ -519,9 +524,9 @@ impl Renderer {
                             String::new(),
                             Some(penalty.player_number),
                             Type::Penalty(team_color, penalty.time, true),
-                            newest,
+                            penalty_added(&[], &now).unwrap_or(penalty.infraction),
                         );
-                        flag.penalty_count = count;
+                        flag.seen_penalties = now.clone();
                         self.add_flag(flag, game_state);
                         self.active_flags.len() - 1
                     });
@@ -532,18 +537,26 @@ impl Renderer {
                         flag_type: Type::Penalty(_, time, is_visited),
                         infraction,
                         shown_at,
-                        penalty_count,
+                        seen_penalties,
                         ..
                     } => {
                         *time = penalty.time;
                         *is_visited = true;
-                        // Another penalty, or a correction on the refbox, shows the bar again.
-                        if penalty_needs_reshow(*penalty_count, *infraction, count, newest) {
-                            *shown_at = get_time();
+                        // Another penalty, or a correction on the refbox, shows the bar again
+                        // with that foul. One running out never does.
+                        match penalty_added(seen_penalties, &now) {
+                            Some(added) => {
+                                *shown_at = get_time();
+                                *infraction = added;
+                            }
+                            None if !now.contains(infraction) => {
+                                if let Some(&first) = now.first() {
+                                    *infraction = first;
+                                }
+                            }
+                            None => {}
                         }
-                        // Always show the newest foul, even when the bar doesn't slide out again.
-                        *infraction = newest;
-                        *penalty_count = count;
+                        *seen_penalties = now;
                     }
                     _ => unreachable!(),
                 }
@@ -969,21 +982,63 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_second_penalty_or_a_new_foul_reshows_the_bar() {
+    fn a_second_penalty_shows_its_foul() {
         use Infraction::{FreeArm, Obstruction};
-        assert!(penalty_needs_reshow(1, Obstruction, 2, FreeArm));
-        assert!(!penalty_needs_reshow(1, Obstruction, 1, Obstruction));
-        assert!(
-            !penalty_needs_reshow(2, Obstruction, 1, Obstruction),
-            "one expired"
+        assert_eq!(
+            penalty_added(&[Obstruction], &[Obstruction, FreeArm]),
+            Some(FreeArm)
         );
-        assert!(
-            penalty_needs_reshow(1, Obstruction, 1, FreeArm),
-            "corrected"
+    }
+
+    #[test]
+    fn a_second_penalty_in_the_bridges_order_shows_its_foul_not_the_old_one() {
+        use Infraction::{FreeArm, Obstruction};
+        // The bridge sorts by time left, so the new penalty (most time left) comes first.
+        assert_eq!(
+            penalty_added(&[Obstruction], &[FreeArm, Obstruction]),
+            Some(FreeArm)
         );
-        assert!(
-            !penalty_needs_reshow(2, FreeArm, 1, Obstruction),
-            "the newer one ran out"
+    }
+
+    #[test]
+    fn the_same_penalties_in_a_different_order_show_nothing_new() {
+        use Infraction::{FreeArm, Obstruction};
+        assert_eq!(
+            penalty_added(&[Obstruction, FreeArm], &[FreeArm, Obstruction]),
+            None
+        );
+    }
+
+    #[test]
+    fn a_corrected_penalty_shows_its_new_foul() {
+        use Infraction::{FreeArm, Obstruction};
+        assert_eq!(penalty_added(&[Obstruction], &[FreeArm]), Some(FreeArm));
+    }
+
+    #[test]
+    fn a_penalty_running_out_never_shows_the_bar_again() {
+        use Infraction::{FreeArm, Obstruction};
+        assert_eq!(penalty_added(&[FreeArm, Obstruction], &[Obstruction]), None);
+        assert_eq!(
+            penalty_added(&[Obstruction, Obstruction], &[Obstruction]),
+            None
+        );
+    }
+
+    #[test]
+    fn a_second_penalty_for_the_same_foul_shows_the_bar_again() {
+        use Infraction::Obstruction;
+        assert_eq!(
+            penalty_added(&[Obstruction], &[Obstruction, Obstruction]),
+            Some(Obstruction)
+        );
+    }
+
+    #[test]
+    fn a_first_penalty_shows_its_foul() {
+        assert_eq!(
+            penalty_added(&[], &[Infraction::FreeArm]),
+            Some(Infraction::FreeArm)
         );
     }
 

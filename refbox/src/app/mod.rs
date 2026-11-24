@@ -11393,16 +11393,32 @@ impl UpdaterFailures {
 /// A second tap can be delivered after the first one has moved the app on: the repeat
 /// filter in `handle_message` only drops a message equal to the one just before it, and
 /// a clock tick landing between two taps defeats it. The confirmation window closing by
-/// itself has the same effect on a tap already in flight. The handlers for these
-/// messages assume their screen is up and crash when it is not, so such a tap is
-/// dropped before it reaches them.
+/// itself, or the end of a half bringing up the confirmation screen, has the same effect
+/// on a tap already in flight. The handlers for these messages assume their screen is up
+/// and crash when it is not, so such a tap is dropped before it reaches them.
 fn tap_outlived_its_screen(message: &Message, state: &AppState) -> bool {
     match message {
         Message::ScoreConfirmation { .. } => !matches!(state, AppState::ConfirmScores(_)),
-        Message::ScoreEditComplete { .. } => !matches!(state, AppState::ScoreEdit { .. }),
+        Message::ScoreEditComplete { .. } | Message::ChangeScore { .. } => {
+            !matches!(state, AppState::ScoreEdit { .. })
+        }
         Message::AddScoreComplete { .. } => {
             !matches!(state, AppState::KeypadPage(KeypadPage::AddScore { .. }, _))
         }
+        Message::TimeEditComplete { .. } => !matches!(state, AppState::TimeEdit(..)),
+        Message::KeypadButtonPress(_) | Message::SelectPlayerNumber(_) => {
+            !matches!(state, AppState::KeypadPage(..))
+        }
+        Message::ChangeColor(_) => !matches!(
+            state,
+            AppState::KeypadPage(
+                KeypadPage::AddScore { .. }
+                    | KeypadPage::Penalty(..)
+                    | KeypadPage::WarningAdd { .. }
+                    | KeypadPage::FoulAdd { .. },
+                _
+            )
+        ),
         _ => false,
     }
 }
@@ -11479,6 +11495,54 @@ mod stale_tap_gate_tests {
                 &add_goal_page()
             ));
         }
+    }
+
+    /// The second half ends while the operator is typing a cap number or flipping +/-:
+    /// the confirmation screen takes over, and the tap already in flight lands on it.
+    #[test]
+    fn edit_taps_after_the_screen_changed_are_dropped() {
+        let confirm = AppState::ConfirmScores(scores());
+        for message in [
+            Message::ChangeScore {
+                color: Color::White,
+                increase: true,
+            },
+            Message::KeypadButtonPress(KeypadButton::One),
+            Message::SelectPlayerNumber(7),
+            Message::ChangeColor(Some(Color::White)),
+            Message::TimeEditComplete { canceled: false },
+        ] {
+            assert!(tap_outlived_its_screen(&message, &confirm), "{message:?}");
+        }
+    }
+
+    #[test]
+    fn edit_taps_on_their_own_screen_pass() {
+        let score_edit = AppState::ScoreEdit {
+            scores: scores(),
+            is_confirmation: false,
+        };
+        assert!(!tap_outlived_its_screen(
+            &Message::ChangeScore {
+                color: Color::White,
+                increase: true,
+            },
+            &score_edit
+        ));
+        for message in [
+            Message::KeypadButtonPress(KeypadButton::One),
+            Message::SelectPlayerNumber(7),
+            Message::ChangeColor(Some(Color::White)),
+        ] {
+            assert!(
+                !tap_outlived_its_screen(&message, &add_goal_page()),
+                "{message:?}"
+            );
+        }
+        assert!(!tap_outlived_its_screen(
+            &Message::TimeEditComplete { canceled: true },
+            &AppState::TimeEdit(true, Duration::from_secs(60), None)
+        ));
     }
 
     #[test]

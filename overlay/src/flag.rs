@@ -427,9 +427,10 @@ impl Renderer {
         self.synchronize_penalties(UWHColor::Black, game_state);
         self.synchronize_penalties(UWHColor::White, game_state);
         self.synchronize_fouls(game_state);
-        // A card can appear before its player's roster arrives; fill the name in once it does.
+        // A card can appear before its player's roster arrives; fill the name in once it does. A
+        // card against neither team keeps its empty name (`draw_flag` writes "Both teams").
         for flag in &mut self.active_flags {
-            if flag.player_name.is_empty() {
+            if flag.player_name.is_empty() && flag_team(&flag.flag_type).is_some() {
                 flag.player_name =
                     resolve_name(flag_team(&flag.flag_type), flag.player_number, game_state);
             }

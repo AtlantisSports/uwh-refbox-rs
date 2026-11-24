@@ -212,8 +212,8 @@ files in `%APPDATA%\overlay-bridge\config\csv-files\`.
      - `language = "fr"`: French.
 
      Capitals, spaces around the value and regional codes are fine: `"ES"`, `"es-ES"` and `"Fr"`
-     mean Spanish, Spanish and French. Anything else (a typo, or a word such as `"spanish"`) means
-     English; the rest of the file still loads.
+     mean Spanish, Spanish and French. Any other quoted text (a typo, or a word such as
+     `"spanish"`) means English; the rest of the file still loads.
 3. Start **overlay** again and leave it running. Its window shows a small preview; the real picture
    goes out over NDI.
 4. **Windows Firewall:** if Windows asks, allow it on **Private** networks. If the NDI source

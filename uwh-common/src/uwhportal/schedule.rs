@@ -228,11 +228,11 @@ pub struct Game {
     pub dark: ScheduledTeam,
     pub light: ScheduledTeam,
     /// The second team on the dark side of a pod game. `None` on non-pod games
-    /// and on schedules cached before the Portal sent this field.
+    /// and from a Portal that predates this field.
     #[serde(default, rename = "darkPartner")]
     pub dark_partner: Option<ScheduledTeam>,
     /// The second team on the light side of a pod game. `None` on non-pod games
-    /// and on schedules cached before the Portal sent this field.
+    /// and from a Portal that predates this field.
     #[serde(default, rename = "lightPartner")]
     pub light_partner: Option<ScheduledTeam>,
     #[serde(with = "iso8601_4dig_year_no_subsecs", rename = "startsOn")]

@@ -1170,7 +1170,8 @@ pub(super) fn get_team_name(team: &ScheduledTeam, teams: Option<&TeamList>) -> S
 pub(super) fn limit_team_name_len(name: &str, len_limit: usize) -> String {
     const ELIPSIS: [char; 3] = ['.', '.', '.'];
 
-    if name.len() > len_limit {
+    // Count letters, not bytes: an accented or non-Latin letter is one letter.
+    if name.chars().count() > len_limit {
         name.chars().take(len_limit - 1).chain(ELIPSIS).collect()
     } else {
         name.to_owned()
@@ -2182,6 +2183,21 @@ mod tests {
         assert_eq!(
             side_name(&t("Brisbane Barracudas"), None, None, 15),
             limit_team_name_len("Brisbane Barracudas", 15)
+        );
+        assert_eq!(
+            side_name(&t("Brisbane Barracudas"), None, None, 15),
+            "Brisbane Barra..."
+        );
+    }
+
+    #[test]
+    fn accented_names_are_measured_in_letters_not_bytes() {
+        // "Réunion" is 7 letters but 8 bytes: it fits a 7-letter half in full.
+        assert_eq!(limit_team_name_len("Réunion", 7), "Réunion");
+        assert_eq!(limit_team_name_len("Réunions", 7), "Réunio...");
+        assert_eq!(
+            side_name(&t("Pod A"), Some(&t("Réunion")), None, 15),
+            "Pod A + Réunion"
         );
     }
 

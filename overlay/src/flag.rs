@@ -110,7 +110,8 @@ pub struct Flag {
     flag_type: Type,
     /// The foul, shown in the description bar. `Unknown` shows no bar.
     infraction: Infraction,
-    /// When the flag first appeared (`get_time()`), which times the description bar.
+    /// When the flag appeared, or was last re-shown for a new or corrected penalty
+    /// (`get_time()`), which times the description bar.
     shown_at: f64,
     /// Index of the flag's position starting from the top flag.
     vertical_position: u32,
@@ -356,7 +357,7 @@ pub(crate) fn resolve_name(
     match (team, number) {
         (Some(color), Some(number)) => team_info(color)
             .get_players()
-            .find(|player| player.number.unwrap() == number)
+            .find(|player| player.number == Some(number))
             .map(|player| player.name.clone())
             .unwrap_or_default(),
         (Some(color), None) => team_info(color).team_name.clone(),

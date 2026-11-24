@@ -78,7 +78,7 @@ the two exceptions and are always real values.
 | `recentGoal` | object or null | `snapshot.recent_goal` — `{ "team": "BLACK"\|"WHITE", "player": integer }` |
 | `nextPeriodLenSecs` | integer or null | `snapshot.next_period_len_secs` |
 | `penalties` | array | `snapshot.penalties` — §4a |
-| `fouls` | array | `snapshot.fouls` — Black's, then White's, then those against neither team, each in the refbox's own order (oldest first); each `{ "team": "BLACK"\|"WHITE" or null, "number": integer or null, "player": string or null, "infraction": string }`, with `player` resolved from the roster as for `penalties` and `infraction` the refbox's short name as for `penalties`. Added after version 1 shipped; adding a field doesn't bump the §6 version |
+| `fouls` | array | `snapshot.fouls` — Black's, then White's, then those against neither team, each in the refbox's own order; each `{ "team": "BLACK"\|"WHITE" or null, "number": integer or null, "player": string or null, "infraction": string }`, with `player` resolved from the roster as for `penalties` and `infraction` the refbox's short name as for `penalties`. Added after version 1 shipped; adding a field doesn't bump the §6 version |
 | `eventId` | string or null | `snapshot.event_id` — §4b |
 | `portalBaseUrl` | string or null | `snapshot.portal_base_url` — §4b |
 

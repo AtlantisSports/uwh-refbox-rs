@@ -316,9 +316,9 @@ fn build_snapshot(feed: &GameFeed) -> Option<GameSnapshot> {
 /// A `GameData` carrying the team names the feed already resolved, and full team rosters when
 /// `full_roster` has them (fetched separately -- see [`fetch_full_roster`]), falling back to
 /// per-player names for whoever currently has a penalty or a foul ([`members_with_known_names`])
-/// when it doesn't. Names only, with no pictures, referees, court or start time: in portal mode those are
-/// merged in afterwards from a separate portal fetch ([`with_portal_pictures`]); a CSV-sourced
-/// roster has none, per design.
+/// when it doesn't. Names only, with no pictures, referees, court or start time: in portal mode
+/// those are merged in afterwards from a separate portal fetch ([`with_portal_pictures`]); a
+/// CSV-sourced roster has none, per design.
 ///
 /// `snapshot` must be the `GameSnapshot` just built from this same `feed` by
 /// [`build_snapshot`]: `State::update_state`'s `GameData` handling matches against the
@@ -367,10 +367,10 @@ fn build_game_data(
 /// Every player from `feed`'s current penalties and fouls whose name the bridge has already
 /// resolved, for `team_code` (`"BLACK"`/`"WHITE"`). Not a full roster -- just enough for
 /// `flag.rs`'s existing name lookup (which searches this same `members` list by cap number) to
-/// find a name for whoever is currently flagged for a penalty or a foul. Used only as a fallback when the bridge's
-/// `/roster` endpoint (see [`fetch_full_roster`]) hasn't resolved anything yet or is
-/// unreachable -- a cap number with no resolved name is simply omitted, matching `flag.rs`'s own
-/// fallback of showing the number alone.
+/// find a name for whoever is currently flagged for a penalty or a foul. Used only as a fallback
+/// when the bridge's `/roster` endpoint (see [`fetch_full_roster`]) hasn't resolved anything yet
+/// or is unreachable -- a cap number with no resolved name is simply omitted, matching
+/// `flag.rs`'s own fallback of showing the number alone.
 fn members_with_known_names(feed: &GameFeed, team_code: &str) -> Vec<MemberRaw> {
     let penalties = feed
         .penalties

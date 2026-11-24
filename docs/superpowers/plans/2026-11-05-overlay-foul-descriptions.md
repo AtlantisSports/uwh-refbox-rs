@@ -134,3 +134,6 @@ With the refbox and the overlay (bridge mode, NDI into vMix, and the plain windo
   on the red tab are a light neon yellow for both teams (black was hard to read on the darker
   red; white was tried first, and the organiser chose the yellow on 2026-11-24). His items 3
   (foul names, e.g. "Illegal Advancement") and 4 (English / Spanish / French) are separate work.
+- **Matching (review fixes, 2026-11-25):** fouls are no longer matched by counting duplicates.
+  Each team's foul list is matched in order (`align_fouls` in `flag.rs`), and a penalty card's bar
+  reshows when the player's newest running penalty changes (`penalty_needs_reshow`).

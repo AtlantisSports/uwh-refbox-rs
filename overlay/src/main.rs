@@ -18,6 +18,7 @@ use macroquad::prelude::*;
 use network::{StateUpdate, TeamInfoRaw};
 use std::{cmp::Ordering, str::FromStr};
 use std::{net::IpAddr, path::PathBuf};
+use uwh_common::color::Color as UWHColor;
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot};
 
 #[cfg(feature = "bridge")]
@@ -214,14 +215,16 @@ fn texture_from_image_result(image: network::Image) -> Result<Texture, Box<dyn s
 
 impl State {
     /// Sets this frame's language, and shows the fallback team names ("BLACK" / "WHITE", used
-    /// when the schedule gives no names) in it.
+    /// when the schedule gives no names) in it. A real team's name is never translated, even one
+    /// that happens to be a colour word.
     fn set_language(&mut self, lang: words::Lang) {
         self.lang = lang;
-        for team in [&mut self.black, &mut self.white] {
-            if let Some(name) = self.lang.default_team_name(&team.team_name) {
-                if team.team_name != name {
-                    team.team_name = name.to_string();
-                }
+        for (team, name) in [
+            (&mut self.black, self.lang.black()),
+            (&mut self.white, self.lang.white()),
+        ] {
+            if team.is_fallback_name && team.team_name != name {
+                team.team_name = name.to_string();
             }
         }
     }
@@ -240,8 +243,8 @@ impl State {
                 // game number, the previous game's teams must not stay on air into the next.
                 if new_event || self.snapshot.game_number() != snapshot.game_number() {
                     info!("Snapshot for new game received: {}", snapshot.game_number());
-                    self.black = TeamInfo::with_name(BLACK_TEAM_NAME);
-                    self.white = TeamInfo::with_name(WHITE_TEAM_NAME);
+                    self.black = TeamInfo::fallback(UWHColor::Black);
+                    self.white = TeamInfo::fallback(UWHColor::White);
                     self.referees.clear();
                     self.pool = String::new();
                     self.start_time = String::new();
@@ -317,6 +320,9 @@ pub struct TeamInfo {
     pub team_name: String,
     pub members: Vec<Member>,
     pub flag: Option<Texture>,
+    /// `team_name` is the overlay's own "BLACK" / "WHITE" rather than a real team's name, so it is
+    /// shown in the overlay's language. A real team's name is never translated.
+    pub is_fallback_name: bool,
 }
 
 impl From<TeamInfoRaw> for TeamInfo {
@@ -338,16 +344,33 @@ impl From<TeamInfoRaw> for TeamInfo {
                 .map(Member::from)
                 .collect(),
             flag: team_info_raw.flag.and_then(texture_from_image),
+            is_fallback_name: team_info_raw.is_fallback_name,
         }
     }
 }
 
 impl TeamInfo {
+    #[cfg(test)]
     fn with_name(name: &str) -> Self {
         Self {
             team_name: name.to_string(),
             members: Vec::new(),
             flag: None,
+            is_fallback_name: false,
+        }
+    }
+
+    /// A team the overlay has no name for yet: shown as "BLACK" or "WHITE" in its language.
+    fn fallback(color: UWHColor) -> Self {
+        Self {
+            team_name: match color {
+                UWHColor::Black => BLACK_TEAM_NAME,
+                UWHColor::White => WHITE_TEAM_NAME,
+            }
+            .to_string(),
+            members: Vec::new(),
+            flag: None,
+            is_fallback_name: true,
         }
     }
 
@@ -421,9 +444,9 @@ async fn main() {
             ..Default::default()
         },
 
-        black: TeamInfo::with_name(BLACK_TEAM_NAME),
+        black: TeamInfo::fallback(UWHColor::Black),
         referees: Vec::new(),
-        white: TeamInfo::with_name(WHITE_TEAM_NAME),
+        white: TeamInfo::fallback(UWHColor::White),
         pool: String::new(),
         start_time: String::new(),
         half_play_duration: None,
@@ -901,10 +924,51 @@ mod tests {
     }
 
     #[test]
+    fn a_bad_language_keeps_the_other_settings() {
+        // `serde_json` rather than the TOML confy writes, as above: the point is that one bad
+        // value doesn't make the whole file fail to load (and get overwritten with defaults).
+        let config: AppConfig = serde_json::from_str(
+            r#"{"refbox_ip": "10.0.0.5", "refbox_port": 19540, "uwhportal_url": "https://api.uwhportal.com", "bridge_url": "http://127.0.0.1:8098", "bridge_port_moved": true, "refbox_port_moved": true, "language": "spanish"}"#,
+        )
+        .expect("a settings file with a bad `language` still loads");
+        assert_eq!(config.refbox_ip, IpAddr::from_str("10.0.0.5").unwrap());
+        assert_eq!(config.language, words::Lang::En);
+    }
+
+    #[test]
+    fn a_team_named_like_a_colour_is_not_translated() {
+        let mut state = State {
+            snapshot: GameSnapshot::default(),
+            black: TeamInfo::fallback(UWHColor::Black),
+            white: TeamInfo {
+                team_name: "BLANC".to_string(),
+                members: Vec::new(),
+                flag: None,
+                is_fallback_name: false,
+            },
+            referees: Vec::new(),
+            pool: String::new(),
+            start_time: String::new(),
+            half_play_duration: None,
+            event_logo: None,
+            sponsor_logo: None,
+            lang: words::Lang::default(),
+        };
+        state.set_language(words::Lang::En);
+        assert_eq!(state.white.team_name, "BLANC", "a real team's name is kept");
+
+        state.white = TeamInfo::fallback(UWHColor::White);
+        state.set_language(words::Lang::En);
+        assert_eq!(state.white.team_name, "WHITE");
+        state.set_language(words::Lang::Es);
+        assert_eq!(state.white.team_name, "BLANCO");
+    }
+
+    #[test]
     fn the_fallback_team_names_follow_the_language() {
         let mut state = State {
             snapshot: GameSnapshot::default(),
-            black: TeamInfo::with_name(BLACK_TEAM_NAME),
+            black: TeamInfo::fallback(UWHColor::Black),
             white: TeamInfo::with_name("Atlantis"),
             referees: Vec::new(),
             pool: String::new(),

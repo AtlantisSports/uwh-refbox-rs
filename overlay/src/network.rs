@@ -163,6 +163,9 @@ pub struct TeamInfoRaw {
     pub team_name: String,
     pub members: Vec<MemberRaw>,
     pub flag: Option<Image>,
+    /// `team_name` is the overlay's own "BLACK" / "WHITE" because the portal gave no name.
+    #[serde(default)]
+    pub is_fallback_name: bool,
 }
 
 impl TeamInfoRaw {
@@ -288,6 +291,7 @@ async fn team_from_json(data: &Value, team_color: Color) -> TeamInfoRaw {
             },
             |s| s.trim().to_uppercase(),
         ),
+        is_fallback_name: data["name"].as_str().is_none(),
         members,
         flag,
     }

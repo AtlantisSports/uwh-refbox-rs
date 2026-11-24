@@ -96,7 +96,10 @@ left to the separate foul-names change.
 - **Foul names in Spanish/French** use corrected wording where the refbox's own is wrong or
   awkward (Illegal Advance in Spanish, Obstruction, Sub Foul spelling, Grabbing the Wall,
   Delay of Game in French). English foul names still come from `uwh-common` (unchanged here).
-- **Total dismissal** stays "TD" in all languages (to be confirmed by native speakers).
+- **Total dismissal** is "TD" in English and Spanish, and "EXP. DÉF." (expulsion définitive) in
+  French, after the native speakers' check.
+- **Spanish pre-sudden-death** is "PRE M. SÚBITA" (the native speakers' wording), not the
+  "ANTES M. SÚBITA" above.
 - The refbox's own clippy findings (`player_grid.rs`, `app/mod.rs` field assignment) and the
   overlay's bridge-only dead-code warnings already exist on master and are not touched.
 - PO ruling 2026-11-25: the overlay does not follow the refbox's language (a referee's terminal

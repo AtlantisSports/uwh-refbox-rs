@@ -271,17 +271,10 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
-        let (x_off, first_half) = fit_text(
-            180f32,
-            state.lang.period(GamePeriod::FirstHalf),
-            20,
-            &self.assets.font,
-            Justify::Center,
-        );
-        // Centred in the same 180 px box as the period name during play.
+        let first_half = state.lang.period(GamePeriod::FirstHalf);
         draw_text_ex(
-            first_half.as_str(),
-            423f32 + x_off,
+            first_half,
+            centred_on_english(&self.assets.font, first_half, "1ST HALF", 478f32, 20),
             100f32,
             TextParams {
                 font: Some(&self.assets.font),

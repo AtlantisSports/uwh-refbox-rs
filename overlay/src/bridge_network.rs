@@ -857,6 +857,7 @@ mod tests {
             team_name: name.to_string(),
             members,
             flag: None,
+            is_fallback_name: false,
         }
     }
 

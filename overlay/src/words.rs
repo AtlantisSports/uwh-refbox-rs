@@ -5,15 +5,17 @@
 //! names and anything else from the schedule or the portal are never translated.
 //!
 //! The Spanish and French start from the refbox's own translations (`refbox/translations/es` and
-//! `fr`), shortened where the overlay has little room, and need a native speaker's check.
+//! `fr`), shortened where the overlay has little room.
 
-use serde::{Deserialize, Serialize};
+use log::warn;
+use serde::{Deserialize, Deserializer, Serialize};
 use uwh_common::game_snapshot::{GamePeriod, Infraction};
 
 /// A language the overlay can show, and the overlay's own `language` setting (`"en"`, `"es"` or
 /// `"fr"`; English by default). The setting belongs to the overlay alone: the refbox's language
-/// never changes the broadcast.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+/// never changes the broadcast. Written as those short codes; read leniently (see the
+/// `Deserialize` impl).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub enum Lang {
     #[default]
     #[serde(rename = "en")]
@@ -22,6 +24,28 @@ pub enum Lang {
     Es,
     #[serde(rename = "fr")]
     Fr,
+}
+
+/// Reads the setting from any text, so one mistyped value never stops the settings file loading:
+/// case and surrounding spaces are ignored, a regional code such as `"es-ES"` means its language,
+/// and anything else means English, with a warning naming it.
+impl<'de> Deserialize<'de> for Lang {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        let code = text.trim().to_lowercase();
+        let primary = code.split(['-', '_']).next().unwrap_or_default();
+        Ok(match primary {
+            "en" => Self::En,
+            "es" => Self::Es,
+            "fr" => Self::Fr,
+            _ => {
+                warn!(
+                    "Unknown overlay language setting {text:?}: using English. Use \"en\", \"es\" or \"fr\"."
+                );
+                Self::En
+            }
+        })
+    }
 }
 
 impl Lang {
@@ -155,19 +179,6 @@ impl Lang {
         };
         Some(self.of(infraction.short_name(), es, fr))
     }
-
-    /// The fallback team names when the schedule gives none (`network::BLACK_TEAM_NAME` and
-    /// `WHITE_TEAM_NAME`), in this language, if `name` is one of them in any language.
-    pub fn default_team_name(self, name: &str) -> Option<&'static str> {
-        let all = [Self::En, Self::Es, Self::Fr];
-        if all.iter().any(|l| l.black() == name) {
-            Some(self.black())
-        } else if all.iter().any(|l| l.white() == name) {
-            Some(self.white())
-        } else {
-            None
-        }
-    }
 }
 
 #[cfg(test)]
@@ -203,6 +214,25 @@ mod tests {
     }
 
     #[test]
+    fn the_language_setting_is_read_leniently() {
+        #[derive(Deserialize)]
+        struct S {
+            language: Lang,
+        }
+        for (text, setting) in [
+            ("ES", Lang::Es),
+            ("es-ES", Lang::Es),
+            ("Fr", Lang::Fr),
+            ("follow-refbox", Lang::En),
+            ("spanish", Lang::En),
+        ] {
+            let read: S = serde_json::from_str(&format!("{{\"language\":\"{text}\"}}"))
+                .expect("any language text loads");
+            assert_eq!(read.language, setting, "{text:?}");
+        }
+    }
+
+    #[test]
     fn every_known_foul_has_a_name_in_every_language() {
         for lang in [Lang::En, Lang::Es, Lang::Fr] {
             assert_eq!(lang.infraction(Infraction::Unknown), None);
@@ -234,12 +264,5 @@ mod tests {
         assert_eq!(en.period(GamePeriod::HalfTime), "HALF TIME");
         assert_eq!(en.period(GamePeriod::PreOvertime), "PRE OVERTIME");
         assert_eq!(en.next_game(), "NEXT GAME");
-    }
-
-    #[test]
-    fn default_team_names_follow_the_language() {
-        assert_eq!(Lang::Es.default_team_name("BLACK"), Some("NEGRO"));
-        assert_eq!(Lang::En.default_team_name("BLANC"), Some("WHITE"));
-        assert_eq!(Lang::Fr.default_team_name("Atlantis"), None);
     }
 }

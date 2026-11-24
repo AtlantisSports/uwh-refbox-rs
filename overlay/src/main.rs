@@ -771,6 +771,38 @@ mod tests {
     }
 
     #[test]
+    fn a_name_missing_when_the_card_appeared_is_filled_in_later() {
+        use uwh_common::color::Color as UWHColor;
+        let mut state = State {
+            snapshot: GameSnapshot::default(),
+            black: TeamInfo::with_name("Sharks"),
+            white: TeamInfo::with_name("Rays"),
+            referees: Vec::new(),
+            pool: String::new(),
+            start_time: String::new(),
+            half_play_duration: None,
+            event_logo: None,
+            sponsor_logo: None,
+        };
+        assert_eq!(
+            flag::resolve_name(Some(UWHColor::White), Some(4), &state),
+            ""
+        );
+
+        state.white.members.push(Member {
+            name: "Ana".to_string(),
+            role: None,
+            number: Some(4),
+            picture: None,
+            geared_picture: None,
+        });
+        assert_eq!(
+            flag::resolve_name(Some(UWHColor::White), Some(4), &state),
+            "Ana"
+        );
+    }
+
+    #[test]
     fn any_bridge_address_on_the_old_port_moves_to_8098() {
         assert_eq!(
             moved_bridge_url("http://127.0.0.1:8099").as_deref(),

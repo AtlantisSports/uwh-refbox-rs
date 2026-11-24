@@ -140,23 +140,53 @@ fn parse_color(s: &str) -> Option<Color> {
     }
 }
 
+/// Every `Infraction`, each at the position [`infraction_index`] gives it.
+const ALL: [Infraction; 12] = [
+    Infraction::Unknown,
+    Infraction::StickInfringement,
+    Infraction::IllegalAdvancement,
+    Infraction::IllegalSubstitution,
+    Infraction::IllegallyStoppingThePuck,
+    Infraction::OutOfBounds,
+    Infraction::GrabbingTheBarrier,
+    Infraction::Obstruction,
+    Infraction::DelayOfGame,
+    Infraction::UnsportsmanlikeConduct,
+    Infraction::FreeArm,
+    Infraction::FalseStart,
+];
+
+/// Where `i` sits in [`ALL`]. Deliberately an exhaustive `match` with no catch-all arm: a new
+/// `Infraction` stops this compiling until it is given a place here and in [`ALL`].
+const fn infraction_index(i: Infraction) -> usize {
+    match i {
+        Infraction::Unknown => 0,
+        Infraction::StickInfringement => 1,
+        Infraction::IllegalAdvancement => 2,
+        Infraction::IllegalSubstitution => 3,
+        Infraction::IllegallyStoppingThePuck => 4,
+        Infraction::OutOfBounds => 5,
+        Infraction::GrabbingTheBarrier => 6,
+        Infraction::Obstruction => 7,
+        Infraction::DelayOfGame => 8,
+        Infraction::UnsportsmanlikeConduct => 9,
+        Infraction::FreeArm => 10,
+        Infraction::FalseStart => 11,
+    }
+}
+
+// Checked while compiling: every entry of `ALL` sits where `infraction_index` says it does.
+const _: () = {
+    let mut i = 0;
+    while i < ALL.len() {
+        assert!(infraction_index(ALL[i]) == i);
+        i += 1;
+    }
+};
+
 /// The reverse of `Infraction::short_name`, which is what the bridge sends. A name this doesn't
 /// know (a newer refbox's foul) reads as `Unknown`, which shows no description.
 fn parse_infraction(s: &str) -> Infraction {
-    const ALL: [Infraction; 12] = [
-        Infraction::Unknown,
-        Infraction::StickInfringement,
-        Infraction::IllegalAdvancement,
-        Infraction::IllegalSubstitution,
-        Infraction::IllegallyStoppingThePuck,
-        Infraction::OutOfBounds,
-        Infraction::GrabbingTheBarrier,
-        Infraction::Obstruction,
-        Infraction::DelayOfGame,
-        Infraction::UnsportsmanlikeConduct,
-        Infraction::FreeArm,
-        Infraction::FalseStart,
-    ];
     ALL.into_iter()
         .find(|infraction| infraction.short_name() == s)
         .unwrap_or(Infraction::Unknown)
@@ -285,8 +315,8 @@ fn build_snapshot(feed: &GameFeed) -> Option<GameSnapshot> {
 
 /// A `GameData` carrying the team names the feed already resolved, and full team rosters when
 /// `full_roster` has them (fetched separately -- see [`fetch_full_roster`]), falling back to
-/// per-player names for whoever currently has a penalty ([`members_with_known_names`]) when it
-/// doesn't. Names only, with no pictures, referees, court or start time: in portal mode those are
+/// per-player names for whoever currently has a penalty or a foul ([`members_with_known_names`])
+/// when it doesn't. Names only, with no pictures, referees, court or start time: in portal mode those are
 /// merged in afterwards from a separate portal fetch ([`with_portal_pictures`]); a CSV-sourced
 /// roster has none, per design.
 ///
@@ -334,10 +364,10 @@ fn build_game_data(
     })
 }
 
-/// Every player from `feed`'s current penalties whose name the bridge has already resolved, for
-/// `team_code` (`"BLACK"`/`"WHITE"`). Not a full roster -- just enough for `flag.rs`'s existing
-/// name lookup (which searches this same `members` list by cap number) to find a name for
-/// whoever is currently flagged for a penalty. Used only as a fallback when the bridge's
+/// Every player from `feed`'s current penalties and fouls whose name the bridge has already
+/// resolved, for `team_code` (`"BLACK"`/`"WHITE"`). Not a full roster -- just enough for
+/// `flag.rs`'s existing name lookup (which searches this same `members` list by cap number) to
+/// find a name for whoever is currently flagged for a penalty or a foul. Used only as a fallback when the bridge's
 /// `/roster` endpoint (see [`fetch_full_roster`]) hasn't resolved anything yet or is
 /// unreachable -- a cap number with no resolved name is simply omitted, matching `flag.rs`'s own
 /// fallback of showing the number alone.
@@ -795,6 +825,13 @@ pub async fn networking_thread(
 mod tests {
     use super::*;
     use crate::network::Image;
+
+    #[test]
+    fn every_infraction_is_listed_once() {
+        for infraction in ALL {
+            assert_eq!(ALL[infraction_index(infraction)], infraction);
+        }
+    }
 
     fn img(v: u8) -> Image {
         (1, 1, vec![v, v, v, 255])

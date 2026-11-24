@@ -247,7 +247,7 @@ fn penalties_of(snapshot: &GameSnapshot, rosters: &Rosters) -> Vec<Penalty> {
 }
 
 /// Every foul on the snapshot: Black's, then White's, then those against neither team, each in
-/// the refbox's own order (oldest first), with names resolved like [`penalties_of`].
+/// the refbox's own order, with names resolved like [`penalties_of`].
 fn fouls_of(snapshot: &GameSnapshot, rosters: &Rosters) -> Vec<Foul> {
     let foul = |color: Option<Color>, foul: &InfractionSnapshot| Foul {
         team: color.map(|color| color_code(color).to_string()),

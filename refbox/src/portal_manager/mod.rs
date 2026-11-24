@@ -643,20 +643,26 @@ impl PortalManager {
         self.discard_epoch
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         for item in &discarded {
-            let kind = if item.score_sent {
-                "stats not sent"
-            } else {
-                "score and stats not sent"
-            };
-            log::warn!(
-                "discarded queued result: event {} game {} ({kind})",
-                item.id.event_id,
-                item.id.game_number
-            );
+            Self::log_discarded(item);
         }
         self.recompute_indicator();
         self.push_queue_snapshot();
         Ok(discarded.len())
+    }
+
+    /// The one log line for a result dropped without being sent, shared by SWITCH ANYWAY and
+    /// DISCARD THIS SUBMISSION so a single search of the log finds every dropped score.
+    fn log_discarded(item: &QueuedItem) {
+        let kind = if item.score_sent {
+            "stats not sent"
+        } else {
+            "score and stats not sent"
+        };
+        log::warn!(
+            "discarded queued result: event {} game {} ({kind})",
+            item.id.event_id,
+            item.id.game_number
+        );
     }
 
     /// Write the queue back, if this session has anywhere to write it.
@@ -1140,6 +1146,11 @@ impl PortalManager {
         if let Err(e) = self.persist() {
             self.queue.items = before;
             return Err(e);
+        }
+        // Logged only once the removal is saved, and only for a row that was actually
+        // there: a result already sent and gone by the time of the tap was not discarded.
+        for item in before.iter().filter(|it| it.id == *id) {
+            Self::log_discarded(item);
         }
         self.recompute_indicator();
         self.push_queue_snapshot();

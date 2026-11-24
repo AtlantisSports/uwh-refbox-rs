@@ -371,10 +371,10 @@ async fn main() {
     };
     // The bridge's default port moved from 8099 (vMix's hard-coded TCP API port) to 8098, and the
     // refbox's from 8000 (held by a Windows service on some machines) to 19540.
-    if migrate_ports(&mut config) {
-        if let Err(e) = confy::store(APP_NAME, None, &config) {
-            warn!("Couldn't save the moved ports: {e}");
-        }
+    if migrate_ports(&mut config)
+        && let Err(e) = confy::store(APP_NAME, None, &config)
+    {
+        warn!("Couldn't save the moved ports: {e}");
     }
 
     let (tx, rx) = bounded::<StateUpdate>(3);

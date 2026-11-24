@@ -814,8 +814,9 @@ pub async fn networking_thread(
                 }
                 // every other case, when at least one game has been requested
                 else if let Some(ref old_snapshot) = last_snapshot {
-                    if old_snapshot.game_number() != new_snapshot.game_number() || old_snapshot.event_id != new_snapshot.event_id {
-                        if old_snapshot.event_id != new_snapshot.event_id && new_snapshot.event_id.is_some() {
+                    let event_changed = old_snapshot.event_id != new_snapshot.event_id;
+                    if event_changed || old_snapshot.game_number() != new_snapshot.game_number() {
+                        if event_changed && new_snapshot.event_id.is_some() {
                             let logos_tx_ = logos_tx.clone();
                             let uwhportal_url_ = uwhportal_url.clone();
                             let event_id = new_snapshot.event_id.clone().unwrap();

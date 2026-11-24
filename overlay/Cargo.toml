@@ -3,7 +3,7 @@ name = "overlay"
 version = "0.5.4"
 edition = "2024"
 # The optional NDI output requires Rust 1.88 through grafton-ndi.
-rust-version = "1.87"
+rust-version = "1.88"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

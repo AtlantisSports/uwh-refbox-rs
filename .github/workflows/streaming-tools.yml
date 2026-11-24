@@ -48,6 +48,8 @@ jobs:
     # Both features together: without `bridge` the overlay silently talks to the refbox
     # directly and shows the wrong team names (docs/streaming-setup.md, A3).
     - run: cargo build --release --locked -p overlay --features ndi,bridge
+    - name: Test NDI engine detection and recovery on Windows
+      run: cargo test --release --locked -p overlay --features ndi,bridge --bin overlay ndi_runtime
     - run: cargo build --release --locked -p overlay-bridge
     - run: cargo build --release --locked -p stream-manager
     - name: Package

@@ -28,6 +28,7 @@ pub struct NdiOutput {
     _ndi: Ndi,
     sender: Sender,
     frame_rate: FrameRate,
+    send_failures: u64,
 }
 
 impl NdiOutput {
@@ -39,6 +40,7 @@ impl NdiOutput {
             _ndi: ndi,
             sender,
             frame_rate: FrameRate::new(60, 1)?,
+            send_failures: 0,
         })
     }
 
@@ -69,7 +71,14 @@ impl NdiOutput {
         dst.copy_from_slice(src);
 
         if let Err(e) = self.sender.send_video(&frame) {
-            warn!("Failed to send NDI video frame: {e}");
+            self.send_failures = self.send_failures.saturating_add(1);
+            // At 60 fps, report a persistent failure about once every ten seconds.
+            if self.send_failures == 1 || self.send_failures.is_multiple_of(600) {
+                warn!(
+                    "Failed to send NDI video frame ({} failed so far): {e}",
+                    self.send_failures
+                );
+            }
         }
     }
 }

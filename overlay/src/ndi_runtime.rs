@@ -18,14 +18,12 @@
 //!
 //! The render loop polls [`EngineWatch::is_ready`] and starts NDI output as soon as the engine is
 //! loaded, so no restart is needed after installing. If anything fails, the overlay keeps running
-//! without NDI and says why. It offers the button again, except when the engine loaded but NDI
-//! output couldn't start: a reinstall can't replace an engine already loaded, so the preview asks
-//! for a restart instead.
+//! without NDI and says why. If Windows loaded an unusable engine, it stays loaded until the
+//! overlay exits. The preview then asks the operator to close the overlay before repairing it.
 
-use std::{
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-};
+#[cfg(any(windows, test))]
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 /// Shown with every failure: how to retry, or install NDI by hand.
 pub const MANUAL_HELP: &str = "Click Install NDI to try again, or install the NDI engine from https://ndi.link/NDIRedistV6 (or NDI Tools from https://ndi.video/tools/) and restart the overlay.";
@@ -42,6 +40,8 @@ pub enum EngineStatus {
     Ready,
     /// Couldn't be installed or loaded; the preview says why and offers the button again.
     Unavailable(String),
+    /// The operator must close the overlay and fix the runtime outside the app.
+    ManualSetup,
     /// The engine loaded, but NDI output couldn't start. No button: a reinstall can't replace the
     /// engine this process has already loaded, so the preview asks for a restart instead.
     OutputFailed,
@@ -59,8 +59,11 @@ pub fn preview_note(status: &EngineStatus) -> String {
         EngineStatus::Missing => "NDI off: NDI isn't installed on this PC. Click Install NDI (Windows will ask for permission).".to_string(),
         EngineStatus::Installing(message) => format!("NDI: {message}"),
         EngineStatus::Unavailable(message) => format!("NDI off: {message}"),
+        EngineStatus::ManualSetup if cfg!(windows) => "NDI off: Windows loaded an NDI engine this overlay can't use. Close the overlay, reinstall the NDI engine from https://ndi.link/NDIRedistV6, then reopen the overlay.".to_string(),
+        EngineStatus::ManualSetup => "NDI off: The NDI runtime couldn't be loaded. Close the overlay, check that the NDI runtime for this system is installed, then reopen the overlay. See the log for details.".to_string(),
         EngineStatus::Ready => "NDI off: couldn't start NDI output (see the log)".to_string(),
-        EngineStatus::OutputFailed => "NDI off: NDI is installed, but it couldn't start sending the picture. Restart the overlay to try again. If that doesn't help, reinstall the NDI engine from https://ndi.link/NDIRedistV6 (or NDI Tools from https://ndi.video/tools/) and restart the overlay.".to_string(),
+        EngineStatus::OutputFailed if cfg!(windows) => "NDI off: NDI is installed, but it couldn't start sending the picture. Restart the overlay to try again. If that doesn't help, close the overlay, reinstall the NDI engine from https://ndi.link/NDIRedistV6 (or NDI Tools from https://ndi.video/tools/) and reopen the overlay.".to_string(),
+        EngineStatus::OutputFailed => "NDI off: The NDI engine loaded, but it couldn't start sending the picture. See the log for details and restart the overlay to try again.".to_string(),
     }
 }
 
@@ -199,10 +202,12 @@ impl EngineWatch {
 /// What the preview shows after an install, given what the installer reported and what a fresh
 /// look for the engine found. An installer can exit non-zero yet still have installed the engine
 /// (3010 "restart needed", or "already installed"), so an engine that is now loadable wins over
-/// the installer's error. Otherwise the installer's error is kept, as it says more.
+/// the installer's error. A loaded but rejected engine also wins because repairing it requires
+/// closing the overlay. Otherwise the installer's own error explains the failed install.
 pub fn status_after_install(installed: Result<(), String>, found: EngineStatus) -> EngineStatus {
     match (installed, found) {
         (_, EngineStatus::Ready) => EngineStatus::Ready,
+        (_, EngineStatus::ManualSetup) => EngineStatus::ManualSetup,
         (Ok(()), EngineStatus::Missing) => EngineStatus::Unavailable(format!(
             "The NDI engine still isn't installed (was the installer cancelled?). {MANUAL_HELP}"
         )),
@@ -212,22 +217,44 @@ pub fn status_after_install(installed: Result<(), String>, found: EngineStatus) 
 }
 
 /// Shown when Windows finds the engine but can't load it.
+#[cfg(any(windows, test))]
 const ENGINE_WONT_LOAD: &str = "Windows couldn't load the NDI engine (it may be damaged or the wrong version). Click Install NDI to reinstall it.";
 
+enum EngineLoadFailure {
+    CouldNotOpen,
+    LoadedButRejected,
+}
+
+#[cfg(feature = "ndi")]
+fn select_engine(options: &grafton_ndi::RuntimeOptions) -> Result<(), EngineLoadFailure> {
+    use grafton_ndi::{Error, Runtime};
+
+    Runtime::select(options).map(|_| ()).map_err(|error| {
+        log::warn!("{error}");
+        match error {
+            Error::RuntimeLoadFailed(failure) if failure.loaded_any() => {
+                EngineLoadFailure::LoadedButRejected
+            }
+            _ => EngineLoadFailure::CouldNotOpen,
+        }
+    })
+}
+
 /// Tries each of `candidates` in order that is an absolute folder holding the engine
-/// (`has_engine`), loading it (`load`) until one loads: Ready if one does; if some held the
-/// engine but none loaded, Unavailable (each load error goes to the log); if none held it,
-/// Missing.
+/// (`has_engine`). A usable engine wins even if an earlier DLL was loaded and rejected.
+/// If every candidate fails, any loaded DLL prevents an in-process repair.
 ///
 /// `candidates` is read lazily, so the folders after the one that loads are never worked out. A
 /// relative folder (say, a hand-edited `NDI_RUNTIME_DIR_V6`) is skipped: Windows' loading with
 /// `LOAD_WITH_ALTERED_SEARCH_PATH` is undefined for a relative path.
-pub fn load_first_engine(
+#[cfg(any(windows, test))]
+fn load_first_engine(
     candidates: impl IntoIterator<Item = Option<PathBuf>>,
     has_engine: impl Fn(&Path) -> bool,
-    mut load: impl FnMut(&Path) -> Result<(), String>,
+    mut load: impl FnMut(&Path) -> Result<(), EngineLoadFailure>,
 ) -> EngineStatus {
     let mut found = false;
+    let mut loaded_any = false;
     for dir in candidates.into_iter().flatten() {
         if !dir.is_absolute() || !has_engine(&dir) {
             continue;
@@ -238,12 +265,13 @@ pub fn load_first_engine(
                 log::info!("NDI engine loaded from {}", dir.display());
                 return EngineStatus::Ready;
             }
-            // The raw Windows error (which may read "%1 is not a valid Win32 application") goes
-            // to the log only; the preview gets a plain sentence.
-            Err(error) => log::warn!("{error}"),
+            Err(EngineLoadFailure::LoadedButRejected) => loaded_any = true,
+            Err(EngineLoadFailure::CouldNotOpen) => {}
         }
     }
-    if found {
+    if loaded_any {
+        EngineStatus::ManualSetup
+    } else if found {
         EngineStatus::Unavailable(ENGINE_WONT_LOAD.to_string())
     } else {
         EngineStatus::Missing
@@ -332,10 +360,17 @@ pub fn within_size_limit(so_far: u64, more: u64) -> Result<u64, String> {
         .ok_or_else(|| "the download is far larger than NDI's installer".to_string())
 }
 
-#[cfg(not(all(windows, feature = "ndi")))]
+#[cfg(not(feature = "ndi"))]
 fn look_for_engine() -> EngineStatus {
-    // Elsewhere the NDI library is found by the system's normal library search, as before.
     EngineStatus::Ready
+}
+
+#[cfg(all(not(windows), feature = "ndi"))]
+fn look_for_engine() -> EngineStatus {
+    match select_engine(&grafton_ndi::RuntimeOptions::default()) {
+        Ok(()) => EngineStatus::Ready,
+        Err(_) => EngineStatus::ManualSetup,
+    }
 }
 
 #[cfg(not(windows))]
@@ -403,9 +438,7 @@ mod windows {
             |dir| {
                 // A successful selection stays available to Ndi::new() on the render thread.
                 let options = grafton_ndi::RuntimeOptions::new().library_path(dir.join(ENGINE_DLL));
-                grafton_ndi::Runtime::select(&options)
-                    .map(|_| ())
-                    .map_err(|error| error.to_string())
+                super::select_engine(&options)
             },
         )
     }
@@ -414,6 +447,26 @@ mod windows {
     fn system32(rest: &str) -> PathBuf {
         let root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
         PathBuf::from(root).join("System32").join(rest)
+    }
+
+    #[cfg(all(test, feature = "ndi"))]
+    #[test]
+    fn distinguishes_a_missing_file_from_a_dll_rejected_after_loading() {
+        use super::{EngineLoadFailure, select_engine};
+        use grafton_ndi::RuntimeOptions;
+
+        // This system DLL can be opened and has no NDI entry points. A path below it cannot exist.
+        let dll = system32("kernel32.dll");
+        let missing = RuntimeOptions::new().library_path(dll.join("missing.dll"));
+        assert!(matches!(
+            select_engine(&missing),
+            Err(EngineLoadFailure::CouldNotOpen)
+        ));
+        let rejected = RuntimeOptions::new().library_path(dll);
+        assert!(matches!(
+            select_engine(&rejected),
+            Err(EngineLoadFailure::LoadedButRejected)
+        ));
     }
 
     fn powershell() -> Command {
@@ -663,6 +716,35 @@ mod tests {
     }
 
     #[test]
+    fn install_result_cannot_offer_another_install_over_a_loaded_engine() {
+        for result in [Ok(()), Err("the installer exited with 1603".into())] {
+            let status = status_after_install(result, EngineStatus::ManualSetup);
+            assert_eq!(status, EngineStatus::ManualSetup);
+            assert!(!EngineWatch::with_status(status).begin_install());
+        }
+    }
+
+    #[test]
+    fn a_loaded_but_rejected_engine_can_be_bypassed_by_a_usable_copy() {
+        let dir = std::env::temp_dir();
+        for (second, expected) in [
+            (Ok(()), EngineStatus::Ready),
+            (
+                Err(EngineLoadFailure::CouldNotOpen),
+                EngineStatus::ManualSetup,
+            ),
+        ] {
+            let mut results = [Err(EngineLoadFailure::LoadedButRejected), second].into_iter();
+            let status = load_first_engine(
+                [Some(dir.join("first")), Some(dir.join("second"))],
+                |_| true,
+                |_| results.next().unwrap(),
+            );
+            assert_eq!(status, expected);
+        }
+    }
+
+    #[test]
     fn a_relative_engine_folder_is_skipped() {
         let absolute = std::env::temp_dir();
         assert!(absolute.is_absolute());
@@ -681,13 +763,9 @@ mod tests {
         assert_eq!(tried, std::slice::from_ref(&absolute));
         // Only a relative folder: nothing is tried, so it counts as missing.
         assert_eq!(
-            load_first_engine(
-                [Some(relative)],
-                everywhere,
-                |_: &Path| -> Result<(), String> {
-                    panic!("a relative folder must never be loaded")
-                }
-            ),
+            load_first_engine([Some(relative)], everywhere, |_: &Path| panic!(
+                "a relative folder must never be loaded"
+            )),
             EngineStatus::Missing
         );
         // An absolute folder without the engine is skipped too.
@@ -721,7 +799,7 @@ mod tests {
             |dir: &Path| {
                 tried.push(dir.to_path_buf());
                 if dir == system {
-                    Err("Windows couldn't load the NDI engine: bad image".to_string())
+                    Err(EngineLoadFailure::CouldNotOpen)
                 } else {
                     Ok(())
                 }
@@ -749,7 +827,7 @@ mod tests {
             load_first_engine(
                 [Some(system.clone()), None, Some(beside_exe.clone())],
                 |_: &Path| true,
-                |_: &Path| Err("bad image".to_string()),
+                |_: &Path| Err(EngineLoadFailure::CouldNotOpen),
             ),
             EngineStatus::Unavailable(ENGINE_WONT_LOAD.to_string())
         );
@@ -930,11 +1008,17 @@ mod tests {
             "NDI off: no"
         );
         let output_failed = preview_note(&EngineStatus::OutputFailed);
-        assert_eq!(
-            output_failed,
-            "NDI off: NDI is installed, but it couldn't start sending the picture. Restart the overlay to try again. If that doesn't help, reinstall the NDI engine from https://ndi.link/NDIRedistV6 (or NDI Tools from https://ndi.video/tools/) and restart the overlay."
-        );
-        assert!(output_failed.contains("https://ndi.link/NDIRedistV6"));
+        let manual_setup = preview_note(&EngineStatus::ManualSetup);
+        assert!(manual_setup.contains("Close the overlay"));
+        assert!(!install_allowed(&EngineStatus::ManualSetup));
+        if cfg!(windows) {
+            assert!(manual_setup.contains("reinstall the NDI engine"));
+            assert!(output_failed.contains("https://ndi.link/NDIRedistV6"));
+        } else {
+            assert!(manual_setup.contains("NDI runtime for this system"));
+            assert!(!manual_setup.contains("NDIRedistV6"));
+            assert!(!output_failed.contains("NDIRedistV6"));
+        }
     }
 
     /// Ten units per character, so widths are easy to reason about.

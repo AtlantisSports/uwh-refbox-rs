@@ -16,6 +16,7 @@ use uwh_common::{
     bundles::OptColorBundle,
     color::Color as UWHColor,
     game_snapshot::{Infraction, PenaltyTime},
+    uwhportal::schedule::{EventId, GameNumber},
 };
 
 /// Distance from the top of the screen from where the flags are rendered
@@ -149,6 +150,16 @@ impl Flag {
 /// What tells two fouls apart: team, cap number and foul. Identical fouls are told apart by
 /// their place in the list.
 type FoulKey = (Option<UWHColor>, Option<u8>, Infraction);
+
+/// Which game a foul list belongs to: its event (`None` without a portal event) and game number.
+type GameKey = (Option<EventId>, GameNumber);
+
+/// The fouls last seen, if they belong to `game`. A different event or game number starts
+/// afresh, so a game's fouls already on the refbox when the overlay first sees that game (the
+/// source switched to another court mid-game) are not shown as new.
+fn same_game_fouls<T>(seen: Option<(GameKey, T)>, game: &GameKey) -> Option<T> {
+    seen.and_then(|(seen_game, fouls)| (seen_game == *game).then_some(fouls))
+}
 
 /// A foul among a player's running penalties `now` that was not among them at the last snapshot
 /// (`prev`): `Some` when a penalty was added or corrected on the refbox, `None` when nothing is
@@ -334,10 +345,11 @@ pub struct Renderer {
     active_flags: Vec<Flag>,
     inactive_flags: Vec<Flag>,
     textures: Textures,
-    /// Each team's fouls, in order, as listed in the last snapshot. `None` until the first
-    /// snapshot arrives, which only sets the starting point: fouls already on the refbox when the
-    /// overlay starts aren't shown.
-    seen_fouls: Option<OptColorBundle<Vec<FoulKey>>>,
+    /// The game of the last snapshot and each team's fouls, in order, as listed in it. `None`
+    /// until the first snapshot arrives. The first snapshot of a game only sets the starting
+    /// point: fouls already on the refbox when the overlay starts, or when it first sees that
+    /// game, aren't shown.
+    seen_fouls: Option<(GameKey, OptColorBundle<Vec<FoulKey>>)>,
 }
 
 /// The team a flag belongs to, or `None` for a foul against neither team.
@@ -598,7 +610,12 @@ impl Renderer {
                 (color, team_keys)
             })
             .collect();
-        let Some(before) = self.seen_fouls.replace(keys.clone()) else {
+        let game: GameKey = (
+            game_state.snapshot.event_id.clone(),
+            game_state.snapshot.game_number.clone(),
+        );
+        let seen = self.seen_fouls.replace((game.clone(), keys.clone()));
+        let Some(before) = same_game_fouls(seen, &game) else {
             return;
         };
         for ((team, old), (_, new)) in before.iter().zip(keys.iter()) {
@@ -1070,6 +1087,25 @@ mod tests {
             align_fouls(&[A, B, C], &[A, D, C]),
             (vec![Some(0), None, Some(2)], vec![1])
         );
+    }
+
+    #[test]
+    fn fouls_seen_in_another_game_are_not_compared() {
+        let event = |id: &str| Some(EventId::from_full(id).unwrap());
+        let game_3 = (event("events/1889-B"), String::from("3"));
+        let seen = || Some((game_3.clone(), 8));
+        assert_eq!(same_game_fouls(seen(), &game_3), Some(8));
+        // Another court's game, or another event's game 3, starts afresh.
+        assert_eq!(
+            same_game_fouls(seen(), &(event("events/1889-B"), String::from("4"))),
+            None
+        );
+        assert_eq!(
+            same_game_fouls(seen(), &(event("events/2001-A"), String::from("3"))),
+            None
+        );
+        assert_eq!(same_game_fouls(seen(), &(None, String::from("3"))), None);
+        assert_eq!(same_game_fouls(None::<(GameKey, u8)>, &game_3), None);
     }
 
     #[test]

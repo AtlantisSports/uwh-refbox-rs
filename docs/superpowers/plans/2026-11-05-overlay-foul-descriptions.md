@@ -1,6 +1,6 @@
 # Overlay: foul descriptions on penalties, and foul cards
 
-**Status:** built, and verified by the organiser with the refbox and vMix (2026-11-06)
+**Status:** built, and verified by the organiser with the refbox and vMix (2026-11-06); review fixes and Cagatay's yellow penalty time re-walked by the organiser (2026-11-25)
 **Crates:** `overlay` and `overlay-bridge`. No change to the refbox, `uwh-common` or Stream Manager.
 **Process:** lean (overlay layout work), with extra care on the bridge feed, which is a published
 contract (adding a field is allowed without a version bump; nothing is removed or renamed).

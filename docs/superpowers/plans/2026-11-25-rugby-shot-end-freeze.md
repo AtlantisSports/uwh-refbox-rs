@@ -150,4 +150,9 @@ this fix, the screen would stay frozen at that point.
 
 ## Deviations
 
-(none yet)
+- **Single-half crash folded in (PO, 2026-11-25, option 1).** Task 1's review found that a shot
+  outlasting the only half of a single-half game (`single_half`), with a game-ending score, crashed
+  the app at the handler's tail `unwrap()` (the game had already ended, so the period had no
+  length). This was already on master. Fix: the FirstHalf arm returns as soon as `end_first_half` has ended the game.
+  The game ends as a single-half game always does, with no confirmation window. The PO walk gains a
+  single-half step.

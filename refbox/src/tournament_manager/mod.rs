@@ -2821,6 +2821,12 @@ impl TournamentManager {
                 match self.current_period {
                     GamePeriod::FirstHalf => {
                         self.end_first_half(now);
+                        if self.current_period == GamePeriod::BetweenGames {
+                            // The shot ended a single-half game: `end_game` has set the
+                            // between-games clock, and there is no period left to count down.
+                            self.timeout_state = None;
+                            return Ok(());
+                        }
                     }
                     GamePeriod::SecondHalf => {
                         // Same test as `timeout_end_would_end_game`: a half that would end
@@ -2896,8 +2902,9 @@ impl TournamentManager {
             }
             self.clock_state = ClockState::CountingDown {
                 start_time: min(now, start_time + time_remaining_at_start),
-                // Cannot be `BetweenGames` (no duration): every arm above that would end the
-                // game returns through `pause_for_confirm` instead.
+                // Cannot be `BetweenGames` (no duration): every arm above that can end the
+                // game returns before reaching here (second halves and sudden death through
+                // `pause_for_confirm`, a single-half first half directly).
                 time_remaining_at_start: self.current_period.duration(&self.config).unwrap(),
             }
         }
@@ -4466,10 +4473,19 @@ mod test {
     /// Black one goal up. Returns the game and its start instant `g`; the shot runs out at
     /// `g + 50 s`.
     fn rugby_shot_outlasts_half(period: GamePeriod, decided: bool) -> (TournamentManager, Instant) {
+        rugby_shot_outlasts_half_with(GameConfig::default(), period, decided)
+    }
+
+    /// As `rugby_shot_outlasts_half`, starting from `config` (its shot length is set to 45 s).
+    fn rugby_shot_outlasts_half_with(
+        config: GameConfig,
+        period: GamePeriod,
+        decided: bool,
+    ) -> (TournamentManager, Instant) {
         initialize();
         let config = GameConfig {
             penalty_shot_duration: Duration::from_secs(45),
-            ..Default::default()
+            ..config
         };
         let mut tm = TournamentManager::new(config);
         let g = Instant::now();
@@ -4573,6 +4589,22 @@ mod test {
 
         assert_eq!(tm.update(g + Duration::from_secs(51)), Ok(()));
         assert!(tm.in_score_confirm_pause());
+    }
+
+    /// A single-half game has no score-confirmation window: a shot that outlasts its only
+    /// half ends the game when the shot runs out. This used to panic on the `BetweenGames`
+    /// duration in `handle_rugby_pen_shot_end`.
+    #[test]
+    fn rugby_shot_ending_a_decided_single_half_game_ends_it_without_panicking() {
+        let config = GameConfig {
+            single_half: true,
+            ..Default::default()
+        };
+        let (mut tm, g) = rugby_shot_outlasts_half_with(config, GamePeriod::FirstHalf, true);
+
+        assert!(tm.updater_tick(g + Duration::from_secs(51)).is_ok());
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert_eq!(tm.timeout_state, None);
     }
 
     /// A FirstHalf game with a 900 s half, started at the returned instant.

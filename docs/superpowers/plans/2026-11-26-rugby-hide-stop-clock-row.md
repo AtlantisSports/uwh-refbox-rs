@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Scope: `refbox/src/app/view_builders/game_info_table.rs` and `refbox/src/app/view_builders/game_info.rs` only. No translation, config, uwh-common or settings-page changes.
+- Scope: `refbox/src/app/view_builders/game_info_table.rs`, `refbox/src/app/view_builders/game_info.rs` and `refbox/src/app/view_builders/main_view.rs` (see Deviations) only. No translation, config, uwh-common or settings-page changes.
 - MSRV 1.85; clippy `-D warnings`; no new `unwrap`/`expect` in production code.
 - Table keeps six setting rows in fixed slots — no row or cell is removed from the `Vec<Row>`; the cell is present with empty strings.
 - Heavy jobs (cargo test/check) need the coordinator's GO; run with `CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4`.
@@ -36,7 +36,7 @@
 **Interfaces:**
 - Produces: `game_info_rows(snapshot: &GameSnapshot, config: &GameConfig, mode: Mode, next_game_block: Duration, uses_remote: bool, schedule: Option<&Schedule>, teams: Option<&TeamList>, last_game: Option<(GameNumber, BlackWhiteBundle<u8>)>) -> Vec<Row>` — `mode` inserted as the 3rd parameter.
 
-- [ ] **Step 1: Write the failing tests** (in the existing `#[cfg(test)] mod tests`)
+- [x] **Step 1: Write the failing tests** (in the existing `#[cfg(test)] mod tests`)
 
 ```rust
 #[test]
@@ -67,28 +67,28 @@ fn rugby_empty_stop_clock_cell_stays_empty_when_court_finished() {
 
 The second test's snapshot setup copies the existing court-finished test in this module; its assertions are: `pairs[5].1 == ""`, that cell's `value == ""`, and `pairs[5].0`'s cell `value == NO_VALUE`.
 
-- [ ] **Step 2: Update every existing `game_info_rows(` call in the test module** to pass `Mode::Hockey6V6` as the 3rd argument (24 sites; mechanical).
+- [x] **Step 2: Update every existing `game_info_rows(` call in the test module** to pass `Mode::Hockey6V6` as the 3rd argument (24 sites; mechanical).
 
-- [ ] **Step 3: Run the tests — expect a compile failure** (signature not yet changed). (Needs coordinator GO.)
+- [x] **Step 3: Run the tests — expect a compile failure** (signature not yet changed). (Needs coordinator GO.)
 
 Run: `CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 cargo test -p refbox game_info_table`
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
   - Add `mode: Mode` as 3rd parameter of `game_info_rows`.
   - 6th pair's right cell: `if mode == Mode::Rugby { SettingCell::active(String::new(), String::new()) } else { <existing stop-clock cell> }`, with a one-line comment citing the ruling (rugby is always stop-time).
   - No-game dash loop: leave a cell untouched when its label is empty (an empty slot stays empty).
   - `game_info.rs`: pass `mode` (already destructured from `ViewData`) as the 3rd argument.
 
-- [ ] **Step 5: Run tests — expect PASS**
+- [x] **Step 5: Run tests — expect PASS**
 
 Run: `CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 cargo test -p refbox game_info_table`
 
-- [ ] **Step 6: `just check`** (coordinator GO; `-j 4`). Expected: all green.
+- [x] **Step 6: `just check`** (coordinator GO; `-j 4`). Expected: all green.
 
-- [ ] **Step 7: Commit** (main session, under the PO's plan approval)
+- [x] **Step 7: Commit** (main session, under the PO's plan approval)
 
 ```bash
-git add refbox/src/app/view_builders/game_info_table.rs refbox/src/app/view_builders/game_info.rs
+git add refbox/src/app/view_builders/game_info_table.rs refbox/src/app/view_builders/game_info.rs refbox/src/app/view_builders/main_view.rs
 git commit -m "fix(refbox): leave the stop-clock cell empty in rugby mode"
 ```
 
@@ -100,3 +100,4 @@ Code review (built-in `code-review`), `just check`, PO walkthrough in Rugby (iso
 
 - **Third file: `refbox/src/app/view_builders/main_view.rs`.** The main game screen draws the same table through two more `game_info_rows` calls, which the plan missed (it searched only the Game Info page). Each now passes `mode`; without it the main screen would still show "???" in Rugby. Same table, same ruling, so no scope change.
 - 21 existing test call sites, not 24.
+- Code review (high, 2026-11-26, on 28e1359b): no bugs, 4 nits, all fixed in the follow-up commit: comments updated for the blank-cell exception, `SettingCell::blank()` marker applied to both sides of the dash loop, a Rugby in-game + Portal-rule test added, this plan's scope line and Step 7 corrected.

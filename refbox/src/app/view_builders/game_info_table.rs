@@ -27,7 +27,8 @@ pub(in super::super) struct TeamLine {
 
 /// One settings cell (label + value). `grayed` is true when the setting does not
 /// apply to this game's config — it is shown dimmed rather than hidden, so the
-/// grid keeps a fixed shape.
+/// grid keeps a fixed shape. A setting that does not exist at all in the current
+/// mode is a `blank()` cell instead: no label, no value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in super::super) struct SettingCell {
     pub label: String,
@@ -42,6 +43,13 @@ impl SettingCell {
             value,
             grayed: false,
         }
+    }
+
+    /// A deliberately empty slot: the setting does not exist in this mode (Rugby has
+    /// no stop-clock option, PO ruling 2026-11-26). An empty label marks it, and the
+    /// no-game dash path leaves it blank.
+    fn blank() -> Self {
+        Self::active(String::new(), String::new())
     }
 
     fn maybe(label: String, value: String, grayed: bool) -> Self {
@@ -125,7 +133,8 @@ pub(in super::super) fn game_info_rows(
 
     // --- Settings grid (belongs to the current game) ---
     // Six fixed rows in fixed left/right slots so the layout never reorders.
-    // Settings that don't apply to this game's config are shown greyed, not hidden.
+    // Settings that don't apply to this game's config are shown greyed, not hidden;
+    // a setting that does not exist in this mode is a blank cell (see SettingCell::blank).
     let single = config.single_half;
     let no_ot = !config.overtime_allowed;
     let no_sd = !config.sudden_death_allowed;
@@ -201,7 +210,7 @@ pub(in super::super) fn game_info_rows(
         ),
         right: if mode == Mode::Rugby {
             // Rugby is always stop-time (PO ruling 2026-11-26): no such setting, leave the slot empty.
-            SettingCell::active(String::new(), String::new())
+            SettingCell::blank()
         } else {
             SettingCell::active(
                 fl!("gi-stop-clock-last-2"),
@@ -215,12 +224,13 @@ pub(in super::super) fn game_info_rows(
         // there, it describes nothing: dash the values, keep the labels and the shape.
         for row in rows.iter_mut() {
             if let Row::SettingPair { left, right } = row {
-                left.value = NO_VALUE.to_string();
-                left.grayed = false;
-                if !right.label.is_empty() {
-                    right.value = NO_VALUE.to_string();
+                for cell in [left, right] {
+                    // A blank() cell has no label and stays blank.
+                    if !cell.label.is_empty() {
+                        cell.value = NO_VALUE.to_string();
+                    }
+                    cell.grayed = false;
                 }
-                right.grayed = false;
             }
         }
     }
@@ -1861,5 +1871,54 @@ mod tests {
             })
             .expect("the overtime half-time cell exists");
         assert_eq!(left.value, NO_VALUE);
+    }
+
+    #[test]
+    fn rugby_stop_clock_cell_stays_empty_in_game_with_portal_rule() {
+        use uwh_common::uwhportal::schedule::TimingRule;
+        let mut schedule = make_schedule_with_referees("5", "Court 1");
+        schedule.timing_rules = vec![TimingRule {
+            name: "Standard".to_string(),
+            team_timeout_count: 1,
+            team_timeouts_counted_per_half: true,
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            single_period: false,
+            last_2_min_stop_time: true,
+            half_play_duration: Duration::from_secs(900),
+            half_time_duration: Duration::from_secs(180),
+            team_timeout_duration: Duration::from_secs(60),
+            ot_half_play_duration: Duration::from_secs(300),
+            ot_half_time_duration: Duration::from_secs(180),
+            pre_overtime_break: Duration::from_secs(180),
+            pre_sudden_death_duration: Duration::from_secs(60),
+            minimum_break: Duration::from_secs(240),
+            game_block: None,
+            sudden_death_max_duration: None,
+        }];
+        let snapshot = GameSnapshot {
+            game_number: "5".to_string(),
+            next_game_number: "6".to_string(),
+            ..in_game_snapshot()
+        };
+        let rows_for = |mode: Mode| {
+            game_info_rows(
+                &snapshot,
+                &cfg_all_on(),
+                mode,
+                cfg_all_on().game_block,
+                false,
+                Some(&schedule),
+                None,
+                None,
+            )
+        };
+        // Hockey reads the Portal rule, so the schedule really reaches the cell...
+        let hockey = last_right_cell(&rows_for(Mode::Hockey6V6)).expect("cell exists");
+        assert_eq!(hockey.label, fl!("gi-stop-clock-last-2"));
+        assert_eq!(hockey.value, bool_string(true));
+        // ...and Rugby still leaves it blank, mid-game, whatever the rule says.
+        let rugby = last_right_cell(&rows_for(Mode::Rugby)).expect("cell exists");
+        assert_eq!(rugby, SettingCell::blank());
     }
 }

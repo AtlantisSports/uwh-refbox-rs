@@ -131,5 +131,6 @@ With the refbox and the overlay (bridge mode, NDI into vMix, and the plain windo
   a standard width (480 px) that fits most names, growing for longer ones up to 1000 px (beyond
   that the name is cut short with ".."). Only the plain middle of the artwork stretches; the tab
   and rounded end are unchanged, and the description bar follows the card's end. Penalty times
-  on the red tab are white for both teams (black was hard to read on the darker red). His items 3
+  on the red tab are a light neon yellow for both teams (black was hard to read on the darker
+  red; white was tried first, and the organiser chose the yellow on 2026-11-24). His items 3
   (foul names, e.g. "Illegal Advancement") and 4 (English / Spanish / French) are separate work.

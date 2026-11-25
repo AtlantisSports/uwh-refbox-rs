@@ -78,6 +78,8 @@ const FOUL_YELLOW: Color = Color::new(242f32 / 255f32, 183f32 / 255f32, 5f32 / 2
 const FOUL_TEXT: Color = Color::new(58f32 / 255f32, 42f32 / 255f32, 0f32, 1f32);
 /// The penalty description bar's thin left edge.
 const PENALTY_EDGE: Color = Color::new(214f32 / 255f32, 31f32 / 255f32, 31f32 / 255f32, 1f32);
+/// The penalty time (or "TD") on the red tab: a light, neon yellow.
+const PENALTY_TIME_YELLOW: Color = Color::new(245f32 / 255f32, 1f32, 80f32 / 255f32, 1f32);
 /// The penalty description bar: the same see-through black or white as the card's name bar.
 const PENALTY_BAR_ALPHA: f32 = 0.75;
 
@@ -731,12 +733,15 @@ fn draw_flag(textures: &Textures, flag: &Flag, y: f32, alpha: f32, now: f64) {
                 PenaltyTime::TotalDismissal => String::from("TD"),
             };
             let (x_off, text) = fit_text(94f32, &text, 30, &textures.font, Justify::Center);
-            // White on the red tab for both teams: black is hard to read on its darker red.
+            // Light neon yellow on the red tab for both teams: easy to read on the red.
             draw_text_ex(
                 text.as_str(),
                 35f32 + x_off,
                 y + 33f32,
-                tab_text_params(Color { a: alpha, ..WHITE }),
+                tab_text_params(Color {
+                    a: alpha,
+                    ..PENALTY_TIME_YELLOW
+                }),
             );
         }
         Type::Foul(_) => {

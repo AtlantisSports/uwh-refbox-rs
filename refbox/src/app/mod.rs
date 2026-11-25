@@ -5080,6 +5080,14 @@ impl RefBoxApp {
             return Task::none();
         }
 
+        let in_zero_gap = tap_lands_in_the_zero_gap(&message, &self.tm.lock(), Instant::now());
+        if in_zero_gap {
+            warn!(
+                "Ignoring {message:?}: the clock has passed 0:00 and the game has not moved on yet"
+            );
+            return Task::none();
+        }
+
         match message {
             Message::NewSnapshot(update) => self.apply_tick(update.snapshot, update.caught_up),
             Message::EditTime => {
@@ -11496,6 +11504,214 @@ fn tap_outlived_its_screen(message: &Message, state: &AppState) -> bool {
             )
         ),
         _ => false,
+    }
+}
+
+/// Operator taps whose handlers read the game clock at `Instant::now()` and cannot
+/// cope when it has no reading: they unwrap `generate_snapshot`, `game_clock_time`,
+/// `stop_clock`, a timeout start, or a warning/foul add. A countdown that has passed
+/// 0:00 has no reading until the clock updater moves the game on, a gap of a few
+/// milliseconds, and a tap landing in it used to crash the app (F1, PO 2026-11-25).
+/// A new tap that reads the clock this way belongs on this list. Background messages
+/// (portal replies, clock ticks, the buzzer button, timers) never do: dropping one
+/// would lose data or leave the buzzer sounding.
+fn tap_reads_the_live_clock(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::TeamTimeout(..)
+            | Message::RefTimeout(_)
+            | Message::PenaltyShot(_)
+            | Message::EndTimeout
+            | Message::CancelTimeout
+            | Message::EditTime
+            | Message::StartPlayNow
+            | Message::StopClock
+            | Message::AddNewScore(_)
+            | Message::AddScoreComplete { .. }
+            | Message::ScoreEditComplete { .. }
+            | Message::PenaltyOverviewComplete { .. }
+            | Message::WarningOverviewComplete { .. }
+            | Message::FoulOverviewComplete { .. }
+            | Message::WarningEditComplete { .. }
+            | Message::FoulEditComplete { .. }
+            | Message::ConfirmationSelected(_)
+    )
+}
+
+/// True when `message` is a tap that reads the live clock and the game clock has no
+/// reading at `now`: it ran past 0:00 and the engine has not moved on yet. The PO's
+/// ruling is to ignore such a tap, as if it came a moment late; the operator taps
+/// again if it is still wanted.
+fn tap_lands_in_the_zero_gap(message: &Message, tm: &TournamentManager, now: Instant) -> bool {
+    tap_reads_the_live_clock(message) && tm.game_clock_time(now).is_none()
+}
+
+#[cfg(test)]
+mod zero_gap_gate_tests {
+    use super::*;
+    use crate::tournament_manager::TournamentManagerError;
+
+    /// One value of every message `tap_reads_the_live_clock` must catch.
+    fn clock_taps() -> Vec<Message> {
+        vec![
+            Message::TeamTimeout(Color::Black, false),
+            Message::RefTimeout(false),
+            Message::PenaltyShot(false),
+            Message::EndTimeout,
+            Message::CancelTimeout,
+            Message::EditTime,
+            Message::StartPlayNow,
+            Message::StopClock,
+            Message::AddNewScore(Color::White),
+            Message::AddScoreComplete { canceled: false },
+            Message::ScoreEditComplete { canceled: false },
+            Message::PenaltyOverviewComplete { canceled: false },
+            Message::WarningOverviewComplete { canceled: false },
+            Message::FoulOverviewComplete { canceled: false },
+            Message::WarningEditComplete {
+                canceled: false,
+                deleted: false,
+                ret_to_overview: false,
+            },
+            Message::FoulEditComplete {
+                canceled: false,
+                deleted: false,
+                ret_to_overview: false,
+            },
+            Message::ConfirmationSelected(ConfirmationOption::KeepGameAndApply),
+        ]
+    }
+
+    /// A first half started at `t0`, its clock counting down. The receiver is
+    /// returned so the engine's clock-running signal has somewhere to go.
+    fn running_half(t0: Instant) -> (TournamentManager, watch::Receiver<bool>) {
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let rx = tm.get_start_stop_rx();
+        tm.start_play_now(t0).unwrap();
+        assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
+        assert!(tm.game_clock_running());
+        (tm, rx)
+    }
+
+    /// A moment after the half's countdown passed 0:00, before any update.
+    fn just_past_zero(t0: Instant) -> Instant {
+        t0 + GameConfig::default().half_play_duration + Duration::from_millis(3)
+    }
+
+    #[test]
+    fn a_clock_tap_after_zero_is_ignored() {
+        let t0 = Instant::now();
+        let (tm, _rx) = running_half(t0);
+        assert!(tap_lands_in_the_zero_gap(
+            &Message::RefTimeout(false),
+            &tm,
+            just_past_zero(t0)
+        ));
+    }
+
+    #[test]
+    fn a_clock_tap_before_zero_goes_through() {
+        let t0 = Instant::now();
+        let (tm, _rx) = running_half(t0);
+        let before = t0 + GameConfig::default().half_play_duration - Duration::from_millis(500);
+        assert!(!tap_lands_in_the_zero_gap(
+            &Message::RefTimeout(false),
+            &tm,
+            before
+        ));
+    }
+
+    #[test]
+    fn a_clock_tap_on_a_stopped_clock_goes_through() {
+        let tm = TournamentManager::new(GameConfig::default());
+        let later = Instant::now() + Duration::from_secs(24 * 60 * 60);
+        for message in clock_taps() {
+            assert!(
+                !tap_lands_in_the_zero_gap(&message, &tm, later),
+                "{message:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_clock_tap_in_the_confirm_pause_goes_through() {
+        let t0 = Instant::now();
+        let (mut tm, _rx) = running_half(t0);
+        // The confirm pause only opens in a second half: play through half time.
+        let config = GameConfig::default();
+        let one_ms = Duration::from_millis(1);
+        tm.update(t0 + config.half_play_duration + one_ms).unwrap();
+        assert_eq!(tm.current_period(), GamePeriod::HalfTime);
+        let t2 = t0 + config.half_play_duration + config.half_time_duration + one_ms;
+        tm.update(t2 + one_ms).unwrap();
+        assert_eq!(tm.current_period(), GamePeriod::SecondHalf);
+        tm.pause_for_confirm(t2 + Duration::from_secs(1)).unwrap();
+        for message in clock_taps() {
+            assert!(
+                !tap_lands_in_the_zero_gap(&message, &tm, just_past_zero(t2)),
+                "{message:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn background_messages_are_never_ignored() {
+        let t0 = Instant::now();
+        let (tm, _rx) = running_half(t0);
+        let background = [
+            Message::NewSnapshot(TickUpdate {
+                snapshot: GameSnapshot::default(),
+                caught_up: None,
+            }),
+            Message::AutoConfirmScores(TickUpdate {
+                snapshot: GameSnapshot::default(),
+                caught_up: None,
+            }),
+            Message::AlarmPressed,
+            Message::AlarmReleased,
+            Message::SpacebarPressed,
+            Message::SpacebarReleased,
+            Message::AlarmDelayElapsed(0),
+            Message::TimeoutReviveHoldElapsed(0, Color::Black),
+            Message::PortalUiTick,
+            Message::PortalRefreshFinished,
+            Message::StartClock,
+            Message::KeypadButtonPress(KeypadButton::One),
+            Message::NoAction,
+        ];
+        for message in background {
+            assert!(
+                !tap_lands_in_the_zero_gap(&message, &tm, just_past_zero(t0)),
+                "{message:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_listed_tap_is_ignored_in_the_gap() {
+        let t0 = Instant::now();
+        let (tm, _rx) = running_half(t0);
+        for message in clock_taps() {
+            assert!(
+                tap_lands_in_the_zero_gap(&message, &tm, just_past_zero(t0)),
+                "{message:?}"
+            );
+        }
+    }
+
+    /// The values the handlers unwrapped before the gate existed: these are
+    /// what crashed the app when a tap landed in the gap.
+    #[test]
+    fn the_unguarded_tap_would_have_crashed() {
+        let t0 = Instant::now();
+        let (mut tm, _rx) = running_half(t0);
+        let now = just_past_zero(t0);
+        assert!(tm.game_clock_time(now).is_none());
+        assert!(tm.generate_snapshot(now).is_none());
+        assert!(matches!(
+            tm.start_ref_timeout(now),
+            Err(TournamentManagerError::NeedsUpdate)
+        ));
     }
 }
 

@@ -88,6 +88,7 @@ pub(in super::super) fn build_game_info_page<'a>(
     let table = render_game_info_table(game_info_rows(
         snapshot,
         config,
+        mode,
         next_game_block,
         uses_remote,
         schedule,

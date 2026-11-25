@@ -72,9 +72,12 @@ pub(in super::super) enum Row {
     },
 }
 
+// Every input fills part of the table (PO ruling 2026-11-26: allowed, as on the main view).
+#[allow(clippy::too_many_arguments)]
 pub(in super::super) fn game_info_rows(
     snapshot: &GameSnapshot,
     config: &GameConfig,
+    mode: Mode,
     next_game_block: Duration,
     uses_remote: bool,
     schedule: Option<&Schedule>,
@@ -196,10 +199,15 @@ pub(in super::super) fn game_info_rows(
             time_string(config.ot_half_time_duration),
             no_ot,
         ),
-        right: SettingCell::active(
-            fl!("gi-stop-clock-last-2"),
-            stop_clock_value(schedule, current_game_num),
-        ),
+        right: if mode == Mode::Rugby {
+            // Rugby is always stop-time (PO ruling 2026-11-26): no such setting, leave the slot empty.
+            SettingCell::active(String::new(), String::new())
+        } else {
+            SettingCell::active(
+                fl!("gi-stop-clock-last-2"),
+                stop_clock_value(schedule, current_game_num),
+            )
+        },
     });
 
     if no_current_game {
@@ -209,7 +217,9 @@ pub(in super::super) fn game_info_rows(
             if let Row::SettingPair { left, right } = row {
                 left.value = NO_VALUE.to_string();
                 left.grayed = false;
-                right.value = NO_VALUE.to_string();
+                if !right.label.is_empty() {
+                    right.value = NO_VALUE.to_string();
+                }
                 right.grayed = false;
             }
         }
@@ -763,6 +773,7 @@ mod tests {
         let rows = game_info_rows(
             &snapshot,
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             false,
             None,
@@ -785,6 +796,7 @@ mod tests {
         let rows = game_info_rows(
             &snapshot,
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             false,
             None,
@@ -836,6 +848,7 @@ mod tests {
         let rows = game_info_rows(
             &snapshot,
             &config,
+            Mode::Hockey6V6,
             config.game_block,
             false,
             None,
@@ -879,6 +892,7 @@ mod tests {
             let rows = game_info_rows(
                 &snapshot,
                 config,
+                Mode::Hockey6V6,
                 config.game_block,
                 false,
                 None,
@@ -931,6 +945,7 @@ mod tests {
         let rows = game_info_rows(
             &snapshot,
             &config,
+            Mode::Hockey6V6,
             config.game_block,
             false,
             None,
@@ -956,6 +971,7 @@ mod tests {
         let rows = game_info_rows(
             &snapshot,
             &config,
+            Mode::Hockey6V6,
             config.game_block,
             false,
             None,
@@ -985,6 +1001,7 @@ mod tests {
         let rows = game_info_rows(
             &snapshot,
             &config,
+            Mode::Hockey6V6,
             config.game_block,
             false,
             None,
@@ -1026,6 +1043,7 @@ mod tests {
         let rows = game_info_rows(
             &between_games_snapshot(),
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             false,
             None,
@@ -1042,6 +1060,7 @@ mod tests {
         let rows = game_info_rows(
             &in_game_snapshot(),
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             false,
             None,
@@ -1059,6 +1078,7 @@ mod tests {
         let rows = game_info_rows(
             &between_games_snapshot(),
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             false,
             None,
@@ -1095,6 +1115,7 @@ mod tests {
         let rows = game_info_rows(
             &snapshot,
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             false,
             None,
@@ -1129,6 +1150,7 @@ mod tests {
         let rows = game_info_rows(
             &snapshot,
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             false,
             None,
@@ -1283,6 +1305,7 @@ mod tests {
         let rows = game_info_rows(
             &GameSnapshot::default(),
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             false,
             None,
@@ -1319,6 +1342,7 @@ mod tests {
         let rows = game_info_rows(
             &GameSnapshot::default(),
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             true,
             None,
@@ -1430,6 +1454,7 @@ mod tests {
         let rows = game_info_rows(
             &in_game_snapshot(),
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             false,
             None,
@@ -1466,7 +1491,16 @@ mod tests {
             next_game_number: "2".to_string(),
             ..in_game_snapshot()
         };
-        let rows = game_info_rows(&snapshot, &config, next_game_block, false, None, None, None);
+        let rows = game_info_rows(
+            &snapshot,
+            &config,
+            Mode::Hockey6V6,
+            next_game_block,
+            false,
+            None,
+            None,
+            None,
+        );
         let block_for = |wanted: GameRole| {
             rows.iter().find_map(|r| match r {
                 Row::GameBlock {
@@ -1492,6 +1526,7 @@ mod tests {
         let rows = game_info_rows(
             &between_games_snapshot(),
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             false,
             None,
@@ -1523,6 +1558,7 @@ mod tests {
         let rows = game_info_rows(
             &snapshot,
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             false,
             None,
@@ -1569,6 +1605,7 @@ mod tests {
         let rows = game_info_rows(
             &last_game_snapshot(),
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             true,
             None,
@@ -1613,6 +1650,7 @@ mod tests {
         let rows = game_info_rows(
             &finished_court_snapshot(),
             &config,
+            Mode::Hockey6V6,
             config.game_block,
             true,
             None,
@@ -1715,6 +1753,7 @@ mod tests {
         let rows = game_info_rows(
             &finished_court_snapshot(),
             &cfg_all_on(),
+            Mode::Hockey6V6,
             cfg_all_on().game_block,
             true,
             Some(&schedule),
@@ -1744,5 +1783,83 @@ mod tests {
                 "12".to_string()
             )
         );
+    }
+
+    // The bottom-right settings cell of the last settings row, if present.
+    fn last_right_cell(rows: &[Row]) -> Option<SettingCell> {
+        rows.iter()
+            .filter_map(|r| match r {
+                Row::SettingPair { right, .. } => Some(right.clone()),
+                _ => None,
+            })
+            .last()
+    }
+
+    #[test]
+    fn rugby_hides_stop_clock_cell() {
+        let snapshot = GameSnapshot {
+            next_game_number: "2".to_string(),
+            ..Default::default()
+        };
+        let rows = game_info_rows(
+            &snapshot,
+            &cfg_all_on(),
+            Mode::Rugby,
+            cfg_all_on().game_block,
+            false,
+            None,
+            None,
+            None,
+        );
+        let pairs = setting_pairs(&rows);
+        assert_eq!(pairs.len(), 6);
+        assert_eq!(
+            pairs[5],
+            (fl!("gi-overtime-half-time-length"), String::new())
+        );
+        // The empty cell has no value and is not greyed.
+        let last = last_right_cell(&rows).expect("the last settings row exists");
+        assert_eq!(last.label, "");
+        assert_eq!(last.value, "");
+        assert!(!last.grayed);
+        // Hockey 3v3 still shows it.
+        let rows = game_info_rows(
+            &snapshot,
+            &cfg_all_on(),
+            Mode::Hockey3V3,
+            cfg_all_on().game_block,
+            false,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(setting_pairs(&rows)[5].1, fl!("gi-stop-clock-last-2"));
+    }
+
+    #[test]
+    fn rugby_empty_stop_clock_cell_stays_empty_when_court_finished() {
+        let rows = game_info_rows(
+            &finished_court_snapshot(),
+            &cfg_all_on(),
+            Mode::Rugby,
+            cfg_all_on().game_block,
+            false,
+            None,
+            None,
+            None,
+        );
+        let pairs = setting_pairs(&rows);
+        assert_eq!(pairs[5].1, "");
+        let last = last_right_cell(&rows).expect("the last settings row exists");
+        assert_eq!(last.value, "");
+        // The other cells are dashed, proving the no-game dash path ran.
+        let left = rows
+            .iter()
+            .find_map(|r| match r {
+                Row::SettingPair { left, .. } if left.label == pairs[5].0 => Some(left.clone()),
+                _ => None,
+            })
+            .expect("the overtime half-time cell exists");
+        assert_eq!(left.value, NO_VALUE);
     }
 }

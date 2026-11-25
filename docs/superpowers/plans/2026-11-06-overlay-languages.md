@@ -1,12 +1,12 @@
 # Overlay: English, Spanish and French, set in the overlay's own settings
 
-**Status:** built, and verified by the organiser with the refbox (2026-11-06)
+**Status:** built. The organiser verified an earlier build with the refbox (2026-11-06); the
+2026-11-25 rework (no `follow-refbox`, see Deviations) has not been re-walked yet.
 **Crates:** `overlay` only (translations and the setting). No change to `uwh-common`, the refbox,
 `overlay-bridge`, the LED panel, the wireless remote or Stream Manager, and no wire format change.
 **Process:** lean (the overlay's wording and one setting).
 **Builds on:** the foul-cards work (`2026-11-05-overlay-foul-descriptions.md`), so the new GOAL /
-FOUL cards and foul names are translated too. Worked on in a separate local copy
-(`Downloads\overlay-languages`), no branch or commit until the organiser has seen it working.
+FOUL cards and foul names are translated too.
 
 ## Goal
 
@@ -84,7 +84,8 @@ left to the separate foul-names change.
 
 ## Deviations
 
-- **Status:** built 2026-11-06 and verified by the organiser.
+- **Status:** built 2026-11-06 and verified by the organiser; that check predates the 2026-11-25
+  ruling below, so the current build still needs its walk.
 - **Words not in the original list:** "GAME" (in "GAME #12") and the fallback team names
   BLACK / WHITE shown when the schedule gives no names (translated only while they are the
   fallback; real team names never are).

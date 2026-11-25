@@ -2823,12 +2823,33 @@ impl TournamentManager {
                         self.end_first_half(now);
                     }
                     GamePeriod::SecondHalf => {
+                        // Same test as `timeout_end_would_end_game`: a half that would end
+                        // the game opens the confirm window from the shot's end instead.
+                        if self.scores.are_not_equal()
+                            || (!self.config.overtime_allowed && !self.config.sudden_death_allowed)
+                        {
+                            self.end_rugby_shot_at_period_zero(
+                                now,
+                                start_time,
+                                time_remaining_at_start,
+                            );
+                            return self.pause_for_confirm(now);
+                        }
                         self.end_second_half(now);
                     }
                     GamePeriod::OvertimeFirstHalf => {
                         self.end_overtime_first_half(now);
                     }
                     GamePeriod::OvertimeSecondHalf => {
+                        // Same test as `timeout_end_would_end_game`, for the overtime half.
+                        if self.scores.are_not_equal() || !self.config.sudden_death_allowed {
+                            self.end_rugby_shot_at_period_zero(
+                                now,
+                                start_time,
+                                time_remaining_at_start,
+                            );
+                            return self.pause_for_confirm(now);
+                        }
                         self.end_overtime_second_half(now);
                     }
                     GamePeriod::SuddenDeath => {
@@ -2851,10 +2872,11 @@ impl TournamentManager {
                         // the app arms the window with `end_game_ending_timeout`. Return before
                         // the tail below: it would restart the clock at the full sudden death
                         // length.
-                        self.clock_state = ClockState::CountingDown {
-                            start_time: min(now, start_time + time_remaining_at_start),
-                            time_remaining_at_start: Duration::ZERO,
-                        };
+                        self.end_rugby_shot_at_period_zero(
+                            now,
+                            start_time,
+                            time_remaining_at_start,
+                        );
                         // In sudden death this clears the shot and cannot fail on the clock
                         // state; the window begins at the countdown's 0:00, the shot's end.
                         return self.pause_for_confirm(now);
@@ -2874,12 +2896,33 @@ impl TournamentManager {
             }
             self.clock_state = ClockState::CountingDown {
                 start_time: min(now, start_time + time_remaining_at_start),
+                // Cannot be `BetweenGames` (no duration): every arm above that would end the
+                // game returns through `pause_for_confirm` instead.
                 time_remaining_at_start: self.current_period.duration(&self.config).unwrap(),
             }
         }
         self.timeout_state = None;
 
         Ok(())
+    }
+
+    /// A rugby penalty shot that kept a period open at 0:00 has run out on its own: leave the
+    /// game clock as a countdown that reached 0:00 at the shot's end, and clear the shot, so
+    /// that `pause_for_confirm` opens the score-confirmation window from that instant. This
+    /// opens the window as END TIMEOUT does (PO rule). Callers: `handle_rugby_pen_shot_end`
+    /// (second halves that would end the game, and a timed sudden death) and
+    /// `pause_for_confirm` (a second half waiting at 0:00, reached from the clock updater).
+    fn end_rugby_shot_at_period_zero(
+        &mut self,
+        now: Instant,
+        start_time: Instant,
+        time_remaining_at_start: Duration,
+    ) {
+        self.clock_state = ClockState::CountingDown {
+            start_time: min(now, start_time + time_remaining_at_start),
+            time_remaining_at_start: Duration::ZERO,
+        };
+        self.timeout_state = None;
     }
 
     pub fn get_start_stop_rx(&self) -> watch::Receiver<bool> {
@@ -3344,6 +3387,30 @@ impl TournamentManager {
         // and no timeout, so the strict guards remain there as backstops.
         let in_sudden_death = self.current_period == GamePeriod::SuddenDeath;
         if !in_sudden_death {
+            // A rugby shot that kept a second half open at 0:00 has run out: end it at its
+            // own end instant, so the guards below pass as for any half ending and the window
+            // begins at the shot's end, whatever the score.
+            if let Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start,
+            })) = self.timeout_state
+            {
+                if let ClockState::Stopped { clock_time } = self.clock_state {
+                    if now >= start_time + time_remaining_at_start
+                        && clock_time.is_zero()
+                        && matches!(
+                            self.current_period,
+                            GamePeriod::SecondHalf | GamePeriod::OvertimeSecondHalf
+                        )
+                    {
+                        self.end_rugby_shot_at_period_zero(
+                            now,
+                            start_time,
+                            time_remaining_at_start,
+                        );
+                    }
+                }
+            }
             if self.timeout_state.is_some() {
                 return Err(TournamentManagerError::PausingDuringTimeout);
             }
@@ -4397,6 +4464,120 @@ mod test {
 
         assert!(matches!(kind, TickKind::NewSnapshot));
         assert_eq!(snapshot.current_period, GamePeriod::FirstHalf);
+    }
+
+    /// A rugby penalty shot (45 s) started with 7 s left in `period`, so it outlasts the
+    /// half: once the clock reaches 0:00 the half waits there for the shot. `decided` puts
+    /// Black one goal up. Returns the game and its start instant `g`; the shot runs out at
+    /// `g + 50 s`.
+    fn rugby_shot_outlasts_half(period: GamePeriod, decided: bool) -> (TournamentManager, Instant) {
+        initialize();
+        let config = GameConfig {
+            penalty_shot_duration: Duration::from_secs(45),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let g = Instant::now();
+        let s = Duration::from_secs;
+        tm.start_play_now(g).unwrap();
+        tm.stop_clock(g + s(1)).unwrap();
+        tm.set_period_and_game_clock_time(period, s(10));
+        tm.start_clock(g + s(2));
+        if decided {
+            tm.add_score(Color::Black, 1, g + s(3));
+        }
+        tm.start_rugby_penalty_shot(g + s(5)).unwrap();
+
+        assert!(tm.updater_tick(g + s(13)).is_ok());
+        assert_eq!(tm.current_period(), period);
+        assert_eq!(
+            tm.clock_state,
+            ClockState::Stopped {
+                clock_time: Duration::ZERO
+            },
+            "the half must be waiting at 0:00 for the shot"
+        );
+        (tm, g)
+    }
+
+    /// Tick one second after the open confirm window ends and return the tick's kind.
+    fn tick_after_confirm_window(tm: &mut TournamentManager) -> TickKind {
+        let pause = tm
+            .time_pause_confirmation
+            .as_ref()
+            .expect("the confirm window must be open");
+        let after = pause.pause_began + pause.duration_of_pause + Duration::from_secs(1);
+        tm.updater_tick(after)
+            .expect("the tick after the window must succeed")
+            .0
+    }
+
+    #[test]
+    fn rugby_shot_ending_a_decided_second_half_opens_the_confirm_window() {
+        let (mut tm, g) = rugby_shot_outlasts_half(GamePeriod::SecondHalf, true);
+        let s = Duration::from_secs;
+
+        let (kind, _) = tm
+            .updater_tick(g + s(51))
+            .expect("the tick after the shot must succeed");
+        assert!(matches!(kind, TickKind::ConfirmScores));
+        assert!(tm.in_score_confirm_pause());
+        assert_eq!(tm.timeout_state, None);
+        assert_eq!(
+            tm.time_pause_confirmation.as_ref().unwrap().pause_began,
+            g + s(50)
+        );
+
+        assert!(matches!(
+            tick_after_confirm_window(&mut tm),
+            TickKind::AutoConfirmScores
+        ));
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+    }
+
+    #[test]
+    fn rugby_shot_ending_a_level_second_half_opens_the_window_then_overtime() {
+        let (mut tm, g) = rugby_shot_outlasts_half(GamePeriod::SecondHalf, false);
+        let s = Duration::from_secs;
+
+        let (kind, _) = tm
+            .updater_tick(g + s(51))
+            .expect("the tick after the shot must succeed");
+        assert!(matches!(kind, TickKind::ConfirmScores));
+
+        tick_after_confirm_window(&mut tm);
+        assert_eq!(tm.current_period(), GamePeriod::PreOvertime);
+    }
+
+    #[test]
+    fn rugby_shot_ending_a_decided_overtime_second_half_opens_the_confirm_window() {
+        let (mut tm, g) = rugby_shot_outlasts_half(GamePeriod::OvertimeSecondHalf, true);
+        let s = Duration::from_secs;
+
+        let (kind, _) = tm
+            .updater_tick(g + s(51))
+            .expect("the tick after the shot must succeed");
+        assert!(matches!(kind, TickKind::ConfirmScores));
+    }
+
+    #[test]
+    fn rugby_shot_ending_exactly_on_a_tick_opens_the_confirm_window() {
+        let (mut tm, g) = rugby_shot_outlasts_half(GamePeriod::SecondHalf, true);
+
+        let (kind, _) = tm
+            .updater_tick(g + Duration::from_secs(50))
+            .expect("the tick at the shot's end must succeed");
+        assert!(matches!(kind, TickKind::ConfirmScores));
+    }
+
+    /// The app also calls `update` directly. Before the fix this route ended the game and
+    /// then panicked on the `BetweenGames` duration in `handle_rugby_pen_shot_end`.
+    #[test]
+    fn rugby_shot_end_handler_does_not_panic_after_a_decided_second_half() {
+        let (mut tm, g) = rugby_shot_outlasts_half(GamePeriod::SecondHalf, true);
+
+        assert_eq!(tm.update(g + Duration::from_secs(51)), Ok(()));
+        assert!(tm.in_score_confirm_pause());
     }
 
     /// A FirstHalf game with a 900 s half, started at the returned instant.

@@ -2915,11 +2915,11 @@ impl TournamentManager {
 
     /// A rugby penalty shot that kept a period open at 0:00 has run out on its own: leave the
     /// game clock as a countdown that reached 0:00 at the shot's end, and clear the shot, so
-    /// that `pause_for_confirm` opens the score-confirmation window from that instant. The
-    /// window then opens whatever the score, as at the end of any second half without a shot.
-    /// Callers: `handle_rugby_pen_shot_end` (second halves that would end the game, and a timed
-    /// sudden death) and `pause_for_confirm` (a second half waiting at 0:00, reached from the
-    /// clock updater).
+    /// that `pause_for_confirm` opens the score-confirmation window from that instant.
+    /// Callers: `pause_for_confirm` (a second half waiting at 0:00, reached from the clock
+    /// updater; the window opens whatever the score, as at the end of any second half without
+    /// a shot) and `handle_rugby_pen_shot_end` (only second halves that would end the game,
+    /// and a timed sudden death).
     fn end_rugby_shot_at_period_zero(
         &mut self,
         now: Instant,
@@ -4556,6 +4556,12 @@ mod test {
             .updater_tick(g + s(51))
             .expect("the tick after the shot must succeed");
         assert!(matches!(kind, TickKind::ConfirmScores));
+        assert!(tm.in_score_confirm_pause());
+        assert_eq!(tm.timeout_state, None);
+        assert_eq!(
+            tm.time_pause_confirmation.as_ref().unwrap().pause_began,
+            g + s(50)
+        );
 
         assert!(matches!(
             tick_after_confirm_window(&mut tm),
@@ -4602,6 +4608,7 @@ mod test {
             tm.time_pause_confirmation.as_ref().unwrap().pause_began,
             g + s(50)
         );
+        assert_eq!(tm.timeout_state, None);
 
         assert!(matches!(
             tick_after_confirm_window(&mut tm),
@@ -4633,6 +4640,32 @@ mod test {
             tm.timeout_end_would_end_game(g + Duration::from_secs(20)),
             Ok(true)
         );
+    }
+
+    /// END TIMEOUT by hand on a LEVEL second half waiting for the shot does not end the game:
+    /// the app calls `end_timeout`, which goes straight to overtime with no window. Unchanged
+    /// by this fix; the shot running out on its own opens the window instead.
+    #[test]
+    fn rugby_shot_end_timeout_by_hand_on_a_level_second_half_would_not_end_the_game() {
+        let (tm, g) = rugby_shot_outlasts_half(GamePeriod::SecondHalf, false);
+
+        assert_eq!(
+            tm.timeout_end_would_end_game(g + Duration::from_secs(20)),
+            Ok(false)
+        );
+    }
+
+    /// The direct `update` route on a LEVEL second half still goes straight to overtime with
+    /// no window. Unchanged by this fix; only the clock updater's tick opens it for a level
+    /// score.
+    #[test]
+    fn rugby_shot_end_handler_on_a_level_second_half_goes_to_overtime_without_a_window() {
+        let (mut tm, g) = rugby_shot_outlasts_half(GamePeriod::SecondHalf, false);
+
+        assert_eq!(tm.update(g + Duration::from_secs(51)), Ok(()));
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.current_period(), GamePeriod::PreOvertime);
+        assert_eq!(tm.timeout_state, None);
     }
 
     #[test]

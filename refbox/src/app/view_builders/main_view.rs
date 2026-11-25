@@ -274,6 +274,7 @@ pub(in super::super) fn build_main_view<'a>(
                     container(render_game_info_table(game_info_rows(
                         snapshot,
                         game_config,
+                        mode,
                         next_game_block,
                         uses_remote,
                         schedule,
@@ -302,6 +303,7 @@ pub(in super::super) fn build_main_view<'a>(
                 container(render_game_info_table(game_info_rows(
                     snapshot,
                     game_config,
+                    mode,
                     next_game_block,
                     uses_remote,
                     schedule,

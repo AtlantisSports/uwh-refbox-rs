@@ -46,7 +46,7 @@ pub(in super::super) fn build_main_view<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         teams,
         portal_indicator,
         ..
@@ -58,7 +58,7 @@ pub(in super::super) fn build_main_view<'a>(
         true,
         false,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         behind_label,
     );

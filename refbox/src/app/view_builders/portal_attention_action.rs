@@ -42,20 +42,12 @@ pub(in super::super) fn build_portal_attention_action<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         ..
     } = data;
 
-    let banner = make_game_time_button(
-        snapshot,
-        false,
-        false,
-        mode,
-        clock_running,
-        portal_indicator,
-        None,
-    );
+    let banner = make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None);
 
     let title = text(fl!("portal-page-title-attention", game = game_number))
         .size(MEDIUM_TEXT)

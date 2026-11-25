@@ -54,7 +54,7 @@ pub(in super::super) fn build_keypad_page<'a>(
         snapshot,
         mode,
         source,
-        clock_running,
+        clock,
         portal_indicator,
         ..
     } = data;
@@ -68,15 +68,7 @@ pub(in super::super) fn build_keypad_page<'a>(
     if let KeypadPage::TeamTimeouts(dur, per_half) = &page {
         let (dur, per_half) = (*dur, *per_half);
         return column![
-            make_game_time_button(
-                snapshot,
-                false,
-                false,
-                mode,
-                clock_running,
-                portal_indicator,
-                None
-            ),
+            make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
             make_team_timeout_edit_page(dur, per_half, player_num),
         ]
         .spacing(SPACING)
@@ -95,15 +87,7 @@ pub(in super::super) fn build_keypad_page<'a>(
     };
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         row![
             container(
                 if show_grid(panel_numbers, mode, player_num, force_keypad_numbers) {

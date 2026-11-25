@@ -8,7 +8,7 @@ pub(in super::super) fn build_power_page<'a>(data: ViewData<'_, '_>) -> Element<
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         ..
     } = data;
@@ -16,15 +16,7 @@ pub(in super::super) fn build_power_page<'a>(data: ViewData<'_, '_>) -> Element<
     // `editing_time = true` keeps the banner clock non-interactive here (no
     // red flashing, no jump to the time editor), matching the confirmation
     // pages.
-    let banner = make_game_time_button(
-        snapshot,
-        false,
-        true,
-        mode,
-        clock_running,
-        portal_indicator,
-        None,
-    );
+    let banner = make_game_time_button(snapshot, false, true, mode, clock, portal_indicator, None);
 
     let actions = row![
         make_chrome_button(fl!("shut-down"))

@@ -2597,6 +2597,7 @@ pub fn generate_example_rule_sheets(
                 pre_sudden_death_duration: std::time::Duration::from_secs(60),
                 minimum_break: std::time::Duration::from_secs(5 * 60),
                 game_block: None,
+                sudden_death_max_duration: None,
             }
         };
 
@@ -3084,6 +3085,7 @@ mod tests {
             pre_sudden_death_duration: Duration::from_secs(60),
             minimum_break: Duration::from_secs(240),
             game_block: Some(Duration::from_secs(1920)),
+            sudden_death_max_duration: None,
         }
     }
 

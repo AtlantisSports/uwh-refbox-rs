@@ -78,6 +78,7 @@ the two exceptions and are always real values.
 | `recentGoal` | object or null | `snapshot.recent_goal` — `{ "team": "BLACK"\|"WHITE", "player": integer }` |
 | `nextPeriodLenSecs` | integer or null | `snapshot.next_period_len_secs` |
 | `penalties` | array | `snapshot.penalties` — §4a |
+| `fouls` | array | `snapshot.fouls` — Black's, then White's, then those against neither team, each in the refbox's own order; each `{ "team": "BLACK"\|"WHITE" or null, "number": integer or null, "player": string or null, "infraction": string }`, with `player` resolved from the roster as for `penalties` and `infraction` the refbox's short name as for `penalties`. Added after version 1 shipped; adding a field doesn't bump the §6 version |
 | `eventId` | string or null | `snapshot.event_id` — §4b |
 | `portalBaseUrl` | string or null | `snapshot.portal_base_url` — §4b |
 
@@ -230,9 +231,10 @@ through this path. **Do not "restore" the frozen behaviour as a regression fix �
 - Everything the renderer does with this: drawing, timing, transparency, NDI, layout, packaging,
   and its response to an unrecognised version.
 - Goal identity and sequencing (§2).
-- Serving `fouls` or `warnings` in typed form. `/scorebug` already carries all three counts and the
-  vMix tables carry the detail; adding typed lists is additive rather than breaking under §6, so it
-  can follow if the renderer effort wants it. `penalties` **is** in scope — see §4a.
+- Serving `warnings` in typed form. `/scorebug` already carries all three counts and the vMix
+  tables carry the detail; adding a typed list is additive rather than breaking under §6, so it can
+  follow if the renderer effort wants it. `penalties` **is** in scope — see §4a, and so is `fouls`
+  (§4).
 - Any change to the five vMix tables, to `refbox`, or to `uwh-common`. This work is confined to
   `overlay-bridge/`.
 - A vMix-facing goal callout. vMix cannot consume a sequenced list, and a latched one is a different

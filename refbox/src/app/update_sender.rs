@@ -506,15 +506,13 @@ impl Server {
                 GamePeriod::BetweenGames
                 | GamePeriod::HalfTime
                 | GamePeriod::OvertimeHalfTime
-                | GamePeriod::PreOvertime => {
+                | GamePeriod::PreOvertime
+                | GamePeriod::PreSuddenDeath => {
+                    // `next_time` is the sudden death maximum when there is one, and 0
+                    // when there is not (an unlimited sudden death has no length).
                     if self.snapshot.secs_in_period < 10 {
                         self.snapshot.secs_in_period = next_time;
                     };
-                }
-                GamePeriod::PreSuddenDeath => {
-                    if self.snapshot.secs_in_period < 10 {
-                        self.snapshot.secs_in_period = 0;
-                    }
                 }
                 GamePeriod::FirstHalf
                 | GamePeriod::OvertimeFirstHalf
@@ -1437,6 +1435,25 @@ mod test {
         // Exactly 10s left -> still the live countdown (threshold is `< 10`).
         server.encode(snap(10));
         assert_eq!(server.snapshot.secs_in_period, 10);
+    }
+
+    #[test]
+    fn hide_time_pre_sudden_death_shows_the_sudden_death_maximum() {
+        // With a sudden death maximum, the break before it hides its last seconds
+        // behind the coming period's length, like every other timed break. Without
+        // one, the coming period has no length and the panel shows 0:00.
+        let (_tx, rx) = mpsc::channel(1);
+        let mut server = Server::new(rx, vec![], true, false, FrontDisplayLayout::Default);
+        let snap = |next| GameSnapshot {
+            current_period: GamePeriod::PreSuddenDeath,
+            secs_in_period: 5,
+            next_period_len_secs: next,
+            ..Default::default()
+        };
+        server.encode(snap(Some(300)));
+        assert_eq!(server.snapshot.secs_in_period, 300);
+        server.encode(snap(None));
+        assert_eq!(server.snapshot.secs_in_period, 0);
     }
 
     #[test]

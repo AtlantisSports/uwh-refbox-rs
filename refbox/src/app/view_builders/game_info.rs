@@ -48,7 +48,7 @@ pub(in super::super) fn build_game_info_page<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         teams,
         portal_indicator,
         ..
@@ -110,15 +110,7 @@ pub(in super::super) fn build_game_info_page<'a>(
     .on_press(Message::EditGameConfigPage(ConfigPage::Game));
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None),
         table_button,
         row![
             make_chrome_button(fl!("back"))

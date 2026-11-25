@@ -65,7 +65,7 @@ use view_data::ViewData;
 mod view_builders;
 use view_builders::{
     beep_test::build_beep_test_page,
-    shared_elements::{crosses_portal, portal_name_for_mode},
+    shared_elements::{GameClockFlags, crosses_portal, portal_name_for_mode},
     *,
 };
 
@@ -377,6 +377,10 @@ enum AppState {
         show_countdown: bool,
         audible_countdown: bool,
     },
+    /// The SUDDEN DEATH page, reached from Game Options. Its staged choices
+    /// reach the Game page's edit on APPLY and are dropped on CANCEL, like a
+    /// length editor's Duration.
+    SuddenDeathEditor(SuddenDeathEdit),
     ParameterList(ListableParameter, usize),
     ConfirmationPage(ConfirmationKind),
     ConfirmScores(BlackWhiteBundle<u8>),
@@ -1142,6 +1146,25 @@ fn time_edit_changes(
     (game, timeout)
 }
 
+/// Whether a message that took the operator off the TIME EDIT page by some route other
+/// than APPLY or CANCEL must resume the clock.
+///
+/// TIME EDIT is a pause (PO ruling 2026-11-05): opening it stops every clock, and only
+/// APPLY and CANCEL restarted it, so a side route (the Portal health tile, a late Portal
+/// login reply) used to leave a running game frozen. Such a route acts like CANCEL: the
+/// clock resumes if it was running when the page opened. Never when APPLY or CANCEL
+/// closed it (they resume it themselves, and a refused start on a parked court must not
+/// be tried twice), when it is already running, or while a score confirmation is
+/// pending (the confirm flow owns the clock then).
+fn side_exit_resumes_clock(
+    was_running: bool,
+    closed_by_apply_or_cancel: bool,
+    clock_running: bool,
+    confirm_pause_pending: bool,
+) -> bool {
+    was_running && !closed_by_apply_or_cancel && !clock_running && !confirm_pause_pending
+}
+
 /// What an App-page APPLY should do with the committed event / court / schedule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LinkCommit {
@@ -1474,6 +1497,25 @@ impl PageEntrySnapshot {
     }
 }
 
+/// Which automatic sound the end of `period` calls for: `(end_starts_play,
+/// end_stops_play)`. A break ends by starting play and a half ends by stopping it.
+/// A sudden death stops play at 0:00 only when it has a maximum and so counts down
+/// (`sd_counts_down`); one without a maximum counts up and has no end to announce.
+fn period_end_sounds(period: GamePeriod, sd_counts_down: bool) -> (bool, bool) {
+    match period {
+        GamePeriod::FirstHalf
+        | GamePeriod::SecondHalf
+        | GamePeriod::OvertimeFirstHalf
+        | GamePeriod::OvertimeSecondHalf => (false, true),
+        GamePeriod::BetweenGames
+        | GamePeriod::HalfTime
+        | GamePeriod::PreOvertime
+        | GamePeriod::OvertimeHalfTime
+        | GamePeriod::PreSuddenDeath => (true, false),
+        GamePeriod::SuddenDeath => (false, sd_counts_down),
+    }
+}
+
 /// One countdown beep this tick when: the audible-countdown setting is on, we are
 /// in a break that precedes a playing period, the whole-second value just changed,
 /// and the new value is in the final 10..=1 window. Reads the RAW snapshot, so it
@@ -1802,7 +1844,13 @@ impl RefBoxApp {
         new_snapshot: GameSnapshot,
         caught_up: Option<CatchUp>,
     ) -> Task<Message> {
-        let engine_period = self.tm.lock().current_period();
+        // Both read under one lock. `sd_counts_down` comes from the engine's live
+        // config, never `self.config.game`, which lags a Portal game's timing (adopted
+        // by the engine at kick-off) until settings are applied.
+        let (engine_period, sd_counts_down) = {
+            let tm = self.tm.lock();
+            (tm.current_period(), tm.sd_counts_down())
+        };
         let mut task = Task::none();
         match snapshot_transition(&self.snapshot, &new_snapshot, caught_up, engine_period) {
             SnapshotTransition::CaughtUpToNewGame | SnapshotTransition::GameStarted => {
@@ -1829,7 +1877,7 @@ impl RefBoxApp {
             SnapshotTransition::Nothing => {}
         }
 
-        self.publish_snapshot(new_snapshot);
+        self.publish_snapshot(new_snapshot, sd_counts_down);
         task
     }
 
@@ -1844,7 +1892,7 @@ impl RefBoxApp {
     /// so publishing here is also what makes a queued in-play tick read as stale.
     ///
     /// Takes no `tm` lock, but callers have no reason to hold one across it either.
-    fn publish_snapshot(&mut self, mut new_snapshot: GameSnapshot) {
+    fn publish_snapshot(&mut self, mut new_snapshot: GameSnapshot, sd_counts_down: bool) {
         new_snapshot.event_id = self.current_event_id.clone();
         // The address this refbox's own portal client is pointed at, so a consumer resolving names
         // from a portal looks them up where refbox looks them up. `current_site` is the value the
@@ -1865,7 +1913,7 @@ impl RefBoxApp {
         // guess -- see `strip_credentials`.
         new_snapshot.portal_base_url = published_site_address(&self.current_site);
 
-        self.maybe_play_sound(&new_snapshot);
+        self.maybe_play_sound(&new_snapshot, sd_counts_down);
         if let Err(e) = self.update_sender.send_snapshot(
             new_snapshot.clone(),
             self.config.hardware.white_on_right,
@@ -2044,12 +2092,15 @@ impl RefBoxApp {
                 return Task::none();
             }
         };
+        // Read from the engine while the lock is still held, never from
+        // `self.config.game` (see `apply_tick`).
+        let sd_counts_down = tm.sd_counts_down();
         // Released before any app code runs. Neither call below takes the lock
         // today, but it does not re-enter, so a guard held across app code is a
         // deadlock waiting for the first caller that does.
         drop(tm);
 
-        self.publish_snapshot(snapshot);
+        self.publish_snapshot(snapshot, sd_counts_down);
         self.app_state = AppState::MainPage;
         trace!("AppState changed to {:?}", self.app_state);
 
@@ -2067,7 +2118,7 @@ impl RefBoxApp {
         }
     }
 
-    fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
+    fn maybe_play_sound(&self, new_snapshot: &GameSnapshot, sd_counts_down: bool) {
         // A break that will start nothing must not be announced: no 30-second whistle,
         // no start-of-play buzzer at 0:00 and no countdown beeps on the way there.
         // Once the court's last game has ended the clock stops dead, so the common path
@@ -2090,8 +2141,9 @@ impl RefBoxApp {
             }
             Some(TimeoutSnapshot::Ref(_)) | Some(TimeoutSnapshot::PenaltyShot(_)) => (false, false),
             None => {
-                let prereqs = new_snapshot.current_period != GamePeriod::SuddenDeath
-                    && new_snapshot.secs_in_period != self.snapshot.secs_in_period;
+                // A sudden death without a maximum needs no exclusion here: it is
+                // neither a whistle period nor, per `period_end_sounds`, a buzz period.
+                let prereqs = new_snapshot.secs_in_period != self.snapshot.secs_in_period;
 
                 let is_whistle_period = match new_snapshot.current_period {
                     GamePeriod::BetweenGames
@@ -2106,18 +2158,8 @@ impl RefBoxApp {
                     | GamePeriod::SuddenDeath => false,
                 };
 
-                let (end_starts_play, end_stops_play) = match new_snapshot.current_period {
-                    GamePeriod::FirstHalf
-                    | GamePeriod::SecondHalf
-                    | GamePeriod::OvertimeFirstHalf
-                    | GamePeriod::OvertimeSecondHalf => (false, true),
-                    GamePeriod::BetweenGames
-                    | GamePeriod::HalfTime
-                    | GamePeriod::PreOvertime
-                    | GamePeriod::OvertimeHalfTime
-                    | GamePeriod::PreSuddenDeath => (true, false),
-                    GamePeriod::SuddenDeath => (false, false),
-                };
+                let (end_starts_play, end_stops_play) =
+                    period_end_sounds(new_snapshot.current_period, sd_counts_down);
 
                 let is_buzz_period = end_starts_play && self.config.sound.auto_sound_start_play
                     || end_stops_play && self.config.sound.auto_sound_stop_play;
@@ -4920,7 +4962,44 @@ impl RefBoxApp {
     /// stopped, so a score, timeout, time edit or settings apply made then must refresh the frame
     /// itself, and a list of call sites would miss the next one added.
     pub(super) fn update(&mut self, message: Message) -> Task<Message> {
+        let time_edit_was_running = match self.app_state {
+            AppState::TimeEdit(was_running, ..) => Some(was_running),
+            _ => None,
+        };
+        let closed_by_apply_or_cancel = matches!(message, Message::TimeEditComplete { .. });
         let mut task = self.handle_message(message);
+        // Any route off the TIME EDIT page other than APPLY or CANCEL acts like CANCEL:
+        // resume the clock if it was running when the page opened. Handled here, once,
+        // for every message, rather than in each route that can close the page. Before
+        // the held-reply replay below, so the reply is acted on under a running clock,
+        // the order `finish_time_edit_with_held_schedule` uses.
+        if let Some(was_running) = time_edit_was_running {
+            if !matches!(self.app_state, AppState::TimeEdit(..)) {
+                let mut tm = self.tm.lock();
+                if side_exit_resumes_clock(
+                    was_running,
+                    closed_by_apply_or_cancel,
+                    tm.clock_is_running(),
+                    tm.in_score_confirm_pause(),
+                ) {
+                    info!("TIME EDIT left without APPLY or CANCEL; resuming the clock");
+                    let now = Instant::now();
+                    tm.start_clock(now);
+                    if let Err(e) = tm.update(now) {
+                        error!("Could not update the clock on leaving TIME EDIT: {e}");
+                    }
+                    let snapshot = tm.generate_snapshot(now);
+                    drop(tm);
+                    match snapshot {
+                        Some(snapshot) => {
+                            let resumed = self.apply_snapshot(snapshot);
+                            task = Task::batch([task, resumed]);
+                        }
+                        None => error!("Could not generate a snapshot on leaving TIME EDIT"),
+                    }
+                }
+            }
+        }
         // A schedule reply held while TIME EDIT was open must never be stranded. APPLY
         // and CANCEL act on it themselves (`finish_time_edit_with_held_schedule`), but
         // other messages can also take the operator off the page (the health tile, a
@@ -4993,6 +5072,14 @@ impl RefBoxApp {
             self.last_message = message.clone();
         }
 
+        if tap_outlived_its_screen(&message, &self.app_state) {
+            warn!(
+                "Ignoring {message:?}: its screen has already closed (now on {:?})",
+                self.app_state
+            );
+            return Task::none();
+        }
+
         match message {
             Message::NewSnapshot(update) => self.apply_tick(update.snapshot, update.caught_up),
             Message::EditTime => {
@@ -5022,6 +5109,7 @@ impl RefBoxApp {
                         }
                     }
                     AppState::ParameterEditor(_, ref mut dur, _) => (dur, false),
+                    AppState::SuddenDeathEditor(ref mut edit) => (&mut edit.length, false),
                     AppState::KeypadPage(KeypadPage::TeamTimeouts(ref mut dur, _), _) => {
                         (dur, false)
                     }
@@ -5055,26 +5143,47 @@ impl RefBoxApp {
                             held,
                         );
                     }
+                    // No engine error on this path is unwrapped: each is logged and the
+                    // rest carries on, as `finish_time_edit_with_held_schedule` does.
                     let mut tm = self.tm.lock();
                     let now = Instant::now();
                     if !canceled {
-                        tm.set_game_clock_time(game_time).unwrap();
+                        if let Err(e) = tm.set_game_clock_time(game_time) {
+                            error!("Could not set the game clock from TIME EDIT: {e}");
+                        }
                         if let Some(time) = timeout_time {
-                            tm.set_timeout_clock_time(time).unwrap();
+                            if let Err(e) = tm.set_timeout_clock_time(time) {
+                                error!("Could not set the timeout clock from TIME EDIT: {e}");
+                            }
                         }
                     }
                     if was_running {
                         tm.start_clock(now);
-                        tm.update(now).unwrap();
+                        if let Err(e) = tm.update(now) {
+                            error!("Could not update the clock on closing TIME EDIT: {e}");
+                        }
                     }
-                    let snapshot = tm.generate_snapshot(now).unwrap();
+                    let snapshot = tm.generate_snapshot(now);
                     drop(tm);
-                    let task = self.apply_snapshot(snapshot);
+                    let task = match snapshot {
+                        Some(snapshot) => self.apply_snapshot(snapshot),
+                        None => {
+                            error!("Could not generate a snapshot on closing TIME EDIT");
+                            Task::none()
+                        }
+                    };
                     self.app_state = self.last_app_state.clone();
                     trace!("AppState changed to {:?}", self.app_state);
                     task
                 } else {
-                    unreachable!();
+                    // APPLY and CANCEL in one frame, or a repeat with a tick between them,
+                    // can both be delivered before the screen redraws: the page is closed
+                    // already, so there is nothing left to do.
+                    warn!(
+                        "TIME EDIT closed already; ignoring a late {}",
+                        if canceled { "CANCEL" } else { "APPLY" }
+                    );
+                    Task::none()
                 }
             }
             Message::StartPlayNow => {
@@ -6713,6 +6822,32 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::EditSuddenDeath => {
+                // Seeded like `EditParameter`: from the Game page's staged edit
+                // when present, so reopening shows what the operator just chose.
+                let config = self
+                    .edited_settings
+                    .as_ref()
+                    .map(|s| &s.config)
+                    .unwrap_or(&self.config.game);
+                self.app_state = AppState::SuddenDeathEditor(sudden_death_edit_seed(config));
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::SetSuddenDeathAllowed(allowed) => {
+                if let AppState::SuddenDeathEditor(ref mut edit) = self.app_state {
+                    edit.allowed = allowed;
+                    trace!("AppState changed to {:?}", self.app_state);
+                }
+                Task::none()
+            }
+            Message::SetSuddenDeathMaxSet(max_set) => {
+                if let AppState::SuddenDeathEditor(ref mut edit) = self.app_state {
+                    edit.max_set = max_set;
+                    trace!("AppState changed to {:?}", self.app_state);
+                }
+                Task::none()
+            }
             Message::SelectParameter(param) => {
                 let index = match param {
                     ListableParameter::Event => Some(0),
@@ -6821,6 +6956,14 @@ impl RefBoxApp {
                             show_countdown,
                             audible_countdown,
                         ),
+                        AppState::SuddenDeathEditor(edit) => sudden_death_edit_commit(
+                            edit,
+                            // why this cannot panic: the SUDDEN DEATH page is
+                            // opened only by `EditSuddenDeath`, from Game Options,
+                            // while `edited_settings` is populated; every path
+                            // that clears it also moves `app_state` off this page.
+                            &mut self.edited_settings.as_mut().unwrap().config,
+                        ),
                         _ => unreachable!(),
                     }
                 }
@@ -6837,6 +6980,10 @@ impl RefBoxApp {
                     AppState::ParameterEditor(_, _, _) => {
                         AppState::EditGameConfig(ConfigPage::Game)
                     }
+                    // Set directly, like the countdown page below: the Game
+                    // page's entry snapshot must stay the one taken when it
+                    // opened, or the staged change would look like no change.
+                    AppState::SuddenDeathEditor(_) => AppState::EditGameConfig(ConfigPage::Game),
                     // Set directly, not through a page change: re-capturing the
                     // App page's entry snapshot here would make the staged
                     // countdown change look like no change, and APPLY would
@@ -7061,9 +7208,6 @@ impl RefBoxApp {
                         match param {
                             BoolGameParameter::OvertimeAllowed => {
                                 edited_settings.config.overtime_allowed ^= true
-                            }
-                            BoolGameParameter::SuddenDeathAllowed => {
-                                edited_settings.config.sudden_death_allowed ^= true
                             }
                             BoolGameParameter::WhiteOnRight => {
                                 edited_settings.white_on_right ^= true
@@ -7748,15 +7892,27 @@ impl RefBoxApp {
                 let mut tm = self.tm.lock();
                 let now = Instant::now();
                 // The Cancel button is only rendered for an active team timeout
-                // inside its grace window, so this call is valid by construction.
+                // inside its grace window, but a second tap, or the timeout ending
+                // between the screen being drawn and the tap landing, still reaches
+                // here with no timeout left to cancel. There is nothing to undo then.
                 // Unlike EndTimeout, no `timeout_end_would_end_game` check is needed:
                 // a team timeout only happens mid-half with the game clock stopped, so
                 // cancelling it can never end the game — it just resumes play.
-                tm.cancel_team_timeout(now).unwrap();
+                if let Err(e) = tm.cancel_team_timeout(now) {
+                    warn!("Ignoring CANCEL TIMEOUT: {e}");
+                    return Task::none();
+                }
                 tm.update(now).unwrap();
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
-                self.apply_snapshot(snapshot)
+                let task = self.apply_snapshot(snapshot);
+                // Cancelled from inside TIME EDIT: the timeout is gone, so the page must
+                // stop holding a timeout value, as `EndTimeout` does. Otherwise APPLY
+                // sets a timeout clock the engine no longer has.
+                if let AppState::TimeEdit(_, _, ref mut timeout) = self.app_state {
+                    *timeout = None;
+                }
+                task
             }
             Message::RecvEventList(e_list) => {
                 let mut tasks = vec![];
@@ -9065,11 +9221,21 @@ impl RefBoxApp {
             .as_ref()
             .and_then(|edits| edits.current_event_id.as_ref())
             .or(self.current_event_id.as_ref());
+        let (clock_running, sd_counts_down) = {
+            let tm = self.tm.lock();
+            (tm.clock_is_running(), tm.sd_counts_down())
+        };
         let data = ViewData {
             snapshot: &self.snapshot,
             mode: self.config.mode,
             source: self.source,
-            clock_running: self.tm.lock().clock_is_running(),
+            // Both from the engine under one lock. `sd_counts_down` must come from the
+            // engine's live config, never `self.config.game`, which lags a Portal
+            // game's timing (adopted by the engine at kick-off) until APPLY.
+            clock: GameClockFlags {
+                running: clock_running,
+                sd_counts_down,
+            },
             teams: active_event_id.and_then(|id| {
                 self.events
                     .get(self.active_source(), id)
@@ -9226,6 +9392,13 @@ impl RefBoxApp {
             AppState::ParameterEditorHelp(param, dur, single_half) => {
                 build_parameter_help_page(data, param, dur, single_half)
             }
+            AppState::SuddenDeathEditor(edit) => build_sudden_death_editor(
+                data,
+                edit,
+                self.edited_settings
+                    .as_ref()
+                    .map_or(&self.config.game, |s| &s.config),
+            ),
             AppState::CountdownEditor {
                 show_countdown,
                 audible_countdown,
@@ -11290,6 +11463,177 @@ impl UpdaterFailures {
     }
 }
 
+/// Whether `message` is a tap that only means something on one screen, arriving after
+/// the app has already left that screen.
+///
+/// A second tap can be delivered after the first one has moved the app on: the repeat
+/// filter in `handle_message` only drops a message equal to the one just before it, and
+/// a clock tick landing between two taps defeats it. The confirmation window closing by
+/// itself, or the end of a half bringing up the confirmation screen, has the same effect
+/// on a tap already in flight. The handlers for these messages assume their screen is up
+/// and crash when it is not, so such a tap is dropped before it reaches them.
+fn tap_outlived_its_screen(message: &Message, state: &AppState) -> bool {
+    match message {
+        Message::ScoreConfirmation { .. } => !matches!(state, AppState::ConfirmScores(_)),
+        Message::ScoreEditComplete { .. } | Message::ChangeScore { .. } => {
+            !matches!(state, AppState::ScoreEdit { .. })
+        }
+        Message::AddScoreComplete { .. } => {
+            !matches!(state, AppState::KeypadPage(KeypadPage::AddScore { .. }, _))
+        }
+        Message::TimeEditComplete { .. } => !matches!(state, AppState::TimeEdit(..)),
+        Message::KeypadButtonPress(_) | Message::SelectPlayerNumber(_) => {
+            !matches!(state, AppState::KeypadPage(..))
+        }
+        Message::ChangeColor(_) => !matches!(
+            state,
+            AppState::KeypadPage(
+                KeypadPage::AddScore { .. }
+                    | KeypadPage::Penalty(..)
+                    | KeypadPage::WarningAdd { .. }
+                    | KeypadPage::FoulAdd { .. },
+                _
+            )
+        ),
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod stale_tap_gate_tests {
+    use super::*;
+
+    fn scores() -> BlackWhiteBundle<u8> {
+        BlackWhiteBundle { black: 2, white: 1 }
+    }
+
+    fn add_goal_page() -> AppState {
+        AppState::KeypadPage(
+            KeypadPage::AddScore {
+                color: Color::Black,
+                team_score: false,
+            },
+            7,
+        )
+    }
+
+    /// The operator taps YES or NO just as the window closes by itself: the app is
+    /// already back on the main page when the tap arrives, which used to crash it.
+    #[test]
+    fn confirmation_after_the_window_closed_is_dropped() {
+        for correct in [true, false] {
+            assert!(tap_outlived_its_screen(
+                &Message::ScoreConfirmation { correct },
+                &AppState::MainPage
+            ));
+        }
+    }
+
+    /// Done on the add-goal keypad in sudden death opens the confirm screen. A late
+    /// second tap from the keypad must not act there, and a late Cancel must not pull
+    /// the operator off it while the window is still open.
+    #[test]
+    fn stale_add_goal_cancel_does_not_leave_the_confirm_screen() {
+        for canceled in [true, false] {
+            assert!(tap_outlived_its_screen(
+                &Message::AddScoreComplete { canceled },
+                &AppState::ConfirmScores(scores())
+            ));
+        }
+    }
+
+    #[test]
+    fn repeat_score_edit_done_is_dropped() {
+        let done = Message::ScoreEditComplete { canceled: false };
+        assert!(tap_outlived_its_screen(&done, &AppState::MainPage));
+        assert!(tap_outlived_its_screen(
+            &done,
+            &AppState::ConfirmScores(scores())
+        ));
+    }
+
+    #[test]
+    fn first_tap_on_its_own_screen_passes() {
+        assert!(!tap_outlived_its_screen(
+            &Message::ScoreConfirmation { correct: true },
+            &AppState::ConfirmScores(scores())
+        ));
+        assert!(!tap_outlived_its_screen(
+            &Message::ScoreEditComplete { canceled: false },
+            &AppState::ScoreEdit {
+                scores: scores(),
+                is_confirmation: true,
+            }
+        ));
+        for canceled in [true, false] {
+            assert!(!tap_outlived_its_screen(
+                &Message::AddScoreComplete { canceled },
+                &add_goal_page()
+            ));
+        }
+    }
+
+    /// The second half ends while the operator is typing a cap number or flipping +/-:
+    /// the confirmation screen takes over, and the tap already in flight lands on it.
+    #[test]
+    fn edit_taps_after_the_screen_changed_are_dropped() {
+        let confirm = AppState::ConfirmScores(scores());
+        for message in [
+            Message::ChangeScore {
+                color: Color::White,
+                increase: true,
+            },
+            Message::KeypadButtonPress(KeypadButton::One),
+            Message::SelectPlayerNumber(7),
+            Message::ChangeColor(Some(Color::White)),
+            Message::TimeEditComplete { canceled: false },
+        ] {
+            assert!(tap_outlived_its_screen(&message, &confirm), "{message:?}");
+        }
+    }
+
+    #[test]
+    fn edit_taps_on_their_own_screen_pass() {
+        let score_edit = AppState::ScoreEdit {
+            scores: scores(),
+            is_confirmation: false,
+        };
+        assert!(!tap_outlived_its_screen(
+            &Message::ChangeScore {
+                color: Color::White,
+                increase: true,
+            },
+            &score_edit
+        ));
+        for message in [
+            Message::KeypadButtonPress(KeypadButton::One),
+            Message::SelectPlayerNumber(7),
+            Message::ChangeColor(Some(Color::White)),
+        ] {
+            assert!(
+                !tap_outlived_its_screen(&message, &add_goal_page()),
+                "{message:?}"
+            );
+        }
+        assert!(!tap_outlived_its_screen(
+            &Message::TimeEditComplete { canceled: true },
+            &AppState::TimeEdit(true, Duration::from_secs(60), None)
+        ));
+    }
+
+    #[test]
+    fn other_messages_are_never_gated() {
+        assert!(!tap_outlived_its_screen(
+            &Message::NoAction,
+            &AppState::MainPage
+        ));
+        assert!(!tap_outlived_its_screen(
+            &Message::CancelTimeout,
+            &AppState::MainPage
+        ));
+    }
+}
+
 /// Decide when [`time_updater`] should next wake.
 ///
 /// - Clock stopped: `None` — await the next clock-running change.
@@ -11676,6 +12020,36 @@ mod countdown_beep_tests {
 }
 
 #[cfg(test)]
+mod period_end_sound_tests {
+    use super::period_end_sounds;
+    use uwh_common::game_snapshot::GamePeriod;
+
+    #[test]
+    fn period_end_sounds_sd() {
+        // A limited sudden death counts down to 0:00 and ends play there, like a half.
+        assert_eq!(
+            period_end_sounds(GamePeriod::SuddenDeath, true),
+            (false, true)
+        );
+        // An unlimited sudden death counts up and has no end to announce.
+        assert_eq!(
+            period_end_sounds(GamePeriod::SuddenDeath, false),
+            (false, false)
+        );
+        for sd_counts_down in [true, false] {
+            assert_eq!(
+                period_end_sounds(GamePeriod::SecondHalf, sd_counts_down),
+                (false, true)
+            );
+            assert_eq!(
+                period_end_sounds(GamePeriod::PreSuddenDeath, sd_counts_down),
+                (true, false)
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod submission_gate_tests {
     use super::recorded_result_matches_ended_game;
 
@@ -11969,6 +12343,40 @@ mod time_edit_changes_tests {
 }
 
 #[cfg(test)]
+mod side_exit_resumes_clock_tests {
+    use super::side_exit_resumes_clock;
+
+    #[test]
+    fn side_exit_resumes_clock_when_it_was_running() {
+        // The Portal health tile, opened from TIME EDIT on a running game.
+        assert!(side_exit_resumes_clock(true, false, false, false));
+    }
+
+    #[test]
+    fn side_exit_resumes_clock_not_when_opened_stopped() {
+        assert!(!side_exit_resumes_clock(false, false, false, false));
+    }
+
+    #[test]
+    fn side_exit_resumes_clock_not_after_apply_or_cancel() {
+        // APPLY / CANCEL resume it themselves; on a parked court their start is
+        // refused, and it must not be tried a second time.
+        assert!(!side_exit_resumes_clock(true, true, false, false));
+    }
+
+    #[test]
+    fn side_exit_resumes_clock_not_while_a_score_confirmation_is_pending() {
+        // END TIMEOUT that ends the game: the confirm flow owns the clock.
+        assert!(!side_exit_resumes_clock(true, false, false, true));
+    }
+
+    #[test]
+    fn side_exit_resumes_clock_not_when_already_running() {
+        assert!(!side_exit_resumes_clock(true, false, true, false));
+    }
+}
+
+#[cfg(test)]
 mod schedule_reply_action_tests {
     use super::{ScheduleReplyAction, schedule_reply_action};
 
@@ -12198,6 +12606,7 @@ mod court_schedule_for_tests {
             pre_sudden_death_duration: Duration::from_secs(60),
             minimum_break: Duration::from_secs(240),
             game_block: None,
+            sudden_death_max_duration: None,
         }
     }
 

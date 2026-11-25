@@ -38,7 +38,7 @@ pub(in super::super) fn build_portal_detail_page<'a>(
     let ViewData {
         snapshot,
         mode,
-        clock_running,
+        clock,
         portal_indicator,
         ..
     } = data;
@@ -105,15 +105,7 @@ pub(in super::super) fn build_portal_detail_page<'a>(
         .style(blue_button);
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator,
-            None,
-        ),
+        make_game_time_button(snapshot, false, false, mode, clock, portal_indicator, None,),
         list,
         row![back, horizontal_space(), retry_all,]
             .spacing(SPACING)

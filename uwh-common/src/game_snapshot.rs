@@ -207,10 +207,21 @@ impl GamePeriod {
         }
     }
 
+    /// Whether this period's clock counts up rather than down. Only a sudden death with
+    /// no maximum time counts up; a sudden death with a maximum counts down from it.
+    #[cfg(feature = "std")]
+    pub fn counts_up(self, config: &Game) -> bool {
+        match self {
+            Self::SuddenDeath => config.sudden_death_limit().is_none(),
+            _ => false,
+        }
+    }
+
     #[cfg(feature = "std")]
     pub fn duration(self, config: &Game) -> Option<Duration> {
         match self {
-            Self::BetweenGames | Self::SuddenDeath => None,
+            Self::BetweenGames => None,
+            Self::SuddenDeath => config.sudden_death_limit(),
             Self::FirstHalf | Self::SecondHalf => Some(config.half_play_duration),
             Self::HalfTime => Some(config.half_time_duration),
             Self::PreOvertime => Some(config.pre_overtime_break),
@@ -236,12 +247,24 @@ impl GamePeriod {
             | p @ Self::PreSuddenDeath => p
                 .duration(config)
                 .and_then(|d| d.try_into().ok().map(|sd: SignedDuration| sd - time)),
-            Self::SuddenDeath => time.try_into().ok(),
+            Self::SuddenDeath => {
+                if self.counts_up(config) {
+                    time.try_into().ok()
+                } else {
+                    self.duration(config)
+                        .and_then(|d| d.try_into().ok().map(|sd: SignedDuration| sd - time))
+                }
+            }
         }
     }
 
     #[cfg(feature = "std")]
-    pub fn time_between(self, start: SignedDuration, end: SignedDuration) -> SignedDuration {
+    pub fn time_between(
+        self,
+        start: SignedDuration,
+        end: SignedDuration,
+        config: &Game,
+    ) -> SignedDuration {
         match self {
             Self::BetweenGames
             | Self::FirstHalf
@@ -252,7 +275,13 @@ impl GamePeriod {
             | Self::OvertimeHalfTime
             | Self::OvertimeSecondHalf
             | Self::PreSuddenDeath => start - end,
-            Self::SuddenDeath => end - start,
+            Self::SuddenDeath => {
+                if self.counts_up(config) {
+                    end - start
+                } else {
+                    start - end
+                }
+            }
         }
     }
 
@@ -315,7 +344,13 @@ impl GamePeriod {
                     None
                 }
             }
-            Self::SuddenDeath => None,
+            Self::SuddenDeath => {
+                if config.sudden_death_allowed {
+                    config.sudden_death_limit()
+                } else {
+                    None
+                }
+            }
         }
     }
 }
@@ -981,28 +1016,111 @@ mod test {
 
     #[test]
     fn test_period_time_between() {
+        let config = Game::default();
         let mut period = GamePeriod::BetweenGames;
         while period != GamePeriod::SuddenDeath {
             assert_eq!(
-                period.time_between(SignedDuration::seconds(6), SignedDuration::seconds(2)),
+                period.time_between(
+                    SignedDuration::seconds(6),
+                    SignedDuration::seconds(2),
+                    &config
+                ),
                 SignedDuration::seconds(4)
             );
             assert_eq!(
-                period.time_between(SignedDuration::seconds(6), SignedDuration::seconds(10)),
+                period.time_between(
+                    SignedDuration::seconds(6),
+                    SignedDuration::seconds(10),
+                    &config
+                ),
                 SignedDuration::seconds(-4)
             );
             period = period.next_period().unwrap();
         }
         assert_eq!(
-            GamePeriod::SuddenDeath
-                .time_between(SignedDuration::seconds(6), SignedDuration::seconds(2)),
+            GamePeriod::SuddenDeath.time_between(
+                SignedDuration::seconds(6),
+                SignedDuration::seconds(2),
+                &config
+            ),
             SignedDuration::seconds(-4)
         );
         assert_eq!(
-            GamePeriod::SuddenDeath
-                .time_between(SignedDuration::seconds(6), SignedDuration::seconds(10)),
+            GamePeriod::SuddenDeath.time_between(
+                SignedDuration::seconds(6),
+                SignedDuration::seconds(10),
+                &config
+            ),
             SignedDuration::seconds(4)
         );
+    }
+
+    #[test]
+    fn sd_with_limit_counts_down() {
+        let config = Game {
+            sudden_death_max: Some(Duration::from_secs(300)),
+            sudden_death_allowed: true,
+            ..Default::default()
+        };
+
+        assert!(!GamePeriod::SuddenDeath.counts_up(&config));
+        assert_eq!(
+            GamePeriod::SuddenDeath.duration(&config),
+            Some(Duration::from_secs(300))
+        );
+        assert_eq!(
+            GamePeriod::SuddenDeath.time_elapsed_at(Duration::from_secs(280), &config),
+            Some(SignedDuration::seconds(20))
+        );
+        assert_eq!(
+            GamePeriod::SuddenDeath.time_between(
+                SignedDuration::seconds(6),
+                SignedDuration::seconds(2),
+                &config
+            ),
+            SignedDuration::seconds(4)
+        );
+        assert_eq!(
+            GamePeriod::PreSuddenDeath.next_period_dur(&config),
+            Some(Duration::from_secs(300))
+        );
+    }
+
+    #[test]
+    fn sd_without_limit_unchanged() {
+        for max in [None, Some(Duration::ZERO)] {
+            let config = Game {
+                sudden_death_max: max,
+                sudden_death_allowed: true,
+                ..Default::default()
+            };
+
+            assert!(GamePeriod::SuddenDeath.counts_up(&config), "max {max:?}");
+            assert_eq!(
+                GamePeriod::SuddenDeath.duration(&config),
+                None,
+                "max {max:?}"
+            );
+            assert_eq!(
+                GamePeriod::SuddenDeath.time_elapsed_at(Duration::from_secs(3), &config),
+                Some(SignedDuration::seconds(3)),
+                "max {max:?}"
+            );
+            assert_eq!(
+                GamePeriod::SuddenDeath.time_between(
+                    SignedDuration::seconds(6),
+                    SignedDuration::seconds(10),
+                    &config
+                ),
+                SignedDuration::seconds(4),
+                "max {max:?}"
+            );
+            assert_eq!(
+                GamePeriod::PreSuddenDeath.next_period_dur(&config),
+                None,
+                "max {max:?}"
+            );
+        }
     }
 
     #[test]

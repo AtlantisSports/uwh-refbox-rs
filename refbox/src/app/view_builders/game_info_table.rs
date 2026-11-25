@@ -158,9 +158,13 @@ pub(in super::super) fn game_info_rows(
     });
     rows.push(Row::SettingPair {
         left: SettingCell::active(fl!("gi-overtime"), bool_string(config.overtime_allowed)),
+        // One value for the narrow column: NO, YES, or the maximum time alone.
         right: SettingCell::active(
             fl!("gi-sudden-death"),
-            bool_string(config.sudden_death_allowed),
+            match (config.sudden_death_allowed, config.sudden_death_limit()) {
+                (true, Some(max)) => time_string(max),
+                (allowed, _) => bool_string(allowed),
+            },
         ),
     });
     rows.push(Row::SettingPair {
@@ -862,6 +866,54 @@ mod tests {
         );
         // Fixed pairing preserved: Overtime stays beside Sudden Death.
         assert!(setting_pairs(&rows).contains(&(fl!("gi-overtime"), fl!("gi-sudden-death"))));
+    }
+
+    #[test]
+    fn game_info_shows_sd_max() {
+        // One value in the narrow column: the time alone, never a MAX word.
+        let snapshot = GameSnapshot {
+            next_game_number: "2".to_string(),
+            ..Default::default()
+        };
+        let sd_value = |config: &GameConfig| {
+            let rows = game_info_rows(
+                &snapshot,
+                config,
+                config.game_block,
+                false,
+                None,
+                None,
+                None,
+            );
+            rows.iter()
+                .find_map(|r| match r {
+                    Row::SettingPair { right, .. } if right.label == fl!("gi-sudden-death") => {
+                        Some(right.value.clone())
+                    }
+                    _ => None,
+                })
+                .expect("the sudden death cell is always present")
+        };
+        let five_minutes = std::time::Duration::from_secs(300);
+
+        let with_max = GameConfig {
+            sudden_death_max: Some(five_minutes),
+            ..cfg_all_on()
+        };
+        assert_eq!(sd_value(&with_max), time_string(five_minutes));
+
+        let no_max = GameConfig {
+            sudden_death_max: None,
+            ..cfg_all_on()
+        };
+        assert_eq!(sd_value(&no_max), bool_string(true));
+
+        let not_allowed = GameConfig {
+            sudden_death_allowed: false,
+            sudden_death_max: Some(five_minutes),
+            ..cfg_all_on()
+        };
+        assert_eq!(sd_value(&not_allowed), bool_string(false));
     }
 
     #[test]

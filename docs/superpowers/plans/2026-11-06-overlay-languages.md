@@ -1,7 +1,7 @@
 # Overlay: English, Spanish and French, set in the overlay's own settings
 
-**Status:** built. The organiser verified an earlier build with the refbox (2026-11-06); the
-2026-11-25 rework (no `follow-refbox`, see Deviations) has not been re-walked yet.
+**Status:** built and walked by the organiser (2026-11-25). Open before merge: the boxes widen
+from the centre to fit each word, and abbreviations are written out (see Deviations).
 **Crates:** `overlay` only (translations and the setting). No change to `uwh-common`, the refbox,
 `overlay-bridge`, the LED panel, the wireless remote or Stream Manager, and no wire format change.
 **Process:** lean (the overlay's wording and one setting).
@@ -84,8 +84,8 @@ left to the separate foul-names change.
 
 ## Deviations
 
-- **Status:** built 2026-11-06 and verified by the organiser; that check predates the 2026-11-25
-  ruling below, so the current build still needs its walk.
+- **Status:** built 2026-11-06 and verified by the organiser; after the 2026-11-25 ruling below it
+  was walked again the same day in English, Spanish and French.
 - **Words not in the original list:** "GAME" (in "GAME #12") and the fallback team names
   BLACK / WHITE shown when the schedule gives no names (translated only while they are the
   fallback; real team names never are).
@@ -106,3 +106,9 @@ left to the separate foul-names change.
 - PO ruling 2026-11-25: the overlay does not follow the refbox's language (a referee's terminal
   must not change the broadcast); `follow-refbox` and the snapshot's `language` field were
   dropped. A language picker on the overlay-bridge status page may follow as its own PR.
+- PO rulings 2026-11-25, from the walk (open, for Cagatay, on this PR before it merges): a box
+  whose word is longer than the English widens from its centre to fit, keeping its curved ends
+  (never stretched, never shrinking the word); and abbreviations are avoided wherever possible
+  ("TIEMPO MUERTO", not "T. MUERTO"). Seen on the walk: "PRÓXIMO PARTIDO" runs onto the edges of
+  the next-game box. Abbreviations today: "T. MUERTO", "DESC. PRÓRROGA", "PRE M. SÚBITA",
+  "PROLONG. 1/2", "EXP. DÉF.".

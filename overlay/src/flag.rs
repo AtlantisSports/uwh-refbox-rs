@@ -503,10 +503,9 @@ impl Renderer {
                 flag_type: Type::Penalty(color, _, is_visited),
                 ..
             } = flag
+                && *color == team_color
             {
-                if *color == team_color {
-                    *is_visited = false;
-                }
+                *is_visited = false;
             }
         }
 

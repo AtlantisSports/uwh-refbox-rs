@@ -123,4 +123,18 @@ Branch: `fix/refbox/ignore-taps-at-zero`, own worktree, off a fresh `origin/mast
 
 ## Deviations
 
-(none yet)
+- **Two more taps on the list** (Step 1 audit): `WarningEditComplete` and `FoulEditComplete`.
+  Quick-adding a warning or foul from the main page calls `add_warning`/`add_foul` at
+  `Instant::now()` and unwraps their `InvalidNowValue` error in the gap.
+- **Test setup:** the tests use the default half length (start a real first half with
+  `start_play_now`) rather than a 1 s clock; the confirm-pause test plays through half time,
+  because `pause_for_confirm` treats a first-half pause as unreachable.
+- **Code review (2026-11-25) found two more crashes in the same class**, now fixed:
+  1. A team timeout's or rugby penalty shot's own countdown past 0:00 has no reading either;
+     TIME EDIT / STOP then failed in `stop_clock`. The gate now also fires when a timeout is
+     active and its clock has no reading. This needed a read-only engine accessor,
+     `TournamentManager::timeout_is_active()` — no change to any game-clock rule.
+  2. The 3-second revive hold on a used-up team timeout is a timer, not a tap, so the gate
+     leaves it alone; its handler unwrapped the snapshot. The revive step moved into
+     `revive_at()` and the handler now skips a missing snapshot with a warning (the next
+     clock tick redraws the screen).

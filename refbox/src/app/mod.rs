@@ -8609,17 +8609,22 @@ impl RefBoxApp {
                 ) {
                     return Task::none();
                 }
-                let mut tm = self.tm.lock();
-                let now = Instant::now();
-                if tm.revive_team_timeout(color).is_err() {
-                    // State moved on during the hold (e.g. half ended); nothing to do.
-                    std::mem::drop(tm);
-                    self.timeout_revive = None;
-                    return Task::none();
-                }
-                let snapshot = tm.generate_snapshot(now).unwrap();
-                std::mem::drop(tm);
-                let apply_task = self.apply_snapshot(snapshot);
+                let result = revive_at(&mut self.tm.lock(), color, Instant::now());
+                let apply_task = match result {
+                    ReviveResult::Refused => {
+                        // State moved on during the hold (e.g. half ended); nothing to do.
+                        self.timeout_revive = None;
+                        return Task::none();
+                    }
+                    ReviveResult::Revived(Some(snapshot)) => self.apply_snapshot(*snapshot),
+                    ReviveResult::Revived(None) => {
+                        warn!(
+                            "Revived a {color} team timeout in the gap after 0:00; \
+                             the next clock tick redraws the screen"
+                        );
+                        Task::none()
+                    }
+                };
                 // Enter the "restored, hold to keep showing" state. It has no timer:
                 // it persists until the finger is lifted, and release confirms the restore.
                 // The token is still bumped so any stray in-flight hold timer is ignored;
@@ -11538,12 +11543,34 @@ fn tap_reads_the_live_clock(message: &Message) -> bool {
     )
 }
 
-/// True when `message` is a tap that reads the live clock and the game clock has no
-/// reading at `now`: it ran past 0:00 and the engine has not moved on yet. The PO's
-/// ruling is to ignore such a tap, as if it came a moment late; the operator taps
-/// again if it is still wanted.
+/// True when `message` is a tap that reads the live clock and a running countdown has
+/// no reading at `now`: the game clock, or a team timeout's or rugby penalty shot's own
+/// clock, ran past 0:00 and the engine has not moved on yet. The PO's ruling is to
+/// ignore such a tap, as if it came a moment late; the operator taps again if it is
+/// still wanted.
 fn tap_lands_in_the_zero_gap(message: &Message, tm: &TournamentManager, now: Instant) -> bool {
-    tap_reads_the_live_clock(message) && tm.game_clock_time(now).is_none()
+    tap_reads_the_live_clock(message)
+        && (tm.game_clock_time(now).is_none()
+            || (tm.timeout_is_active() && tm.timeout_clock_time(now).is_none()))
+}
+
+/// What a finished 3-second revive hold did to the engine.
+#[derive(Debug, PartialEq)]
+enum ReviveResult {
+    /// Reviving no longer applies (the half ended, or a timeout started, during the hold).
+    Refused,
+    /// The timeout was given back. The snapshot is `None` when the hold ended in the gap
+    /// just after 0:00; the next clock tick redraws the screen.
+    Revived(Option<Box<GameSnapshot>>),
+}
+
+/// The engine side of a finished revive hold. The hold is a timer, not a tap, so the
+/// zero-gap gate leaves it alone and this must not assume the clock has a reading.
+fn revive_at(tm: &mut TournamentManager, color: Color, now: Instant) -> ReviveResult {
+    if tm.revive_team_timeout(color).is_err() {
+        return ReviveResult::Refused;
+    }
+    ReviveResult::Revived(tm.generate_snapshot(now).map(Box::new))
 }
 
 #[cfg(test)]
@@ -11678,6 +11705,7 @@ mod zero_gap_gate_tests {
             Message::StartClock,
             Message::KeypadButtonPress(KeypadButton::One),
             Message::NoAction,
+            Message::TimeUpdaterStarted(mpsc::channel(1).0),
         ];
         for message in background {
             assert!(
@@ -11712,6 +11740,109 @@ mod zero_gap_gate_tests {
             tm.start_ref_timeout(now),
             Err(TournamentManagerError::NeedsUpdate)
         ));
+    }
+
+    /// A team timeout's own countdown has a gap of its own: past 0:00 it has no
+    /// reading until the updater ends the timeout, and TIME EDIT then failed on
+    /// `stop_clock(now).unwrap()`.
+    #[test]
+    fn a_tap_as_a_team_timeout_runs_out_is_ignored() {
+        let t0 = Instant::now();
+        let (mut tm, _rx) = running_half(t0);
+        let started = t0 + Duration::from_secs(1);
+        tm.start_team_timeout(Color::Black, started).unwrap();
+        let ends = started + GameConfig::default().team_timeout_duration;
+        let past = ends + Duration::from_millis(3);
+        assert!(matches!(
+            tm.stop_clock(past),
+            Err(TournamentManagerError::NeedsUpdate)
+        ));
+        for message in [Message::EditTime, Message::StopClock] {
+            assert!(
+                tap_lands_in_the_zero_gap(&message, &tm, past),
+                "{message:?}"
+            );
+            assert!(
+                !tap_lands_in_the_zero_gap(&message, &tm, ends - Duration::from_millis(500)),
+                "{message:?}"
+            );
+        }
+    }
+
+    /// A rugby penalty shot counts down beside a running game clock.
+    #[test]
+    fn a_tap_as_a_rugby_penalty_shot_runs_out_is_ignored() {
+        let t0 = Instant::now();
+        let (mut tm, _rx) = running_half(t0);
+        let started = t0 + Duration::from_secs(1);
+        tm.start_rugby_penalty_shot(started).unwrap();
+        let past = started + GameConfig::default().penalty_shot_duration + Duration::from_millis(3);
+        assert!(tm.game_clock_time(past).is_some());
+        assert!(tap_lands_in_the_zero_gap(&Message::StopClock, &tm, past));
+    }
+
+    /// A ref timeout counts up, so it never runs out: no gap.
+    #[test]
+    fn a_tap_during_a_ref_timeout_goes_through() {
+        let t0 = Instant::now();
+        let (mut tm, _rx) = running_half(t0);
+        tm.start_ref_timeout(t0 + Duration::from_secs(1)).unwrap();
+        let much_later = t0 + Duration::from_secs(60 * 60);
+        assert!(!tap_lands_in_the_zero_gap(
+            &Message::EditTime,
+            &tm,
+            much_later
+        ));
+    }
+
+    /// A half whose team (Black) has used its timeouts, so a revive hold applies.
+    /// Returns the engine and an instant just past the half's 0:00.
+    fn used_timeout_half(t0: Instant) -> (TournamentManager, watch::Receiver<bool>, Instant) {
+        let (mut tm, rx) = running_half(t0);
+        let config = GameConfig::default();
+        for i in 0..u64::from(config.num_team_timeouts_allowed) {
+            tm.start_team_timeout(Color::Black, t0 + Duration::from_secs(2 * i + 1))
+                .unwrap();
+            tm.end_timeout(t0 + Duration::from_secs(2 * i + 2)).unwrap();
+        }
+        assert!(tm.can_revive_team_timeout(Color::Black).is_ok());
+        let mut past = t0 + config.half_play_duration;
+        while tm.game_clock_time(past).is_some() {
+            past += Duration::from_millis(1);
+        }
+        (tm, rx, past)
+    }
+
+    /// The 3-second revive hold is a timer, not a tap, so the gate leaves it alone;
+    /// its own handler must cope with the gap instead of unwrapping the snapshot.
+    #[test]
+    fn a_revive_hold_ending_in_the_gap_does_not_crash() {
+        let t0 = Instant::now();
+        let (mut tm, _rx, past) = used_timeout_half(t0);
+        assert_eq!(
+            revive_at(&mut tm, Color::Black, past),
+            ReviveResult::Revived(None)
+        );
+    }
+
+    #[test]
+    fn a_revive_hold_before_zero_gives_a_snapshot() {
+        let t0 = Instant::now();
+        let (mut tm, _rx, _past) = used_timeout_half(t0);
+        assert!(matches!(
+            revive_at(&mut tm, Color::Black, t0 + Duration::from_secs(10)),
+            ReviveResult::Revived(Some(_))
+        ));
+    }
+
+    #[test]
+    fn a_revive_hold_that_no_longer_applies_is_refused() {
+        let t0 = Instant::now();
+        let (mut tm, _rx) = running_half(t0);
+        assert_eq!(
+            revive_at(&mut tm, Color::Black, t0 + Duration::from_secs(10)),
+            ReviveResult::Refused
+        );
     }
 }
 

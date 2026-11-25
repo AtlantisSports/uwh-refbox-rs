@@ -3731,6 +3731,11 @@ impl TournamentManager {
         }
     }
 
+    /// Whether any timeout (team, ref, penalty shot) is in progress. Read-only.
+    pub fn timeout_is_active(&self) -> bool {
+        self.timeout_state.is_some()
+    }
+
     pub fn in_score_confirm_pause(&self) -> bool {
         self.time_pause_confirmation.is_some()
     }

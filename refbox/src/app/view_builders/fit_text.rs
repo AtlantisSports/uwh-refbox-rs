@@ -133,6 +133,14 @@ fn best_split(measure: impl Fn(&str) -> f32, line: &str) -> Option<(String, Stri
     best.map(|(_, first, second)| (first.to_string(), second.to_string()))
 }
 
+/// Height of `lines` lines of text at `size`, or `0.0` for none.
+fn text_height(lines: usize, size: f32) -> f32 {
+    if lines == 0 {
+        return 0.0;
+    }
+    (lines - 1) as f32 * LineHeight::default().to_absolute(Pixels(size)).0 + size
+}
+
 /// Picks how to lay a label out: which arrangement of lines, and at what size.
 ///
 /// `line_sets` is ordered fewest-lines-first, and `candidates` largest-size
@@ -140,26 +148,40 @@ fn best_split(measure: impl Fn(&str) -> f32, line: &str) -> Option<(String, Stri
 /// full size gets two lines at full size rather than one shrunken line — which
 /// is what an operator actually wants to read across a pool deck.
 ///
+/// An arrangement of several lines also has to fit `max_height`, so a split that
+/// would push its letters out of the box is not taken.
+///
 /// When nothing fits, the arrangement with the most lines is returned at the
-/// smallest size: the least-bad way to show a label that is simply too long.
+/// smallest size, the least-bad way to show a label that is simply too long --
+/// unless even that is too tall at the floor, when the first (fewest-lines)
+/// arrangement is returned instead.
 fn fit_layout(
     measure: impl Fn(&str, f32) -> f32,
     max_width: f32,
+    max_height: f32,
     candidates: &[f32],
     line_sets: &[Vec<String>],
 ) -> (usize, f32) {
     for &size in candidates {
         for (index, lines) in line_sets.iter().enumerate() {
-            if lines.iter().all(|line| measure(line, size) <= max_width) {
+            // Several lines must also fit the height. One line is never rejected
+            // for height: that keeps today's answer for every label that is not
+            // split, so only a split can change.
+            let tall_enough = lines.len() <= 1 || text_height(lines.len(), size) <= max_height;
+            if tall_enough && lines.iter().all(|line| measure(line, size) <= max_width) {
                 return (index, size);
             }
         }
     }
 
-    (
-        line_sets.len().saturating_sub(1),
-        candidates.last().copied().unwrap_or(MIN_FIT_TEXT),
-    )
+    let floor = candidates.last().copied().unwrap_or(MIN_FIT_TEXT);
+    let last = line_sets.len().saturating_sub(1);
+    let most_lines = line_sets.get(last).map_or(0, Vec::len);
+    if most_lines <= 1 || text_height(most_lines, floor) <= max_height {
+        (last, floor)
+    } else {
+        (0, floor)
+    }
 }
 
 /// Where a line of `line_width` starts inside a box of `box_width`.
@@ -185,6 +207,7 @@ fn line_left(align: Horizontal, box_width: f32, line_width: f32) -> f32 {
 fn shared_start(
     measure: impl Fn(&str, f32) -> f32,
     max_width: f32,
+    max_height: f32,
     candidates: &[f32],
     shared: &[String],
     wrap: bool,
@@ -197,9 +220,10 @@ fn shared_start(
         if measure(line, size) <= max_width {
             return true;
         }
-        wrap && best_split(|part| measure(part, size), line).is_some_and(|(first, second)| {
-            measure(&first, size).max(measure(&second, size)) <= max_width
-        })
+        wrap && text_height(2, size) <= max_height
+            && best_split(|part| measure(part, size), line).is_some_and(|(first, second)| {
+                measure(&first, size).max(measure(&second, size)) <= max_width
+            })
     };
 
     candidates
@@ -230,10 +254,12 @@ fn shared_width(
     shared: &[String],
     wrap: bool,
     max_width: f32,
+    max_height: f32,
 ) -> f32 {
     let drawn = |line: &str| -> f32 {
         let whole = measure(line, size);
-        if !wrap || whole <= max_width {
+        // A split too tall for the box is not drawn, so it reserves nothing.
+        if !wrap || whole <= max_width || text_height(2, size) > max_height {
             return whole;
         }
         best_split(|part| measure(part, size), line)
@@ -422,6 +448,9 @@ struct CacheKey {
     lines: Vec<String>,
     shared: Vec<String>,
     available_width: f32,
+    /// Height matters too: a split is only taken when its lines fit it, and a
+    /// window resize can change the height alone.
+    available_height: f32,
     max_size: f32,
     /// Whether the shared strings are being reserved room, which only a
     /// `Shrink` box can use. Part of the key so a caller that changes its width
@@ -478,6 +507,7 @@ where
             lines: self.lines.iter().map(|line| line.to_string()).collect(),
             shared: self.shared.clone(),
             available_width: available.width,
+            available_height: available.height,
             max_size,
             // `limits.resolve` ignores the intrinsic width of a `Fill` or
             // `Fixed` box, so reserving room for a string it is not drawing
@@ -521,7 +551,14 @@ where
             // fits, so related readouts settle on one size rather than each
             // fitting alone.
             let ladder = size_ladder(max_size, self.min_size);
-            let start = shared_start(measure, available.width, &ladder, &key.shared, self.wrap);
+            let start = shared_start(
+                measure,
+                available.width,
+                available.height,
+                &ladder,
+                &key.shared,
+                self.wrap,
+            );
 
             // Room to hold every value this label may be asked to show, taken
             // at the size they all fit rather than at the size finally chosen,
@@ -538,6 +575,7 @@ where
                     &key.shared,
                     key.wrap,
                     available.width,
+                    available.height,
                 )
                 .min(available.width)
             } else {
@@ -562,7 +600,35 @@ where
             // not, and the fix for the real defect is a cap that matches what
             // the app can generate.
             let fit_width = if reserving { reserved } else { available.width };
-            let (index, size) = fit_layout(measure, fit_width, &ladder[start..], &line_sets);
+            let (index, size) = fit_layout(
+                measure,
+                fit_width,
+                available.height,
+                &ladder[start..],
+                &line_sets,
+            );
+
+            // Say so when the height check changed the answer, so a walk can
+            // list every place it acted.
+            let unchecked = fit_layout(
+                measure,
+                fit_width,
+                f32::INFINITY,
+                &ladder[start..],
+                &line_sets,
+            );
+            if unchecked != (index, size) {
+                log::debug!(
+                    "fit_text: {:?} -> {} line(s) at {size}px instead of {} line(s) at {}px \
+                     in a {} x {} box",
+                    key.lines,
+                    line_sets[index].len(),
+                    line_sets[unchecked.0].len(),
+                    unchecked.1,
+                    available.width,
+                    available.height,
+                );
+            }
 
             state.lines = line_sets.swap_remove(index);
             state.chosen = size;
@@ -626,7 +692,9 @@ where
         // wrappers used to. Two lines at the default size are a couple of pixels
         // taller than the inside of a button, so this offset can go slightly
         // negative — matching what the old layout did rather than shifting the
-        // text down.
+        // text down. That overflow is the blank spacing below the last line, not
+        // its letters: `fit_layout` has already checked that the letters fit
+        // the height, which is what the split used to skip.
         let top = (bounds.height - block_height) / 2.0;
 
         let children = line_widths
@@ -718,6 +786,140 @@ mod tests {
         vec![vec![line.to_string()]]
     }
 
+    fn split_sets() -> Vec<Vec<String>> {
+        vec![
+            vec!["1/HALF".to_string()],
+            vec!["1/".to_string(), "HALF".to_string()],
+        ]
+    }
+
+    #[test]
+    fn text_height_of_one_line_is_its_size() {
+        assert_eq!(text_height(1, 29.0), 29.0);
+        assert_eq!(text_height(0, 29.0), 0.0);
+    }
+
+    #[test]
+    fn text_height_of_two_lines_adds_one_line_height() {
+        assert_eq!(
+            text_height(2, 29.0),
+            LineHeight::default().to_absolute(Pixels(29.0)).0 + 29.0
+        );
+    }
+
+    #[test]
+    fn two_lines_too_tall_fall_back_to_one_smaller_line() {
+        // One line "1/HALF" is 3 * size wide and fits 60 at 20. Two lines fit the
+        // width at 29 but are 2.3 * size tall, over 40 for every size >= 19.
+        assert_eq!(
+            fit_layout(ruler, 60.0, 40.0, &candidates(), &split_sets()),
+            (0, 20.0)
+        );
+    }
+
+    #[test]
+    fn two_lines_that_fit_the_height_still_win() {
+        assert_eq!(
+            fit_layout(ruler, 60.0, 100.0, &candidates(), &split_sets()),
+            (1, 29.0)
+        );
+    }
+
+    #[test]
+    fn a_single_line_is_never_rejected_for_height() {
+        assert_eq!(
+            fit_layout(ruler, 100.0, 1.0, &candidates(), &one("ABCD")),
+            (0, 29.0)
+        );
+    }
+
+    #[test]
+    fn an_unbounded_height_changes_nothing() {
+        let sets = vec![
+            vec!["JETZT STARTEN".to_string()],
+            vec!["JETZT".to_string(), "STARTEN".to_string()],
+        ];
+        assert_eq!(
+            fit_layout(ruler, 100.0, f32::INFINITY, &candidates(), &sets),
+            (1, 28.0)
+        );
+    }
+
+    #[test]
+    fn nothing_fits_and_two_lines_are_too_tall_gives_one_line_at_the_floor() {
+        assert_eq!(
+            fit_layout(ruler, 10.0, 10.0, &candidates(), &split_sets()),
+            (0, MIN_FIT_TEXT)
+        );
+    }
+
+    #[test]
+    fn nothing_fits_but_two_lines_fit_the_height_keeps_two_lines() {
+        assert_eq!(
+            fit_layout(ruler, 10.0, 1000.0, &candidates(), &split_sets()),
+            (1, MIN_FIT_TEXT)
+        );
+    }
+
+    #[test]
+    fn default_two_line_button_label_still_splits() {
+        use crate::app::theme::PADDING;
+        // The inside of an 89px button, less the padding either side.
+        let height = 89.0 - 2.0 * PADDING;
+        assert_eq!(height, 73.0);
+        let sets = vec![
+            vec!["BLACK TIMEOUT".to_string()],
+            vec!["BLACK".to_string(), "TIMEOUT".to_string()],
+        ];
+        assert_eq!(
+            fit_layout(ruler, 110.0, height, &candidates(), &sets),
+            (1, 29.0)
+        );
+    }
+
+    #[test]
+    fn the_team_timeouts_tile_from_the_screenshot_is_not_split_at_38() {
+        // One line needs 3 * s <= 80, so s <= 26. Two lines need 2.3 * s <= 64,
+        // so s <= 27. At 38 the split was accepted and its letters were cut off.
+        assert_eq!(
+            fit_layout(
+                ruler,
+                80.0,
+                64.0,
+                &size_ladder(38.0, MIN_FIT_TEXT),
+                &split_sets()
+            ),
+            (1, 27.0)
+        );
+    }
+
+    #[test]
+    fn shared_start_does_not_count_a_split_that_is_too_tall() {
+        // "AB CD EF" is 8 characters: 4 * size on one line, 2.5 * size split.
+        // In 60px wide it fits split from 24 down but one line only from 15.
+        let shared = vec!["AB CD EF".to_string()];
+        let ladder = candidates();
+        let tall = shared_start(ruler, 60.0, f32::INFINITY, &ladder, &shared, true);
+        let short = shared_start(ruler, 60.0, 10.0, &ladder, &shared, true);
+        assert!(ladder[tall] > ladder[short]);
+        assert_eq!(
+            short,
+            shared_start(ruler, 60.0, f32::INFINITY, &ladder, &shared, false)
+        );
+    }
+
+    #[test]
+    fn shared_width_does_not_reserve_a_split_that_is_too_tall() {
+        let shared = vec!["AB CD EF".to_string()];
+        // Not room for one line in 60, so it would be split and reserve 50 ...
+        assert_eq!(
+            shared_width(ruler, 20.0, &shared, true, 60.0, f32::INFINITY),
+            50.0
+        );
+        // ... but the split is too tall for 10, so the whole line is reserved.
+        assert_eq!(shared_width(ruler, 20.0, &shared, true, 60.0, 10.0), 80.0);
+    }
+
     #[test]
     fn ladder_runs_from_the_starting_size_down_to_the_floor() {
         let ladder = size_ladder(29.0, MIN_FIT_TEXT);
@@ -735,7 +937,7 @@ mod tests {
     fn keeps_the_largest_size_when_the_label_already_fits() {
         // 4 characters at 29px is 58 wide, comfortably inside 100.
         assert_eq!(
-            fit_layout(ruler, 100.0, &candidates(), &one("ABCD")),
+            fit_layout(ruler, 100.0, f32::INFINITY, &candidates(), &one("ABCD")),
             (0, 29.0)
         );
     }
@@ -746,7 +948,7 @@ mod tests {
         // 25 is distinct from both 29 (the maximum) and 19 (the floor), so a
         // pass here cannot be confused with "fell back to a default".
         assert_eq!(
-            fit_layout(ruler, 100.0, &candidates(), &one("ABCDEFGH")),
+            fit_layout(ruler, 100.0, f32::INFINITY, &candidates(), &one("ABCDEFGH")),
             (0, 25.0)
         );
     }
@@ -755,7 +957,7 @@ mod tests {
     fn a_label_exactly_as_wide_as_the_space_counts_as_fitting() {
         // 8 characters at 26px is 104 exactly; at 27px it is 108 and does not.
         assert_eq!(
-            fit_layout(ruler, 104.0, &candidates(), &one("ABCDEFGH")),
+            fit_layout(ruler, 104.0, f32::INFINITY, &candidates(), &one("ABCDEFGH")),
             (0, 26.0)
         );
     }
@@ -763,14 +965,17 @@ mod tests {
     #[test]
     fn returns_the_floor_when_nothing_fits() {
         assert_eq!(
-            fit_layout(ruler, 10.0, &candidates(), &one("ABCDEFGH")),
+            fit_layout(ruler, 10.0, f32::INFINITY, &candidates(), &one("ABCDEFGH")),
             (0, MIN_FIT_TEXT)
         );
     }
 
     #[test]
     fn an_empty_label_keeps_the_full_size() {
-        assert_eq!(fit_layout(ruler, 100.0, &candidates(), &one("")), (0, 29.0));
+        assert_eq!(
+            fit_layout(ruler, 100.0, f32::INFINITY, &candidates(), &one("")),
+            (0, 29.0)
+        );
     }
 
     #[test]
@@ -778,7 +983,7 @@ mod tests {
         // Happens transiently while a window is being laid out; it corrects
         // itself on the next pass.
         assert_eq!(
-            fit_layout(ruler, 0.0, &candidates(), &one("AB")),
+            fit_layout(ruler, 0.0, f32::INFINITY, &candidates(), &one("AB")),
             (0, MIN_FIT_TEXT)
         );
     }
@@ -788,7 +993,10 @@ mod tests {
         // The short line alone would allow the full 29px; the long one caps it
         // at 25, and both lines share that one size.
         let lines = vec![vec!["AB".to_string(), "ABCDEFGH".to_string()]];
-        assert_eq!(fit_layout(ruler, 100.0, &candidates(), &lines), (0, 25.0));
+        assert_eq!(
+            fit_layout(ruler, 100.0, f32::INFINITY, &candidates(), &lines),
+            (0, 25.0)
+        );
     }
 
     #[test]
@@ -797,7 +1005,10 @@ mod tests {
             vec!["AB CD".to_string()],
             vec!["AB".to_string(), "CD".to_string()],
         ];
-        assert_eq!(fit_layout(ruler, 200.0, &candidates(), &sets), (0, 29.0));
+        assert_eq!(
+            fit_layout(ruler, 200.0, f32::INFINITY, &candidates(), &sets),
+            (0, 29.0)
+        );
     }
 
     #[test]
@@ -809,7 +1020,10 @@ mod tests {
             vec!["JETZT STARTEN".to_string()],
             vec!["JETZT".to_string(), "STARTEN".to_string()],
         ];
-        assert_eq!(fit_layout(ruler, 100.0, &candidates(), &sets), (1, 28.0));
+        assert_eq!(
+            fit_layout(ruler, 100.0, f32::INFINITY, &candidates(), &sets),
+            (1, 28.0)
+        );
     }
 
     #[test]
@@ -853,11 +1067,17 @@ mod tests {
         // and overflow; with a lower floor it shrinks and fits.
         let sets = vec![vec!["ERSTE HALBZEIT".to_string()]];
         assert_eq!(
-            fit_layout(ruler, 100.0, &size_ladder(29.0, MIN_FIT_TEXT), &sets),
+            fit_layout(
+                ruler,
+                100.0,
+                f32::INFINITY,
+                &size_ladder(29.0, MIN_FIT_TEXT),
+                &sets
+            ),
             (0, MIN_FIT_TEXT)
         );
         assert_eq!(
-            fit_layout(ruler, 100.0, &size_ladder(29.0, 12.0), &sets),
+            fit_layout(ruler, 100.0, f32::INFINITY, &size_ladder(29.0, 12.0), &sets),
             (0, 14.0)
         );
     }
@@ -907,12 +1127,21 @@ mod tests {
         // tracked the digits would hand width back to the label between
         // keystrokes, and the label would re-fit itself every time.
         let shared = vec!["999999".to_string()];
-        assert_eq!(shared_width(ruler, 38.0, &shared, false, 283.0), 114.0);
+        assert_eq!(
+            shared_width(ruler, 38.0, &shared, false, 283.0, f32::INFINITY),
+            114.0
+        );
         // Nothing named, nothing claimed: every other caller is unaffected.
-        assert_eq!(shared_width(ruler, 38.0, &[], false, 283.0), 0.0);
+        assert_eq!(
+            shared_width(ruler, 38.0, &[], false, 283.0, f32::INFINITY),
+            0.0
+        );
         // The widest governs, as it does for the size.
         let pair = vec!["9".to_string(), "999999".to_string()];
-        assert_eq!(shared_width(ruler, 38.0, &pair, false, 283.0), 114.0);
+        assert_eq!(
+            shared_width(ruler, 38.0, &pair, false, 283.0, f32::INFINITY),
+            114.0
+        );
     }
 
     #[test]
@@ -924,16 +1153,28 @@ mod tests {
         let shared = vec!["AB CD EF".to_string()];
         // Room for one line: one line is what will be drawn, so that is what is
         // claimed. Reserving the split width here would under-reserve by 30.
-        assert_eq!(shared_width(ruler, 20.0, &shared, true, 100.0), 80.0);
+        assert_eq!(
+            shared_width(ruler, 20.0, &shared, true, 100.0, f32::INFINITY),
+            80.0
+        );
         // Not room for one line: it will be drawn wrapped, and only the wider
         // half has to fit.
-        assert_eq!(shared_width(ruler, 20.0, &shared, true, 60.0), 50.0);
+        assert_eq!(
+            shared_width(ruler, 20.0, &shared, true, 60.0, f32::INFINITY),
+            50.0
+        );
         // A label that may not wrap holds its whole line either way.
-        assert_eq!(shared_width(ruler, 20.0, &shared, false, 60.0), 80.0);
+        assert_eq!(
+            shared_width(ruler, 20.0, &shared, false, 60.0, f32::INFINITY),
+            80.0
+        );
         // The keypad's digits have nowhere to break, so none of this reaches
         // them: `best_split` finds no gap and the whole width stands.
         let digits = vec!["999999".to_string()];
-        assert_eq!(shared_width(ruler, 20.0, &digits, true, 40.0), 60.0);
+        assert_eq!(
+            shared_width(ruler, 20.0, &digits, true, 40.0, f32::INFINITY),
+            60.0
+        );
     }
 
     #[test]
@@ -953,10 +1194,12 @@ mod tests {
             &["9999".to_string()],
             false,
             f32::INFINITY,
+            f32::INFINITY,
         );
         let (_, size) = fit_layout(
             digit_ruler,
             reserved,
+            f32::INFINITY,
             &size_ladder(MEDIUM_TEXT, MIN_FIT_TEXT),
             &one("10000"),
         );
@@ -982,8 +1225,19 @@ mod tests {
         let old_share = row * 2.0 / 5.0;
         // The boundary the bug sat on: five digits fitted that share, six did
         // not, so the size changed on the sixth keystroke and nowhere else.
-        assert!(fit_layout(digit_ruler, old_share, &ladder, &one("99999")).1 == MEDIUM_TEXT);
-        assert!(fit_layout(digit_ruler, old_share, &ladder, &one(&code)).1 < MEDIUM_TEXT);
+        assert!(
+            fit_layout(
+                digit_ruler,
+                old_share,
+                f32::INFINITY,
+                &ladder,
+                &one("99999")
+            )
+            .1 == MEDIUM_TEXT
+        );
+        assert!(
+            fit_layout(digit_ruler, old_share, f32::INFINITY, &ladder, &one(&code)).1 < MEDIUM_TEXT
+        );
         // What is reserved instead is exactly the room those six digits need --
         // no more, so the label keeps the rest, and no less, so they never
         // shrink. Both halves of that have to hold: a reservation that drifted
@@ -993,6 +1247,7 @@ mod tests {
             MEDIUM_TEXT,
             std::slice::from_ref(&code),
             false,
+            f32::INFINITY,
             f32::INFINITY,
         );
         assert_eq!(reserved, digit_ruler(&code, MEDIUM_TEXT));
@@ -1047,6 +1302,7 @@ mod tests {
         let (_, size) = fit_layout(
             personalizzato_ruler,
             budget,
+            f32::INFINITY,
             &ladder,
             &one("PERSONALIZZATO"),
         );

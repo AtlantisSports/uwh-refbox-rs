@@ -12,6 +12,7 @@ cancel = 取消
 delete = 删除
 back = 返回
 apply = 应用
+swap-colours = 黑白对换
 user-options = 用户选项
 new = 新建
 

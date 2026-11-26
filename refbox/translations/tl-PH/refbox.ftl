@@ -12,6 +12,7 @@ cancel = KANSELAHIN
 delete = BURAHIN
 back = BUMALIK
 apply = ILAPAT
+swap-colours = PAGPALITIN ANG KULAY
 user-options = MGA OPSYON NG USER
 new = BAGO
 

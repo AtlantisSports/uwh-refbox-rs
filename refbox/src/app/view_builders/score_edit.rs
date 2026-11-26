@@ -4,7 +4,41 @@ use iced::{
     alignment::Horizontal,
     widget::{column, container, horizontal_space, row, text, vertical_space},
 };
-use uwh_common::color::Color as GameColor;
+use uwh_common::{
+    color::Color as GameColor,
+    uwhportal::schedule::{GameNumber, Schedule, TeamList},
+};
+
+/// The names shown under BLACK and WHITE, and the sign that SWAP COLOURS may be
+/// offered: `Some` only when `can_swap` (the game comes from a site and an event
+/// is linked) and the game has a real team on both sides. `None` leaves the page
+/// exactly as it was before the button existed.
+pub(in super::super) fn score_edit_team_names(
+    can_swap: bool,
+    schedule: Option<&Schedule>,
+    game_number: &GameNumber,
+    teams: Option<&TeamList>,
+) -> Option<BlackWhiteBundle<String>> {
+    if !can_swap {
+        return None;
+    }
+    super::super::colour_swap::swappable_teams(schedule, game_number)?;
+    let game = schedule?.games.get(game_number)?;
+    Some(BlackWhiteBundle {
+        black: side_name(
+            &game.dark,
+            game.dark_partner.as_ref(),
+            teams,
+            super::game_info_table::TEAM_NAME_LEN_LIMIT,
+        ),
+        white: side_name(
+            &game.light,
+            game.light_partner.as_ref(),
+            teams,
+            super::game_info_table::TEAM_NAME_LEN_LIMIT,
+        ),
+    })
+}
 
 pub(in super::super) fn build_score_edit_view<'a>(
     data: ViewData<'_, '_>,
@@ -12,6 +46,8 @@ pub(in super::super) fn build_score_edit_view<'a>(
     is_confirmation: bool,
     confirmation_time: Option<u32>,
     old_scores: BlackWhiteBundle<u8>,
+    team_names: Option<BlackWhiteBundle<String>>,
+    colours_swapped: bool,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -26,6 +62,25 @@ pub(in super::super) fn build_score_edit_view<'a>(
     } else {
         Some(Message::ScoreEditComplete { canceled: true })
     };
+
+    // While a swap is pending, each name shows under the colour it will wear.
+    let shown_names = team_names.as_ref().map(|names| {
+        if colours_swapped {
+            (names.white.clone(), names.black.clone())
+        } else {
+            (names.black.clone(), names.white.clone())
+        }
+    });
+    let mut black_caption = column![text(fl!("dark-team-name-caps"))]
+        .spacing(SPACING)
+        .align_x(Alignment::Center);
+    let mut white_caption = column![text(fl!("light-team-name-caps"))]
+        .spacing(SPACING)
+        .align_x(Alignment::Center);
+    if let Some((black_name, white_name)) = shown_names {
+        black_caption = black_caption.push(text(black_name).align_x(Horizontal::Center));
+        white_caption = white_caption.push(text(white_name).align_x(Horizontal::Center));
+    }
 
     let black_edit = container(
         row![
@@ -45,7 +100,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
             ]
             .spacing(SPACING),
             column![
-                text(fl!("dark-team-name-caps")),
+                black_caption,
                 text(scores.black.to_string()).size(LARGE_TEXT)
             ]
             .spacing(SPACING)
@@ -62,7 +117,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
     let white_edit = container(
         row![
             column![
-                text(fl!("light-team-name-caps")),
+                white_caption,
                 text(scores.white.to_string()).size(LARGE_TEXT)
             ]
             .spacing(SPACING)
@@ -134,7 +189,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
         make_chrome_button(fl!("apply"))
             .style(green_button)
             .on_press_maybe(
-                score_edit_has_changes(scores, old_scores)
+                score_edit_has_changes(scores, old_scores, colours_swapped)
                     .then_some(Message::ScoreEditComplete { canceled: false }),
             )
     };
@@ -145,7 +200,18 @@ pub(in super::super) fn build_score_edit_view<'a>(
     let cancel_label = if is_confirmation {
         fl!("cancel")
     } else {
-        cancel_or_back_label(score_edit_has_changes(scores, old_scores))
+        cancel_or_back_label(score_edit_has_changes(scores, old_scores, colours_swapped))
+    };
+
+    // SWAP COLOURS sits centred between the two footer buttons in both forms;
+    // without swappable teams the gap stays empty, as before.
+    let middle: Element<'a, Message> = if team_names.is_some() {
+        make_chrome_button(fl!("swap-colours"))
+            .style(blue_button)
+            .on_press(Message::SwapColours)
+            .into()
+    } else {
+        horizontal_space().into()
     };
 
     main_col
@@ -165,7 +231,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
                 make_chrome_button(cancel_label)
                     .on_press_maybe(cancel_btn_msg)
                     .style(red_button),
-                horizontal_space(),
+                middle,
                 confirm_btn,
             ]
             .spacing(SPACING),
@@ -175,10 +241,15 @@ pub(in super::super) fn build_score_edit_view<'a>(
 
 /// Returns true when the edited scores differ from the scores shown when the
 /// Score EDIT screen was opened (the tournament-manager scores, which are not
-/// changed until Apply). Only consulted in edit mode — never in confirmation,
-/// where the operator must always be able to commit the final score.
-fn score_edit_has_changes(scores: BlackWhiteBundle<u8>, old: BlackWhiteBundle<u8>) -> bool {
-    scores != old
+/// changed until Apply), or when a colour swap is pending. Only consulted in
+/// edit mode — never in confirmation, where the operator must always be able to
+/// commit the final score.
+fn score_edit_has_changes(
+    scores: BlackWhiteBundle<u8>,
+    old: BlackWhiteBundle<u8>,
+    colours_swapped: bool,
+) -> bool {
+    scores != old || colours_swapped
 }
 
 #[cfg(test)]
@@ -188,14 +259,15 @@ mod tests {
     #[test]
     fn score_no_change_is_false() {
         let s = BlackWhiteBundle { black: 3, white: 5 };
-        assert!(!score_edit_has_changes(s, s));
+        assert!(!score_edit_has_changes(s, s, false));
     }
 
     #[test]
     fn score_change_is_true() {
         assert!(score_edit_has_changes(
             BlackWhiteBundle { black: 4, white: 5 },
-            BlackWhiteBundle { black: 3, white: 5 }
+            BlackWhiteBundle { black: 3, white: 5 },
+            false
         ));
     }
 
@@ -207,6 +279,15 @@ mod tests {
             black: original.black + 1 - 1,
             white: original.white,
         };
-        assert!(!score_edit_has_changes(after, original));
+        assert!(!score_edit_has_changes(after, original, false));
+    }
+
+    #[test]
+    fn a_swap_alone_counts_as_a_change() {
+        let s = BlackWhiteBundle { black: 3, white: 5 };
+        let s2 = BlackWhiteBundle { black: 4, white: 5 };
+        assert!(score_edit_has_changes(s, s, true));
+        assert!(!score_edit_has_changes(s, s, false));
+        assert!(score_edit_has_changes(s2, s, false));
     }
 }

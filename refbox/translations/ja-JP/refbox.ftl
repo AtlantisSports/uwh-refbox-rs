@@ -12,6 +12,7 @@ cancel = キャンセル
 delete = 削除
 back = 戻る
 apply = 適用
+swap-colours = 黒/白の入れ替え
 user-options = ユーザー設定
 new = 新規
 

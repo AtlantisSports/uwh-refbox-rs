@@ -11,6 +11,7 @@ cancel = CANCELAR
 delete = ELIMINAR
 back = ATRÁS
 apply = APLICAR
+swap-colours = CAMBIAR COLORES
 user-options = OPCIONES DE USUARIO
 new = NUEVO
 

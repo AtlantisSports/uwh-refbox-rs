@@ -53,6 +53,8 @@ pub enum Message {
     ScoreEditComplete {
         canceled: bool,
     },
+    /// Toggles a pending colour swap on the score edit page. Valid only there.
+    SwapColours,
     PenaltyOverview,
     WarningOverview,
     FoulOverview,
@@ -431,6 +433,7 @@ impl Message {
             | Self::EditScores
             | Self::AddNewScore(_)
             | Self::ScoreEditComplete { .. }
+            | Self::SwapColours
             | Self::PenaltyOverview
             | Self::WarningOverview
             | Self::FoulOverview
@@ -555,6 +558,7 @@ impl PartialEq for Message {
             (Self::EditTime, Self::EditTime)
             | (Self::StartPlayNow, Self::StartPlayNow)
             | (Self::EditScores, Self::EditScores)
+            | (Self::SwapColours, Self::SwapColours)
             | (Self::PenaltyOverview, Self::PenaltyOverview)
             | (Self::WarningOverview, Self::WarningOverview)
             | (Self::FoulOverview, Self::FoulOverview)
@@ -791,6 +795,7 @@ impl PartialEq for Message {
             | (Self::AddNewScore(_), _)
             | (Self::ChangeScore { .. }, _)
             | (Self::ScoreEditComplete { .. }, _)
+            | (Self::SwapColours, _)
             | (Self::PenaltyOverview, _)
             | (Self::WarningOverview, _)
             | (Self::FoulOverview, _)

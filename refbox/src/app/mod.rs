@@ -61,7 +61,9 @@ use uwh_common::{
 
 mod colour_swap;
 mod view_data;
-use colour_swap::{ColourSwaps, apply_colour_swaps};
+use colour_swap::{
+    ColourSwaps, apply_colour_swaps, mark_delivered, record_after_swap, swappable_teams,
+};
 use view_data::ViewData;
 
 mod view_builders;
@@ -360,6 +362,8 @@ enum AppState {
     ScoreEdit {
         scores: BlackWhiteBundle<u8>,
         is_confirmation: bool,
+        /// SWAP COLOURS is pending on the page; saved only by APPLY/DONE.
+        colours_swapped: bool,
     },
     PenaltyOverview(BlackWhiteBundle<usize>),
     WarningOverview(BlackWhiteBundle<usize>),
@@ -2481,6 +2485,42 @@ impl RefBoxApp {
             })
         } else {
             Task::none()
+        }
+    }
+
+    /// Saves the colour swap chosen on the score edit page: records it over every
+    /// schedule, moves the cap-number lists with the teams, and queues it for the
+    /// site. Runs before the score is saved, so the swap is queued ahead of the
+    /// final score. Its key must match the one `handle_game_end` queues the score
+    /// under, or the score would not wait for it.
+    fn save_colour_swap(&mut self) {
+        let Some(event_id) = self
+            .current_event_id
+            .as_ref()
+            .map(|id| id.full().to_string())
+        else {
+            warn!("Colour swap not saved: no event is linked");
+            return;
+        };
+        let game_number = self.snapshot.game_number.clone();
+        let Some(current) = swappable_teams(self.schedule.as_ref(), &game_number) else {
+            warn!("Colour swap for game {game_number} not saved: the schedule changed");
+            return;
+        };
+        let record = record_after_swap(&current);
+        let dark = record.dark.full().to_string();
+        let light = record.light.full().to_string();
+        self.colour_swaps
+            .insert((event_id.clone(), game_number.clone()), record);
+        if let Some(schedule) = self.schedule.as_mut() {
+            apply_colour_swaps(schedule, &event_id, &mut self.colour_swaps);
+        }
+        std::mem::swap(&mut self.game_rosters.black, &mut self.game_rosters.white);
+        if let Err(e) = self
+            .portal_manager
+            .enqueue_colour_swap(event_id, game_number, dark, light)
+        {
+            error!("portal_manager.enqueue_colour_swap failed: {e}");
         }
     }
 
@@ -5227,6 +5267,7 @@ impl RefBoxApp {
                 self.app_state = AppState::ScoreEdit {
                     scores: tm.get_scores(),
                     is_confirmation: false,
+                    colours_swapped: false,
                 };
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
@@ -5279,7 +5320,29 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::SwapColours => {
+                if let AppState::ScoreEdit {
+                    ref mut colours_swapped,
+                    ..
+                } = self.app_state
+                {
+                    *colours_swapped = !*colours_swapped;
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
             Message::ScoreEditComplete { canceled } => {
+                // The swap is saved first, before the engine is locked, so it is
+                // queued ahead of the final score the end of the game queues.
+                if let AppState::ScoreEdit {
+                    colours_swapped: true,
+                    ..
+                } = self.app_state
+                {
+                    if !canceled {
+                        self.save_colour_swap();
+                    }
+                }
                 let mut tasks = vec![];
                 let mut tm = self.tm.lock();
                 let mut now = Instant::now();
@@ -5287,6 +5350,7 @@ impl RefBoxApp {
                 self.app_state = if let AppState::ScoreEdit {
                     scores,
                     is_confirmation,
+                    ..
                 } = self.app_state
                 {
                     if is_confirmation {
@@ -6018,8 +6082,25 @@ impl RefBoxApp {
                         id,
                         dark_team_id,
                         light_team_id,
-                        ..
+                        delivered,
                     } => {
+                        if delivered {
+                            match (
+                                TeamId::from_full(&dark_team_id),
+                                TeamId::from_full(&light_team_id),
+                            ) {
+                                (Ok(black), Ok(white)) => mark_delivered(
+                                    &mut self.colour_swaps,
+                                    &id.event_id,
+                                    &id.game_number,
+                                    &BlackWhiteBundle { black, white },
+                                ),
+                                _ => warn!(
+                                    "Delivered colour swap has an unreadable team id \
+                                     ({dark_team_id}, {light_team_id}); not marked delivered"
+                                ),
+                            }
+                        }
                         self.portal_manager
                             .on_swap_resolved(id, dark_team_id, light_team_id);
                     }
@@ -7796,6 +7877,7 @@ impl RefBoxApp {
                         AppState::ScoreEdit {
                             scores,
                             is_confirmation: true,
+                            colours_swapped: false,
                         }
                     }
                 } else {
@@ -9360,13 +9442,24 @@ impl RefBoxApp {
             AppState::ScoreEdit {
                 scores,
                 is_confirmation,
-            } => build_score_edit_view(
-                data,
-                scores,
-                is_confirmation,
-                self.snapshot.conf_pause_time,
-                self.snapshot.scores,
-            ),
+                colours_swapped,
+            } => {
+                let team_names = score_edit_team_names(
+                    self.uses_remote() && self.current_event_id.is_some(),
+                    self.schedule.as_ref(),
+                    &self.snapshot.game_number,
+                    data.teams,
+                );
+                build_score_edit_view(
+                    data,
+                    scores,
+                    is_confirmation,
+                    self.snapshot.conf_pause_time,
+                    self.snapshot.scores,
+                    team_names,
+                    colours_swapped,
+                )
+            }
             AppState::PenaltyOverview(indices) => build_penalty_overview_page(
                 data,
                 self.pen_edit.get_printable_lists(Instant::now()).unwrap(),
@@ -11527,7 +11620,7 @@ impl UpdaterFailures {
 fn tap_outlived_its_screen(message: &Message, state: &AppState) -> bool {
     match message {
         Message::ScoreConfirmation { .. } => !matches!(state, AppState::ConfirmScores(_)),
-        Message::ScoreEditComplete { .. } | Message::ChangeScore { .. } => {
+        Message::ScoreEditComplete { .. } | Message::ChangeScore { .. } | Message::SwapColours => {
             !matches!(state, AppState::ScoreEdit { .. })
         }
         Message::AddScoreComplete { .. } => {
@@ -11949,6 +12042,7 @@ mod stale_tap_gate_tests {
             &AppState::ScoreEdit {
                 scores: scores(),
                 is_confirmation: true,
+                colours_swapped: false,
             }
         ));
         for canceled in [true, false] {
@@ -11973,6 +12067,7 @@ mod stale_tap_gate_tests {
             Message::SelectPlayerNumber(7),
             Message::ChangeColor(Some(Color::White)),
             Message::TimeEditComplete { canceled: false },
+            Message::SwapColours,
         ] {
             assert!(tap_outlived_its_screen(&message, &confirm), "{message:?}");
         }
@@ -11983,7 +12078,9 @@ mod stale_tap_gate_tests {
         let score_edit = AppState::ScoreEdit {
             scores: scores(),
             is_confirmation: false,
+            colours_swapped: false,
         };
+        assert!(!tap_outlived_its_screen(&Message::SwapColours, &score_edit));
         assert!(!tap_outlived_its_screen(
             &Message::ChangeScore {
                 color: Color::White,

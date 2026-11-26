@@ -14,6 +14,7 @@ cancel = 취소
 delete = 삭제
 back = 뒤로
 apply = 적용
+swap-colours = 검정/흰 교체
 user-options = 사용자 옵션
 new = 새로
 

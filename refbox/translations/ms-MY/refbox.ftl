@@ -12,6 +12,7 @@ cancel = BATAL
 delete = PADAM
 back = KEMBALI
 apply = GUNA
+swap-colours = TUKAR WARNA
 user-options = PILIHAN PENGGUNA
 new = BARU
 

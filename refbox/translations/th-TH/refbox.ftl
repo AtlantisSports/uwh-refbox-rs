@@ -12,6 +12,7 @@ cancel = ยกเลิก
 delete = ลบ
 back = กลับ
 apply = ใช้
+swap-colours = สลับสี
 user-options = ตัวเลือกผู้ใช้
 new = ใหม่
 

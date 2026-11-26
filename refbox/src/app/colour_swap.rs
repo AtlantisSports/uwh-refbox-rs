@@ -69,6 +69,16 @@ pub(super) fn swappable_teams(
     })
 }
 
+/// The record to save: the teams as they will be AFTER the swap (today's light
+/// team goes dark and today's dark team goes light). Not yet delivered.
+pub(super) fn record_after_swap(current: &BlackWhiteBundle<TeamId>) -> SwapRecord {
+    SwapRecord {
+        dark: current.white.clone(),
+        light: current.black.clone(),
+        delivered: false,
+    }
+}
+
 /// Marks the record delivered only when it still describes the send that was
 /// delivered (`sent`, black = dark, white = light). The operator may have swapped
 /// again since: an older send's delivery report must not mark the newer record
@@ -262,6 +272,15 @@ mod tests {
         };
         mark_delivered(&mut swaps, X, &"12".to_string(), &current);
         assert!(swaps[&key].delivered);
+    }
+
+    #[test]
+    fn record_after_swap_puts_light_on_dark() {
+        let current = BlackWhiteBundle {
+            black: team("aaa"),
+            white: team("bbb"),
+        };
+        assert_eq!(record_after_swap(&current), record("bbb", "aaa", false));
     }
 
     #[test]

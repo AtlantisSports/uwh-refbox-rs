@@ -12,6 +12,7 @@ cancel = İPTAL
 delete = SİL
 back = GERİ
 apply = UYGULA
+swap-colours = RENKLERİ DEĞİŞTİR
 user-options = KULLANICI SEÇENEKLERİ
 new = YENİ
 

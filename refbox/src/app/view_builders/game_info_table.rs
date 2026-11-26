@@ -10,7 +10,7 @@ use uwh_common::{
     uwhportal::schedule::{RefereeAssignment, Schedule, TeamList},
 };
 
-const TEAM_NAME_LEN_LIMIT: usize = 40;
+pub(super) const TEAM_NAME_LEN_LIMIT: usize = 40;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in super::super) enum GameRole {

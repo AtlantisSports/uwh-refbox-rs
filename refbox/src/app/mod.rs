@@ -9317,6 +9317,18 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::NoAction => Task::none(),
+            // `update()` untags every message before it gets here, so a `Tap` is a
+            // bug. Log it and handle the message inside rather than crash.
+            Message::Tap { screen, message } => {
+                error!(
+                    "A tagged tap reached handle_message: {:?}",
+                    Message::Tap {
+                        screen,
+                        message: message.clone(),
+                    }
+                );
+                self.handle_message(*message)
+            }
         }
     }
 
@@ -11570,6 +11582,24 @@ impl UpdaterFailures {
             retry_after: updater_retry_delay(self.consecutive),
             report,
         }
+    }
+}
+
+/// Take the screen tag off `message`, now that the app is on a screen of kind
+/// `now_on`. An untagged message comes back unchanged. A tap drawn on a screen of
+/// the same kind comes back without its tag. A tap drawn on a screen of a different
+/// kind has outlived its screen: it is dropped (`None`) unless it is one that must
+/// never be lost (see `Message::may_drop_when_late`). Pure: the caller logs.
+fn untag(message: Message, now_on: ScreenKind) -> Option<Message> {
+    match message {
+        Message::Tap { screen, message } => {
+            if screen == now_on || !message.may_drop_when_late() {
+                Some(*message)
+            } else {
+                None
+            }
+        }
+        other => Some(other),
     }
 }
 
@@ -14433,5 +14463,431 @@ mod screen_kind_tests {
             AppState::MainPage,
             AppState::ConfirmScores(BlackWhiteBundle { black: 1, white: 1 }),
         );
+    }
+}
+
+#[cfg(test)]
+mod untag_tests {
+    use super::*;
+
+    /// `m` tagged with the kind of screen `on` shows, as `view()` will tag it.
+    fn tap(on: &AppState, m: Message) -> Message {
+        Message::Tap {
+            screen: screen_kind(on),
+            message: Box::new(m),
+        }
+    }
+
+    fn scores() -> BlackWhiteBundle<u8> {
+        BlackWhiteBundle { black: 2, white: 1 }
+    }
+
+    fn confirm_scores() -> AppState {
+        AppState::ConfirmScores(scores())
+    }
+
+    fn penalty_keypad(number: u32) -> AppState {
+        AppState::KeypadPage(
+            KeypadPage::Penalty(
+                None,
+                Color::Black,
+                PenaltyKind::OneMinute,
+                Infraction::Unknown,
+            ),
+            number,
+        )
+    }
+
+    fn warning_keypad() -> AppState {
+        AppState::KeypadPage(
+            KeypadPage::WarningAdd {
+                origin: None,
+                color: Color::Black,
+                infraction: Infraction::Unknown,
+                team_warning: false,
+                ret_to_overview: false,
+            },
+            7,
+        )
+    }
+
+    fn foul_keypad() -> AppState {
+        AppState::KeypadPage(
+            KeypadPage::FoulAdd {
+                origin: None,
+                color: Some(Color::Black),
+                infraction: Infraction::Unknown,
+                ret_to_overview: false,
+            },
+            7,
+        )
+    }
+
+    fn add_goal_page() -> AppState {
+        AppState::KeypadPage(
+            KeypadPage::AddScore {
+                color: Color::Black,
+                team_score: false,
+            },
+            7,
+        )
+    }
+
+    fn time_edit(secs: u64) -> AppState {
+        AppState::TimeEdit(false, Duration::from_secs(secs), None)
+    }
+
+    fn change_time() -> Message {
+        Message::ChangeTime {
+            increase: true,
+            secs: 1,
+            timeout: false,
+        }
+    }
+
+    #[test]
+    fn late_keypad_taps_are_dropped() {
+        let messages = [
+            Message::PenaltyEditComplete {
+                canceled: false,
+                deleted: false,
+            },
+            Message::ChangeKind(PenaltyKind::TwoMinute),
+            Message::ChangeInfraction(Infraction::OutOfBounds),
+            Message::WarningEditComplete {
+                canceled: false,
+                deleted: false,
+                ret_to_overview: false,
+            },
+            Message::FoulEditComplete {
+                canceled: false,
+                deleted: false,
+                ret_to_overview: false,
+            },
+        ];
+        for keypad in [penalty_keypad(7), warning_keypad(), foul_keypad()] {
+            for message in messages.clone() {
+                let tagged = tap(&keypad, message);
+                assert_eq!(
+                    untag(tagged.clone(), screen_kind(&confirm_scores())),
+                    None,
+                    "{tagged:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn late_keypad_cancel_is_dropped() {
+        let cancels = [
+            (
+                penalty_keypad(7),
+                Message::PenaltyEditComplete {
+                    canceled: true,
+                    deleted: false,
+                },
+            ),
+            (
+                warning_keypad(),
+                Message::WarningEditComplete {
+                    canceled: true,
+                    deleted: false,
+                    ret_to_overview: false,
+                },
+            ),
+            (
+                foul_keypad(),
+                Message::FoulEditComplete {
+                    canceled: true,
+                    deleted: false,
+                    ret_to_overview: false,
+                },
+            ),
+        ];
+        for (keypad, cancel) in cancels {
+            let tagged = tap(&keypad, cancel);
+            assert_eq!(
+                untag(tagged.clone(), screen_kind(&confirm_scores())),
+                None,
+                "{tagged:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn late_time_change_is_dropped() {
+        assert_eq!(
+            untag(
+                tap(&time_edit(60), change_time()),
+                screen_kind(&AppState::MainPage)
+            ),
+            None
+        );
+        assert_eq!(
+            untag(
+                tap(&time_edit(60), change_time()),
+                screen_kind(&AppState::ParameterEditor(
+                    LengthParameter::Half,
+                    Duration::from_secs(600),
+                    false
+                ))
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn late_digit_onto_another_keypad_is_dropped() {
+        let team_timeouts =
+            AppState::KeypadPage(KeypadPage::TeamTimeouts(Duration::from_secs(60), false), 1);
+        assert_eq!(
+            untag(
+                tap(
+                    &penalty_keypad(7),
+                    Message::KeypadButtonPress(KeypadButton::One)
+                ),
+                screen_kind(&team_timeouts)
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn late_colour_tap_is_dropped() {
+        assert_eq!(
+            untag(
+                tap(&penalty_keypad(7), Message::ChangeColor(Some(Color::White))),
+                screen_kind(&AppState::MainPage)
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn releases_are_never_dropped() {
+        for release in [
+            Message::AlarmReleased,
+            Message::TimeoutReviveReleased(Color::White),
+        ] {
+            assert_eq!(
+                untag(
+                    tap(&AppState::MainPage, release.clone()),
+                    screen_kind(&confirm_scores())
+                ),
+                Some(release)
+            );
+        }
+    }
+
+    #[test]
+    fn same_kind_tap_passes() {
+        let press = Message::KeypadButtonPress(KeypadButton::One);
+        assert_eq!(
+            untag(
+                tap(&penalty_keypad(7), press.clone()),
+                screen_kind(&penalty_keypad(72))
+            ),
+            Some(press)
+        );
+    }
+
+    #[test]
+    fn untagged_messages_pass() {
+        let event = EventId::from_full("events/123").unwrap();
+        let schedule = Schedule {
+            event_id: event.clone(),
+            games: Default::default(),
+            non_game_entries: Vec::new(),
+            groups: Vec::new(),
+            timing_rules: Vec::new(),
+            standings_order: None,
+            final_results_order: None,
+            referees_by_game_number: None,
+        };
+        let messages = [
+            Message::NewSnapshot(TickUpdate {
+                snapshot: GameSnapshot::default(),
+                caught_up: None,
+            }),
+            Message::PortalUiTick,
+            Message::RecvSchedule(event, schedule, 0),
+        ];
+        for now_on in [AppState::MainPage, confirm_scores(), penalty_keypad(7)] {
+            for message in messages.clone() {
+                assert_eq!(untag(message.clone(), screen_kind(&now_on)), Some(message));
+            }
+        }
+    }
+
+    #[test]
+    fn tagged_apply_comes_out_as_apply() {
+        let out = untag(
+            tap(
+                &time_edit(60),
+                Message::TimeEditComplete { canceled: false },
+            ),
+            screen_kind(&AppState::TimeEdit(
+                true,
+                Duration::from_secs(5),
+                Some(Duration::from_secs(30)),
+            )),
+        );
+        assert_eq!(out, Some(Message::TimeEditComplete { canceled: false }));
+        assert!(matches!(out, Some(Message::TimeEditComplete { .. })));
+    }
+
+    /// Every case in `stale_tap_gate_tests`, ported: the same message, tagged with
+    /// the screen it was drawn on, arriving on the screen the app has moved to.
+    #[test]
+    fn old_list_cases_still_dropped() {
+        let dropped = |old: &AppState, message: Message, new: &AppState| {
+            let tagged = tap(old, message);
+            assert_eq!(
+                untag(tagged.clone(), screen_kind(new)),
+                None,
+                "{tagged:?} onto {new:?}"
+            );
+        };
+        let passed = |old: &AppState, message: Message, new: &AppState| {
+            let tagged = tap(old, message.clone());
+            assert_eq!(
+                untag(tagged.clone(), screen_kind(new)),
+                Some(message),
+                "{tagged:?} onto {new:?}"
+            );
+        };
+        let score_edit = |is_confirmation| AppState::ScoreEdit {
+            scores: scores(),
+            is_confirmation,
+        };
+
+        // confirmation_after_the_window_closed_is_dropped
+        for correct in [true, false] {
+            dropped(
+                &confirm_scores(),
+                Message::ScoreConfirmation { correct },
+                &AppState::MainPage,
+            );
+        }
+
+        // stale_add_goal_cancel_does_not_leave_the_confirm_screen
+        for canceled in [true, false] {
+            dropped(
+                &add_goal_page(),
+                Message::AddScoreComplete { canceled },
+                &confirm_scores(),
+            );
+        }
+
+        // repeat_score_edit_done_is_dropped
+        let done = Message::ScoreEditComplete { canceled: false };
+        dropped(&score_edit(true), done.clone(), &AppState::MainPage);
+        dropped(&score_edit(true), done, &confirm_scores());
+
+        // first_tap_on_its_own_screen_passes
+        passed(
+            &confirm_scores(),
+            Message::ScoreConfirmation { correct: true },
+            &confirm_scores(),
+        );
+        passed(
+            &score_edit(true),
+            Message::ScoreEditComplete { canceled: false },
+            &score_edit(true),
+        );
+        for canceled in [true, false] {
+            passed(
+                &add_goal_page(),
+                Message::AddScoreComplete { canceled },
+                &add_goal_page(),
+            );
+        }
+
+        // edit_taps_after_the_screen_changed_are_dropped
+        dropped(
+            &score_edit(false),
+            Message::ChangeScore {
+                color: Color::White,
+                increase: true,
+            },
+            &confirm_scores(),
+        );
+        for message in [
+            Message::KeypadButtonPress(KeypadButton::One),
+            Message::SelectPlayerNumber(7),
+            Message::ChangeColor(Some(Color::White)),
+        ] {
+            dropped(&add_goal_page(), message, &confirm_scores());
+        }
+        dropped(
+            &time_edit(60),
+            Message::TimeEditComplete { canceled: false },
+            &confirm_scores(),
+        );
+
+        // edit_taps_on_their_own_screen_pass
+        passed(
+            &score_edit(false),
+            Message::ChangeScore {
+                color: Color::White,
+                increase: true,
+            },
+            &score_edit(false),
+        );
+        for message in [
+            Message::KeypadButtonPress(KeypadButton::One),
+            Message::SelectPlayerNumber(7),
+            Message::ChangeColor(Some(Color::White)),
+        ] {
+            passed(&add_goal_page(), message, &add_goal_page());
+        }
+        passed(
+            &AppState::TimeEdit(true, Duration::from_secs(60), None),
+            Message::TimeEditComplete { canceled: true },
+            &AppState::TimeEdit(true, Duration::from_secs(60), None),
+        );
+
+        // other_messages_are_never_gated: untagged, they pass anywhere.
+        for message in [Message::NoAction, Message::CancelTimeout] {
+            assert_eq!(
+                untag(message.clone(), screen_kind(&AppState::MainPage)),
+                Some(message)
+            );
+        }
+    }
+
+    #[test]
+    fn tap_repeatability_follows_inner() {
+        let page = penalty_keypad(7);
+        let repeatable = Message::KeypadButtonPress(KeypadButton::One);
+        let not_repeatable = Message::PenaltyEditComplete {
+            canceled: false,
+            deleted: false,
+        };
+        assert!(repeatable.is_repeatable());
+        assert!(tap(&page, repeatable).is_repeatable());
+        assert!(!not_repeatable.is_repeatable());
+        assert!(!tap(&page, not_repeatable).is_repeatable());
+    }
+
+    #[test]
+    fn tap_equality() {
+        let press = Message::KeypadButtonPress(KeypadButton::One);
+        assert_eq!(
+            tap(&penalty_keypad(7), press.clone()),
+            tap(&penalty_keypad(42), press.clone())
+        );
+        assert_ne!(
+            tap(&penalty_keypad(7), press.clone()),
+            tap(&add_goal_page(), press.clone())
+        );
+        assert_ne!(
+            tap(&penalty_keypad(7), press.clone()),
+            tap(
+                &penalty_keypad(7),
+                Message::KeypadButtonPress(KeypadButton::Two)
+            )
+        );
+        assert_ne!(tap(&penalty_keypad(7), press.clone()), press);
     }
 }

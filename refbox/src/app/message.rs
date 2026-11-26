@@ -395,11 +395,182 @@ pub enum Message {
     /// net no longer needs to auto-revert on the next boot).
     UpdaterHealthyCheck,
     NoAction,
+    /// A tap tagged with the kind of screen it was drawn on. `update()` takes the
+    /// tag off with `untag` before `handle_message` sees the message, dropping a
+    /// tap that arrives after its screen has gone.
+    Tap {
+        screen: ScreenKind,
+        message: Box<Message>,
+    },
 }
 
 impl Message {
+    /// Whether this message may be dropped when it arrives after the screen it was
+    /// drawn on has gone. `false` for the release halves of the press-and-hold
+    /// buttons (losing one would leave the buzzer on or a hold running) and for
+    /// every message that does not come from the screen; `true` for every other
+    /// tap. Exhaustive with no `_` arm, so a new message does not compile until it
+    /// is classified.
+    pub fn may_drop_when_late(&self) -> bool {
+        match self {
+            Self::Tap { message, .. } => message.may_drop_when_late(),
+
+            // Release halves of the press-and-hold buttons.
+            Self::AlarmReleased | Self::TimeoutReviveReleased(_) => false,
+
+            // Not from the screen: clock ticks, portal and updater replies,
+            // timers, the keyboard, and the app's own follow-ups.
+            Self::NewSnapshot(_)
+            | Self::ConfirmScores(_)
+            | Self::AutoConfirmScores(_)
+            | Self::PortalEvent(_)
+            | Self::PortalUiTick
+            | Self::PortalRefreshFinished
+            | Self::RecvEventList(_)
+            | Self::RecvTeamsList(_, _, _)
+            | Self::RecvTeamRoster(_, _, _)
+            | Self::RecvSchedule(_, _, _)
+            | Self::RecvPortalToken(_, _, _)
+            | Self::RecvTokenValid(_, _, _)
+            | Self::GotRemoteId(_)
+            | Self::BeepTestTick
+            | Self::SpacebarPressed
+            | Self::SpacebarReleased
+            | Self::AlarmDelayElapsed(_)
+            | Self::TimeoutReviveHoldElapsed(_, _)
+            | Self::TimeUpdaterStarted(_)
+            | Self::UpdatesCheckDone(_)
+            | Self::UpdatesDownloaded(_)
+            | Self::UpdatesVerified(_)
+            | Self::UpdatesInstalled(_)
+            | Self::UpdaterHealthyCheck
+            | Self::NoAction => false,
+
+            // On-screen taps, the press halves of the hold buttons included.
+            Self::EditTime
+            | Self::ChangeTime { .. }
+            | Self::TimeEditComplete { .. }
+            | Self::StartPlayNow
+            | Self::EditScores
+            | Self::AddNewScore(_)
+            | Self::ChangeScore { .. }
+            | Self::ScoreEditComplete { .. }
+            | Self::PenaltyOverview
+            | Self::WarningOverview
+            | Self::FoulOverview
+            | Self::Scroll { .. }
+            | Self::PenaltyOverviewComplete { .. }
+            | Self::WarningOverviewComplete { .. }
+            | Self::FoulOverviewComplete { .. }
+            | Self::ChangeKind(_)
+            | Self::ChangeInfraction(_)
+            | Self::PenaltyEditComplete { .. }
+            | Self::WarningEditComplete { .. }
+            | Self::FoulEditComplete { .. }
+            | Self::KeypadPage(_)
+            | Self::KeypadButtonPress(_)
+            | Self::SelectPlayerNumber(_)
+            | Self::ChangeColor(_)
+            | Self::AddScoreComplete { .. }
+            | Self::ShowGameDetails
+            | Self::OpenPowerPage
+            | Self::PowerAction(_)
+            | Self::OpenNewDisplay
+            | Self::OpenPortalDetailPage
+            | Self::ClosePortalDetailPage
+            | Self::ClosePortalAttentionAction
+            | Self::PortalRowTapped(_)
+            | Self::PortalForceSubmit(_)
+            | Self::PortalDiscardTapped(_)
+            | Self::RequestPortalRefresh
+            | Self::RequestGameRestart
+            | Self::PortalRetryAll
+            | Self::ShowWarnings
+            | Self::ShowParameterHelp
+            | Self::CloseParameterHelp
+            | Self::EditGameConfig
+            | Self::EditGameConfigPage(_)
+            | Self::ChangeConfigPage(_)
+            | Self::ApplyConfigPage(_)
+            | Self::CancelConfigPage(_)
+            | Self::ConfigEditComplete
+            | Self::EditParameter(_)
+            | Self::EditCountdown
+            | Self::EditSuddenDeath
+            | Self::SetSuddenDeathAllowed(_)
+            | Self::SetSuddenDeathMaxSet(_)
+            | Self::SelectParameter(_)
+            | Self::ParameterEditComplete { .. }
+            | Self::ParameterSelected(_, _)
+            | Self::ToggleBoolParameter(_)
+            | Self::SelectGameSource(_)
+            | Self::SwitchGameSource(_)
+            | Self::CustomSiteUrlChanged(_)
+            | Self::CycleParameter(_)
+            | Self::SetCourtCount(_)
+            | Self::SetTeamTimeoutCount(_)
+            | Self::SetTeamTimeoutLength(_)
+            | Self::CycleDisplayMode
+            | Self::SelectLanguage(_)
+            | Self::LanguageSelectComplete { .. }
+            | Self::SelectBuzzer(_)
+            | Self::TestBuzzer
+            | Self::RequestRemoteId
+            | Self::UpdateAudioOutput
+            | Self::DeleteRemote(_)
+            | Self::ConfirmationSelected(_)
+            | Self::TeamTimeout(_, _)
+            | Self::RefTimeout(_)
+            | Self::PenaltyShot(_)
+            | Self::EndTimeout
+            | Self::CancelTimeout
+            | Self::ScoreConfirmation { .. }
+            | Self::StopClock
+            | Self::StartClock
+            | Self::BeepTestStart
+            | Self::BeepTestStop
+            | Self::BeepTestReset
+            | Self::BeepTestOpenSettings
+            | Self::BeepTestCloseSettings
+            | Self::BeepTestEditOpenLanguage
+            | Self::BeepTestLanguageCancel
+            | Self::BeepTestLanguageApply
+            | Self::BeepTestEditOpenSound
+            | Self::BeepTestSoundSettingsSave
+            | Self::BeepTestSoundSettingsCancel
+            | Self::BeepTestEditOpenLevels
+            | Self::BeepTestEditSelectLevel(_)
+            | Self::BeepTestEditCountInc
+            | Self::BeepTestEditCountDec
+            | Self::BeepTestEditDurationInc
+            | Self::BeepTestEditDurationDec
+            | Self::BeepTestEditAddLevel
+            | Self::BeepTestEditRemoveLevel
+            | Self::BeepTestEditSelectPreset(_)
+            | Self::BeepTestEditLevelsSave
+            | Self::BeepTestEditLevelsCancel
+            | Self::BeepTestEditOpenBuzzer
+            | Self::BeepTestSelectBuzzer(_)
+            | Self::BeepTestTestBuzzer
+            | Self::BeepTestBuzzerSave
+            | Self::BeepTestBuzzerCancel
+            | Self::BeepTestRestartToApply
+            | Self::BeepTestCycleDisplayLayout
+            | Self::AlarmPressed
+            | Self::TimeoutRevivePressed(_)
+            | Self::OpenUpdatesPage
+            | Self::UpdatesCheck
+            | Self::UpdatesConfirmInstall
+            | Self::UpdatesRevert
+            | Self::UpdatesConfirmRevert
+            | Self::UpdatesBack => true,
+        }
+    }
+
     pub fn is_repeatable(&self) -> bool {
         match self {
+            Self::Tap { message, .. } => message.is_repeatable(),
+
             Self::NewSnapshot(_)
             | Self::ChangeTime { .. }
             | Self::ChangeScore { .. }
@@ -781,6 +952,16 @@ impl PartialEq for Message {
             (Self::UpdatesDownloaded(a), Self::UpdatesDownloaded(b)) => a == b,
             (Self::UpdatesVerified(a), Self::UpdatesVerified(b)) => a == b,
             (Self::UpdatesInstalled(a), Self::UpdatesInstalled(b)) => a == b,
+            (
+                Self::Tap {
+                    screen: a,
+                    message: b,
+                },
+                Self::Tap {
+                    screen: c,
+                    message: d,
+                },
+            ) => a == c && b == d,
 
             (Self::NewSnapshot(_), _)
             | (Self::EditTime, _)
@@ -925,6 +1106,7 @@ impl PartialEq for Message {
             | (Self::SetTeamTimeoutLength(_), _)
             | (Self::OpenPowerPage, _)
             | (Self::PowerAction(_), _)
+            | (Self::Tap { .. }, _)
             | (Self::NoAction, _) => false,
         }
     }

@@ -365,6 +365,42 @@ impl UwhPortalClient {
         }
     }
 
+    /// Tell the portal which team wore which colour in a game.
+    ///
+    /// `Err` means the request never got an HTTP answer (connection, timeout,
+    /// builder). Any HTTP answer, including a refusal, is `Ok` and read by
+    /// [`classify_colour_swap_reply`].
+    pub fn post_game_colours(
+        &self,
+        event_id: &EventId,
+        game_number: &GameNumber,
+        dark: &TeamId,
+        light: &TeamId,
+    ) -> impl std::future::Future<Output = Result<ColourSwapOutcome, Box<dyn Error>>> + use<> {
+        let url = format!(
+            "{}/api/events/{}/schedule/games/{game_number}/colours",
+            self.base_url,
+            event_id.partial(),
+        );
+
+        let request = authenticated_request(&self.client, Method::POST, &url, &self.auth_header)
+            .json(&serde_json::json!({
+                "darkTeamId": dark.full(),
+                "lightTeamId": light.full(),
+            }));
+
+        let client_ = self.client.clone();
+
+        async move {
+            let request = request.build()?;
+            debug!("Posting game colours to portal: {request:?}");
+            let response = client_.execute(request).await?;
+            let status = response.status();
+            let body = response.text().await?;
+            Ok(classify_colour_swap_reply(status.as_u16(), &body))
+        }
+    }
+
     pub fn post_game_scores(
         &self,
         event_id: &EventId,
@@ -1112,6 +1148,59 @@ impl std::fmt::Debug for PortalTokenResponse {
     }
 }
 
+/// How the portal answered a request to record a game's colours.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ColourSwapOutcome {
+    /// 2xx: applied, or already that way.
+    Applied,
+    /// A named reason, or any other 4xx not listed below. Never retried.
+    Refused { status: u16, reason: String },
+    /// 404/405 without a named reason: this site has no colours call.
+    NotAccepted { status: u16 },
+    /// 401, 403, 408, 429, 5xx, or anything unexpected. Retried like a score.
+    Retry { status: u16 },
+}
+
+/// The reasons the portal names when it refuses a colours request.
+pub const COLOUR_SWAP_REASONS: [&str; 5] = [
+    "EventNotFound",
+    "GameNotFound",
+    "TeamsDoNotMatch",
+    "TeamsNotSet",
+    "AlreadyScored",
+];
+
+/// Read the portal's answer to a colours request.
+pub fn classify_colour_swap_reply(status: u16, body: &str) -> ColourSwapOutcome {
+    if (200..300).contains(&status) {
+        return ColourSwapOutcome::Applied;
+    }
+    if matches!(status, 401 | 403 | 408 | 429) || (500..600).contains(&status) {
+        return ColourSwapOutcome::Retry { status };
+    }
+    let json_reason = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| v.get("reason").and_then(|r| r.as_str()).map(str::to_owned));
+    if let Some(reason) = &json_reason {
+        if COLOUR_SWAP_REASONS.contains(&reason.as_str()) {
+            return ColourSwapOutcome::Refused {
+                status,
+                reason: reason.clone(),
+            };
+        }
+    }
+    if matches!(status, 404 | 405) {
+        return ColourSwapOutcome::NotAccepted { status };
+    }
+    if (400..500).contains(&status) {
+        return ColourSwapOutcome::Refused {
+            status,
+            reason: json_reason.unwrap_or_else(|| body.trim().to_owned()),
+        };
+    }
+    ColourSwapOutcome::Retry { status }
+}
+
 #[cfg(test)]
 mod coin_flip_tests {
     use super::*;
@@ -1558,5 +1647,86 @@ mod live_request_tests {
             Duration::from_secs(3),
         );
         assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod colour_swap_tests {
+    use super::*;
+
+    fn refused(status: u16, reason: &str) -> ColourSwapOutcome {
+        ColourSwapOutcome::Refused {
+            status,
+            reason: reason.to_owned(),
+        }
+    }
+
+    #[test]
+    fn colours_2xx_is_applied() {
+        assert_eq!(
+            classify_colour_swap_reply(200, ""),
+            ColourSwapOutcome::Applied
+        );
+        assert_eq!(
+            classify_colour_swap_reply(204, ""),
+            ColourSwapOutcome::Applied
+        );
+    }
+
+    #[test]
+    fn colours_named_reason_is_refused() {
+        assert_eq!(
+            classify_colour_swap_reply(409, r#"{"reason":"AlreadyScored"}"#),
+            refused(409, "AlreadyScored")
+        );
+        assert_eq!(
+            classify_colour_swap_reply(404, r#"{"reason":"GameNotFound"}"#),
+            refused(404, "GameNotFound")
+        );
+    }
+
+    #[test]
+    fn colours_unnamed_404_405_is_not_accepted() {
+        for (status, body) in [
+            (404, ""),
+            (404, "<html>Not Found</html>"),
+            (404, r#"{"reason":"Something"}"#),
+            (405, ""),
+        ] {
+            assert_eq!(
+                classify_colour_swap_reply(status, body),
+                ColourSwapOutcome::NotAccepted { status }
+            );
+        }
+    }
+
+    #[test]
+    fn colours_temporary_is_retry() {
+        for status in [401, 403, 408, 429, 500, 503] {
+            for body in ["", r#"{"reason":"AlreadyScored"}"#] {
+                assert_eq!(
+                    classify_colour_swap_reply(status, body),
+                    ColourSwapOutcome::Retry { status }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn colours_other_4xx_is_refused() {
+        assert_eq!(classify_colour_swap_reply(400, "bad"), refused(400, "bad"));
+        assert_eq!(
+            classify_colour_swap_reply(409, r#"{"reason":"Other"}"#),
+            refused(409, "Other")
+        );
+        assert_eq!(classify_colour_swap_reply(422, ""), refused(422, ""));
+    }
+
+    #[test]
+    fn colours_unexpected_status_is_retry() {
+        assert_eq!(
+            classify_colour_swap_reply(302, ""),
+            ColourSwapOutcome::Retry { status: 302 }
+        );
     }
 }

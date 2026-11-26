@@ -59,7 +59,9 @@ use uwh_common::{
     },
 };
 
+mod colour_swap;
 mod view_data;
+use colour_swap::{ColourSwaps, apply_colour_swaps};
 use view_data::ViewData;
 
 mod view_builders;
@@ -226,6 +228,9 @@ pub struct RefBoxApp {
     /// team id. Session-only: never written to disk, so a restart with no
     /// network falls back to the number pad until a fetch succeeds.
     team_rosters: BTreeMap<TeamId, Vec<u8>>,
+    /// The refbox's own record of each saved colour swap, laid over every schedule
+    /// it receives. Session-only.
+    colour_swaps: ColourSwaps,
     current_event_id: Option<EventId>,
     current_court: Option<String>,
     /// One-shot: the game number to re-select once the schedule arrives during
@@ -2595,6 +2600,12 @@ impl RefBoxApp {
         // (ADR 011 amendment 2026-04-23 dormant-until-linked).
         self.set_current_event_id(event_id);
         self.current_court = court;
+        let mut schedule = schedule;
+        if let (Some(schedule), Some(event_id)) =
+            (schedule.as_mut(), self.current_event_id.as_ref())
+        {
+            apply_colour_swaps(schedule, event_id.full(), &mut self.colour_swaps);
+        }
         self.schedule = schedule;
         self.refresh_court_schedule();
     }
@@ -2985,6 +2996,7 @@ impl RefBoxApp {
         // fetching any roster it already holds — so the stale entry would
         // shadow the real one for the rest of the session, surviving a REFRESH.
         self.team_rosters.clear();
+        self.colour_swaps.clear();
         // A startup link note that has not been consumed yet named the site the
         // refbox is leaving. Left set, `RecvEventList` would take
         // `pending_restore_schedule` and ask for that event through the live
@@ -3620,6 +3632,7 @@ impl RefBoxApp {
     /// ends (mirrors the borrow choreography of the config-change branch).
     fn clear_portal_selections_to_manual(&mut self, manual_config: GameConfig) {
         self.commit_link_selection(LinkSelection::manual());
+        self.colour_swaps.clear();
         // The Using-UWH-Portal setting is now off, which the player-grid design
         // spec lists as an unconditional number-pad condition. `game_rosters` is
         // otherwise only written at kickoff, so without this the grid would keep
@@ -4766,6 +4779,7 @@ impl RefBoxApp {
                 white: Vec::new(),
             },
             team_rosters: BTreeMap::new(),
+            colour_swaps: ColourSwaps::new(),
             current_event_id: None,
             current_court: None,
             pending_restore_game: None,
@@ -8090,6 +8104,7 @@ impl RefBoxApp {
                 schedule
                     .games
                     .sort_by(|_, v1, _, v2| v1.start_time.cmp(&v2.start_time));
+                apply_colour_swaps(&mut schedule, event_id.full(), &mut self.colour_swaps);
 
                 // Pre-load every team in the schedule while there is time and
                 // network, so the grid is available from the first game of the

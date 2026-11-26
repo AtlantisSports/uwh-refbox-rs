@@ -79,3 +79,12 @@
 1. `just check` (GO first). Then clippy at the MSRV toolchain on refbox if available, else a grep for `if let .* &&` in the diff.
 2. All languages, offline: a fontTools replay (`refbox/resources/` faces, chosen per `default_font_for`) of "1/<half>" and "1/<game>" for all 16 locales against the TEAM TIMEOUTS value box, whose size is read from the debug line in step 3. Table: locale → one line or two, and the size. Any locale at the 19 floor that is still too wide is reported to the PO, not fixed here.
 3. Walk build (GO first): refbox with `-v`, its own `XDG_CONFIG_HOME`, booked with the coordinator. The PO walks Settings (portal off) in English, German, and Japanese, then the Main, Game Info, Timeouts and Warnings pages. The log's `fit_text` debug lines list every place the height check acted. Each is either the intended fix or reported.
+
+## Deviations and status (2026-11-26)
+
+- Status: Task 1 done (35b0dc2b); code review (high) findings applied in 29d1b20e; `just check` green; PO walk PASSED.
+- refbox has no lib target: the test command is `cargo test -p refbox --bins fit_text`, not `--lib`.
+- The debug line re-takes the whole answer without the height (shared start and reserved width too), and runs only when debug logging is on (review finding).
+- Text a caller or translator breaks onto two lines is checked too; the spec's non-goal wording was corrected (review finding).
+- Walk log, 945 x 691 window: TEAM TIMEOUTS value box is 104 x 64. Acted on 1/HALF (2 lines @38 -> 1 line @30), 1/GAME (2 @37 -> 1 @27), 1/ハーフ (2 @34 -> 2 @27), and ja いいえ on the OVERTIME / SUDDEN DEATH tiles (2 @38 -> 1 @33). Nothing on the Main, Game Info or warnings pages.
+- Offline replay, all 16 languages: id-ID "1/PERTANDINGAN" and ms-MY "1/PERLAWANAN" (per GAME) are still too WIDE at the 19 floor on this window and are trimmed at the sides. Same as before this change (width, not height); reported to the PO, not fixed here.

@@ -1064,8 +1064,11 @@ once the operator saves the page, the refbox sends this call saying which team i
 which colour. It is sent only when both sides of the game have a real team ID in the schedule
 (never for a "Winner of game 9" placeholder), and only when the refbox is linked to an event. It
 goes through the same on-disk queue as call 7, so if the site cannot be reached it waits and is
-retried about every 15 seconds until the connection returns. A swap still unsent after 120 hours
-is dropped, as a queued score is. If the operator swaps the same game again
+retried about every 15 seconds. As with a queued score under call 7, that automatic retrying stops
+30 minutes after the operator **saved** the swap (often mid-game, so well before the final score
+exists): the swap is then flagged and waits for the operator to press RETRY ALL, which starts the
+retrying again from that moment. A swap still unsent after 120 hours is dropped, as a queued score
+is. If the operator swaps the same game again
 before the first one is sent, only the latest is sent.
 
 **Authentication:** `Authorization: Bearer <token>` — the same key as push scores (call 7). The
@@ -1086,11 +1089,14 @@ is", never as "flip whatever you have".
 **The final score waits for it.** While a game's colour swap is still queued, the refbox holds that
 game's score (call 7) back, so your site learns the colours before it records the result. The hold
 ends as soon as the swap gets any answer that settles it (accepted, refused, or "this site has no
-colours call"). A swap that is still unsent after 30 minutes stops holding the score, so a final
-score is never held back for good by this call (`refbox/src/portal_manager/health.rs:63`).
+colours call"). Thirty minutes after the save, an unsent swap stops holding the score, at the same
+moment it stops retrying by itself (`refbox/src/portal_manager/health.rs:45-71`), so a final score
+is never held back for good by this call. If the operator then presses RETRY ALL, the swap is
+retried again and holds the score again, for another 30 minutes, if that score has not gone yet.
+So after a long outage the colours can reach your site **after** the final score — and the UWH
+Portal refuses a swap for a game that already has one (`AlreadyScored`, below).
 
-**Successful response:** any `2xx` — unlike the other calls made through the shared Portal client,
-`204` works here.
+**Successful response:** any `2xx` — unlike every other call in this document, `204` works here.
 The body is never read. Answer `2xx` also when the teams are already that way round.
 
 **How each answer is read** (`uwh-common/src/uwhportal/mod.rs:1174`, in this order):
@@ -1098,7 +1104,7 @@ The body is never read. Answer `2xx` also when the teams are already that way ro
 | Your answer | What refbox does |
 |---|---|
 | Any `2xx` | Done. The swap leaves the queue and the score may go. |
-| `401`, `403`, `408`, `429`, any `5xx`, or no answer at all | Tries again about every 15 seconds, holding the score (for up to 30 minutes, as above). |
+| `401`, `403`, `408`, `429`, any `5xx`, or no answer at all | Tries again about every 15 seconds and holds the score, until 30 minutes after the save; then stops both and waits for RETRY ALL (as above). |
 | Any status whose JSON body is `{"reason": "<one of the names below>"}` | Refused for good. The swap is dropped and never retried; the score goes. |
 | `404` or `405` without one of those names | "This site has no colours call." The swap is dropped and never retried; the score goes. |
 | Any other `4xx` | Refused for good, as above. |
@@ -1205,8 +1211,9 @@ every call in this document except the overlay's own — compares the response s
 and `201`, `202` and `204` are not recognised as success. A site that answers a score push with
 `204 No Content` has that push treated as a **failure**: it goes back on the local queue and is
 retried about every 15 seconds until it eventually archives, with nothing on screen explaining
-why. Return `200` — `{}` is the safe default body — rather than `204`. The one exception is the
-unreleased [colours call](#the-optional-colours-call-unreleased), which accepts any `2xx`.
+why. Return `200` — `{}` is the safe default body — rather than `204`. Among the calls in this
+document, the one exception is the unreleased
+[colours call](#the-optional-colours-call-unreleased), which accepts any `2xx`.
 
 **Whether the body's content matters at all depends on the call.** Three calls never parse the
 response body on success, at all: verify token (call 2), push scores (call 7), and push stats

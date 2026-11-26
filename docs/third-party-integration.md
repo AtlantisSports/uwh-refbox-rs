@@ -1,8 +1,8 @@
 # Third-Party Integration: Running Your Own Site Instead of the UWH Portal
 
 Accurate as of refbox v0.4.9, plus the custom-source work that follows it and is **not yet in a
-released build** — selecting a site inside the app, the per-site credential, and the narrowing of
-call 2. Those parts are marked "unreleased" where they appear, and describe a branch that has not
+released build** — selecting a site inside the app, the per-site credential, the narrowing of
+call 2, and the optional colours call. Those parts are marked "unreleased" where they appear, and describe a branch that has not
 shipped, so treat them as the intended shape rather than something you can test against a download
 today. **"Unreleased" here means exactly one thing: the behaviour exists only on an unmerged
 development branch.** There is no build flag, cargo feature, or setting that switches it on — a
@@ -214,6 +214,11 @@ red indicator, a queued result that will not send. Call 9 fails silently: the re
 as though nothing is wrong, and the only sign is a feature the operator quietly does not get.
 Its entry below spells out exactly what is lost.
 
+There is also one optional call, not counted in the nine or the eighteen because it exists only on
+an unreleased branch: the [colours call](#the-optional-colours-call-unreleased), which tells your
+site which team wore which colour after the operator swaps them. A site that does not offer it
+only has to answer `404` or `405`, and the refbox stops sending it; scores are unaffected.
+
 ## Full inventory
 
 All eighteen calls the refbox ecosystem makes to the Portal today, across all three programs.
@@ -248,6 +253,11 @@ use the "Inventory #" column above.
 These eighteen operations sit on sixteen distinct paths: the coin-flips endpoint serves both
 a read and a write, and the schedule endpoint serves both a public read and an upload, each
 under the same path with a different HTTP method.
+
+Not in this table: the optional [colours call](#the-optional-colours-call-unreleased)
+(`POST /api/events/{eventId}/schedule/games/{gameNumber}/colours`, refbox, bearer,
+`uwh-common/src/uwhportal/mod.rs:373`), which exists only on an unreleased branch. It is left out
+so that the numbers above, and the "Inventory #" column that points at them, keep their meaning.
 
 The `/admin/` segment in a path is not a reliable signal for whether a call needs a token:
 two `/admin/` paths need none (`get-event-team`, `overlay-attachments`) and two do
@@ -1034,6 +1044,88 @@ continuing with a blank roster rather than stopping. The overlay reads different
 including top-level `name` and `logoUrl`; see
 [The overlay's other calls](#the-overlays-other-calls-same-paths-different-code).
 
+## The optional colours call (UNRELEASED)
+
+`POST /api/events/{eventId}/schedule/games/{gameNumber}/colours`  ·  source:
+`uwh-common/src/uwhportal/mod.rs:373` (the request) and `uwh-common/src/uwhportal/mod.rs:1174`
+(how the answer is read)
+
+**Unreleased: this call exists only on an unmerged development branch.** No released refbox sends
+it.
+
+**You do not have to offer this call.** A site that does not offer it answers `404` or `405` — the
+"not found" most web servers give for an unknown address already does — and the refbox simply
+stops sending it; scores are unaffected, apart from waiting a moment for that answer. Everything
+below is for a site that wants to know about colour swaps.
+
+**When refbox calls it:** When the operator swaps the two teams' colours during a game. The score
+edit page (opened by tapping a score, and also in its end-of-game form) has a SWAP COLOURS button;
+once the operator saves the page, the refbox sends this call saying which team is now wearing
+which colour. It is sent only when both sides of the game have a real team ID in the schedule
+(never for a "Winner of game 9" placeholder), and only when the refbox is linked to an event. It
+goes through the same on-disk queue as call 7, so if the site cannot be reached it waits and is
+retried about every 15 seconds until the connection returns. A swap still unsent after 120 hours
+is dropped, as a queued score is. If the operator swaps the same game again
+before the first one is sent, only the latest is sent.
+
+**Authentication:** `Authorization: Bearer <token>` — the same key as push scores (call 7). The
+redirect warning under [Rules that apply to every call](#rules-that-apply-to-every-call) applies
+here too.
+
+**Query parameters:** none.
+
+**Request body:** the two teams by colour, each as a **long-form** team ID:
+```json
+{ "darkTeamId": "teams/5678-B", "lightTeamId": "teams/5678-A" }
+```
+`dark` is the team wearing black and `light` the team wearing white, as in call 7. The body states
+the colours actually worn, not "swap": receiving the same body twice, or after you have already
+swapped the game yourself, must leave the teams where the body says. Store it as "this is how it
+is", never as "flip whatever you have".
+
+**The final score waits for it.** While a game's colour swap is still queued, the refbox holds that
+game's score (call 7) back, so your site learns the colours before it records the result. The hold
+ends as soon as the swap gets any answer that settles it (accepted, refused, or "this site has no
+colours call"). A swap that is still unsent after 30 minutes stops holding the score, so a final
+score is never held back for good by this call (`refbox/src/portal_manager/health.rs:63`).
+
+**Successful response:** any `2xx` — unlike the other calls made through the shared Portal client,
+`204` works here.
+The body is never read. Answer `2xx` also when the teams are already that way round.
+
+**How each answer is read** (`uwh-common/src/uwhportal/mod.rs:1174`, in this order):
+
+| Your answer | What refbox does |
+|---|---|
+| Any `2xx` | Done. The swap leaves the queue and the score may go. |
+| `401`, `403`, `408`, `429`, any `5xx`, or no answer at all | Tries again about every 15 seconds, holding the score (for up to 30 minutes, as above). |
+| Any status whose JSON body is `{"reason": "<one of the names below>"}` | Refused for good. The swap is dropped and never retried; the score goes. |
+| `404` or `405` without one of those names | "This site has no colours call." The swap is dropped and never retried; the score goes. |
+| Any other `4xx` | Refused for good, as above. |
+| Anything else (for example a `3xx` the client did not follow) | Tries again, as for `5xx`. |
+
+The named reasons are exactly `EventNotFound`, `GameNotFound`, `TeamsDoNotMatch`, `TeamsNotSet`
+and `AlreadyScored` (`uwh-common/src/uwhportal/mod.rs:1165`). The UWH Portal uses them as: `404`
+`EventNotFound` / `GameNotFound`; `409 TeamsDoNotMatch` (the two IDs are not the game's teams);
+`409 TeamsNotSet`; and `409 AlreadyScored` (the game already has a final score). A site may use
+them too, but the refbox treats every named refusal the same way.
+
+**Do not answer an unknown address with `401`, `403` or `500`.** A site that has no colours call
+but whose login check runs before its routing (so an unknown address gets `401`), or whose
+framework turns an unknown address into `500`, makes the refbox retry the swap — and hold that
+game's score — for 30 minutes after every swap, with a red row on the operator's portal page.
+Answer `404` or `405`.
+
+**What the operator sees:** nothing for a refusal or for "no colours call". The operator is never
+shown either; each is written to the refbox log only, and the swap stays on the refbox's own
+screens. While a swap is waiting to be sent it shows as a row on the portal detail page, and after
+30 minutes that row turns red and asks the operator to press RETRY ALL. Each later swap, in any
+game, is sent and answered afresh: "stops sending" means that swap is dropped, not that the refbox
+remembers your site has no colours call.
+
+**Fields refbox actually reads:** the status code, and on a refusal the `reason` field of a JSON
+body. Nothing else.
+
 ## Data formats
 
 This section gives the exact field-by-field shape of everything the calls above only summarised:
@@ -1113,7 +1205,8 @@ every call in this document except the overlay's own — compares the response s
 and `201`, `202` and `204` are not recognised as success. A site that answers a score push with
 `204 No Content` has that push treated as a **failure**: it goes back on the local queue and is
 retried about every 15 seconds until it eventually archives, with nothing on screen explaining
-why. Return `200` — `{}` is the safe default body — rather than `204`.
+why. Return `200` — `{}` is the safe default body — rather than `204`. The one exception is the
+unreleased [colours call](#the-optional-colours-call-unreleased), which accepts any `2xx`.
 
 **Whether the body's content matters at all depends on the call.** Three calls never parse the
 response body on success, at all: verify token (call 2), push scores (call 7), and push stats
@@ -1123,7 +1216,9 @@ marks required; `{}` alone will not satisfy those.
 
 Exactly one call reads any other status: call 1 of the refbox nine treats `400` as "that code was
 wrong" and surfaces it to the operator as an invalid code
-(`uwh-common/src/uwhportal/mod.rs:252`). Everywhere else, every non-`200` means the same single
+(`uwh-common/src/uwhportal/mod.rs:252`). (The unreleased
+[colours call](#the-optional-colours-call-unreleased) also reads the status; its own section has
+the table.) Everywhere else, every non-`200` means the same single
 thing, so the status you choose for "no such event" carries no meaning to refbox — `404`, `400`
 and `500` are indistinguishable to it. An event deleted from your site therefore looks, to the
 operator, identical to your site being down — same red indicator, no update, no way to tell "it
@@ -1282,7 +1377,8 @@ are the only three that use the long form:
 - Game referees fetch — `eventId` (`uwh-common/src/uwhportal/mod.rs:764`) — part of the other nine.
 
 Every other ID in this API — including every `{eventId}` in the path tables above — is the short
-form.
+form, with one exception outside the eighteen: the two team IDs in the request body of the
+unreleased [colours call](#the-optional-colours-call-unreleased) are long form.
 
 ### The schedule payload
 

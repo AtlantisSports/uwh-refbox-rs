@@ -300,4 +300,16 @@ Portal source (`uwh-portal` `api/Program.cs` ~line 811) explains the 401: a midd
 
 ## Deviations
 
-(none yet)
+Rulings made during execution (what the plan said → what was built → why):
+
+- **Task boundaries (R1–R3).** The plan put the two `PortalEvent` arms in `app/mod.rs` and the two queue-row translations in Task 4 → Task 2 added the arms (calling the queue only) and wrote the row strings in all 15 languages; unused-code warnings between Tasks 2 and 4 were tolerated without `#[allow]` and cleared by Task 4 → each task had to compile, and an English-only key fails `just check`. No behaviour change.
+- **R4 — a report only settles the swap it was about.** `SwapAttempted` / `SwapResolved` carried only the game → they also carry the dark and light team ids, and the queue acts only when the queued swap still has them → otherwise "swap, save, swap back" before the first send answered would delete the newer swap unsent.
+- **R5 — Japanese, Korean and Chinese wording.** The plan's 色を入れ替え / 색상 교체 / 交换颜色 (and matching row strings) → "black/white swap" wording (黒/白の入れ替え, 검정/흰 교체, 黑白对换) → the refbox's CJK font has no 色, 색 or 颜 and draws a missing character blank. Owed a native-speaker check.
+- **R6 — a stuck swap stops holding its score.** The plan said a game's score waits for its swap → it waits only until the swap has been stuck 30 minutes; the swap then stays queued, red and retryable with RETRY ALL → the PO's intent that a final score is never held back for good outranks the literal rule. Trade-off: after 30 minutes of a failing colours call the site may record the score first and then refuse the swap (`AlreadyScored`), which is only logged.
+- **R7 — the local record checks which swap was delivered.** `mark_delivered(event, game)` → `mark_delivered(event, game, sent teams)`, marking the record delivered only when it matches what was sent → an older send's success could otherwise retire the newer record, and a later download would show the opposite of the operator's last choice.
+
+Accepted implementer choices that change behaviour:
+
+- RETRY ALL is enabled by swap rows too (the stuck row tells the operator to press it).
+- A queued swap whose ids cannot be read is dropped (logged), not retried, since it never could succeed.
+- The SWAP COLOURS button (and the team names on the score edit page) also require the refbox to be linked to an event, matching when a swap can be saved and sent.

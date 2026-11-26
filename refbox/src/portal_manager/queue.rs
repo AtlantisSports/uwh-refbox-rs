@@ -14,6 +14,13 @@ use super::ItemId;
 pub struct QueueFile {
     pub version: u32,
     pub items: Vec<QueuedItem>,
+    /// Colour swaps still waiting to reach the site. A game's score is held
+    /// back while its swap is here, so the site records the colours before
+    /// the result. `#[serde(default)]` so files written before swaps existed
+    /// load with none; not written at all when empty, so a refbox that never
+    /// swaps writes exactly the file it always did.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub swaps: Vec<QueuedSwap>,
 }
 
 impl QueueFile {
@@ -23,8 +30,28 @@ impl QueueFile {
         Self {
             version: Self::CURRENT_VERSION,
             items: Vec::new(),
+            swaps: Vec::new(),
         }
     }
+}
+
+/// A game's colour swap waiting to be sent: which team now plays dark and
+/// which light. Keyed by the same event + game as that game's score item, so
+/// the score can tell it must wait. At most one per game: a newer swap of the
+/// same game replaces it (see `PortalManager::enqueue_colour_swap`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct QueuedSwap {
+    #[serde(flatten)]
+    pub id: ItemId,
+    /// The full team id (`TeamId::full()`, e.g. "teams/12-A") now playing dark.
+    pub dark_team_id: String,
+    /// The full team id now playing light.
+    pub light_team_id: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub queued_at: OffsetDateTime,
+    pub attempts: u32,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub last_attempt_at: Option<OffsetDateTime>,
 }
 
 /// Per-game submission record persisted on disk.
@@ -289,6 +316,7 @@ mod tests {
                 score_sent: false,
                 stats_may_have_landed: false,
             }],
+            swaps: Vec::new(),
         };
         let s = serde_json::to_string_pretty(&q).unwrap();
         let back: QueueFile = serde_json::from_str(&s).unwrap();
@@ -318,6 +346,7 @@ mod tests {
                     score_sent: false,
                     stats_may_have_landed: false,
                 }],
+                swaps: Vec::new(),
             }
         }
 
@@ -404,6 +433,7 @@ mod tests {
                     score_sent: false,
                     stats_may_have_landed: false,
                 }],
+                swaps: Vec::new(),
             };
             save(tmp.path(), &q).unwrap();
             let back = load_or_empty(tmp.path()).unwrap();
@@ -440,6 +470,38 @@ mod tests {
             assert!(tmp.path().join("portal_queue.json").exists());
             assert!(!tmp.path().join("portal_queue.json.tmp").exists());
         }
+    }
+
+    #[test]
+    fn queue_file_without_swaps_loads() {
+        // Today's file, written before swaps existed.
+        let back: QueueFile = serde_json::from_str(r#"{"version":1,"items":[]}"#).unwrap();
+        assert!(back.swaps.is_empty());
+        assert_eq!(back, QueueFile::empty());
+    }
+
+    #[test]
+    fn queue_round_trips_swaps() {
+        let mut q = QueueFile::empty();
+        let json = serde_json::to_string(&q).unwrap();
+        assert!(
+            !json.contains("swaps"),
+            "an empty swaps list must not be written: {json}"
+        );
+        q.swaps.push(QueuedSwap {
+            id: ItemId {
+                event_id: "events/e1".into(),
+                game_number: "12".into(),
+            },
+            dark_team_id: "teams/12-A".into(),
+            light_team_id: "teams/12-B".into(),
+            queued_at: datetime!(2026-11-26 10:00 UTC),
+            attempts: 2,
+            last_attempt_at: Some(datetime!(2026-11-26 10:01 UTC)),
+        });
+        let json = serde_json::to_string(&q).unwrap();
+        let back: QueueFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, q);
     }
 
     #[test]

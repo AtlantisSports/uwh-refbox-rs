@@ -14,8 +14,9 @@ use tokio::sync::mpsc;
 
 use super::HealthState;
 use super::PortalEvent;
-use super::is_item_stuck;
-use super::queue::{QueueFile, QueuedItem};
+use super::queue::{QueueFile, QueuedItem, QueuedSwap};
+use super::{is_item_stuck, is_swap_stuck};
+use uwh_common::uwhportal::ColourSwapOutcome;
 
 pub const GREEN_CADENCE: Duration = Duration::from_secs(5 * 60);
 pub const DEGRADED_CADENCE: Duration = Duration::from_secs(15);
@@ -35,6 +36,74 @@ pub fn is_item_retry_eligible(item: &QueuedItem, now: OffsetDateTime) -> bool {
     match item.last_attempt_at {
         None => true,
         Some(last) => (now - last) >= ITEM_RETRY_INTERVAL,
+    }
+}
+
+/// The same rule as `is_item_retry_eligible`, for a queued colour swap: a
+/// stuck swap waits for RETRY ALL, otherwise one attempt per
+/// `ITEM_RETRY_INTERVAL`.
+pub fn is_swap_retry_eligible(swap: &QueuedSwap, now: OffsetDateTime) -> bool {
+    if is_swap_stuck(swap, now) {
+        return false; // Stuck swaps wait for operator action.
+    }
+    match swap.last_attempt_at {
+        None => true,
+        Some(last) => (now - last) >= ITEM_RETRY_INTERVAL,
+    }
+}
+
+/// True while `item`'s game still has a colour swap queued. Its score waits:
+/// the site must learn which team played dark before it records the result.
+/// Matches on event AND game, so a swap never holds another event's game of
+/// the same number.
+pub(crate) fn score_waits_for_swap(item: &QueuedItem, swaps: &[QueuedSwap]) -> bool {
+    swaps.iter().any(|swap| swap.id == item.id)
+}
+
+/// What happens to a queued swap after one send.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SwapStep {
+    /// The site recorded the colours. Remove the swap; the score may go.
+    Delivered,
+    /// The site answered and will never take this swap (refused, or has no
+    /// colours call). Remove it; the swap stays on this refbox only.
+    Dropped,
+    /// No usable answer. Keep the swap queued and try again later.
+    Retry,
+}
+
+pub(crate) fn swap_step(result: &Result<ColourSwapOutcome, PortalCallError>) -> SwapStep {
+    match result {
+        Ok(ColourSwapOutcome::Applied) => SwapStep::Delivered,
+        Ok(ColourSwapOutcome::Refused { .. }) | Ok(ColourSwapOutcome::NotAccepted { .. }) => {
+            SwapStep::Dropped
+        }
+        Ok(ColourSwapOutcome::Retry { .. }) | Err(_) => SwapStep::Retry,
+    }
+}
+
+/// The one log line for each colour-swap send. The operator is never shown a
+/// refusal, so this is the only record of why a swap stayed on this refbox.
+fn log_swap_outcome(swap: &QueuedSwap, result: &Result<ColourSwapOutcome, PortalCallError>) {
+    let game = &swap.id.game_number;
+    match result {
+        Ok(ColourSwapOutcome::Applied) => {
+            log::info!("Game {game}: colour swap recorded on the site");
+        }
+        Ok(ColourSwapOutcome::Refused { status, reason }) => {
+            log::warn!(
+                "Game {game}: site refused the colour swap ({status} {reason}); kept on this refbox only"
+            );
+        }
+        Ok(ColourSwapOutcome::NotAccepted { status }) => {
+            log::info!("site does not accept colour swaps ({status}); kept on this refbox only");
+        }
+        Ok(ColourSwapOutcome::Retry { status }) => {
+            log::warn!("colour swap upload for game {game}: site answered {status}, will retry");
+        }
+        Err(e) => {
+            log::warn!("colour swap upload for game {game}: {e}");
+        }
     }
 }
 
@@ -101,6 +170,13 @@ pub trait PortalTaskIo {
     /// implementation refuses the post, without sending, if the queue has been discarded since.
     async fn post_scores(&self, item: &QueuedItem, epoch: u64) -> Result<(), PortalCallError>;
     async fn post_stats(&self, item: &QueuedItem, epoch: u64) -> Result<(), PortalCallError>;
+    /// Send one queued colour swap. `epoch` works exactly as for `post_scores`. `Err` means the
+    /// site gave no answer at all (or the post was refused before sending).
+    async fn post_colours(
+        &self,
+        swap: &QueuedSwap,
+        epoch: u64,
+    ) -> Result<ColourSwapOutcome, PortalCallError>;
 }
 
 #[derive(Debug)]
@@ -229,11 +305,59 @@ async fn run_task(
     loop {
         tokio::select! {
             _ = sleep(POLL_INTERVAL) => {
-                // Tick: try each eligible queued item, then health-check if due.
+                // Tick: try each eligible colour swap, then each eligible
+                // queued item, then health-check if due. A score whose game
+                // still has a swap in this snapshot is skipped: it goes on a
+                // later tick, once the main thread has dropped the resolved
+                // swap and pushed a fresh snapshot.
                 let now = OffsetDateTime::now_utc();
+                for idx in 0..queue_snapshot.swaps.len() {
+                    let swap = &queue_snapshot.swaps[idx];
+                    if !is_swap_retry_eligible(swap, now) {
+                        continue;
+                    }
+                    let result = io.post_colours(swap, snapshot_epoch).await;
+                    log_swap_outcome(swap, &result);
+                    if matches!(result, Ok(ColourSwapOutcome::Applied)) {
+                        last_success = Some(TokioInstant::now());
+                    }
+                    // Stamped on our own copy whatever the outcome, as for
+                    // score items: a resolved swap stays in this snapshot (and
+                    // keeps holding its score) until the main thread drops it
+                    // and pushes a fresh one, and must not be re-sent every
+                    // poll meanwhile.
+                    let swap = &mut queue_snapshot.swaps[idx];
+                    swap.attempts = swap.attempts.saturating_add(1);
+                    swap.last_attempt_at = Some(now);
+                    let event = match swap_step(&result) {
+                        SwapStep::Delivered => PortalEvent::SwapResolved {
+                            id: swap.id.clone(),
+                            dark_team_id: swap.dark_team_id.clone(),
+                            light_team_id: swap.light_team_id.clone(),
+                            delivered: true,
+                        },
+                        SwapStep::Dropped => PortalEvent::SwapResolved {
+                            id: swap.id.clone(),
+                            dark_team_id: swap.dark_team_id.clone(),
+                            light_team_id: swap.light_team_id.clone(),
+                            delivered: false,
+                        },
+                        SwapStep::Retry => PortalEvent::SwapAttempted {
+                            id: swap.id.clone(),
+                            dark_team_id: swap.dark_team_id.clone(),
+                            light_team_id: swap.light_team_id.clone(),
+                            attempts: swap.attempts,
+                            at: now,
+                        },
+                    };
+                    let _ = event_tx.send(event).await;
+                }
                 for idx in 0..queue_snapshot.items.len() {
                     let item = &queue_snapshot.items[idx];
-                    if item.score_sent || !is_item_retry_eligible(item, now) {
+                    if item.score_sent
+                        || !is_item_retry_eligible(item, now)
+                        || score_waits_for_swap(item, &queue_snapshot.swaps)
+                    {
                         continue;
                     }
                     if attempt_item(&io, item, snapshot_epoch, &event_tx).await {
@@ -666,6 +790,13 @@ mod tests {
             let mut v = self.stats_results.lock().unwrap();
             if v.is_empty() { Ok(()) } else { v.remove(0) }
         }
+        async fn post_colours(
+            &self,
+            _: &QueuedSwap,
+            _: u64,
+        ) -> Result<ColourSwapOutcome, PortalCallError> {
+            Ok(ColourSwapOutcome::Applied)
+        }
     }
 
     /// Drain all currently-queued events without blocking.
@@ -845,6 +976,7 @@ mod tests {
         QueueFile {
             version: QueueFile::CURRENT_VERSION,
             items: vec![mk_queue_item(0)],
+            swaps: Vec::new(),
         }
     }
 
@@ -1014,6 +1146,7 @@ mod tests {
         let queue = QueueFile {
             version: QueueFile::CURRENT_VERSION,
             items: vec![item],
+            swaps: Vec::new(),
         };
         handle
             .command_tx
@@ -1762,6 +1895,226 @@ mod tests {
             "a stale snapshot's item must not be posted"
         );
         assert!(stats_epochs.lock().unwrap().is_empty());
+        drop(handle);
+    }
+
+    fn mk_swap(event: &str, game: &str) -> QueuedSwap {
+        QueuedSwap {
+            id: ItemId {
+                event_id: event.into(),
+                game_number: game.into(),
+            },
+            dark_team_id: "teams/12-B".into(),
+            light_team_id: "teams/12-A".into(),
+            queued_at: OffsetDateTime::now_utc(),
+            attempts: 0,
+            last_attempt_at: None,
+        }
+    }
+
+    fn mk_score(event: &str, game: &str) -> QueuedItem {
+        let mut item = mk_queue_item(0);
+        item.id = ItemId {
+            event_id: event.into(),
+            game_number: game.into(),
+        };
+        item
+    }
+
+    #[test]
+    fn score_waits_only_for_its_own_game() {
+        let swaps = vec![mk_swap("e", "12")];
+        assert!(score_waits_for_swap(&mk_score("e", "12"), &swaps));
+        assert!(!score_waits_for_swap(&mk_score("e", "13"), &swaps));
+        assert!(!score_waits_for_swap(&mk_score("other", "12"), &swaps));
+        assert!(!score_waits_for_swap(&mk_score("e", "12"), &[]));
+    }
+
+    #[test]
+    fn swap_step_sorts_outcomes() {
+        assert_eq!(
+            swap_step(&Ok(ColourSwapOutcome::Applied)),
+            SwapStep::Delivered
+        );
+        assert_eq!(
+            swap_step(&Ok(ColourSwapOutcome::Refused {
+                status: 409,
+                reason: "Game has already started".into(),
+            })),
+            SwapStep::Dropped
+        );
+        assert_eq!(
+            swap_step(&Ok(ColourSwapOutcome::NotAccepted { status: 404 })),
+            SwapStep::Dropped
+        );
+        assert_eq!(
+            swap_step(&Ok(ColourSwapOutcome::Retry { status: 503 })),
+            SwapStep::Retry
+        );
+        assert_eq!(
+            swap_step(&Err(PortalCallError::Unreachable("timed out".into()))),
+            SwapStep::Retry
+        );
+        assert_eq!(
+            swap_step(&Err(PortalCallError::Failed("no access key".into()))),
+            SwapStep::Retry
+        );
+        assert_eq!(
+            swap_step(&Err(PortalCallError::NotSent("discarded".into()))),
+            SwapStep::Retry
+        );
+    }
+
+    /// A test IO for the swap tests: every colours call gets the next queued
+    /// answer (`Applied` once they run out), and every score post records its
+    /// game number.
+    struct SwapIo {
+        colours_results: Mutex<Vec<Result<ColourSwapOutcome, PortalCallError>>>,
+        colours_count: Arc<std::sync::atomic::AtomicU32>,
+        scored_games: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl SwapIo {
+        fn answering(
+            answers: Vec<Result<ColourSwapOutcome, PortalCallError>>,
+        ) -> (
+            Self,
+            Arc<std::sync::atomic::AtomicU32>,
+            Arc<Mutex<Vec<String>>>,
+        ) {
+            let colours_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+            let scored_games: Arc<Mutex<Vec<String>>> = Default::default();
+            (
+                Self {
+                    colours_results: Mutex::new(answers),
+                    colours_count: colours_count.clone(),
+                    scored_games: scored_games.clone(),
+                },
+                colours_count,
+                scored_games,
+            )
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl PortalTaskIo for SwapIo {
+        async fn verify_token(&self) -> Result<(), PortalCallError> {
+            Ok(())
+        }
+        async fn post_scores(&self, item: &QueuedItem, _: u64) -> Result<(), PortalCallError> {
+            self.scored_games
+                .lock()
+                .unwrap()
+                .push(item.id.game_number.clone());
+            Ok(())
+        }
+        async fn post_stats(&self, _: &QueuedItem, _: u64) -> Result<(), PortalCallError> {
+            Ok(())
+        }
+        async fn post_colours(
+            &self,
+            _: &QueuedSwap,
+            _: u64,
+        ) -> Result<ColourSwapOutcome, PortalCallError> {
+            self.colours_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut v = self.colours_results.lock().unwrap();
+            if v.is_empty() {
+                Ok(ColourSwapOutcome::Applied)
+            } else {
+                v.remove(0)
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn swap_not_accepted_releases_the_held_score() {
+        let (io, colours_count, scored_games) =
+            SwapIo::answering(vec![Ok(ColourSwapOutcome::NotAccepted { status: 404 })]);
+        let mut handle = spawn(io);
+        let swap = mk_swap("e", "12");
+        let swap_id = swap.id.clone();
+        let mut queue = QueueFile::empty();
+        queue.items.push(mk_score("e", "12"));
+        queue.swaps.push(swap);
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated {
+                queue: queue.clone(),
+                epoch: 0,
+            })
+            .await
+            .unwrap();
+
+        run_one_tick().await;
+
+        assert_eq!(colours_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(
+            scored_games.lock().unwrap().is_empty(),
+            "the score must not go before its swap is resolved"
+        );
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events.iter().any(|ev| matches!(
+                ev,
+                PortalEvent::SwapResolved { id, delivered: false, .. } if id == &swap_id
+            )),
+            "a site with no colours call must resolve the swap undelivered, got {events:?}"
+        );
+
+        // The main thread drops the resolved swap and pushes a fresh snapshot.
+        queue.swaps.clear();
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated { queue, epoch: 0 })
+            .await
+            .unwrap();
+
+        run_one_tick().await;
+
+        assert_eq!(*scored_games.lock().unwrap(), vec!["12".to_string()]);
+        drop(handle);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn score_is_held_while_its_swap_retries() {
+        let (io, colours_count, scored_games) =
+            SwapIo::answering(vec![Ok(ColourSwapOutcome::Retry { status: 503 })]);
+        let mut handle = spawn(io);
+        let swap = mk_swap("e", "12");
+        let swap_id = swap.id.clone();
+        let mut queue = QueueFile::empty();
+        queue.items.push(mk_score("e", "12"));
+        queue.items.push(mk_score("e", "13"));
+        queue.swaps.push(swap);
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated { queue, epoch: 0 })
+            .await
+            .unwrap();
+
+        run_one_tick().await;
+
+        assert_eq!(colours_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            *scored_games.lock().unwrap(),
+            vec!["13".to_string()],
+            "game 12's score waits for its swap; game 13's goes in the same tick"
+        );
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events.iter().any(|ev| matches!(
+                ev,
+                PortalEvent::SwapAttempted { id, attempts: 1, .. } if id == &swap_id
+            )),
+            "a swap to retry must report its attempt, got {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::SwapResolved { .. })),
+            "a swap to retry must stay queued, got {events:?}"
+        );
         drop(handle);
     }
 

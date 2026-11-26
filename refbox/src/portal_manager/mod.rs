@@ -14,7 +14,7 @@ use std::time::Instant;
 use time::{Duration as TimeDuration, OffsetDateTime};
 use tokio::sync::mpsc;
 
-use crate::portal_manager::queue::{QueueFile, QueuedItem};
+use crate::portal_manager::queue::{QueueFile, QueuedItem, QueuedSwap};
 
 /// Maximum number of recent successes shown at the bottom of the
 /// detail page. When a sixth success lands, the oldest is evicted.
@@ -44,6 +44,13 @@ impl health::PortalTaskIo for NullIo {
     }
     async fn post_stats(&self, _: &QueuedItem, _: u64) -> Result<(), health::PortalCallError> {
         Ok(())
+    }
+    async fn post_colours(
+        &self,
+        _: &QueuedSwap,
+        _: u64,
+    ) -> Result<uwh_common::uwhportal::ColourSwapOutcome, health::PortalCallError> {
+        Ok(uwh_common::uwhportal::ColourSwapOutcome::Applied)
     }
 }
 
@@ -290,6 +297,16 @@ fn parse_event_id(
     })
 }
 
+/// Parse a queued swap's team id string back into a `TeamId`. Mapped to a portal call error
+/// rather than a panic, for the same reason as `parse_event_id`.
+fn parse_team_id(
+    raw: &str,
+) -> Result<uwh_common::uwhportal::schedule::TeamId, health::PortalCallError> {
+    uwh_common::uwhportal::schedule::TeamId::from_full(raw).map_err(|e| {
+        health::PortalCallError::Failed(format!("invalid queued team id {raw:?}: {e}"))
+    })
+}
+
 /// Take a snapshot of the currently-selected event id for use by the
 /// background task. The guard is dropped before the function returns, so
 /// the caller can safely hold the returned `Option<EventId>` across an
@@ -357,6 +374,23 @@ impl health::PortalTaskIo for UwhPortalIo {
         // Same rule as the scores above: the key belongs to the event this item was recorded for.
         let fut = self.request_for(&event_id, Some(epoch), |client| {
             client.post_game_stats(&event_id, &game_number, stats)
+        })?;
+        fut.await.map_err(classify_error)
+    }
+
+    async fn post_colours(
+        &self,
+        swap: &QueuedSwap,
+        epoch: u64,
+    ) -> Result<uwh_common::uwhportal::ColourSwapOutcome, health::PortalCallError> {
+        let event_id = parse_event_id(&swap.id.event_id)?;
+        let game_number = swap.id.game_number.clone();
+        let dark = parse_team_id(&swap.dark_team_id)?;
+        let light = parse_team_id(&swap.light_team_id)?;
+        // Same rule as the scores: the key belongs to the event this swap was recorded for, and
+        // the discard counter refuses a swap handed over before a discard or a site move.
+        let fut = self.request_for(&event_id, Some(epoch), |client| {
+            client.post_game_colours(&event_id, &game_number, &dark, &light)
         })?;
         fut.await.map_err(classify_error)
     }
@@ -449,6 +483,30 @@ pub enum PortalEvent {
     /// degrades WITHOUT claiming the login expired — the operator keeps the
     /// schedule REFRESH button and is not pushed into a pointless re-login.
     TokenUnreachable,
+    /// The background task just tried to send this queued colour swap and
+    /// will try again. Mirrored onto the authoritative queue like
+    /// `ItemAttempted`. Carries the team ids that were sent, so an attempt of
+    /// an older assignment of the same game never stamps a newer queued one.
+    SwapAttempted {
+        id: ItemId,
+        dark_team_id: String,
+        light_team_id: String,
+        attempts: u32,
+        at: OffsetDateTime,
+    },
+    /// This queued colour swap is finished with: the main thread removes it,
+    /// which releases that game's held score. `delivered` is true only when
+    /// the site recorded the colours; false when the site refused them or has
+    /// no colours call, and the swap stays on this refbox only. Carries the
+    /// team ids that were sent: if the operator swapped the game again while
+    /// this send was in flight, the newer queued swap does not match and stays
+    /// queued, to be sent on a later tick.
+    SwapResolved {
+        id: ItemId,
+        dark_team_id: String,
+        light_team_id: String,
+        delivered: bool,
+    },
 }
 
 /// One row rendered on the portal detail page. The ordering of the
@@ -490,6 +548,11 @@ pub enum DetailRow {
     /// Discard removes it. No attempt counter: the row is one-shot, so a
     /// counter would wrongly imply background retrying.
     StatsPending { id: ItemId, game_number: String },
+    /// A game's colour swap that has crossed the stuck threshold. Not
+    /// tappable: RETRY ALL is the only way to send it again.
+    SwapStuck { game_number: String },
+    /// A game's colour swap still in the auto-retry window. Not tappable.
+    SwapPending { game_number: String },
     /// A recently-completed submission, shown as an informational
     /// green strip. Not tappable.
     RecentSuccess {
@@ -518,6 +581,19 @@ pub fn is_item_stuck(item: &QueuedItem, now: OffsetDateTime) -> bool {
     !item.score_sent && (now - item.queued_at) >= STUCK_THRESHOLD
 }
 
+/// The 30-minute rule of `is_item_stuck`, for a queued colour swap. A stuck
+/// swap is never retried automatically (only RETRY ALL resets it), and it
+/// keeps holding its game's score.
+pub fn is_swap_stuck(swap: &QueuedSwap, now: OffsetDateTime) -> bool {
+    (now - swap.queued_at) >= STUCK_THRESHOLD
+}
+
+/// True when `swap` is the queued swap of game `id` with exactly this
+/// dark/light assignment.
+fn swap_matches(swap: &QueuedSwap, id: &ItemId, dark_team_id: &str, light_team_id: &str) -> bool {
+    swap.id == *id && swap.dark_team_id == dark_team_id && swap.light_team_id == light_team_id
+}
+
 /// How long an unresolved item may sit in the queue before it is
 /// auto-expired: removed from the active queue (and archived to
 /// `portal_queue.expired.json`) so a stale, undeliverable score can't hold
@@ -530,6 +606,11 @@ pub const EXPIRY_THRESHOLD: TimeDuration = TimeDuration::hours(120);
 /// the whole leftover queue clears.
 fn is_item_expired(item: &QueuedItem, now: OffsetDateTime) -> bool {
     (now - item.queued_at) >= EXPIRY_THRESHOLD
+}
+
+/// The same 120-hour limit, for a queued colour swap.
+fn is_swap_expired(swap: &QueuedSwap, now: OffsetDateTime) -> bool {
+    (now - swap.queued_at) >= EXPIRY_THRESHOLD
 }
 
 pub struct PortalManager {
@@ -634,16 +715,25 @@ impl PortalManager {
     ///
     /// A session with no write target does nothing on disk: it never owned a queue file, so it
     /// has nothing of its own to clear, and clearing someone else's would destroy real results.
+    ///
+    /// Queued colour swaps go too, under the same rule: they are dropped with the results, put
+    /// back with them on a failed save, and each is logged. They are not counted in the return
+    /// value, which counts results.
     pub fn discard_all_queued(&mut self) -> std::io::Result<usize> {
         let discarded = std::mem::take(&mut self.queue.items);
+        let discarded_swaps = std::mem::take(&mut self.queue.swaps);
         if let Err(e) = self.persist() {
             self.queue.items = discarded;
+            self.queue.swaps = discarded_swaps;
             return Err(e);
         }
         self.discard_epoch
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         for item in &discarded {
             Self::log_discarded(item);
+        }
+        for swap in &discarded_swaps {
+            Self::log_dropped_swap(swap, "discarded");
         }
         self.recompute_indicator();
         self.push_queue_snapshot();
@@ -662,6 +752,16 @@ impl PortalManager {
             "discarded queued result: event {} game {} ({kind})",
             item.id.event_id,
             item.id.game_number
+        );
+    }
+
+    /// The one log line for a colour swap dropped without being sent. `why` says which path
+    /// dropped it.
+    fn log_dropped_swap(swap: &QueuedSwap, why: &str) {
+        log::warn!(
+            "{why} queued colour swap: event {} game {} (not sent; kept on this refbox only)",
+            swap.id.event_id,
+            swap.id.game_number
         );
     }
 
@@ -738,6 +838,9 @@ impl PortalManager {
     /// on every `ui_tick`; only touches disk when an item actually expires.
     /// IO is ordered archive-then-remove so a failed write can never drop a
     /// score without a saved copy.
+    ///
+    /// Expired colour swaps are dropped in the same sweep, each logged, but not archived: the
+    /// swap itself is kept on this refbox, only the send is given up.
     fn sweep_expired(&mut self) -> std::io::Result<()> {
         let now = OffsetDateTime::now_utc();
         let (expired, kept): (Vec<QueuedItem>, Vec<QueuedItem>) = self
@@ -746,7 +849,13 @@ impl PortalManager {
             .iter()
             .cloned()
             .partition(|it| is_item_expired(it, now));
-        if expired.is_empty() {
+        let (expired_swaps, kept_swaps): (Vec<QueuedSwap>, Vec<QueuedSwap>) = self
+            .queue
+            .swaps
+            .iter()
+            .cloned()
+            .partition(|swap| is_swap_expired(swap, now));
+        if expired.is_empty() && expired_swaps.is_empty() {
             return Ok(());
         }
         // Archive BEFORE removing so a failed write never loses a score. With
@@ -759,19 +868,27 @@ impl PortalManager {
         store.append_to_archive(&expired)?;
         let n = expired.len();
         self.queue.items = kept;
+        self.queue.swaps = kept_swaps;
         store.save(&self.queue)?;
         self.recompute_indicator();
         self.push_queue_snapshot();
-        log::info!(
-            "Expired {n} stale portal-queue item(s) (>{}h); archived to portal_queue.expired.json",
-            EXPIRY_THRESHOLD.whole_hours()
-        );
+        if n > 0 {
+            log::info!(
+                "Expired {n} stale portal-queue item(s) (>{}h); archived to portal_queue.expired.json",
+                EXPIRY_THRESHOLD.whole_hours()
+            );
+        }
+        for swap in &expired_swaps {
+            Self::log_dropped_swap(swap, "expired");
+        }
         Ok(())
     }
 
+    /// A stuck score item or a stuck colour swap: either turns the indicator red.
     fn has_stuck_items(&self) -> bool {
         let now = OffsetDateTime::now_utc();
         self.queue.items.iter().any(|it| is_item_stuck(it, now))
+            || self.queue.swaps.iter().any(|swap| is_swap_stuck(swap, now))
     }
 
     fn has_score_pending_items(&self) -> bool {
@@ -785,7 +902,10 @@ impl PortalManager {
     fn recompute_indicator(&mut self) {
         let health = if self.needs_attention() || self.connection_problem || self.startup_problem {
             HealthState::Red
-        } else if self.check_in_flight || self.has_score_pending_items() {
+        } else if self.check_in_flight
+            || self.has_score_pending_items()
+            || !self.queue.swaps.is_empty()
+        {
             HealthState::Yellow
         } else {
             HealthState::Green
@@ -1034,6 +1154,40 @@ impl PortalManager {
         Ok(())
     }
 
+    /// Queue a game's colour swap to send to the site. That game's score, if
+    /// queued, waits until this swap is resolved.
+    ///
+    /// A swap already queued for the same game is replaced, not added to: the
+    /// latest choice is the one the site should get, and its attempt history
+    /// starts again. Persistence is best-effort, as in `enqueue_game_end`.
+    pub fn enqueue_colour_swap(
+        &mut self,
+        event_id: String,
+        game_number: String,
+        dark_team_id: String,
+        light_team_id: String,
+    ) -> std::io::Result<()> {
+        let swap = QueuedSwap {
+            id: ItemId {
+                event_id,
+                game_number,
+            },
+            dark_team_id,
+            light_team_id,
+            queued_at: OffsetDateTime::now_utc(),
+            attempts: 0,
+            last_attempt_at: None,
+        };
+        match self.queue.swaps.iter_mut().find(|s| s.id == swap.id) {
+            Some(queued) => *queued = swap,
+            None => self.queue.swaps.push(swap),
+        }
+        self.persist()?;
+        self.recompute_indicator();
+        self.push_queue_snapshot();
+        Ok(())
+    }
+
     /// Operator tapped FORCE THIS GAME RESULT on the attention action page.
     /// Sets the item's `force` flag so the next submit sends `force=true`,
     /// resets the attempt counter and the last-attempt timestamp so the
@@ -1101,6 +1255,13 @@ impl PortalManager {
             item.last_attempt_at = None;
             item.queued_at = now;
         }
+        // Colour swaps the same way, so a stuck swap (and the score it holds)
+        // returns to the auto-retry pool.
+        for swap in &mut self.queue.swaps {
+            swap.attempts = 0;
+            swap.last_attempt_at = None;
+            swap.queued_at = now;
+        }
         self.persist()?;
         self.recompute_indicator();
         self.push_queue_snapshot();
@@ -1163,9 +1324,26 @@ impl PortalManager {
     /// Called only by `repoint_client`, while it holds the client lock it swaps the client
     /// under; `UwhPortalIo::request_for` checks the counter under that same lock, so no post can
     /// see the new client with the old counter.
-    pub fn note_site_moved(&self) {
+    ///
+    /// Also drops every queued colour swap. A swap is not a result, so it does not hold the site
+    /// controls the way a queued score does, and a switch can happen with swaps still waiting:
+    /// they belong to an event on the departed site and must never be sent to the new one. Each
+    /// is logged. Results need no such step here, since a switch only happens with none queued.
+    pub fn note_site_moved(&mut self) {
         self.discard_epoch
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.queue.swaps.is_empty() {
+            return;
+        }
+        let dropped = std::mem::take(&mut self.queue.swaps);
+        if let Err(e) = self.persist() {
+            log::warn!("portal queue save after dropping swaps for a site move failed: {e}");
+        }
+        for swap in &dropped {
+            Self::log_dropped_swap(swap, "site moved; dropped");
+        }
+        self.recompute_indicator();
+        self.push_queue_snapshot();
     }
 
     /// Apply the result of a periodic `verify_token` probe. `true` = the
@@ -1203,6 +1381,10 @@ impl PortalManager {
         for item in &mut self.queue.items {
             item.attempts = 0;
             item.last_attempt_at = None;
+        }
+        for swap in &mut self.queue.swaps {
+            swap.attempts = 0;
+            swap.last_attempt_at = None;
         }
         self.persist()?;
         self.recompute_indicator();
@@ -1269,6 +1451,55 @@ impl PortalManager {
         }
     }
 
+    /// Mirror a background colour-swap attempt onto the authoritative queue,
+    /// exactly as `on_item_attempted` does for score items (no save, no
+    /// snapshot). Acts only on the queued swap with this id AND these team
+    /// ids; an attempt of an older assignment of the game is a no-op.
+    pub fn on_swap_attempted(
+        &mut self,
+        id: ItemId,
+        dark_team_id: String,
+        light_team_id: String,
+        attempts: u32,
+        at: OffsetDateTime,
+    ) {
+        if let Some(swap) = self
+            .queue
+            .swaps
+            .iter_mut()
+            .find(|s| swap_matches(s, &id, &dark_team_id, &light_team_id))
+        {
+            swap.attempts = attempts;
+            swap.last_attempt_at = Some(at);
+        }
+    }
+
+    /// The background task has finished with this colour swap (delivered,
+    /// refused, or not accepted by the site). Removes it from the queue, which
+    /// releases that game's held score, saves, and pushes a fresh snapshot so
+    /// the task sends the score. A no-op for an unknown id. A save failure is
+    /// logged, as in `on_item_resolved`.
+    ///
+    /// Removes only the queued swap with this id AND these team ids. If the
+    /// operator swapped the game again while this send was in flight, the
+    /// newer swap does not match and stays queued (and keeps holding the
+    /// score) until it is sent itself. A match is removed even if it was
+    /// re-enqueued with the same assignment: those colours are what was sent.
+    pub fn on_swap_resolved(&mut self, id: ItemId, dark_team_id: String, light_team_id: String) {
+        let before = self.queue.swaps.len();
+        self.queue
+            .swaps
+            .retain(|s| !swap_matches(s, &id, &dark_team_id, &light_team_id));
+        if self.queue.swaps.len() == before {
+            return;
+        }
+        if let Err(e) = self.persist() {
+            log::warn!("portal queue save after colour swap resolution failed: {e}");
+        }
+        self.recompute_indicator();
+        self.push_queue_snapshot();
+    }
+
     /// Called from the UI thread after the background task reports that
     /// a queued item was successfully posted to the portal. Removes the
     /// item from the queue, records it in the recent-success ring
@@ -1331,8 +1562,8 @@ impl PortalManager {
     ///    `TokenExpired` banner, if a token problem is flagged. In practice
     ///    only one can occur — degraded startup no longer sets the token
     ///    flag — but the order is defined so the page is deterministic.
-    /// 2. `Stuck` items (queued ≥ 30 min ago), oldest first.
-    /// 3. `Pending` items (queued < 30 min ago), oldest first.
+    /// 2. `Stuck` items (queued ≥ 30 min ago) and `SwapStuck` swaps, oldest first.
+    /// 3. `Pending` items (queued < 30 min ago) and `SwapPending` swaps, oldest first.
     /// 4. `RecentSuccess` rows, newest first, capped at
     ///    `RECENT_SUCCESS_CAP`.
     pub fn detail_rows(&self) -> Vec<DetailRow> {
@@ -1350,23 +1581,45 @@ impl PortalManager {
         let mut items: Vec<&QueuedItem> = self.queue.items.iter().collect();
         items.sort_by_key(|it| it.queued_at);
 
+        // Colour swaps sit among the score rows of the same kind, ordered by
+        // when each was queued: a stuck swap with the stuck rows, a pending
+        // swap with the pending rows.
+        let mut stuck: Vec<(OffsetDateTime, DetailRow)> = Vec::new();
+        let mut pending: Vec<(OffsetDateTime, DetailRow)> = Vec::new();
         for it in &items {
             if is_item_stuck(it, now) {
-                out.push(DetailRow::Stuck {
-                    id: it.id.clone(),
-                    game_number: it.id.game_number.clone(),
-                });
+                stuck.push((
+                    it.queued_at,
+                    DetailRow::Stuck {
+                        id: it.id.clone(),
+                        game_number: it.id.game_number.clone(),
+                    },
+                ));
+            } else if !it.score_sent {
+                pending.push((
+                    it.queued_at,
+                    DetailRow::Pending {
+                        id: it.id.clone(),
+                        game_number: it.id.game_number.clone(),
+                        attempts: it.attempts,
+                    },
+                ));
             }
         }
-        for it in &items {
-            if !it.score_sent && !is_item_stuck(it, now) {
-                out.push(DetailRow::Pending {
-                    id: it.id.clone(),
-                    game_number: it.id.game_number.clone(),
-                    attempts: it.attempts,
-                });
+        for swap in &self.queue.swaps {
+            let game_number = swap.id.game_number.clone();
+            if is_swap_stuck(swap, now) {
+                stuck.push((swap.queued_at, DetailRow::SwapStuck { game_number }));
+            } else {
+                pending.push((swap.queued_at, DetailRow::SwapPending { game_number }));
             }
         }
+        // Stable sorts: score rows (already oldest first) stay ahead of a swap
+        // queued at the same instant.
+        stuck.sort_by_key(|(at, _)| *at);
+        pending.sort_by_key(|(at, _)| *at);
+        out.extend(stuck.into_iter().map(|(_, row)| row));
+        out.extend(pending.into_iter().map(|(_, row)| row));
         for it in &items {
             if it.score_sent {
                 out.push(DetailRow::StatsPending {
@@ -1557,6 +1810,7 @@ mod tests {
         let q = QueueFile {
             version: 1,
             items: vec![mk_young_item()],
+            swaps: Vec::new(),
         };
         let m = PortalManager::new_for_test(q, false, false);
         assert_eq!(m.indicator_state().health, HealthState::Yellow);
@@ -1567,6 +1821,7 @@ mod tests {
         let q = QueueFile {
             version: 1,
             items: vec![mk_stuck_item()],
+            swaps: Vec::new(),
         };
         let m = PortalManager::new_for_test(q, false, false);
         assert_eq!(m.indicator_state().health, HealthState::Red);
@@ -1591,6 +1846,7 @@ mod tests {
         let q = QueueFile {
             version: 1,
             items: vec![mk_stuck_item()],
+            swaps: Vec::new(),
         };
         let m = PortalManager::new_for_test(q, false, false);
         assert_eq!(m.indicator_state().health, HealthState::Red);
@@ -1702,6 +1958,7 @@ mod tests {
         let q = QueueFile {
             version: 1,
             items: vec![item],
+            swaps: Vec::new(),
         };
         let mut m = PortalManager::new_for_test(q, false, false);
         assert_eq!(m.queue.items[0].attempts, 0);
@@ -1840,6 +2097,7 @@ mod tests {
             &QueueFile {
                 version: 1,
                 items: vec![old],
+                swaps: Vec::new(),
             },
         )
         .unwrap();
@@ -1983,6 +2241,7 @@ mod tests {
             &QueueFile {
                 version: 1,
                 items: vec![mk_stuck_item()],
+                swaps: Vec::new(),
             },
         )
         .unwrap();
@@ -2020,6 +2279,7 @@ mod tests {
             &QueueFile {
                 version: 1,
                 items: vec![item],
+                swaps: Vec::new(),
             },
         )
         .unwrap();
@@ -2073,6 +2333,7 @@ mod tests {
             &QueueFile {
                 version: 1,
                 items: vec![expired],
+                swaps: Vec::new(),
             },
         )
         .unwrap();
@@ -2386,7 +2647,7 @@ mod tests {
     async fn a_post_from_before_a_site_move_is_never_sent() {
         let tmp = tempfile::TempDir::new().unwrap();
         let epoch = DiscardEpoch::default();
-        let (m, _rx) = PortalManager::new(tmp.path(), NullIo, epoch.clone()).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, epoch.clone()).unwrap();
         let (io, event) = discard_test_io(epoch.clone());
         let mut item = mk_young_item();
         item.id.event_id = event.full().to_string();
@@ -2980,5 +3241,270 @@ mod tests {
             !m.queue.items[1].force,
             "retry_all must not set force on the score-pending item"
         );
+    }
+
+    fn mk_queued_swap(game: &str) -> queue::QueuedSwap {
+        queue::QueuedSwap {
+            id: ItemId {
+                event_id: "events/swap-test".into(),
+                game_number: game.into(),
+            },
+            dark_team_id: "teams/12-B".into(),
+            light_team_id: "teams/12-A".into(),
+            queued_at: OffsetDateTime::now_utc(),
+            attempts: 0,
+            last_attempt_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn enqueue_colour_swap_replaces_the_queued_one() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
+        m.enqueue_colour_swap(
+            "events/swap-test".into(),
+            "12".into(),
+            "teams/12-B".into(),
+            "teams/12-A".into(),
+        )
+        .unwrap();
+        m.queue.swaps[0].attempts = 3;
+        m.queue.swaps[0].last_attempt_at = Some(OffsetDateTime::now_utc());
+
+        // Swapped back: the latest choice is the one to send.
+        m.enqueue_colour_swap(
+            "events/swap-test".into(),
+            "12".into(),
+            "teams/12-A".into(),
+            "teams/12-B".into(),
+        )
+        .unwrap();
+
+        assert_eq!(m.queue.swaps.len(), 1, "one game holds one queued swap");
+        let swap = &m.queue.swaps[0];
+        assert_eq!(swap.dark_team_id, "teams/12-A");
+        assert_eq!(swap.light_team_id, "teams/12-B");
+        assert_eq!(swap.attempts, 0);
+        assert!(swap.last_attempt_at.is_none());
+        let (_store, on_disk) = queue::QueueStore::open(tmp.path()).unwrap();
+        assert_eq!(on_disk.swaps, m.queue.swaps, "the swap must be saved");
+    }
+
+    #[tokio::test]
+    async fn discard_all_drops_queued_swaps() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
+        m.enqueue_game_end("events/swap-test".into(), "12".into(), 1, 0, "{}".into())
+            .unwrap();
+        m.enqueue_colour_swap(
+            "events/swap-test".into(),
+            "12".into(),
+            "teams/12-B".into(),
+            "teams/12-A".into(),
+        )
+        .unwrap();
+
+        m.discard_all_queued().unwrap();
+
+        assert!(m.queue.swaps.is_empty());
+        let (_store, on_disk) = queue::QueueStore::open(tmp.path()).unwrap();
+        assert!(on_disk.swaps.is_empty(), "the swaps must be gone on disk");
+        assert!(on_disk.items.is_empty());
+    }
+
+    #[test]
+    fn stuck_swap_turns_the_indicator_red() {
+        let mut q = QueueFile::empty();
+        q.swaps.push(mk_queued_swap("12"));
+        let m = PortalManager::new_for_test(q.clone(), false, false);
+        assert_eq!(
+            m.indicator_state().health,
+            HealthState::Yellow,
+            "a queued swap is at least yellow"
+        );
+
+        q.swaps[0].queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(31);
+        let m = PortalManager::new_for_test(q, false, false);
+        assert_eq!(m.indicator_state().health, HealthState::Red);
+        assert!(
+            !m.has_queued_items(),
+            "a swap is not a result: the results-waiting warning stays scores-only"
+        );
+    }
+
+    #[test]
+    fn detail_rows_lists_swap_rows() {
+        let now = OffsetDateTime::now_utc();
+        let mut score_stuck = mk_young_item();
+        score_stuck.id.game_number = "G1".into();
+        score_stuck.queued_at = now - TimeDuration::minutes(40);
+        let mut score_pending = mk_young_item();
+        score_pending.id.game_number = "G3".into();
+        score_pending.queued_at = now - TimeDuration::minutes(2);
+        let mut swap_stuck = mk_queued_swap("G2");
+        swap_stuck.queued_at = now - TimeDuration::minutes(35);
+        let mut swap_pending = mk_queued_swap("G4");
+        swap_pending.queued_at = now - TimeDuration::minutes(1);
+        let mut q = QueueFile::empty();
+        q.items = vec![score_pending, score_stuck];
+        q.swaps = vec![swap_pending, swap_stuck];
+        let m = PortalManager::new_for_test(q, false, false);
+
+        let rows = m.detail_rows();
+
+        assert_eq!(rows.len(), 4, "got {rows:?}");
+        assert!(
+            matches!(&rows[0], DetailRow::Stuck { game_number, .. } if game_number == "G1"),
+            "got {rows:?}"
+        );
+        assert!(
+            matches!(&rows[1], DetailRow::SwapStuck { game_number } if game_number == "G2"),
+            "got {rows:?}"
+        );
+        assert!(
+            matches!(&rows[2], DetailRow::Pending { game_number, .. } if game_number == "G3"),
+            "got {rows:?}"
+        );
+        assert!(
+            matches!(&rows[3], DetailRow::SwapPending { game_number } if game_number == "G4"),
+            "got {rows:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_all_resets_queued_swaps() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
+        m.enqueue_colour_swap(
+            "events/swap-test".into(),
+            "12".into(),
+            "teams/12-B".into(),
+            "teams/12-A".into(),
+        )
+        .unwrap();
+        let old = OffsetDateTime::now_utc() - TimeDuration::minutes(31);
+        m.queue.swaps[0].queued_at = old;
+        m.queue.swaps[0].attempts = 6;
+        m.queue.swaps[0].last_attempt_at = Some(old);
+        assert!(is_swap_stuck(&m.queue.swaps[0], OffsetDateTime::now_utc()));
+
+        m.retry_all().unwrap();
+
+        let swap = &m.queue.swaps[0];
+        assert_eq!(swap.attempts, 0);
+        assert!(swap.last_attempt_at.is_none());
+        assert!(!is_swap_stuck(swap, OffsetDateTime::now_utc()));
+    }
+
+    #[tokio::test]
+    async fn expiry_sweep_drops_old_swaps_without_archiving_them() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
+        m.enqueue_colour_swap(
+            "events/swap-test".into(),
+            "12".into(),
+            "teams/12-B".into(),
+            "teams/12-A".into(),
+        )
+        .unwrap();
+        m.enqueue_colour_swap(
+            "events/swap-test".into(),
+            "13".into(),
+            "teams/13-B".into(),
+            "teams/13-A".into(),
+        )
+        .unwrap();
+        m.queue.swaps[0].queued_at = OffsetDateTime::now_utc() - TimeDuration::hours(121);
+
+        m.sweep_expired().unwrap();
+
+        assert_eq!(m.queue.swaps.len(), 1);
+        assert_eq!(m.queue.swaps[0].id.game_number, "13");
+        let (_store, on_disk) = queue::QueueStore::open(tmp.path()).unwrap();
+        assert_eq!(
+            on_disk.swaps.len(),
+            1,
+            "the expired swap must be gone on disk"
+        );
+        let archive = queue::load_archive_or_empty(tmp.path()).unwrap();
+        assert!(archive.items.is_empty() && archive.swaps.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_site_move_drops_queued_swaps() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
+        m.enqueue_colour_swap(
+            "events/swap-test".into(),
+            "12".into(),
+            "teams/12-B".into(),
+            "teams/12-A".into(),
+        )
+        .unwrap();
+
+        m.note_site_moved();
+
+        assert!(m.queue.swaps.is_empty());
+        let (_store, on_disk) = queue::QueueStore::open(tmp.path()).unwrap();
+        assert!(on_disk.swaps.is_empty(), "the swap must be gone on disk");
+    }
+
+    #[tokio::test]
+    async fn swap_events_update_the_queued_swap() {
+        let mut q = QueueFile::empty();
+        q.swaps.push(mk_queued_swap("12"));
+        let id = q.swaps[0].id.clone();
+        let mut m = PortalManager::new_for_test(q, false, false);
+        let at = OffsetDateTime::now_utc();
+
+        m.on_swap_attempted(id.clone(), "teams/12-B".into(), "teams/12-A".into(), 2, at);
+        assert_eq!(m.queue.swaps[0].attempts, 2);
+        assert_eq!(m.queue.swaps[0].last_attempt_at, Some(at));
+
+        m.on_swap_resolved(id, "teams/12-B".into(), "teams/12-A".into());
+        assert!(m.queue.swaps.is_empty());
+        assert_eq!(m.indicator_state().health, HealthState::Green);
+    }
+
+    /// A send of game 12's first assignment can finish after the operator has
+    /// swapped game 12 again. Its attempt and its resolution must not touch the
+    /// newer queued swap, which still has to be sent.
+    #[tokio::test]
+    async fn stale_swap_resolution_keeps_the_newer_swap() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
+        let (a, b) = ("teams/12-A".to_string(), "teams/12-B".to_string());
+        m.enqueue_colour_swap("events/swap-test".into(), "12".into(), a.clone(), b.clone())
+            .unwrap();
+        let id = m.queue.swaps[0].id.clone();
+        m.enqueue_colour_swap("events/swap-test".into(), "12".into(), b.clone(), a.clone())
+            .unwrap();
+
+        // The first assignment's attempt does not stamp the newer swap.
+        m.on_swap_attempted(
+            id.clone(),
+            a.clone(),
+            b.clone(),
+            3,
+            OffsetDateTime::now_utc(),
+        );
+        assert_eq!(m.queue.swaps[0].attempts, 0);
+        assert!(m.queue.swaps[0].last_attempt_at.is_none());
+
+        // The first assignment's resolution leaves the newer swap queued.
+        m.on_swap_resolved(id.clone(), a.clone(), b.clone());
+        assert_eq!(m.queue.swaps.len(), 1, "the newer swap must stay queued");
+        assert_eq!(m.queue.swaps[0].dark_team_id, b);
+        assert_eq!(m.queue.swaps[0].light_team_id, a);
+
+        // The newer assignment's own attempt and resolution do act on it.
+        let at = OffsetDateTime::now_utc();
+        m.on_swap_attempted(id.clone(), b.clone(), a.clone(), 1, at);
+        assert_eq!(m.queue.swaps[0].attempts, 1);
+        assert_eq!(m.queue.swaps[0].last_attempt_at, Some(at));
+        m.on_swap_resolved(id, b, a);
+        assert!(m.queue.swaps.is_empty());
+        let (_store, on_disk) = queue::QueueStore::open(tmp.path()).unwrap();
+        assert!(on_disk.swaps.is_empty(), "the removal must be saved");
     }
 }

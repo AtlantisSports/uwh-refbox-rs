@@ -5985,6 +5985,30 @@ impl RefBoxApp {
                     PortalEvent::ItemAttempted { id, attempts, at } => {
                         self.portal_manager.on_item_attempted(id, attempts, at);
                     }
+                    PortalEvent::SwapAttempted {
+                        id,
+                        dark_team_id,
+                        light_team_id,
+                        attempts,
+                        at,
+                    } => {
+                        self.portal_manager.on_swap_attempted(
+                            id,
+                            dark_team_id,
+                            light_team_id,
+                            attempts,
+                            at,
+                        );
+                    }
+                    PortalEvent::SwapResolved {
+                        id,
+                        dark_team_id,
+                        light_team_id,
+                        ..
+                    } => {
+                        self.portal_manager
+                            .on_swap_resolved(id, dark_team_id, light_team_id);
+                    }
                     PortalEvent::HealthChanged | PortalEvent::ItemUpdated => {
                         self.portal_manager.ui_tick();
                     }

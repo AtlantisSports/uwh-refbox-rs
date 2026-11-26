@@ -58,12 +58,16 @@ pub(in super::super) fn build_portal_detail_page<'a>(
     let scroll_index = scroll_index.min(num_items.saturating_sub(PORTAL_DETAIL_LIST_LEN));
 
     // RETRY ALL is actionable only when there is at least one unsent
-    // game (a stuck/red or pending/yellow row). Recent-success and
-    // token-expired rows don't count.
+    // game or colour swap (a stuck/red or pending/yellow row). Recent-success
+    // and token-expired rows don't count.
     let has_unsent = rows.iter().any(|r| {
         matches!(
             r,
-            DetailRow::Stuck { .. } | DetailRow::Pending { .. } | DetailRow::StatsPending { .. }
+            DetailRow::Stuck { .. }
+                | DetailRow::Pending { .. }
+                | DetailRow::StatsPending { .. }
+                | DetailRow::SwapStuck { .. }
+                | DetailRow::SwapPending { .. }
         )
     });
 
@@ -187,6 +191,25 @@ fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
         )))
         .on_press(Message::PortalRowTapped(id))
         .style(yellow_button)
+        .padding(PADDING)
+        .width(Length::Fill)
+        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .into(),
+        // Colour-swap rows are not tappable: RETRY ALL is the only action.
+        DetailRow::SwapStuck { game_number } => container(row_text_centered(fl!(
+            "portal-row-swap-stuck",
+            game = game_number
+        )))
+        .style(red_container)
+        .padding(PADDING)
+        .width(Length::Fill)
+        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .into(),
+        DetailRow::SwapPending { game_number } => container(row_text_centered(fl!(
+            "portal-row-swap-pending",
+            game = game_number
+        )))
+        .style(yellow_container)
         .padding(PADDING)
         .width(Length::Fill)
         .height(Length::Fixed(MIN_BUTTON_SIZE))

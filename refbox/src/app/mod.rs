@@ -1516,6 +1516,14 @@ fn period_end_sounds(period: GamePeriod, sd_counts_down: bool) -> (bool, bool) {
     }
 }
 
+/// START NOW skips the 0:00 tick where `maybe_play_sound` would have buzzed, so it
+/// plays what that tick would have: the start-of-play buzzer, when AUTO SOUND START
+/// PLAY is on. `sd_counts_down` only affects the stop flag, never `.0`, so `false`
+/// is safe here.
+fn start_now_plays_buzzer(left_period: GamePeriod, auto_sound_start_play: bool) -> bool {
+    period_end_sounds(left_period, false).0 && auto_sound_start_play
+}
+
 /// One countdown beep this tick when: the audible-countdown setting is on, we are
 /// in a break that precedes a playing period, the whole-second value just changed,
 /// and the new value is in the final 10..=1 window. Reads the RAW snapshot, so it
@@ -5197,6 +5205,7 @@ impl RefBoxApp {
             Message::StartPlayNow => {
                 let mut tm = self.tm.lock();
                 let now = Instant::now();
+                let left_period = tm.current_period();
                 if let Err(e) = tm.start_play_now(now) {
                     // The only reachable error is a court whose schedule is finished,
                     // where START NOW is greyed out anyway. Log and do nothing rather
@@ -5206,6 +5215,12 @@ impl RefBoxApp {
                 }
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
+                // Buzz only after the engine accepted the tap, so a tap that loses the
+                // race with 0:00 cannot double-buzz.
+                if start_now_plays_buzzer(left_period, self.config.sound.auto_sound_start_play) {
+                    info!("START NOW: triggering buzzer");
+                    self.sound.trigger_buzzer();
+                }
                 self.apply_snapshot(snapshot)
             }
             Message::EditScores => {
@@ -12368,8 +12383,40 @@ mod countdown_beep_tests {
 
 #[cfg(test)]
 mod period_end_sound_tests {
-    use super::period_end_sounds;
+    use super::{period_end_sounds, start_now_plays_buzzer};
     use uwh_common::game_snapshot::GamePeriod;
+
+    #[test]
+    fn start_now_buzzes_like_the_break_running_out() {
+        let breaks = [
+            GamePeriod::BetweenGames,
+            GamePeriod::HalfTime,
+            GamePeriod::PreOvertime,
+            GamePeriod::OvertimeHalfTime,
+            GamePeriod::PreSuddenDeath,
+        ];
+        let plays = [
+            GamePeriod::FirstHalf,
+            GamePeriod::SecondHalf,
+            GamePeriod::OvertimeFirstHalf,
+            GamePeriod::OvertimeSecondHalf,
+            GamePeriod::SuddenDeath,
+        ];
+        for p in breaks {
+            assert!(
+                start_now_plays_buzzer(p, true),
+                "{p:?} with AUTO SOUND START PLAY on"
+            );
+            assert!(
+                !start_now_plays_buzzer(p, false),
+                "{p:?} with AUTO SOUND START PLAY off"
+            );
+        }
+        for p in plays {
+            assert!(!start_now_plays_buzzer(p, true), "{p:?}");
+            assert!(!start_now_plays_buzzer(p, false), "{p:?}");
+        }
+    }
 
     #[test]
     fn period_end_sounds_sd() {

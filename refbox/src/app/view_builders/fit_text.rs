@@ -165,8 +165,9 @@ fn fit_layout(
     for &size in candidates {
         for (index, lines) in line_sets.iter().enumerate() {
             // Several lines must also fit the height. One line is never rejected
-            // for height: that keeps today's answer for every label that is not
-            // split, so only a split can change.
+            // for height: that keeps today's answer for every one-line label, so
+            // only text drawn on two or more lines -- split here, or broken by
+            // its caller or translator -- can change.
             let tall_enough = lines.len() <= 1 || text_height(lines.len(), size) <= max_height;
             if tall_enough && lines.iter().all(|line| measure(line, size) <= max_width) {
                 return (index, size);
@@ -609,25 +610,56 @@ where
             );
 
             // Say so when the height check changed the answer, so a walk can
-            // list every place it acted.
-            let unchecked = fit_layout(
-                measure,
-                fit_width,
-                f32::INFINITY,
-                &ladder[start..],
-                &line_sets,
-            );
-            if unchecked != (index, size) {
-                log::debug!(
-                    "fit_text: {:?} -> {} line(s) at {size}px instead of {} line(s) at {}px \
-                     in a {} x {} box",
-                    key.lines,
-                    line_sets[index].len(),
-                    line_sets[unchecked.0].len(),
-                    unchecked.1,
+            // list every place it acted. The whole answer is re-taken without
+            // the height -- the shared start and the reserved width too, as the
+            // check acts through those as well. Only when the line is recorded,
+            // so a normal run does not measure everything twice.
+            if log::log_enabled!(log::Level::Debug) {
+                let free_start = shared_start(
+                    measure,
                     available.width,
-                    available.height,
+                    f32::INFINITY,
+                    &ladder,
+                    &key.shared,
+                    self.wrap,
                 );
+                let free_reserved = if reserving {
+                    shared_width(
+                        measure,
+                        ladder[free_start],
+                        &key.shared,
+                        key.wrap,
+                        available.width,
+                        f32::INFINITY,
+                    )
+                    .min(available.width)
+                } else {
+                    0.0
+                };
+                let free_width = if reserving {
+                    free_reserved
+                } else {
+                    available.width
+                };
+                let unchecked = fit_layout(
+                    measure,
+                    free_width,
+                    f32::INFINITY,
+                    &ladder[free_start..],
+                    &line_sets,
+                );
+                if unchecked != (index, size) || free_reserved != reserved {
+                    log::debug!(
+                        "fit_text: {:?} -> {} line(s) at {size}px instead of {} line(s) at {}px \
+                         in a {} x {} box",
+                        key.lines,
+                        line_sets[index].len(),
+                        line_sets[unchecked.0].len(),
+                        unchecked.1,
+                        available.width,
+                        available.height,
+                    );
+                }
             }
 
             state.lines = line_sets.swap_remove(index);
@@ -692,9 +724,9 @@ where
         // wrappers used to. Two lines at the default size are a couple of pixels
         // taller than the inside of a button, so this offset can go slightly
         // negative — matching what the old layout did rather than shifting the
-        // text down. That overflow is the blank spacing below the last line, not
-        // its letters: `fit_layout` has already checked that the letters fit
-        // the height, which is what the split used to skip.
+        // text down. That overflow is blank line spacing, split evenly above the
+        // first line and below the last, not letters: `fit_layout` has already
+        // checked that the letters of several lines fit the height.
         let top = (bounds.height - block_height) / 2.0;
 
         let children = line_widths

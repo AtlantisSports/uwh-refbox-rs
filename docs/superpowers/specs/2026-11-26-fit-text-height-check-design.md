@@ -22,7 +22,10 @@ line (usually) or on two smaller lines that do fit.
 - No wording change ("1/HALF" stays), no new translation strings.
 - No layout change to any page, no change to the text sizes themselves.
 - A single line is never rejected for height. That is today's behaviour and stays, so this
-  change can only alter text that is currently being split onto two lines.
+  change can only alter text drawn on two or more lines: split by `fit_text`, or broken by
+  its caller (`fit_text_lines`) or by a translation carrying its own line break. A caller's
+  or translator's lines cannot be re-joined, so when they are too tall even at 19 they
+  stay as they are.
 
 ## Anti-goals
 

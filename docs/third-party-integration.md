@@ -1050,8 +1050,7 @@ including top-level `name` and `logoUrl`; see
 `uwh-common/src/uwhportal/mod.rs:373` (the request) and `uwh-common/src/uwhportal/mod.rs:1174`
 (how the answer is read)
 
-**Unreleased: this call exists only on an unmerged development branch.** No released refbox sends
-it.
+**Unreleased: this call is not in a released build yet.** No released refbox sends it.
 
 **You do not have to offer this call.** A site that does not offer it answers `404` or `405` — the
 "not found" most web servers give for an unknown address already does — and the refbox simply
@@ -1067,8 +1066,11 @@ goes through the same on-disk queue as call 7, so if the site cannot be reached 
 retried about every 15 seconds. As with a queued score under call 7, that automatic retrying stops
 30 minutes after the operator **saved** the swap (often mid-game, so well before the final score
 exists): the swap is then flagged and waits for the operator to press RETRY ALL, which starts the
-retrying again from that moment. A swap still unsent after 120 hours is dropped, as a queued score
-is. If the operator swaps the same game again
+retrying again from that moment. When the game's final score is queued, a swap still waiting is
+re-armed: its retrying starts again from that moment, so it keeps retrying by itself while the
+score waits for it (below). A swap still unsent after 120 hours is dropped and only logged; a
+queued score that old is also removed, but archived to `portal_queue.expired.json`. If the
+operator swaps the same game again
 before the first one is sent, only the latest is sent.
 
 **Authentication:** `Authorization: Bearer <token>` — the same key as push scores (call 7). The
@@ -1089,12 +1091,13 @@ is", never as "flip whatever you have".
 **The final score waits for it.** While a game's colour swap is still queued, the refbox holds that
 game's score (call 7) back, so your site learns the colours before it records the result. The hold
 ends as soon as the swap gets any answer that settles it (accepted, refused, or "this site has no
-colours call"). Thirty minutes after the save, an unsent swap stops holding the score, at the same
-moment it stops retrying by itself (`refbox/src/portal_manager/health.rs:45-71`), so a final score
-is never held back for good by this call. If the operator then presses RETRY ALL, the swap is
-retried again and holds the score again, for another 30 minutes, if that score has not gone yet.
-So after a long outage the colours can reach your site **after** the final score — and the UWH
-Portal refuses a swap for a game that already has one (`AlreadyScored`, below).
+colours call"). The score waits for its colour swap for at most 20 minutes from when the score was
+queued, and the swap keeps retrying by itself (about every 15 seconds) all that time, even if it
+was saved long before. After 20 minutes the score goes even if the colours were not recorded
+(`refbox/src/portal_manager/health.rs`, `score_waits_for_swap`), so a final score is never held
+back for good by this call. The colours can then reach your site **after** the final score — and
+the UWH Portal refuses a swap for a game that already has one (`AlreadyScored`, below), which the
+refbox only logs.
 
 **Successful response:** any `2xx` — unlike every other call in this document, `204` works here.
 The body is never read. Answer `2xx` also when the teams are already that way round.
@@ -1104,7 +1107,7 @@ The body is never read. Answer `2xx` also when the teams are already that way ro
 | Your answer | What refbox does |
 |---|---|
 | Any `2xx` | Done. The swap leaves the queue and the score may go. |
-| `401`, `403`, `408`, `429`, any `5xx`, or no answer at all | Tries again about every 15 seconds and holds the score, until 30 minutes after the save; then stops both and waits for RETRY ALL (as above). |
+| `401`, `403`, `408`, `429`, any `5xx`, or no answer at all | Tries again about every 15 seconds and holds the score, for at most 20 minutes from when the score was queued; the score then goes even if the colours were not recorded (as above). |
 | Any status whose JSON body is `{"reason": "<one of the names below>"}` | Refused for good. The swap is dropped and never retried; the score goes. |
 | `404` or `405` without one of those names | "This site has no colours call." The swap is dropped and never retried; the score goes. |
 | Any other `4xx` | Refused for good, as above. |
@@ -1118,9 +1121,9 @@ them too, but the refbox treats every named refusal the same way.
 
 **Do not answer an unknown address with `401`, `403` or `500`.** A site that has no colours call
 but whose login check runs before its routing (so an unknown address gets `401`), or whose
-framework turns an unknown address into `500`, makes the refbox retry the swap — and hold that
-game's score — for 30 minutes after every swap, with a red row on the operator's portal page.
-Answer `404` or `405`.
+framework turns an unknown address into `500`, makes the refbox retry every swap and hold that
+game's score for up to 20 minutes after the score was queued, and leaves a red row on the
+operator's portal page once the swap has gone unanswered for 30 minutes. Answer `404` or `405`.
 
 **What the operator sees:** nothing for a refusal or for "no colours call". The operator is never
 shown either; each is written to the refbox log only, and the swap stays on the refbox's own
@@ -1321,7 +1324,8 @@ to explain why.
 
 Every event ID and team ID in this API can be written two ways: a **short form** (just the ID
 itself, e.g. `1234-A`) and a **long form** (the ID with its type prefixed, e.g. `events/1234-A` or
-`teams/5678-B`). Which one appears follows a single rule, true everywhere in this API:
+`teams/5678-B`). Which one appears follows a single rule, true everywhere in this API except one
+request body (the colours call's body carries long-form team IDs):
 
 - An ID that appears in a URL **path** is always the **short form**.
 - An ID that appears in a **query parameter** is always the **long form**.

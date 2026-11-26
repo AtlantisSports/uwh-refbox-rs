@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use super::HealthState;
 use super::PortalEvent;
 use super::queue::{QueueFile, QueuedItem, QueuedSwap};
-use super::{is_item_stuck, is_swap_stuck};
+use super::{SWAP_HOLD_LIMIT, is_item_stuck, is_swap_stuck};
 use uwh_common::uwhportal::ColourSwapOutcome;
 
 pub const GREEN_CADENCE: Duration = Duration::from_secs(5 * 60);
@@ -57,14 +57,22 @@ pub fn is_swap_retry_eligible(swap: &QueuedSwap, now: OffsetDateTime) -> bool {
 /// records the result. Matches on event AND game, so a swap never holds
 /// another event's game of the same number.
 ///
-/// A swap stuck for 30 minutes (`is_swap_stuck`) stops holding the score, so a
-/// final score is never held back for good by a colours call that keeps
-/// failing. The swap itself stays queued, red, and retryable by RETRY ALL.
+/// The wait is measured on the SCORE's own clock: once the score has been
+/// queued for `SWAP_HOLD_LIMIT` (20 minutes, below the 30-minute stuck
+/// threshold) it goes even if the colours were not recorded, so a final score
+/// is never held back for good by a colours call that keeps failing, and it is
+/// released while it still retries by itself. Queuing the score re-armed its
+/// swap (`enqueue_game_end`), so the swap retries automatically throughout
+/// the wait. A stuck swap never holds a score; it stays queued, red, and
+/// retryable by RETRY ALL.
 pub(crate) fn score_waits_for_swap(
     item: &QueuedItem,
     swaps: &[QueuedSwap],
     now: OffsetDateTime,
 ) -> bool {
+    if (now - item.queued_at) >= SWAP_HOLD_LIMIT {
+        return false;
+    }
     swaps
         .iter()
         .any(|swap| swap.id == item.id && !is_swap_stuck(swap, now))
@@ -116,7 +124,9 @@ fn log_swap_outcome(swap: &QueuedSwap, result: &Result<ColourSwapOutcome, Portal
             );
         }
         Ok(ColourSwapOutcome::NotAccepted { status }) => {
-            log::info!("site does not accept colour swaps ({status}); kept on this refbox only");
+            log::info!(
+                "Game {game}: site does not accept colour swaps ({status}); kept on this refbox only"
+            );
         }
         Ok(ColourSwapOutcome::Retry { status }) => {
             log::warn!("colour swap upload for game {game}: site answered {status}, will retry");
@@ -2074,6 +2084,7 @@ mod tests {
         let mut handle = spawn(io);
         let swap = mk_swap("e", "12");
         let swap_id = swap.id.clone();
+        let (dark, light) = (swap.dark_team_id.clone(), swap.light_team_id.clone());
         let mut queue = QueueFile::empty();
         queue.items.push(mk_score("e", "12"));
         queue.swaps.push(swap);
@@ -2097,9 +2108,15 @@ mod tests {
         assert!(
             events.iter().any(|ev| matches!(
                 ev,
-                PortalEvent::SwapResolved { id, delivered: false, .. } if id == &swap_id
+                PortalEvent::SwapResolved {
+                    id,
+                    dark_team_id,
+                    light_team_id,
+                    delivered: false,
+                } if id == &swap_id && dark_team_id == &dark && light_team_id == &light
             )),
-            "a site with no colours call must resolve the swap undelivered, got {events:?}"
+            "a site with no colours call must resolve the swap undelivered, carrying the \
+             queued swap's dark and light teams, got {events:?}"
         );
 
         // The main thread drops the resolved swap and pushes a fresh snapshot.
@@ -2123,6 +2140,7 @@ mod tests {
         let mut handle = spawn(io);
         let swap = mk_swap("e", "12");
         let swap_id = swap.id.clone();
+        let (dark, light) = (swap.dark_team_id.clone(), swap.light_team_id.clone());
         let mut queue = QueueFile::empty();
         queue.items.push(mk_score("e", "12"));
         queue.items.push(mk_score("e", "13"));
@@ -2145,15 +2163,150 @@ mod tests {
         assert!(
             events.iter().any(|ev| matches!(
                 ev,
-                PortalEvent::SwapAttempted { id, attempts: 1, .. } if id == &swap_id
+                PortalEvent::SwapAttempted {
+                    id,
+                    dark_team_id,
+                    light_team_id,
+                    attempts: 1,
+                    ..
+                } if id == &swap_id && dark_team_id == &dark && light_team_id == &light
             )),
-            "a swap to retry must report its attempt, got {events:?}"
+            "a swap to retry must report its attempt, carrying the queued swap's dark and \
+             light teams, got {events:?}"
         );
         assert!(
             !events
                 .iter()
                 .any(|ev| matches!(ev, PortalEvent::SwapResolved { .. })),
             "a swap to retry must stay queued, got {events:?}"
+        );
+        drop(handle);
+    }
+
+    #[test]
+    fn swap_hold_limit_is_below_the_stuck_threshold() {
+        // A held score must be released while it still retries by itself,
+        // never after it has turned red.
+        assert!(SWAP_HOLD_LIMIT < super::super::STUCK_THRESHOLD);
+    }
+
+    /// Timeline (a): the swap was saved at kick-off and the refbox went
+    /// offline. 45 minutes later the swap is long stuck; the score was queued
+    /// 5 minutes ago, which re-armed the swap (`enqueue_game_end`). When the
+    /// connection returns, the swap is sent first and the score waits for it.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn rearmed_swap_goes_before_its_score_after_a_long_outage() {
+        let now = OffsetDateTime::now_utc();
+        let mut swap = mk_swap("e", "12");
+        swap.queued_at = now - TimeDuration::minutes(45);
+        swap.attempts = 40;
+        swap.last_attempt_at = Some(now - TimeDuration::minutes(16));
+        assert!(
+            !is_swap_retry_eligible(&swap, now),
+            "before the re-arm, the swap saved 45 minutes ago is stuck"
+        );
+        let mut score = mk_score("e", "12");
+        score.queued_at = now - TimeDuration::minutes(5);
+        // The re-arm `enqueue_game_end` applied when the score was queued.
+        swap.queued_at = score.queued_at;
+        swap.attempts = 0;
+        swap.last_attempt_at = None;
+        assert!(is_swap_retry_eligible(&swap, now));
+
+        let (io, colours_count, scored_games) =
+            SwapIo::answering(vec![Ok(ColourSwapOutcome::Retry { status: 503 })]);
+        let mut handle = spawn(io);
+        let swap_id = swap.id.clone();
+        let mut queue = QueueFile::empty();
+        queue.items.push(score);
+        queue.swaps.push(swap);
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated {
+                queue: queue.clone(),
+                epoch: 0,
+            })
+            .await
+            .unwrap();
+
+        run_one_tick().await;
+
+        assert_eq!(
+            colours_count.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the re-armed swap must be sent when the connection returns"
+        );
+        assert!(
+            scored_games.lock().unwrap().is_empty(),
+            "the score must wait while its swap is still pending"
+        );
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events.iter().any(|ev| matches!(
+                ev,
+                PortalEvent::SwapAttempted { id, attempts: 1, .. } if id == &swap_id
+            )),
+            "got {events:?}"
+        );
+
+        // The swap is recorded on the next try; the main thread drops it and
+        // pushes a fresh snapshot, and only then does the score go.
+        queue.swaps.clear();
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated { queue, epoch: 0 })
+            .await
+            .unwrap();
+
+        run_one_tick().await;
+
+        assert_eq!(*scored_games.lock().unwrap(), vec!["12".to_string()]);
+        drop(handle);
+    }
+
+    /// Timeline (b): the swap and the score were queued within a second of
+    /// each other (end-of-game DONE) 21 minutes ago, and the colours call
+    /// keeps answering "try again". The score is released by
+    /// `SWAP_HOLD_LIMIT` and sent; neither item is stuck yet.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn score_is_released_after_the_swap_hold_limit() {
+        let now = OffsetDateTime::now_utc();
+        let mut swap = mk_swap("e", "12");
+        swap.queued_at = now - TimeDuration::minutes(21);
+        swap.attempts = 80;
+        swap.last_attempt_at = Some(now - TimeDuration::seconds(20));
+        let mut score = mk_score("e", "12");
+        score.queued_at = now - TimeDuration::minutes(21);
+        assert!(!is_swap_stuck(&swap, now), "the swap is not stuck yet");
+        assert!(!is_item_stuck(&score, now), "the score is not stuck yet");
+        assert!(
+            !score_waits_for_swap(&score, std::slice::from_ref(&swap), now),
+            "a score queued 21 minutes ago no longer waits for its swap"
+        );
+
+        let (io, colours_count, scored_games) =
+            SwapIo::answering(vec![Ok(ColourSwapOutcome::Retry { status: 503 })]);
+        let handle = spawn(io);
+        let mut queue = QueueFile::empty();
+        queue.items.push(score);
+        queue.swaps.push(swap);
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated { queue, epoch: 0 })
+            .await
+            .unwrap();
+
+        run_one_tick().await;
+
+        assert_eq!(
+            colours_count.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the swap still retries by itself"
+        );
+        assert_eq!(
+            *scored_games.lock().unwrap(),
+            vec!["12".to_string()],
+            "the score goes once it has waited SWAP_HOLD_LIMIT"
         );
         drop(handle);
     }

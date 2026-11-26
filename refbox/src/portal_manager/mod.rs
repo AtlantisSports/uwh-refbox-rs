@@ -606,6 +606,12 @@ struct RecentSuccess {
 /// See ADR 011 amendment (2026-04-21).
 pub const STUCK_THRESHOLD: TimeDuration = TimeDuration::minutes(30);
 
+/// How long a queued score waits for its game's colour swap, counted from
+/// when the score itself was queued. After this the score goes even if the
+/// colours were not recorded. Must stay below `STUCK_THRESHOLD`, so a held
+/// score always gets automatic retries before it could turn red.
+pub const SWAP_HOLD_LIMIT: TimeDuration = TimeDuration::minutes(20);
+
 pub fn is_item_stuck(item: &QueuedItem, now: OffsetDateTime) -> bool {
     // Stats-pending items (score already accepted) never go stuck: a
     // missing stat must not nag the operator or escalate to red.
@@ -613,8 +619,10 @@ pub fn is_item_stuck(item: &QueuedItem, now: OffsetDateTime) -> bool {
 }
 
 /// The 30-minute rule of `is_item_stuck`, for a queued colour swap. A stuck
-/// swap is never retried automatically (only RETRY ALL resets it), and it
-/// keeps holding its game's score.
+/// swap is never retried automatically (only RETRY ALL resets it) and no
+/// longer holds its game's score. Queuing that game's score re-arms the swap
+/// (`enqueue_game_end`), so it keeps retrying while its score waits, and the
+/// score waits at most `SWAP_HOLD_LIMIT` from when it was queued.
 pub fn is_swap_stuck(swap: &QueuedSwap, now: OffsetDateTime) -> bool {
     (now - swap.queued_at) >= STUCK_THRESHOLD
 }
@@ -1155,6 +1163,11 @@ impl PortalManager {
     /// persist, so results recorded here live only as long as the process. They
     /// still appear on the portal detail page, which is all the operator has to
     /// go on. `persist` logs each skipped write.
+    ///
+    /// A colour swap already queued for the same game is re-armed: its clock
+    /// restarts from now and its attempt history is cleared, so it retries
+    /// automatically for as long as this score waits for it (at most
+    /// `SWAP_HOLD_LIMIT`), even if it was saved long ago and has gone stuck.
     pub fn enqueue_game_end(
         &mut self,
         event_id: String,
@@ -1163,6 +1176,7 @@ impl PortalManager {
         white_score: u8,
         stats: String,
     ) -> std::io::Result<()> {
+        let now = OffsetDateTime::now_utc();
         let item = QueuedItem {
             id: ItemId {
                 event_id,
@@ -1171,13 +1185,18 @@ impl PortalManager {
             black_score,
             white_score,
             stats,
-            queued_at: OffsetDateTime::now_utc(),
+            queued_at: now,
             attempts: 0,
             last_attempt_at: None,
             force: false,
             score_sent: false,
             stats_may_have_landed: false,
         };
+        if let Some(swap) = self.queue.swaps.iter_mut().find(|s| s.id == item.id) {
+            swap.queued_at = now;
+            swap.attempts = 0;
+            swap.last_attempt_at = None;
+        }
         self.queue.items.push(item);
         self.persist()?;
         self.recompute_indicator();
@@ -3319,6 +3338,51 @@ mod tests {
         assert!(swap.last_attempt_at.is_none());
         let (_store, on_disk) = queue::QueueStore::open(tmp.path()).unwrap();
         assert_eq!(on_disk.swaps, m.queue.swaps, "the swap must be saved");
+    }
+
+    #[tokio::test]
+    async fn enqueue_game_end_rearms_only_its_own_games_swap() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
+        for (event, game) in [
+            ("events/swap-test", "12"),
+            ("events/swap-test", "13"),
+            ("events/other", "12"),
+        ] {
+            m.enqueue_colour_swap(
+                event.into(),
+                game.into(),
+                "teams/12-B".into(),
+                "teams/12-A".into(),
+            )
+            .unwrap();
+        }
+        let long_ago = OffsetDateTime::now_utc() - TimeDuration::minutes(45);
+        for swap in &mut m.queue.swaps {
+            swap.queued_at = long_ago;
+            swap.attempts = 7;
+            swap.last_attempt_at = Some(long_ago + TimeDuration::minutes(29));
+        }
+        let others: Vec<QueuedSwap> = m.queue.swaps[1..].to_vec();
+
+        let before = OffsetDateTime::now_utc();
+        m.enqueue_game_end("events/swap-test".into(), "12".into(), 1, 0, "{}".into())
+            .unwrap();
+
+        let rearmed = &m.queue.swaps[0];
+        assert_eq!(rearmed.id.game_number, "12");
+        assert_eq!(rearmed.id.event_id, "events/swap-test");
+        assert!(rearmed.queued_at >= before, "its clock restarts from now");
+        assert_eq!(rearmed.queued_at, m.queue.items[0].queued_at);
+        assert_eq!(rearmed.attempts, 0);
+        assert!(rearmed.last_attempt_at.is_none());
+        assert_eq!(
+            m.queue.swaps[1..],
+            others[..],
+            "another game's swap, and the same game number in another event, are untouched"
+        );
+        let (_store, on_disk) = queue::QueueStore::open(tmp.path()).unwrap();
+        assert_eq!(on_disk.swaps, m.queue.swaps, "the re-arm must be saved");
     }
 
     #[tokio::test]

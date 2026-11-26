@@ -297,14 +297,43 @@ fn parse_event_id(
     })
 }
 
-/// Parse a queued swap's team id string back into a `TeamId`. Mapped to a portal call error
-/// rather than a panic, for the same reason as `parse_event_id`.
-fn parse_team_id(
-    raw: &str,
-) -> Result<uwh_common::uwhportal::schedule::TeamId, health::PortalCallError> {
-    uwh_common::uwhportal::schedule::TeamId::from_full(raw).map_err(|e| {
-        health::PortalCallError::Failed(format!("invalid queued team id {raw:?}: {e}"))
-    })
+/// The parsed ids a queued swap is sent with: its event, the dark team and the light team.
+type SwapRequestIds = (
+    uwh_common::uwhportal::schedule::EventId,
+    uwh_common::uwhportal::schedule::TeamId,
+    uwh_common::uwhportal::schedule::TeamId,
+);
+
+/// Parse a queued swap's ids for sending, or give the refusal that ends it unsent.
+///
+/// An id that does not parse never will: retrying it would only hold the swap stuck. So a parse
+/// failure becomes a `Refused` with `health::LOCAL_REFUSAL_STATUS`, which `health::swap_step`
+/// drops like any refusal, and the reason goes to the log. The event id is treated the same way
+/// as the team ids here for the same reason. (A score with a bad event id still retries as it
+/// always has; that path is unchanged.)
+fn swap_request_ids(
+    swap: &QueuedSwap,
+) -> Result<SwapRequestIds, uwh_common::uwhportal::ColourSwapOutcome> {
+    let refusal = |reason: String| uwh_common::uwhportal::ColourSwapOutcome::Refused {
+        status: health::LOCAL_REFUSAL_STATUS,
+        reason,
+    };
+    let event_id =
+        uwh_common::uwhportal::schedule::EventId::from_full(&swap.id.event_id).map_err(|e| {
+            refusal(format!(
+                "invalid queued event_id {:?}: {e}",
+                swap.id.event_id
+            ))
+        })?;
+    let team = |raw: &str| {
+        uwh_common::uwhportal::schedule::TeamId::from_full(raw)
+            .map_err(|e| refusal(format!("invalid queued team id {raw:?}: {e}")))
+    };
+    Ok((
+        event_id,
+        team(&swap.dark_team_id)?,
+        team(&swap.light_team_id)?,
+    ))
 }
 
 /// Take a snapshot of the currently-selected event id for use by the
@@ -383,10 +412,12 @@ impl health::PortalTaskIo for UwhPortalIo {
         swap: &QueuedSwap,
         epoch: u64,
     ) -> Result<uwh_common::uwhportal::ColourSwapOutcome, health::PortalCallError> {
-        let event_id = parse_event_id(&swap.id.event_id)?;
+        let (event_id, dark, light) = match swap_request_ids(swap) {
+            Ok(ids) => ids,
+            // Nothing is sent: these ids can never become valid.
+            Err(refusal) => return Ok(refusal),
+        };
         let game_number = swap.id.game_number.clone();
-        let dark = parse_team_id(&swap.dark_team_id)?;
-        let light = parse_team_id(&swap.light_team_id)?;
         // Same rule as the scores: the key belongs to the event this swap was recorded for, and
         // the discard counter refuses a swap handed over before a discard or a site move.
         let fut = self.request_for(&event_id, Some(epoch), |client| {
@@ -3506,5 +3537,34 @@ mod tests {
         assert!(m.queue.swaps.is_empty());
         let (_store, on_disk) = queue::QueueStore::open(tmp.path()).unwrap();
         assert!(on_disk.swaps.is_empty(), "the removal must be saved");
+    }
+
+    /// A queued swap whose ids can never parse is refused locally, without
+    /// sending, and that refusal drops it rather than retrying it forever.
+    #[test]
+    fn unparseable_swap_ids_are_dropped_not_retried() {
+        let good = mk_queued_swap("12");
+        assert!(swap_request_ids(&good).is_ok());
+
+        let mut bad_team = mk_queued_swap("12");
+        bad_team.light_team_id = "12-A".into();
+        let mut bad_event = mk_queued_swap("12");
+        bad_event.id.event_id = "swap-test".into();
+        for swap in [bad_team, bad_event] {
+            match swap_request_ids(&swap) {
+                Err(outcome) => {
+                    assert!(
+                        matches!(
+                            &outcome,
+                            uwh_common::uwhportal::ColourSwapOutcome::Refused { status, .. }
+                                if *status == health::LOCAL_REFUSAL_STATUS
+                        ),
+                        "got {outcome:?}"
+                    );
+                    assert_eq!(health::swap_step(&Ok(outcome)), health::SwapStep::Dropped);
+                }
+                Ok(_) => panic!("{swap:?} must not parse"),
+            }
+        }
     }
 }

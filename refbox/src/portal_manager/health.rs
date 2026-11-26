@@ -52,13 +52,28 @@ pub fn is_swap_retry_eligible(swap: &QueuedSwap, now: OffsetDateTime) -> bool {
     }
 }
 
-/// True while `item`'s game still has a colour swap queued. Its score waits:
-/// the site must learn which team played dark before it records the result.
-/// Matches on event AND game, so a swap never holds another event's game of
-/// the same number.
-pub(crate) fn score_waits_for_swap(item: &QueuedItem, swaps: &[QueuedSwap]) -> bool {
-    swaps.iter().any(|swap| swap.id == item.id)
+/// True while `item`'s game still has a colour swap queued that is not stuck.
+/// Its score waits: the site must learn which team played dark before it
+/// records the result. Matches on event AND game, so a swap never holds
+/// another event's game of the same number.
+///
+/// A swap stuck for 30 minutes (`is_swap_stuck`) stops holding the score, so a
+/// final score is never held back for good by a colours call that keeps
+/// failing. The swap itself stays queued, red, and retryable by RETRY ALL.
+pub(crate) fn score_waits_for_swap(
+    item: &QueuedItem,
+    swaps: &[QueuedSwap],
+    now: OffsetDateTime,
+) -> bool {
+    swaps
+        .iter()
+        .any(|swap| swap.id == item.id && !is_swap_stuck(swap, now))
 }
+
+/// The `status` of a refusal this refbox makes itself, without sending: a
+/// queued swap whose ids can never be parsed. No HTTP answer carries 0, so it
+/// cannot be mistaken for the site's own refusal.
+pub(crate) const LOCAL_REFUSAL_STATUS: u16 = 0;
 
 /// What happens to a queued swap after one send.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,6 +104,11 @@ fn log_swap_outcome(swap: &QueuedSwap, result: &Result<ColourSwapOutcome, Portal
     match result {
         Ok(ColourSwapOutcome::Applied) => {
             log::info!("Game {game}: colour swap recorded on the site");
+        }
+        Ok(ColourSwapOutcome::Refused { status, reason }) if *status == LOCAL_REFUSAL_STATUS => {
+            log::warn!(
+                "Game {game}: colour swap could not be sent ({reason}); kept on this refbox only"
+            );
         }
         Ok(ColourSwapOutcome::Refused { status, reason }) => {
             log::warn!(
@@ -356,7 +376,7 @@ async fn run_task(
                     let item = &queue_snapshot.items[idx];
                     if item.score_sent
                         || !is_item_retry_eligible(item, now)
-                        || score_waits_for_swap(item, &queue_snapshot.swaps)
+                        || score_waits_for_swap(item, &queue_snapshot.swaps, now)
                     {
                         continue;
                     }
@@ -1923,11 +1943,31 @@ mod tests {
 
     #[test]
     fn score_waits_only_for_its_own_game() {
+        let now = OffsetDateTime::now_utc();
         let swaps = vec![mk_swap("e", "12")];
-        assert!(score_waits_for_swap(&mk_score("e", "12"), &swaps));
-        assert!(!score_waits_for_swap(&mk_score("e", "13"), &swaps));
-        assert!(!score_waits_for_swap(&mk_score("other", "12"), &swaps));
-        assert!(!score_waits_for_swap(&mk_score("e", "12"), &[]));
+        assert!(score_waits_for_swap(&mk_score("e", "12"), &swaps, now));
+        assert!(!score_waits_for_swap(&mk_score("e", "13"), &swaps, now));
+        assert!(!score_waits_for_swap(&mk_score("other", "12"), &swaps, now));
+        assert!(!score_waits_for_swap(&mk_score("e", "12"), &[], now));
+    }
+
+    #[test]
+    fn stuck_swap_stops_holding_its_score() {
+        let now = OffsetDateTime::now_utc();
+        let mut stuck = mk_swap("e", "12");
+        stuck.queued_at = now - TimeDuration::minutes(31);
+        assert!(
+            !score_waits_for_swap(&mk_score("e", "12"), &[stuck.clone()], now),
+            "a swap stuck 30 minutes must no longer hold its game's score"
+        );
+        assert!(
+            is_swap_stuck(&stuck, now),
+            "the swap itself stays stuck (red, retryable by RETRY ALL)"
+        );
+        assert!(
+            score_waits_for_swap(&mk_score("e", "12"), &[mk_swap("e", "12")], now),
+            "a fresh swap still holds its game's score"
+        );
     }
 
     #[test]

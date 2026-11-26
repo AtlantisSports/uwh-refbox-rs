@@ -1957,18 +1957,26 @@ pub(super) fn make_penalty_dropdown<'a>(
         .into()
 }
 
+/// The player label in an infraction box: "#n", or for no player "T" (team) on a
+/// warning but nothing on a foul -- a foul without a number only means the player
+/// was not recorded.
+fn infraction_who(player_number: Option<u8>, is_foul: bool) -> String {
+    match player_number {
+        Some(num) => format!("#{num}"),
+        None if is_foul => String::new(),
+        None => fl!("team-warning-abreviation"),
+    }
+}
+
 pub fn make_warning_container<'a>(
     warning: &InfractionSnapshot,
     color: Option<GameColor>,
+    is_foul: bool,
 ) -> Container<'a, Message> {
     const WIDTH: u16 = 220;
     const HEIGHT: u16 = 23;
 
-    let who = if let Some(num) = warning.player_number {
-        format!("#{num}")
-    } else {
-        fl!("team-warning-abreviation")
-    };
+    let who = infraction_who(warning.player_number, is_foul);
 
     container(if color.is_some() {
         row![
@@ -2081,6 +2089,22 @@ mod tests {
 
     use super::*;
     use crate::config::Mode;
+
+    #[test]
+    fn infraction_who_numbered() {
+        assert_eq!(infraction_who(Some(7), true), "#7");
+        assert_eq!(infraction_who(Some(7), false), "#7");
+    }
+
+    #[test]
+    fn infraction_who_numberless_foul_is_blank() {
+        assert_eq!(infraction_who(None, true), "");
+    }
+
+    #[test]
+    fn infraction_who_team_warning_keeps_t() {
+        assert_eq!(infraction_who(None, false), fl!("team-warning-abreviation"));
+    }
 
     #[test]
     fn any_pending_change_detects_edits() {

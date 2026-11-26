@@ -30,6 +30,7 @@ mod team_timeout_edit;
 use team_timeout_edit::*;
 
 mod foul_add;
+pub(crate) use foul_add::foul_player_number;
 use foul_add::*;
 
 mod warning_add;

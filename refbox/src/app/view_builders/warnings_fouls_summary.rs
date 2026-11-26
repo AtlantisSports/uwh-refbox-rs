@@ -25,10 +25,12 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
             .width(Length::Fill),
         scrollable(
             row(snapshot.warnings.iter().map(|(color, warns)| column(
-                warns
-                    .iter()
-                    .rev()
-                    .map(|warning| make_warning_container(warning, Some(color)).into())
+                warns.iter().rev().map(|warning| make_warning_container(
+                    warning,
+                    Some(color),
+                    false
+                )
+                .into())
             )
             .spacing(SPACING)
             .width(Length::Fill)
@@ -53,7 +55,7 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
                         fouls
                             .iter()
                             .rev()
-                            .map(|fouls| make_warning_container(fouls, color).into()),
+                            .map(|fouls| make_warning_container(fouls, color, true).into()),
                     )
                     .spacing(SPACING)
                     .padding(PADDING)

@@ -488,6 +488,84 @@ enum ConfirmationKind {
     RestartGame,
 }
 
+/// The kind of screen `state` shows: its type, never the values on it (see
+/// `ScreenKind`). Every match here is exhaustive with no `_` arm, so a new
+/// screen, keypad or confirmation does not compile until it is classified.
+fn screen_kind(state: &AppState) -> ScreenKind {
+    match state {
+        AppState::MainPage => ScreenKind::MainPage,
+        AppState::TimeEdit(..) => ScreenKind::TimeEdit,
+        AppState::ScoreEdit {
+            is_confirmation, ..
+        } => ScreenKind::ScoreEdit {
+            is_confirmation: *is_confirmation,
+        },
+        AppState::PenaltyOverview(_) => ScreenKind::PenaltyOverview,
+        AppState::WarningOverview(_) => ScreenKind::WarningOverview,
+        AppState::FoulOverview(_) => ScreenKind::FoulOverview,
+        AppState::KeypadPage(page, _) => ScreenKind::Keypad(match page {
+            KeypadPage::AddScore { .. } => KeypadKind::AddScore,
+            KeypadPage::Penalty(..) => KeypadKind::Penalty,
+            KeypadPage::GameNumber(_) => KeypadKind::GameNumber,
+            KeypadPage::TeamTimeouts(..) => KeypadKind::TeamTimeouts,
+            KeypadPage::FoulAdd { .. } => KeypadKind::FoulAdd,
+            KeypadPage::WarningAdd { .. } => KeypadKind::WarningAdd,
+            KeypadPage::PortalLogin(..) => KeypadKind::PortalLogin,
+        }),
+        AppState::GameDetailsPage(_) => ScreenKind::GameDetailsPage,
+        AppState::WarningsSummaryPage => ScreenKind::WarningsSummaryPage,
+        AppState::PowerPage => ScreenKind::PowerPage,
+        AppState::EditGameConfig(page) => ScreenKind::EditGameConfig(match page {
+            ConfigPage::Main => ConfigPageKind::Main,
+            ConfigPage::Game => ConfigPageKind::Game,
+            ConfigPage::Sound => ConfigPageKind::Sound,
+            ConfigPage::Display => ConfigPageKind::Display,
+            ConfigPage::App => ConfigPageKind::App,
+            ConfigPage::User => ConfigPageKind::User,
+            ConfigPage::Remotes(..) => ConfigPageKind::Remotes,
+            ConfigPage::Language => ConfigPageKind::Language,
+            ConfigPage::Buzzer => ConfigPageKind::Buzzer,
+            ConfigPage::CustomSite(_) => ConfigPageKind::CustomSite,
+        }),
+        AppState::ParameterEditor(param, ..) => ScreenKind::ParameterEditor(*param),
+        AppState::ParameterEditorHelp(param, ..) => ScreenKind::ParameterEditorHelp(*param),
+        AppState::CountdownEditor { .. } => ScreenKind::CountdownEditor,
+        AppState::SuddenDeathEditor(_) => ScreenKind::SuddenDeathEditor,
+        AppState::ParameterList(param, _) => ScreenKind::ParameterList(*param),
+        AppState::ConfirmationPage(kind) => ScreenKind::Confirmation(match kind {
+            ConfirmationKind::Error(_) => ConfirmationKindTag::Error,
+            ConfirmationKind::UwhPortalLinkFailed(_) => ConfirmationKindTag::UwhPortalLinkFailed,
+            ConfirmationKind::UwhPortalKeyUnusable => ConfirmationKindTag::UwhPortalKeyUnusable,
+            ConfirmationKind::GameNumberChangedFromApply => {
+                ConfirmationKindTag::GameNumberChangedFromApply
+            }
+            ConfirmationKind::GameConfigChangedFromApply(_) => {
+                ConfirmationKindTag::GameConfigChangedFromApply
+            }
+            ConfirmationKind::UwhPortalIncompleteFromApply => {
+                ConfirmationKindTag::UwhPortalIncompleteFromApply
+            }
+            ConfirmationKind::SwitchToManualFromApply => {
+                ConfirmationKindTag::SwitchToManualFromApply
+            }
+            ConfirmationKind::PortalTenantSwitch { .. } => ConfirmationKindTag::PortalTenantSwitch,
+            ConfirmationKind::SiteLockedByGame(_) => ConfirmationKindTag::SiteLockedByGame,
+            ConfirmationKind::ResultsWaiting(_) => ConfirmationKindTag::ResultsWaiting,
+            ConfirmationKind::LinkLockedByGame => ConfirmationKindTag::LinkLockedByGame,
+            ConfirmationKind::SourceSwitchClearsSelection(_) => {
+                ConfirmationKindTag::SourceSwitchClearsSelection
+            }
+            ConfirmationKind::RestartGame => ConfirmationKindTag::RestartGame,
+        }),
+        AppState::ConfirmScores(_) => ScreenKind::ConfirmScores,
+        AppState::PortalDetailPage { .. } => ScreenKind::PortalDetailPage,
+        AppState::PortalAttentionAction { .. } => ScreenKind::PortalAttentionAction,
+        AppState::BeepTestPage => ScreenKind::BeepTestPage,
+        AppState::BeepTestSettings(page) => ScreenKind::BeepTestSettings(*page),
+        AppState::Updates { .. } => ScreenKind::Updates,
+    }
+}
+
 /// Which of the two kinds of site an address belongs to. Decides which saved
 /// credential is used: the operator's Portal login must never be sent to a
 /// third-party site, which would hand that site a working Portal credential.
@@ -14159,5 +14237,201 @@ mod portal_attention_tests {
     #[test]
     fn retry_on_a_score_item_force_submits() {
         assert_eq!(attention_retry(false), AttentionRetry::ForceScore);
+    }
+}
+
+#[cfg(test)]
+mod screen_kind_tests {
+    use super::*;
+
+    fn penalty_keypad(number: u32) -> AppState {
+        AppState::KeypadPage(
+            KeypadPage::Penalty(
+                None,
+                Color::Black,
+                PenaltyKind::OneMinute,
+                Infraction::Unknown,
+            ),
+            number,
+        )
+    }
+
+    fn same_kind(a: AppState, b: AppState) {
+        assert_eq!(screen_kind(&a), screen_kind(&b), "{a:?} vs {b:?}");
+    }
+
+    fn different_kind(a: AppState, b: AppState) {
+        assert_ne!(screen_kind(&a), screen_kind(&b), "{a:?} vs {b:?}");
+    }
+
+    fn item(game_number: &str) -> ItemId {
+        ItemId {
+            event_id: "event".to_string(),
+            game_number: game_number.to_string(),
+        }
+    }
+
+    #[test]
+    fn contents_do_not_change_the_kind() {
+        // Keypad: the typed number.
+        same_kind(penalty_keypad(7), penalty_keypad(42));
+        // Settings pages: the remotes page's selection and listening flag, and
+        // the custom-site page's error flag.
+        same_kind(
+            AppState::EditGameConfig(ConfigPage::Remotes(0, false)),
+            AppState::EditGameConfig(ConfigPage::Remotes(2, true)),
+        );
+        same_kind(
+            AppState::EditGameConfig(ConfigPage::CustomSite(false)),
+            AppState::EditGameConfig(ConfigPage::CustomSite(true)),
+        );
+        // Keypad: the selected colour, kind and infraction.
+        same_kind(
+            penalty_keypad(7),
+            AppState::KeypadPage(
+                KeypadPage::Penalty(
+                    Some((Color::White, 3)),
+                    Color::White,
+                    PenaltyKind::TwoMinute,
+                    Infraction::OutOfBounds,
+                ),
+                7,
+            ),
+        );
+        // TimeEdit: its durations.
+        same_kind(
+            AppState::TimeEdit(false, Duration::from_secs(10), None),
+            AppState::TimeEdit(true, Duration::from_secs(99), Some(Duration::from_secs(5))),
+        );
+        // ScoreEdit: the scores.
+        same_kind(
+            AppState::ScoreEdit {
+                scores: BlackWhiteBundle { black: 0, white: 0 },
+                is_confirmation: false,
+            },
+            AppState::ScoreEdit {
+                scores: BlackWhiteBundle { black: 3, white: 5 },
+                is_confirmation: false,
+            },
+        );
+        // Overviews: their scroll indices.
+        same_kind(
+            AppState::PenaltyOverview(BlackWhiteBundle { black: 0, white: 0 }),
+            AppState::PenaltyOverview(BlackWhiteBundle { black: 2, white: 4 }),
+        );
+        same_kind(
+            AppState::WarningOverview(BlackWhiteBundle { black: 0, white: 0 }),
+            AppState::WarningOverview(BlackWhiteBundle { black: 1, white: 3 }),
+        );
+        same_kind(
+            AppState::FoulOverview(OptColorBundle {
+                black: 0,
+                equal: 0,
+                white: 0,
+            }),
+            AppState::FoulOverview(OptColorBundle {
+                black: 1,
+                equal: 2,
+                white: 3,
+            }),
+        );
+        // ParameterEditor: the duration and the staged flag.
+        same_kind(
+            AppState::ParameterEditor(LengthParameter::Half, Duration::from_secs(600), false),
+            AppState::ParameterEditor(LengthParameter::Half, Duration::from_secs(900), true),
+        );
+        same_kind(
+            AppState::ParameterEditorHelp(LengthParameter::Half, Duration::from_secs(600), false),
+            AppState::ParameterEditorHelp(LengthParameter::Half, Duration::from_secs(900), true),
+        );
+        // ParameterList: the scroll index.
+        same_kind(
+            AppState::ParameterList(ListableParameter::Event, 0),
+            AppState::ParameterList(ListableParameter::Event, 5),
+        );
+        // PortalDetailPage: the scroll index.
+        same_kind(
+            AppState::PortalDetailPage { scroll_index: 0 },
+            AppState::PortalDetailPage { scroll_index: 8 },
+        );
+        // PortalAttentionAction: the item and `discard_armed`.
+        same_kind(
+            AppState::PortalAttentionAction {
+                item_id: item("1"),
+                discard_armed: false,
+            },
+            AppState::PortalAttentionAction {
+                item_id: item("2"),
+                discard_armed: true,
+            },
+        );
+        // Updates: the update state.
+        same_kind(
+            AppState::Updates {
+                state: UpdateUiState::Checking,
+                backup_available: false,
+            },
+            AppState::Updates {
+                state: UpdateUiState::Downloading,
+                backup_available: true,
+            },
+        );
+        // ConfirmScores: the scores.
+        same_kind(
+            AppState::ConfirmScores(BlackWhiteBundle { black: 0, white: 0 }),
+            AppState::ConfirmScores(BlackWhiteBundle { black: 4, white: 2 }),
+        );
+        // ConfirmationPage: the payload.
+        same_kind(
+            AppState::ConfirmationPage(ConfirmationKind::Error("one".to_string())),
+            AppState::ConfirmationPage(ConfirmationKind::Error("two".to_string())),
+        );
+    }
+
+    #[test]
+    fn type_changes_the_kind() {
+        different_kind(
+            AppState::EditGameConfig(ConfigPage::Remotes(0, false)),
+            AppState::EditGameConfig(ConfigPage::CustomSite(false)),
+        );
+        different_kind(
+            penalty_keypad(7),
+            AppState::KeypadPage(
+                KeypadPage::WarningAdd {
+                    origin: None,
+                    color: Color::Black,
+                    infraction: Infraction::Unknown,
+                    team_warning: false,
+                    ret_to_overview: false,
+                },
+                7,
+            ),
+        );
+        different_kind(
+            AppState::EditGameConfig(ConfigPage::Main),
+            AppState::EditGameConfig(ConfigPage::Game),
+        );
+        different_kind(
+            AppState::ScoreEdit {
+                scores: BlackWhiteBundle { black: 1, white: 1 },
+                is_confirmation: true,
+            },
+            AppState::ScoreEdit {
+                scores: BlackWhiteBundle { black: 1, white: 1 },
+                is_confirmation: false,
+            },
+        );
+        different_kind(
+            AppState::ParameterEditor(LengthParameter::Half, Duration::from_secs(600), false),
+            AppState::ParameterEditor(LengthParameter::HalfTime, Duration::from_secs(600), false),
+        );
+        different_kind(
+            AppState::ConfirmationPage(ConfirmationKind::Error("x".to_string())),
+            AppState::ConfirmationPage(ConfirmationKind::RestartGame),
+        );
+        different_kind(
+            AppState::MainPage,
+            AppState::ConfirmScores(BlackWhiteBundle { black: 1, white: 1 }),
+        );
     }
 }

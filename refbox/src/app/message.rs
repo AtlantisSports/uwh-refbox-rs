@@ -992,6 +992,85 @@ pub enum ListableParameter {
     Game,
 }
 
+/// The kind of screen a tap was drawn on: the *type* of screen, never the values
+/// on it. One variant per `AppState` variant, built by `screen_kind`. Values that
+/// change while a screen stays up (a typed number, scores, durations, scroll
+/// positions) are deliberately left out, so a tap still lands when they change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScreenKind {
+    MainPage,
+    TimeEdit,
+    ScoreEdit { is_confirmation: bool },
+    PenaltyOverview,
+    WarningOverview,
+    FoulOverview,
+    Keypad(KeypadKind),
+    GameDetailsPage,
+    WarningsSummaryPage,
+    PowerPage,
+    EditGameConfig(ConfigPageKind),
+    ParameterEditor(LengthParameter),
+    ParameterEditorHelp(LengthParameter),
+    CountdownEditor,
+    SuddenDeathEditor,
+    ParameterList(ListableParameter),
+    Confirmation(ConfirmationKindTag),
+    ConfirmScores,
+    PortalDetailPage,
+    PortalAttentionAction,
+    BeepTestPage,
+    BeepTestSettings(super::BeepTestConfigPage),
+    Updates,
+}
+
+/// Which settings page is showing, without its values. One variant per
+/// `ConfigPage` variant: the remotes page's selection and listening flag, and the
+/// custom-site page's error flag, change while the page stays up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigPageKind {
+    Main,
+    Game,
+    Sound,
+    Display,
+    App,
+    User,
+    Remotes,
+    Language,
+    Buzzer,
+    CustomSite,
+}
+
+/// Which keypad is showing, without anything typed or selected on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeypadKind {
+    AddScore,
+    Penalty,
+    GameNumber,
+    TeamTimeouts,
+    FoulAdd,
+    WarningAdd,
+    PortalLogin,
+}
+
+/// Which confirmation is showing, without its payload. One variant per
+/// `ConfirmationKind` variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfirmationKindTag {
+    Error,
+    UwhPortalLinkFailed,
+    UwhPortalKeyUnusable,
+    GameNumberChangedFromApply,
+    GameConfigChangedFromApply,
+    UwhPortalIncompleteFromApply,
+    SwitchToManualFromApply,
+    PortalTenantSwitch,
+    SiteLockedByGame,
+    ResultsWaiting,
+    LinkLockedByGame,
+    SourceSwitchClearsSelection,
+    RestartGame,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoolGameParameter {
     OvertimeAllowed,

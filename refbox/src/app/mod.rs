@@ -1516,9 +1516,9 @@ fn period_end_sounds(period: GamePeriod, sd_counts_down: bool) -> (bool, bool) {
     }
 }
 
-/// START NOW skips the 0:00 tick where `maybe_play_sound` would have buzzed, so it
-/// plays what that tick would have: the start-of-play buzzer, when AUTO SOUND START
-/// PLAY is on. `sd_counts_down` only affects the stop flag, never `.0`, so `false`
+/// START NOW normally ends a break before the 0:00 tick where `maybe_play_sound`
+/// would have buzzed, so it plays what that tick would have: the start-of-play
+/// buzzer, when AUTO SOUND START PLAY is on. `sd_counts_down` only affects the stop flag, never `.0`, so `false`
 /// is safe here.
 fn start_now_plays_buzzer(left_period: GamePeriod, auto_sound_start_play: bool) -> bool {
     period_end_sounds(left_period, false).0 && auto_sound_start_play
@@ -5207,16 +5207,20 @@ impl RefBoxApp {
                 let now = Instant::now();
                 let left_period = tm.current_period();
                 if let Err(e) = tm.start_play_now(now) {
-                    // The only reachable error is a court whose schedule is finished,
-                    // where START NOW is greyed out anyway. Log and do nothing rather
-                    // than crash the refbox mid-tournament.
+                    // Reachable errors: a court whose schedule is finished (START NOW is
+                    // greyed out anyway), a timeout running, or a tap that arrives just
+                    // after the break ran out on its own and play already began. Log and
+                    // do nothing -- in particular, no buzzer -- rather than crash the
+                    // refbox mid-tournament.
                     warn!("Could not start play now: {e}");
                     return Task::none();
                 }
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
-                // Buzz only after the engine accepted the tap, so a tap that loses the
-                // race with 0:00 cannot double-buzz.
+                // Buzz only after the engine accepted the tap. A tap while the break
+                // already shows 0:00 (under a second left) can still land here after
+                // `maybe_play_sound` buzzed; the sound worker drops a second AutoBuzzer
+                // while the first is still queued, so it is not heard twice.
                 if start_now_plays_buzzer(left_period, self.config.sound.auto_sound_start_play) {
                     info!("START NOW: triggering buzzer");
                     self.sound.trigger_buzzer();

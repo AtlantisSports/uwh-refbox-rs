@@ -52,6 +52,12 @@ between games (option 3, inconsistent across breaks).
   log `info!("START NOW: triggering buzzer")` and call `self.sound.trigger_buzzer()`.
 - No double buzz on success: the snapshot after START NOW is a play period at full time, which
   `maybe_play_sound` does not buzz.
+- A tap while the break already shows 0:00 (under a second left, the engine still in the break) is
+  accepted and calls the buzzer after `maybe_play_sound` already did. It is not heard twice because the
+  sound worker drops an AutoBuzzer while one is still queued (`sound_controller` ~345). (Code review,
+  2026-11-27.)
+- The handler's ordering (period read before `start_play_now`) is pinned only by the walkthrough, not
+  by a test: a test cannot observe the sound. (Code review, 2026-11-27.)
 
 ## Goals / non-goals
 

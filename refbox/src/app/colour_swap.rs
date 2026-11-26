@@ -69,9 +69,20 @@ pub(super) fn swappable_teams(
     })
 }
 
-pub(super) fn mark_delivered(swaps: &mut ColourSwaps, event_id: &str, game: &GameNumber) {
+/// Marks the record delivered only when it still describes the send that was
+/// delivered (`sent`, black = dark, white = light). The operator may have swapped
+/// again since: an older send's delivery report must not mark the newer record
+/// delivered, or the record would retire while the portal still holds the old colours.
+pub(super) fn mark_delivered(
+    swaps: &mut ColourSwaps,
+    event_id: &str,
+    game: &GameNumber,
+    sent: &BlackWhiteBundle<TeamId>,
+) {
     if let Some(record) = swaps.get_mut(&(event_id.to_string(), game.clone())) {
-        record.delivered = true;
+        if record.dark == sent.black && record.light == sent.white {
+            record.delivered = true;
+        }
     }
 }
 
@@ -225,9 +236,32 @@ mod tests {
             (X.to_string(), "13".to_string()),
             record("bbb", "aaa", false),
         );
-        mark_delivered(&mut swaps, X, &"12".to_string());
+        let sent = BlackWhiteBundle {
+            black: team("bbb"),
+            white: team("aaa"),
+        };
+        mark_delivered(&mut swaps, X, &"12".to_string(), &sent);
         assert!(swaps[&(X.to_string(), "12".to_string())].delivered);
         assert!(!swaps[&(X.to_string(), "13".to_string())].delivered);
+    }
+
+    #[test]
+    fn stale_delivery_report_leaves_the_newer_record_undelivered() {
+        let mut swaps = ColourSwaps::new();
+        let key = (X.to_string(), "12".to_string());
+        swaps.insert(key.clone(), record("aaa", "bbb", false));
+        let stale = BlackWhiteBundle {
+            black: team("bbb"),
+            white: team("aaa"),
+        };
+        mark_delivered(&mut swaps, X, &"12".to_string(), &stale);
+        assert!(!swaps[&key].delivered);
+        let current = BlackWhiteBundle {
+            black: team("aaa"),
+            white: team("bbb"),
+        };
+        mark_delivered(&mut swaps, X, &"12".to_string(), &current);
+        assert!(swaps[&key].delivered);
     }
 
     #[test]

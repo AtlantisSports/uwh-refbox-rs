@@ -1,6 +1,7 @@
 # Backlog: a replayed game re-posts its result every 16 seconds, forever
 
-**Status:** NOT FILED, not started. Local note only.
+**Status:** FIXED on `fix/refbox/replayed-game-repost-loop` (2026-11-27). One edge stays open; see
+"Cause (found 2026-11-27)" below.
 **Surfaced:** 2026-09-05, during the court-finished walkthrough, on branch
 `fix/uwh-common/court-finished-behaviour`. Reproduced live against a local mock portal.
 **Raised by:** Claude, from the app's own log and the mock's access log, after Eric noticed the
@@ -76,3 +77,31 @@ Needs a portal that refuses duplicates, or a mock taught to. Its own branch and 
 
 Related: `docs/backlog/event-list-never-refetched-after-offline-start/NOTE.md` — the other
 pre-existing portal-resilience gap found the same night.
+
+## Cause (found 2026-11-27)
+
+`PortalManager::on_item_resolved` (`refbox/src/portal_manager/mod.rs`) returned early when the
+game's id was already in the recent-successes list: the last 5 results sent, held in memory. A
+queued item's id is only event + game number, so a replay re-uses the first play's id. When the
+replay was sent, the app took the portal's acceptance for a duplicate of the first play's, and
+never removed the replay from the queue. The background task re-sent it every ~16 s (a 15 s
+retry interval on a 2 s poll) until the item turned "stuck" at 30 minutes, then showed red.
+
+- It needs the first play to be among the last 5 results sent, with no app restart in between.
+  A restart clears the list, and the reloaded item then resolves normally.
+- It is not "forever": after 30 minutes the item is stuck and stops being sent.
+- The `attempts: 0` / `last_attempt_at: null` clue was a red herring: attempt counts are
+  deliberately never written to disk (see `on_item_attempted`).
+- On the real portal, a replay that recorded any events should end the loop after two sends,
+  because the portal refuses the repeated stats as a duplicate. The row is then left showing
+  "stats not sent", which is false. A replay with no events loops the full 30 minutes.
+  (Read from the code, not run against the real portal.)
+
+The fix drops that early return. The "is it still on the queue?" check right after it already
+makes a repeated resolution harmless. It also keeps one green row per game, with a replay shown
+as the newest.
+
+**Known, NOT fixed (PO chose the small fix):** a game played offline and then replayed with a
+different score, while both results wait in the queue. Resolving the first result removes both,
+because the removal matches by id, so the replay's result is silently lost and the portal keeps
+the first play's score. Fixing this needs each queued result to have its own identity.

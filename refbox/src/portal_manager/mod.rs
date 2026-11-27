@@ -1280,23 +1280,18 @@ impl PortalManager {
     /// successfully-posted item would be a worse failure mode than
     /// losing the on-disk reflection of an already-completed action.
     pub fn on_item_resolved(&mut self, id: ItemId) {
-        // Idempotent: if we've already recorded this resolution in the
-        // recent-successes ring, do nothing. Duplicate delivery can
-        // happen if the background task retries a post before the main
-        // thread has processed the first `ItemResolved` event, or if a
-        // future action (e.g. FORCE from the attention page) resolves
-        // an item that was already removed from the queue. Without this
-        // guard, the same game would appear as two green rows on the
-        // detail page.
-        if self.recent_successes.iter().any(|rs| rs.id == id) {
-            return;
-        }
-
         // Only record a recent success for items that were actually on
         // the queue at the time of the call. An `on_item_resolved` for
         // an unknown id (e.g. the background task reporting a resolve
         // for an item the operator discarded moments earlier) should be
-        // a silent no-op — we never invent a phantom green row.
+        // a silent no-op — we never invent a phantom green row. This also
+        // makes a duplicate delivery of the same resolution harmless: the
+        // first one already removed the item.
+        //
+        // Do NOT also skip ids already in `recent_successes`: a replayed
+        // game re-uses its first play's id, and skipping it left the
+        // replay's item on the queue, re-sent every ~16 s until it went
+        // stuck.
         let Some(game_number) = self
             .queue
             .items
@@ -1309,6 +1304,9 @@ impl PortalManager {
 
         self.queue.items.retain(|it| it.id != id);
 
+        // One green row per game: a replay replaces its first play's row
+        // and shows as the newest.
+        self.recent_successes.retain(|rs| rs.id != id);
         self.recent_successes.push_front(RecentSuccess {
             id,
             game_number,
@@ -2584,6 +2582,41 @@ mod tests {
         assert_eq!(m.recent_successes.len(), 1);
         assert_eq!(m.recent_successes[0].id, id);
         assert_eq!(m.recent_successes[0].game_number, "G1");
+    }
+
+    #[tokio::test]
+    async fn on_item_resolved_removes_a_replayed_games_item() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
+
+        // Game 3 played and sent, then another game sent in between.
+        m.enqueue_game_end("e".into(), "3".into(), 0, 1, "[]".into())
+            .unwrap();
+        let id3 = m.queue.items[0].id.clone();
+        m.on_item_resolved(id3.clone());
+        m.enqueue_game_end("e".into(), "4".into(), 2, 2, "[]".into())
+            .unwrap();
+        let id4 = m.queue.items[0].id.clone();
+        m.on_item_resolved(id4.clone());
+
+        // Game 3 replayed twice; each replay's result is accepted.
+        for _ in 0..2 {
+            m.enqueue_game_end("e".into(), "3".into(), 1, 1, "[]".into())
+                .unwrap();
+            m.on_item_resolved(id3.clone());
+            assert!(
+                m.queue.items.is_empty(),
+                "a replayed game's item must leave the queue once sent"
+            );
+        }
+
+        // One green row per game, the replay newest, nothing else evicted.
+        assert_eq!(m.recent_successes.len(), 2);
+        assert_eq!(m.recent_successes[0].id, id3);
+        assert_eq!(m.recent_successes[1].id, id4);
+        assert_eq!(m.indicator_state().health, HealthState::Green);
+        // Persisted: a restart must not reload and re-send it.
+        assert!(queue::load_or_empty(tmp.path()).unwrap().items.is_empty());
     }
 
     #[tokio::test]

@@ -6981,7 +6981,12 @@ impl RefBoxApp {
                             .as_ref()
                             .and_then(|edit| edit.current_court.clone())?;
 
-                        schedule
+                        let count = schedule
+                            .games
+                            .iter()
+                            .filter(|(_, game)| game.court == court)
+                            .count();
+                        let position = schedule
                             .games
                             .iter()
                             .filter(|(_, game)| game.court == court)
@@ -6989,7 +6994,8 @@ impl RefBoxApp {
                             .find(|(_, (game_num, _))| {
                                 **game_num == self.edited_settings.as_ref().unwrap().game_number
                             })
-                            .map(|(i, _)| i)
+                            .map(|(i, _)| i);
+                        Some(list_window_start(position.unwrap_or(0), count))
                     }),
                 }
                 .unwrap_or(0);

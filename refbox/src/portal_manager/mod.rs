@@ -2620,6 +2620,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn on_item_resolved_replay_at_the_cap_evicts_no_other_game() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();
+
+        // Five different games sent: the green list is full.
+        let mut ids = Vec::new();
+        for n in 1..=RECENT_SUCCESS_CAP {
+            m.enqueue_game_end("e".into(), format!("G{n}"), 0, 0, "[]".into())
+                .unwrap();
+            let id = m.queue.items[0].id.clone();
+            m.on_item_resolved(id.clone());
+            ids.push(id);
+        }
+        assert_eq!(m.recent_successes.len(), RECENT_SUCCESS_CAP);
+
+        // G3 replayed and sent.
+        m.enqueue_game_end("e".into(), "G3".into(), 1, 0, "[]".into())
+            .unwrap();
+        m.on_item_resolved(ids[2].clone());
+
+        // Still five rows, every game still listed, the replay newest.
+        assert_eq!(m.recent_successes.len(), RECENT_SUCCESS_CAP);
+        assert_eq!(m.recent_successes[0].id, ids[2]);
+        for id in &ids {
+            assert!(
+                m.recent_successes.iter().any(|rs| &rs.id == id),
+                "{id:?} was evicted by the replay"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn recent_successes_caps_at_five_and_evicts_oldest() {
         let tmp = tempfile::TempDir::new().unwrap();
         let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo, DiscardEpoch::default()).unwrap();

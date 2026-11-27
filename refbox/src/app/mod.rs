@@ -5048,6 +5048,26 @@ impl RefBoxApp {
     /// stopped, so a score, timeout, time edit or settings apply made then must refresh the frame
     /// itself, and a list of call sites would miss the next one added.
     pub(super) fn update(&mut self, message: Message) -> Task<Message> {
+        // Take the screen tag off a tap first, before anything below looks at the
+        // message: TIME EDIT's APPLY and CANCEL are only recognised untagged. A tap
+        // drawn on a screen that has since gone is dropped here.
+        let tap = match &message {
+            Message::Tap {
+                screen,
+                message: inner,
+            } => {
+                debug!("Tap from {screen:?}: {inner:?}");
+                Some((*screen, inner.clone()))
+            }
+            _ => None,
+        };
+        let now = screen_kind(&self.app_state);
+        let Some(message) = untag(message, now) else {
+            if let Some((screen, inner)) = tap {
+                warn!("Ignoring {inner:?}: drawn on {screen:?}, now on {now:?}");
+            }
+            return Task::none();
+        };
         let time_edit_was_running = match self.app_state {
             AppState::TimeEdit(was_running, ..) => Some(was_running),
             _ => None,
@@ -5156,14 +5176,6 @@ impl RefBoxApp {
             return Task::none();
         } else {
             self.last_message = message.clone();
-        }
-
-        if tap_outlived_its_screen(&message, &self.app_state) {
-            warn!(
-                "Ignoring {message:?}: its screen has already closed (now on {:?})",
-                self.app_state
-            );
-            return Task::none();
         }
 
         let in_zero_gap = tap_lands_in_the_zero_gap(&message, &self.tm.lock(), Instant::now());
@@ -9733,11 +9745,19 @@ impl RefBoxApp {
         // only once for all buffers (see `window_background_container`). Fill
         // in both directions with no padding, border or text colour, so it
         // cannot move anything.
-        iced::widget::container(main_view)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(window_background_container)
-            .into()
+        // Tag every tap with the screen it was drawn on, so `update` can drop one
+        // that arrives after that screen has gone.
+        let screen = screen_kind(&self.app_state);
+        Element::from(
+            iced::widget::container(main_view)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(window_background_container),
+        )
+        .map(move |message| Message::Tap {
+            screen,
+            message: Box::new(message),
+        })
     }
 
     pub(super) fn subscription(&self) -> Subscription<Message> {
@@ -11603,42 +11623,6 @@ fn untag(message: Message, now_on: ScreenKind) -> Option<Message> {
     }
 }
 
-/// Whether `message` is a tap that only means something on one screen, arriving after
-/// the app has already left that screen.
-///
-/// A second tap can be delivered after the first one has moved the app on: the repeat
-/// filter in `handle_message` only drops a message equal to the one just before it, and
-/// a clock tick landing between two taps defeats it. The confirmation window closing by
-/// itself, or the end of a half bringing up the confirmation screen, has the same effect
-/// on a tap already in flight. The handlers for these messages assume their screen is up
-/// and crash when it is not, so such a tap is dropped before it reaches them.
-fn tap_outlived_its_screen(message: &Message, state: &AppState) -> bool {
-    match message {
-        Message::ScoreConfirmation { .. } => !matches!(state, AppState::ConfirmScores(_)),
-        Message::ScoreEditComplete { .. } | Message::ChangeScore { .. } => {
-            !matches!(state, AppState::ScoreEdit { .. })
-        }
-        Message::AddScoreComplete { .. } => {
-            !matches!(state, AppState::KeypadPage(KeypadPage::AddScore { .. }, _))
-        }
-        Message::TimeEditComplete { .. } => !matches!(state, AppState::TimeEdit(..)),
-        Message::KeypadButtonPress(_) | Message::SelectPlayerNumber(_) => {
-            !matches!(state, AppState::KeypadPage(..))
-        }
-        Message::ChangeColor(_) => !matches!(
-            state,
-            AppState::KeypadPage(
-                KeypadPage::AddScore { .. }
-                    | KeypadPage::Penalty(..)
-                    | KeypadPage::WarningAdd { .. }
-                    | KeypadPage::FoulAdd { .. },
-                _
-            )
-        ),
-        _ => false,
-    }
-}
-
 /// Operator taps whose handlers read the game clock at `Instant::now()` and cannot
 /// cope when it has no reading: they unwrap `generate_snapshot`, `game_clock_time`,
 /// `stop_clock`, a timeout start, or a warning/foul add. A countdown that has passed
@@ -11970,141 +11954,6 @@ mod zero_gap_gate_tests {
             revive_at(&mut tm, Color::Black, t0 + Duration::from_secs(10)),
             ReviveResult::Refused
         );
-    }
-}
-
-#[cfg(test)]
-mod stale_tap_gate_tests {
-    use super::*;
-
-    fn scores() -> BlackWhiteBundle<u8> {
-        BlackWhiteBundle { black: 2, white: 1 }
-    }
-
-    fn add_goal_page() -> AppState {
-        AppState::KeypadPage(
-            KeypadPage::AddScore {
-                color: Color::Black,
-                team_score: false,
-            },
-            7,
-        )
-    }
-
-    /// The operator taps YES or NO just as the window closes by itself: the app is
-    /// already back on the main page when the tap arrives, which used to crash it.
-    #[test]
-    fn confirmation_after_the_window_closed_is_dropped() {
-        for correct in [true, false] {
-            assert!(tap_outlived_its_screen(
-                &Message::ScoreConfirmation { correct },
-                &AppState::MainPage
-            ));
-        }
-    }
-
-    /// Done on the add-goal keypad in sudden death opens the confirm screen. A late
-    /// second tap from the keypad must not act there, and a late Cancel must not pull
-    /// the operator off it while the window is still open.
-    #[test]
-    fn stale_add_goal_cancel_does_not_leave_the_confirm_screen() {
-        for canceled in [true, false] {
-            assert!(tap_outlived_its_screen(
-                &Message::AddScoreComplete { canceled },
-                &AppState::ConfirmScores(scores())
-            ));
-        }
-    }
-
-    #[test]
-    fn repeat_score_edit_done_is_dropped() {
-        let done = Message::ScoreEditComplete { canceled: false };
-        assert!(tap_outlived_its_screen(&done, &AppState::MainPage));
-        assert!(tap_outlived_its_screen(
-            &done,
-            &AppState::ConfirmScores(scores())
-        ));
-    }
-
-    #[test]
-    fn first_tap_on_its_own_screen_passes() {
-        assert!(!tap_outlived_its_screen(
-            &Message::ScoreConfirmation { correct: true },
-            &AppState::ConfirmScores(scores())
-        ));
-        assert!(!tap_outlived_its_screen(
-            &Message::ScoreEditComplete { canceled: false },
-            &AppState::ScoreEdit {
-                scores: scores(),
-                is_confirmation: true,
-            }
-        ));
-        for canceled in [true, false] {
-            assert!(!tap_outlived_its_screen(
-                &Message::AddScoreComplete { canceled },
-                &add_goal_page()
-            ));
-        }
-    }
-
-    /// The second half ends while the operator is typing a cap number or flipping +/-:
-    /// the confirmation screen takes over, and the tap already in flight lands on it.
-    #[test]
-    fn edit_taps_after_the_screen_changed_are_dropped() {
-        let confirm = AppState::ConfirmScores(scores());
-        for message in [
-            Message::ChangeScore {
-                color: Color::White,
-                increase: true,
-            },
-            Message::KeypadButtonPress(KeypadButton::One),
-            Message::SelectPlayerNumber(7),
-            Message::ChangeColor(Some(Color::White)),
-            Message::TimeEditComplete { canceled: false },
-        ] {
-            assert!(tap_outlived_its_screen(&message, &confirm), "{message:?}");
-        }
-    }
-
-    #[test]
-    fn edit_taps_on_their_own_screen_pass() {
-        let score_edit = AppState::ScoreEdit {
-            scores: scores(),
-            is_confirmation: false,
-        };
-        assert!(!tap_outlived_its_screen(
-            &Message::ChangeScore {
-                color: Color::White,
-                increase: true,
-            },
-            &score_edit
-        ));
-        for message in [
-            Message::KeypadButtonPress(KeypadButton::One),
-            Message::SelectPlayerNumber(7),
-            Message::ChangeColor(Some(Color::White)),
-        ] {
-            assert!(
-                !tap_outlived_its_screen(&message, &add_goal_page()),
-                "{message:?}"
-            );
-        }
-        assert!(!tap_outlived_its_screen(
-            &Message::TimeEditComplete { canceled: true },
-            &AppState::TimeEdit(true, Duration::from_secs(60), None)
-        ));
-    }
-
-    #[test]
-    fn other_messages_are_never_gated() {
-        assert!(!tap_outlived_its_screen(
-            &Message::NoAction,
-            &AppState::MainPage
-        ));
-        assert!(!tap_outlived_its_screen(
-            &Message::CancelTimeout,
-            &AppState::MainPage
-        ));
     }
 }
 
@@ -14736,8 +14585,9 @@ mod untag_tests {
         assert!(matches!(out, Some(Message::TimeEditComplete { .. })));
     }
 
-    /// Every case in `stale_tap_gate_tests`, ported: the same message, tagged with
-    /// the screen it was drawn on, arriving on the screen the app has moved to.
+    /// Every case of the old per-message list, ported from it (this branch deletes
+    /// that list): the same message, tagged with the screen it was drawn on,
+    /// arriving on the screen the app has moved to.
     #[test]
     fn old_list_cases_still_dropped() {
         let dropped = |old: &AppState, message: Message, new: &AppState| {

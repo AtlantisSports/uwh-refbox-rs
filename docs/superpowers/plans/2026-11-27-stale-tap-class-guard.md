@@ -137,3 +137,7 @@
   id arrives, which would have made valid taps look late. A payload-free `ConfigPageKind` is used instead.
 - **Walkthrough log level (Task 5).** The plan said `RUST_LOG=debug`; refbox ignores it and takes its level only
   from `-v`. Corrected above.
+- **Tap debug line (pre-PR review).** It logs the screen kind only, not the message: with `-v` the message
+  contents would put each digit of the Portal login code in the log file. The walkthrough's "Tap from …" proof
+  is unchanged. The fallback `Tap` arm in `handle_message` now runs the same `untag` guard instead of handling
+  the inner message unchecked.

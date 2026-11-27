@@ -121,8 +121,10 @@ will not compile until it is classified.
 
 - **Never dropped:** `AlarmReleased` and `TimeoutReviveReleased`. These are the release
   halves of the two press-and-hold buttons. The revive button also sends its release
-  on `on_exit` (the pointer leaving the button), which fires when the button disappears.
-  Losing either would leave the buzzer on or a hold running.
+  on `on_exit` (the pointer leaving the button). Losing either would leave the buzzer on or
+  a hold running. Known limit, not covered by this guard: iced sends no `on_exit` when the
+  button is removed from the screen, so a revive hold still down when the timeout ribbon
+  leaves (e.g. the half ends) never gets its release.
 - **Never dropped (and never tagged anyway):** every message that does not come from the
   screen. Classifying them "never drop" keeps the function safe even if one is ever wired
   to a button.

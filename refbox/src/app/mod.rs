@@ -5056,7 +5056,9 @@ impl RefBoxApp {
                 screen,
                 message: inner,
             } => {
-                debug!("Tap from {screen:?}: {inner:?}");
+                // The screen kind only: the message itself can be a digit of the Portal
+                // login code or part of a typed URL. `handle_message` traces it in full.
+                debug!("Tap from {screen:?}");
                 Some((*screen, inner.clone()))
             }
             _ => None,
@@ -9334,16 +9336,16 @@ impl RefBoxApp {
             }
             Message::NoAction => Task::none(),
             // `update()` untags every message before it gets here, so a `Tap` is a
-            // bug. Log it and handle the message inside rather than crash.
+            // bug. Log it, then apply the same late-tap guard rather than crash.
             Message::Tap { screen, message } => {
-                error!(
-                    "A tagged tap reached handle_message: {:?}",
-                    Message::Tap {
-                        screen,
-                        message: message.clone(),
-                    }
-                );
-                self.handle_message(*message)
+                error!("A tagged tap reached handle_message: drawn on {screen:?}: {message:?}");
+                match untag(
+                    Message::Tap { screen, message },
+                    screen_kind(&self.app_state),
+                ) {
+                    Some(inner) => self.handle_message(inner),
+                    None => Task::none(),
+                }
             }
         }
     }

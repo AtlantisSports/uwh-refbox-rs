@@ -18,6 +18,16 @@ fn sorted_events_for_picker(events: &BTreeMap<EventId, Event>) -> Vec<&Event> {
     sorted
 }
 
+pub(in super::super) const PARAMETER_LIST_LEN: usize = 4;
+
+/// Where the visible window of a parameter list starts. A start past the last
+/// full window strands every item above it when the whole list fits on screen
+/// (both scroll arrows go dead), so the opener and the rows both clamp through
+/// this one rule.
+pub(in super::super) fn list_window_start(position: usize, num_items: usize) -> usize {
+    position.min(num_items.saturating_sub(PARAMETER_LIST_LEN))
+}
+
 pub(in super::super) fn build_list_selector_page<'a>(
     data: ViewData<'_, '_>,
     param: ListableParameter,
@@ -25,7 +35,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
     settings: &EditableSettings,
     events: &EventStore,
 ) -> Element<'a, Message> {
-    const LIST_LEN: usize = 4;
+    const LIST_LEN: usize = PARAMETER_LIST_LEN;
     const TEAM_NAME_LEN_LIMIT: usize = 15;
 
     let ViewData {
@@ -52,9 +62,9 @@ pub(in super::super) fn build_list_selector_page<'a>(
     // (btn_text, msg_val)
 
     macro_rules! make_buttons {
-        ($iter:ident, $transform:ident) => {
+        ($iter:ident, $transform:ident, $start:expr) => {
             $iter
-                .skip(index)
+                .skip($start)
                 .map($transform)
                 .map(Some)
                 .chain([None].into_iter().cycle())
@@ -85,7 +95,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
         };
     }
 
-    let (num_items, buttons): (usize, CollectArrayResult<_, LIST_LEN>) = match param {
+    let (num_items, start, buttons): (usize, usize, CollectArrayResult<_, LIST_LEN>) = match param {
         ListableParameter::Event => {
             // Only the portal offers a list, so this can only ever be the
             // portal's own events. `unwrap` is safe for the same reason it was
@@ -95,7 +105,8 @@ pub(in super::super) fn build_list_selector_page<'a>(
             let sorted = sorted_events_for_picker(list);
             let iter = sorted.into_iter();
             let transform = |e: &Event| (e.name.clone(), e.id.full().to_string());
-            (num_items, make_buttons!(iter, transform))
+            let start = list_window_start(index, num_items);
+            (num_items, start, make_buttons!(iter, transform, start))
         }
         ListableParameter::Court => {
             // `pool_btn_msg` in `configuration.rs` — the `token_rejected` guard —
@@ -114,7 +125,8 @@ pub(in super::super) fn build_list_selector_page<'a>(
             let num_items = list.len();
             let iter = list.iter();
             let transform = |p: &String| (p.clone(), p.clone());
-            (num_items, make_buttons!(iter, transform))
+            let start = list_window_start(index, num_items);
+            (num_items, start, make_buttons!(iter, transform, start))
         }
         ListableParameter::Game => {
             let schedule = settings.schedule.as_ref().unwrap();
@@ -132,14 +144,15 @@ pub(in super::super) fn build_list_selector_page<'a>(
                     g.number.to_string(),
                 )
             };
-            (num_items, make_buttons!(iter, transform))
+            let start = list_window_start(index, num_items);
+            (num_items, start, make_buttons!(iter, transform, start))
         }
     };
 
     let scroll_list = make_scroll_list(
         buttons.unwrap(),
         num_items,
-        index,
+        start,
         title,
         ScrollOption::GameParameter,
         light_gray_container,
@@ -252,5 +265,34 @@ mod tests {
         // EventId Ord is lexicographic on the full id ("events/aaa" < "events/bbb")
         assert_eq!(sorted[0].slug, "aaa");
         assert_eq!(sorted[1].slug, "bbb");
+    }
+
+    #[test]
+    fn a_list_that_fits_always_starts_at_the_top() {
+        // 2, 3 and 4 games, opened on the last one: the bug stranded the rest
+        assert_eq!(list_window_start(1, 2), 0);
+        assert_eq!(list_window_start(2, 3), 0);
+        assert_eq!(list_window_start(3, 4), 0);
+        assert_eq!(list_window_start(2, 4), 0); // the PO's case: court 1/3/6/7, opened on 6
+    }
+
+    #[test]
+    fn a_longer_list_opened_near_its_end_shows_a_full_last_window() {
+        assert_eq!(list_window_start(4, 5), 1);
+        assert_eq!(list_window_start(2, 5), 1);
+        assert_eq!(list_window_start(5, 6), 2);
+    }
+
+    #[test]
+    fn a_longer_list_opened_early_keeps_its_position() {
+        assert_eq!(list_window_start(0, 5), 0);
+        assert_eq!(list_window_start(1, 5), 1);
+        assert_eq!(list_window_start(3, 30), 3);
+    }
+
+    #[test]
+    fn an_empty_list_starts_at_the_top() {
+        assert_eq!(list_window_start(0, 0), 0);
+        assert_eq!(list_window_start(3, 0), 0);
     }
 }

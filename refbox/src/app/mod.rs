@@ -183,6 +183,9 @@ pub struct RefBoxApp {
     /// other way off the page). A second reply during one TIME EDIT replaces the first.
     held_schedule: Option<(EventId, Schedule, u64)>,
     last_message: Message,
+    /// The colour and time of the last GOAL tap with scorer cap numbers off, counted
+    /// or not. Read by [`goal_tap_is_a_repeat`] to drop a double tap.
+    last_goal_tap: Option<(Color, Instant)>,
     update_sender: UpdateSender,
     uwhportal_client: Option<Arc<Mutex<UwhPortalClient>>>,
     /// Shared handle the background portal task reads to learn the
@@ -4835,6 +4838,7 @@ impl RefBoxApp {
             time_edit_old: (Duration::ZERO, None),
             held_schedule: None,
             last_message: Message::NoAction,
+            last_goal_tap: None,
             update_sender,
             uwhportal_client,
             portal_event_id,
@@ -5346,8 +5350,17 @@ impl RefBoxApp {
                     );
                     Task::none()
                 } else {
-                    let mut tm = self.tm.lock();
                     let now = Instant::now();
+                    let repeat = goal_tap_is_a_repeat(self.last_goal_tap, color, now);
+                    self.last_goal_tap = Some((color, now));
+                    if repeat {
+                        warn!(
+                            "Ignoring a second GOAL tap for {color:?} within \
+                             {GOAL_REPEAT_WINDOW:?} of the last one"
+                        );
+                        return Task::none();
+                    }
+                    let mut tm = self.tm.lock();
                     let next_state = if tm.current_period() == GamePeriod::SuddenDeath {
                         // Safe: add_deciding_goal's only Err comes from pause_for_confirm, which
                         // cannot fail in sudden death — it accepts a stopped clock and clears any
@@ -11681,6 +11694,65 @@ fn tap_lands_in_the_zero_gap(message: &Message, tm: &TournamentManager, now: Ins
     tap_reads_the_live_clock(message)
         && (tm.game_clock_time(now).is_none()
             || (tm.timeout_is_active() && tm.timeout_clock_time(now).is_none()))
+}
+
+/// How soon after a GOAL tap a second tap for the same colour counts as the same
+/// press (PO, 2026-11-27). A goal for the other colour inside it always counts.
+const GOAL_REPEAT_WINDOW: Duration = Duration::from_secs(1);
+
+/// True when a GOAL tap for `color` at `now` is a double tap or a touchscreen
+/// double-register of the last one: `last` was the same colour, less than
+/// [`GOAL_REPEAT_WINDOW`] ago. Timed on the monotonic clock, never the game clock.
+fn goal_tap_is_a_repeat(last: Option<(Color, Instant)>, color: Color, now: Instant) -> bool {
+    last.is_some_and(|(last_color, last_time)| {
+        last_color == color && now.saturating_duration_since(last_time) < GOAL_REPEAT_WINDOW
+    })
+}
+
+#[cfg(test)]
+mod goal_repeat_tests {
+    use super::*;
+
+    #[test]
+    fn goal_tap_repeat_window() {
+        let t0 = Instant::now();
+        let ms = Duration::from_millis;
+        // No earlier tap: counts.
+        assert!(!goal_tap_is_a_repeat(None, Color::Black, t0));
+        // Same colour, 50 ms later (touch double-register): dropped.
+        assert!(goal_tap_is_a_repeat(
+            Some((Color::Black, t0)),
+            Color::Black,
+            t0 + ms(50)
+        ));
+        // Same colour, 1.1 s later: counts.
+        assert!(!goal_tap_is_a_repeat(
+            Some((Color::Black, t0)),
+            Color::Black,
+            t0 + ms(1100)
+        ));
+        // Other colour, 300 ms later: counts.
+        assert!(!goal_tap_is_a_repeat(
+            Some((Color::Black, t0)),
+            Color::White,
+            t0 + ms(300)
+        ));
+    }
+
+    /// The window runs from the last tap of that colour, counted or not, the way the
+    /// `AddNewScore` arm records every tap: a triple tap at 0, 0.6 and 1.2 s is one goal.
+    #[test]
+    fn goal_tap_window_runs_from_the_last_tap() {
+        let t0 = Instant::now();
+        let mut last = None;
+        let mut repeats = vec![];
+        for offset in [0, 600, 1200] {
+            let now = t0 + Duration::from_millis(offset);
+            repeats.push(goal_tap_is_a_repeat(last, Color::White, now));
+            last = Some((Color::White, now));
+        }
+        assert_eq!(repeats, vec![false, true, true]);
+    }
 }
 
 /// What a finished 3-second revive hold did to the engine.

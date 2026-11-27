@@ -5208,10 +5208,14 @@ impl RefBoxApp {
             } => {
                 let (dur, large_max) = match self.app_state {
                     AppState::TimeEdit(_, ref mut game_dur, ref mut timeout_dur) => {
-                        if timeout {
-                            (timeout_dur.as_mut().unwrap(), false)
-                        } else {
-                            (game_dur, true)
+                        match time_edit_target(game_dur, timeout_dur, timeout) {
+                            Some(target) => target,
+                            None => {
+                                warn!(
+                                    "Ignoring the timeout +/- on TIME EDIT: the timeout has already ended"
+                                );
+                                return Task::none();
+                            }
                         }
                     }
                     AppState::ParameterEditor(_, ref mut dur, _) => (dur, false),
@@ -11605,6 +11609,21 @@ impl UpdaterFailures {
     }
 }
 
+/// The clock a TIME EDIT +/- tap changes, and whether it may use the long maximum.
+/// `timeout` picks the timeout clock, which is `None` once the timeout has ended
+/// while the screen was open: then there is nothing to change.
+fn time_edit_target<'a>(
+    game_dur: &'a mut Duration,
+    timeout_dur: &'a mut Option<Duration>,
+    timeout: bool,
+) -> Option<(&'a mut Duration, bool)> {
+    if timeout {
+        timeout_dur.as_mut().map(|t| (t, false))
+    } else {
+        Some((game_dur, true))
+    }
+}
+
 /// Take the screen tag off `message`, now that the app is on a screen of kind
 /// `now_on`. An untagged message comes back unchanged. A tap drawn on a screen of
 /// the same kind comes back without its tag. A tap drawn on a screen of a different
@@ -14739,5 +14758,25 @@ mod untag_tests {
             )
         );
         assert_ne!(tap(&penalty_keypad(7), press.clone()), press);
+    }
+
+    #[test]
+    fn timeout_change_after_timeout_ended_has_no_target() {
+        let mut g = Duration::from_secs(300);
+        let t = Duration::from_secs(45);
+
+        assert!(time_edit_target(&mut g, &mut None, true).is_none());
+
+        let mut timeout = Some(t);
+        let (dur, large_max) =
+            time_edit_target(&mut g, &mut timeout, true).expect("a running timeout is a target");
+        assert_eq!(*dur, t);
+        assert!(!large_max);
+
+        let mut no_timeout = None;
+        let (dur, large_max) = time_edit_target(&mut g, &mut no_timeout, false)
+            .expect("the game clock is always a target");
+        assert_eq!(*dur, Duration::from_secs(300));
+        assert!(large_max);
     }
 }

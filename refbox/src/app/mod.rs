@@ -183,9 +183,9 @@ pub struct RefBoxApp {
     /// other way off the page). A second reply during one TIME EDIT replaces the first.
     held_schedule: Option<(EventId, Schedule, u64)>,
     last_message: Message,
-    /// The colour and time of the last GOAL tap with scorer cap numbers off, counted
-    /// or not. Read by [`goal_tap_is_a_repeat`] to drop a double tap.
-    last_goal_tap: Option<(Color, Instant)>,
+    /// When each colour's GOAL button was last tapped with scorer cap numbers off,
+    /// counted or not. Kept by [`goal_tap_is_a_repeat`] to drop a double tap.
+    last_goal_tap: BlackWhiteBundle<Option<Instant>>,
     update_sender: UpdateSender,
     uwhportal_client: Option<Arc<Mutex<UwhPortalClient>>>,
     /// Shared handle the background portal task reads to learn the
@@ -4838,7 +4838,7 @@ impl RefBoxApp {
             time_edit_old: (Duration::ZERO, None),
             held_schedule: None,
             last_message: Message::NoAction,
-            last_goal_tap: None,
+            last_goal_tap: BlackWhiteBundle::default(),
             update_sender,
             uwhportal_client,
             portal_event_id,
@@ -5351,9 +5351,7 @@ impl RefBoxApp {
                     Task::none()
                 } else {
                     let now = Instant::now();
-                    let repeat = goal_tap_is_a_repeat(self.last_goal_tap, color, now);
-                    self.last_goal_tap = Some((color, now));
-                    if repeat {
+                    if goal_tap_is_a_repeat(&mut self.last_goal_tap, color, now) {
                         warn!(
                             "Ignoring a second GOAL tap for {color:?} within \
                              {GOAL_REPEAT_WINDOW:?} of the last one"
@@ -11700,58 +11698,71 @@ fn tap_lands_in_the_zero_gap(message: &Message, tm: &TournamentManager, now: Ins
 /// press (PO, 2026-11-27). A goal for the other colour inside it always counts.
 const GOAL_REPEAT_WINDOW: Duration = Duration::from_secs(1);
 
-/// True when a GOAL tap for `color` at `now` is a double tap or a touchscreen
-/// double-register of the last one: `last` was the same colour, less than
-/// [`GOAL_REPEAT_WINDOW`] ago. Timed on the monotonic clock, never the game clock.
-fn goal_tap_is_a_repeat(last: Option<(Color, Instant)>, color: Color, now: Instant) -> bool {
-    last.is_some_and(|(last_color, last_time)| {
-        last_color == color && now.saturating_duration_since(last_time) < GOAL_REPEAT_WINDOW
-    })
+/// Records a GOAL tap for `color` at `now` in `last` (each colour's last tap, counted
+/// or not) and returns true when it is a double tap or a touchscreen double-register:
+/// that colour's previous tap was less than [`GOAL_REPEAT_WINDOW`] ago. Timed on the
+/// monotonic clock, never the game clock.
+fn goal_tap_is_a_repeat(
+    last: &mut BlackWhiteBundle<Option<Instant>>,
+    color: Color,
+    now: Instant,
+) -> bool {
+    let repeat = last[color]
+        .is_some_and(|previous| now.saturating_duration_since(previous) < GOAL_REPEAT_WINDOW);
+    last[color] = Some(now);
+    repeat
 }
 
 #[cfg(test)]
 mod goal_repeat_tests {
     use super::*;
 
-    #[test]
-    fn goal_tap_repeat_window() {
+    use Color::{Black, White};
+
+    /// Feeds `taps` (colour, milliseconds after the first) through the same call the
+    /// `AddNewScore` arm makes, from a fresh start, and returns which were repeats.
+    fn repeats(taps: &[(Color, u64)]) -> Vec<bool> {
         let t0 = Instant::now();
-        let ms = Duration::from_millis;
-        // No earlier tap: counts.
-        assert!(!goal_tap_is_a_repeat(None, Color::Black, t0));
-        // Same colour, 50 ms later (touch double-register): dropped.
-        assert!(goal_tap_is_a_repeat(
-            Some((Color::Black, t0)),
-            Color::Black,
-            t0 + ms(50)
-        ));
-        // Same colour, 1.1 s later: counts.
-        assert!(!goal_tap_is_a_repeat(
-            Some((Color::Black, t0)),
-            Color::Black,
-            t0 + ms(1100)
-        ));
-        // Other colour, 300 ms later: counts.
-        assert!(!goal_tap_is_a_repeat(
-            Some((Color::Black, t0)),
-            Color::White,
-            t0 + ms(300)
-        ));
+        let mut last = BlackWhiteBundle::default();
+        taps.iter()
+            .map(|&(color, ms)| {
+                goal_tap_is_a_repeat(&mut last, color, t0 + Duration::from_millis(ms))
+            })
+            .collect()
     }
 
-    /// The window runs from the last tap of that colour, counted or not, the way the
-    /// `AddNewScore` arm records every tap: a triple tap at 0, 0.6 and 1.2 s is one goal.
+    #[test]
+    fn goal_tap_repeat_window() {
+        // First tap of a session: counts.
+        assert_eq!(repeats(&[(Black, 0)]), vec![false]);
+        // Same colour, 50 ms later (touch double-register): dropped.
+        assert_eq!(repeats(&[(Black, 0), (Black, 50)]), vec![false, true]);
+        // The window is under one second: 999 ms is dropped, 1000 ms counts.
+        assert_eq!(repeats(&[(Black, 0), (Black, 999)]), vec![false, true]);
+        assert_eq!(repeats(&[(Black, 0), (Black, 1000)]), vec![false, false]);
+        assert_eq!(repeats(&[(Black, 0), (Black, 1100)]), vec![false, false]);
+        // Other colour, 300 ms later: counts.
+        assert_eq!(repeats(&[(Black, 0), (White, 300)]), vec![false, false]);
+    }
+
+    /// The window runs from the last tap of that colour, counted or not: a triple tap at
+    /// 0, 0.6 and 1.2 s is one goal.
     #[test]
     fn goal_tap_window_runs_from_the_last_tap() {
-        let t0 = Instant::now();
-        let mut last = None;
-        let mut repeats = vec![];
-        for offset in [0, 600, 1200] {
-            let now = t0 + Duration::from_millis(offset);
-            repeats.push(goal_tap_is_a_repeat(last, Color::White, now));
-            last = Some((Color::White, now));
-        }
-        assert_eq!(repeats, vec![false, true, true]);
+        assert_eq!(
+            repeats(&[(White, 0), (White, 600), (White, 1200)]),
+            vec![false, true, true]
+        );
+    }
+
+    /// Each colour keeps its own window: a White goal in between does not reopen Black's,
+    /// so Black's double tap is still dropped.
+    #[test]
+    fn goal_tap_window_is_kept_per_colour() {
+        assert_eq!(
+            repeats(&[(Black, 0), (White, 300), (Black, 500)]),
+            vec![false, false, true]
+        );
     }
 }
 

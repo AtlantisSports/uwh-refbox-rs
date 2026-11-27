@@ -124,8 +124,16 @@
 - [ ] Rebase on the latest `origin/master` (it moves fast); `cargo audit` (no GO needed).
 - [ ] With a GO: `RUST_TEST_THREADS=1 CARGO_BUILD_JOBS=4 just check`. Expected: green.
 - [ ] Whole-branch review (Opus), then the built-in `code-review` skill on the finished diff, run from the worktree. Fix or answer every finding.
-- [ ] PO walkthrough. Isolated launch: `XDG_CONFIG_HOME=<scratch>`, `UWH_PORTAL_URL_OVERRIDE=http://localhost:9 --allow-http`, `--log-location <scratch dir>`, `RUST_LOG=debug`. Steps include ones that can fail:
+- [ ] PO walkthrough. Isolated launch: `XDG_CONFIG_HOME=<scratch>`, `UWH_PORTAL_URL_OVERRIDE=http://localhost:9 --allow-http`, `--log-location <scratch dir>`, `-v` (refbox sets its log level only from `-v`; it ignores `RUST_LOG`). Steps include ones that can fail:
   - Ordinary taps on several screens (keypad digits, TIME EDIT +/-, ALARM hold and release, the timeout revive hold) all still work.
   - After those taps, the log has a "Tap from …" line for each. With no such lines, the tagging is not wired in.
   - No "Ignoring … drawn on" line appears during ordinary use.
 - [ ] Pre-PR disclosure to the PO (the three checks, plus the dangling-work sweep), then ask to push.
+
+## Deviations
+
+- **`ConfigPageKind` (Task 1).** The plan reused `ConfigPage` inside `ScreenKind::EditGameConfig`. It carries
+  values (`Remotes(usize, bool)`, `CustomSite(bool)`) and the remotes flag can change by itself when a remote's
+  id arrives, which would have made valid taps look late. A payload-free `ConfigPageKind` is used instead.
+- **Walkthrough log level (Task 5).** The plan said `RUST_LOG=debug`; refbox ignores it and takes its level only
+  from `-v`. Corrected above.

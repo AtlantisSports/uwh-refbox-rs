@@ -14604,8 +14604,8 @@ mod untag_tests {
         assert!(matches!(out, Some(Message::TimeEditComplete { .. })));
     }
 
-    /// Every case of the old per-message list, ported from it (this branch deletes
-    /// that list): the same message, tagged with the screen it was drawn on,
+    /// Every case of the old per-message list of late-tap checks, which this guard
+    /// replaced: the same message, tagged with the screen it was drawn on,
     /// arriving on the screen the app has moved to.
     #[test]
     fn old_list_cases_still_dropped() {

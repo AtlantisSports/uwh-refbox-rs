@@ -1,7 +1,7 @@
 # Stale-tap class guard: design
 
 Status: APPROVED by the PO 2026-11-27 (engine lane). Branch base: origin/master 208b38bd. Approach 1 chosen by the PO
-2026-11-27 (see `approaches.md` in this folder). Facts checked against origin/master 962d9990.
+2026-11-27 (see `approaches.md`, kept in the PO's backlog notes for this item, not on this branch). Facts checked against origin/master 962d9990.
 Branch once approved: `fix/refbox/stale-tap-class-guard`. Target: v0.5.6 (release before
 2026-12-08).
 
@@ -186,8 +186,8 @@ Cases:
     as a side exit).
 
 **What a unit test cannot see:** that `view()` actually applies the tag (iced 0.13 has no
-widget test harness). Proof goes in the human walkthrough: with `RUST_LOG=debug`, a debug
-line per tagged tap ("tap from {screen:?}") must appear when the operator taps buttons. That
+widget test harness). Proof goes in the human walkthrough: with refbox launched with `-v`
+(it ignores `RUST_LOG`), a debug line per tagged tap ("Tap from {screen:?}") must appear when the operator taps buttons. That
 step fails if the tagging was never wired in.
 
 ## Constraints
@@ -203,5 +203,7 @@ step fails if the tagging was never wired in.
 - Exact names (`ScreenKind`, `Tap`, `may_drop_when_late`) and where the new items live
   (mod.rs or message.rs).
 - Whether `ScreenKind` holds small sub-enums or reuses existing payload-free enums
-  (`ConfigPage`, `LengthParameter`, `ListableParameter`, `BeepTestConfigPage`) directly.
+  (`LengthParameter`, `ListableParameter`, `BeepTestConfigPage`) directly. `ConfigPage` is NOT
+  payload-free (its remotes and custom-site pages carry values that change by themselves), so it
+  needs its own payload-free copy.
 - How tests build tagged messages (a small helper is fine).

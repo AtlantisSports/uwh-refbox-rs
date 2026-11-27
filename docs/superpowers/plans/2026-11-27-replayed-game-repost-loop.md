@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - MSRV 1.85, edition 2024; clippy `-D warnings`; no new dependencies; no `unwrap()` outside tests.
-- Scope: `refbox/src/portal_manager/mod.rs` only, plus the backlog NOTE status line. No change to `ItemId`, the queue file format, `health.rs`, or `app/mod.rs`.
+- Scope: `refbox/src/portal_manager/mod.rs` only, plus the backlog NOTE and this plan file. No change to `ItemId`, the queue file format, `health.rs`, or `app/mod.rs`.
 - Every cargo job is a HEAVY job: coordinator GO first, `CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4`.
 - Branch: `fix/refbox/replayed-game-repost-loop`, own worktree off freshly fetched `origin/master`.
 
@@ -22,7 +22,7 @@
 1. **A late duplicate `ItemResolved` after the item is gone** must still be a no-op with no second green row. Already pinned by the existing test `on_item_resolved_with_unknown_id_is_noop_and_does_not_duplicate`, which must keep passing unchanged.
 2. **Replay, then replay again** (three plays of one game): the queue empties each time and there is still exactly one green row for that game. Pinned in Task 1's test.
 3. **The replayed game's row moves to the top** of the green list (newest first) rather than keeping the first play's position. Pinned in Task 1's test.
-4. **The cap of 5 still holds** when a replay replaces a row: the list never exceeds `RECENT_SUCCESS_CAP` and no unrelated game is evicted by a replay. Pinned in Task 1's test.
+4. **The cap of 5 still holds** when a replay replaces a row: the list never exceeds `RECENT_SUCCESS_CAP` and no unrelated game is evicted by a replay. Pinned by `on_item_resolved_replay_at_the_cap_evicts_no_other_game` (added after the pre-PR review; see Deviations).
 5. **Known and left open (PO chose the small fix):** an offline game replayed with a different score while BOTH results wait in the queue. Resolving the first removes both (`retain` matches by id), so the replay's result is silently lost. Not fixed here; record it in the backlog NOTE (Task 1, Step 6).
 
 ---
@@ -87,7 +87,7 @@ Expected: PASS, including the new test and `on_item_resolved_with_unknown_id_is_
 - [ ] **Step 7: Commit**
 
 ```bash
-git add refbox/src/portal_manager/mod.rs docs/backlog/replayed-game-reposts-its-result-forever/NOTE.md
+git add refbox/src/portal_manager/mod.rs docs/backlog/replayed-game-reposts-its-result-forever/NOTE.md docs/superpowers/plans/2026-11-27-replayed-game-repost-loop.md
 git commit -m "fix(refbox): stop re-sending a replayed game's result"
 ```
 
@@ -96,3 +96,7 @@ git commit -m "fix(refbox): stop re-sending a replayed game's result"
 - **Code review (check 1):** `code-review` skill on the branch diff, after rebasing on fresh master, plus `cargo audit`.
 - **Manual walkthrough (check 2, PO):** refbox launched with its own `XDG_CONFIG_HOME` and `UWH_PORTAL_URL_OVERRIDE` pointing at the local mock portal (`docs/backlog/court-finished-panel-state/mock-portal/server.py`, copied into the worktree's scratch area). Play game 3, then return to game 3 and play it again. Watch that the portal dot goes back to green within ~20 s, and that the mock's post log shows ONE post for the replay, not one every 16 s. Book the refbox app with the coordinator first.
 - **Claude-driven check (check 3):** not recommended. The mock's post log in the walk already shows the outcome, and the unit test pins the logic.
+
+## Deviations
+
+- **Pre-PR review (`code-review`, 2026-11-27) findings applied:** Review Focus 4 was claimed as pinned but Task 1's test never filled the list to the cap, so a second test now does. The plan's scope line and commit step now name this plan file. The backlog NOTE's "known, not fixed" edge is wider than Review Focus 5 says: it covers any moment a first play and its replay are both queued, including a first play stuck at "stats not sent" replayed online, plus a rare out-of-order queue-snapshot route. Same root cause, same remedy (a per-result identity), still not fixed here.

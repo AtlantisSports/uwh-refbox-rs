@@ -101,7 +101,23 @@ The fix drops that early return. The "is it still on the queue?" check right aft
 makes a repeated resolution harmless. It also keeps one green row per game, with a replay shown
 as the newest.
 
-**Known, NOT fixed (PO chose the small fix):** a game played offline and then replayed with a
-different score, while both results wait in the queue. Resolving the first result removes both,
-because the removal matches by id, so the replay's result is silently lost and the portal keeps
-the first play's score. Fixing this needs each queued result to have its own identity.
+**Known, NOT fixed (PO chose the small fix):** any time a game's first play and its replay are
+in the queue at the same moment. The app tells queued results apart only by event + game number,
+so it cannot tell which of the two an update belongs to. Two ways to get there:
+
+- The game was played offline, then replayed before the first result was sent.
+- The first play's score was sent but its stats were not ("stats not sent"), then the game was
+  replayed while online.
+
+What can go wrong: resolving either result removes both, so the replay's result can be silently
+lost and the portal keeps the first play's score. Or an update meant for the replay (for example
+"score sent, stats pending") lands on the first play instead, and the replay is re-sent every
+~16 s until it goes stuck, the same loop this branch fixes, reached another way.
+
+A rarer third route, found in the pre-PR review: the app hands its queue to the background sender
+as separate messages that can arrive out of order. If the background sender keeps an old copy that
+still holds the first play, it re-sends that first play, and a confirmation timed in the few
+milliseconds after the replay is queued would remove the replay. Before this fix the old guard
+happened to swallow that confirmation.
+
+Fixing all three needs each queued result to have its own identity.

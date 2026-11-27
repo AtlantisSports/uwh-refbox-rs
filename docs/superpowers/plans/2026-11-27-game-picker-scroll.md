@@ -11,8 +11,12 @@ arrow math with the identical formula, so it is not touched.
 
 **Tech Stack:** Rust 2024, iced 0.13, `refbox` bin crate.
 
-**Spec:** memory `project_game_picker_cannot_reach_games_above_start.md` (diagnosis), plus the PO ruling of
-2026-11-27 (fix for v0.5.6, branch `fix/refbox/game-picker-scroll`).
+**Problem (the spec):** Opening SELECT GAME sets the list position to the selected game's position on its court
+(`mod.rs`, `Message::SelectParameter`). The rows were built with `.skip(position)` from that raw value
+(`list_selector.rs`), while `make_scroll_list` clamps the position for its arrow math only, and disables both
+arrows outright when the list holds 4 or fewer items. On a court with 4 or fewer games, opened on any game but
+the first, every game above the opening row could not be reached. Seen on a mock court with games 1/3/6/7, opened
+on 6. The PO ruled 2026-11-27: fix for v0.5.6.
 
 ## Global Constraints
 
@@ -51,7 +55,7 @@ arrow math with the identical formula, so it is not touched.
     `position.min(num_items.saturating_sub(PARAMETER_LIST_LEN))`. Give it a doc comment naming the bug: a
     start past the last full window strands every item above it when the list fits on screen.
 
-- [ ] **Step 1: Write the failing tests** in `list_selector.rs`'s test module:
+- [x] **Step 1: Write the failing tests** in `list_selector.rs`'s test module:
 
 ```rust
 #[test]
@@ -84,10 +88,10 @@ fn an_empty_list_starts_at_the_top() {
 }
 ```
 
-- [ ] **Step 2: Run, expect compile failure** (`list_window_start` not found):
+- [x] **Step 2: Run, expect compile failure** (`list_window_start` not found):
   `CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 cargo test -p refbox --bin refbox list_selector`
 
-- [ ] **Step 3: Implement `list_window_start` and wire it in**
+- [x] **Step 3: Implement `list_window_start` and wire it in**
   - View: in each of the three `match param` arms, compute `let start = list_window_start(index, num_items);`
     before building the rows, and pass `start` into `make_buttons!` as a third macro argument (`$start:expr`) used
     by `.skip($start)`. It must be an argument because of macro hygiene: a shadowed `index` at the call site would
@@ -98,9 +102,9 @@ fn an_empty_list_starts_at_the_top() {
     arms stay `0`. Keep the existing iteration (`schedule.games.iter().filter(court)`) so the order matches the
     view's `schedule.games.values().filter(court)`.
 
-- [ ] **Step 4: Run the tests, expect PASS**, same command as Step 2.
+- [x] **Step 4: Run the tests, expect PASS**, same command as Step 2.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add refbox/src/app/view_builders/list_selector.rs refbox/src/app/mod.rs
@@ -109,7 +113,7 @@ git commit -m "fix(refbox): let SELECT GAME reach every game on a short court"
 
 ### Task 2: Gates and walkthrough prep (main session)
 
-- [ ] `just check` (heavy GO, `RUST_TEST_THREADS=1`), plus `cargo +1.85` is NOT available, so read the diff for
+- [x] `just check` (heavy GO, `RUST_TEST_THREADS=1`), plus `cargo +1.85` is NOT available, so read the diff for
   let-chains/new APIs by eye.
 - [ ] Find a schedule with a court of ≤4 games for the PO's walk: the court-finished mock portal
   (`docs/backlog/court-finished-panel-state/mock-portal/`, untracked in the main checkout, court 1 = 1/3/6/7).
@@ -118,4 +122,10 @@ git commit -m "fix(refbox): let SELECT GAME reach every game on a short court"
 
 ## Deviations
 
-(none yet)
+- Code review (2026-11-27) fixes: the opener now reads the STAGED schedule (`edited_settings.schedule`), the same
+  list the picker draws, rather than the committed one. Its position-and-count logic moved into a pure
+  `game_picker_start(court_games, selected) -> usize` in `list_selector.rs`, with three more tests (4-game court
+  opened on 6 and 7, 2- and 3-game courts, a 6-game court, no matching game). This leaves one scan of the court's
+  games instead of two.
+- Not fixed (pre-existing, unlikely): the scroll handler does not clamp the stored position, so if a list shrinks
+  while the picker is open, the up arrow can need extra presses before the rows move.

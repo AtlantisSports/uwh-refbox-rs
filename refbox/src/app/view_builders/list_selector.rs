@@ -23,9 +23,23 @@ pub(in super::super) const PARAMETER_LIST_LEN: usize = 4;
 /// Where the visible window of a parameter list starts. A start past the last
 /// full window strands every item above it when the whole list fits on screen
 /// (both scroll arrows go dead), so the opener and the rows both clamp through
-/// this one rule.
+/// this one rule. The arrows in `make_scroll_list` clamp with the same formula
+/// on their own copy of the list length: change one, change both.
 pub(in super::super) fn list_window_start(position: usize, num_items: usize) -> usize {
     position.min(num_items.saturating_sub(PARAMETER_LIST_LEN))
+}
+
+/// Where SELECT GAME opens: on the selected game's row, clamped by
+/// [`list_window_start`]. `court_games` must be that court's game numbers in
+/// the order the picker draws them; a selected game not among them opens at
+/// the top.
+pub(in super::super) fn game_picker_start<'a>(
+    court_games: impl Iterator<Item = &'a str>,
+    selected: &str,
+) -> usize {
+    let games: Vec<&str> = court_games.collect();
+    let position = games.iter().position(|g| *g == selected).unwrap_or(0);
+    list_window_start(position, games.len())
 }
 
 pub(in super::super) fn build_list_selector_page<'a>(
@@ -288,6 +302,31 @@ mod tests {
         assert_eq!(list_window_start(0, 5), 0);
         assert_eq!(list_window_start(1, 5), 1);
         assert_eq!(list_window_start(3, 30), 3);
+    }
+
+    #[test]
+    fn select_game_opens_at_the_top_of_a_court_that_fits() {
+        // The PO's case: court 1 holds games 1/3/6/7, picker opened on 6
+        let court = ["1", "3", "6", "7"];
+        assert_eq!(game_picker_start(court.iter().copied(), "6"), 0);
+        assert_eq!(game_picker_start(court.iter().copied(), "7"), 0);
+        assert_eq!(game_picker_start(court[..2].iter().copied(), "3"), 0);
+        assert_eq!(game_picker_start(court[..3].iter().copied(), "6"), 0);
+    }
+
+    #[test]
+    fn select_game_on_a_longer_court_keeps_the_selected_game_in_view() {
+        let court = ["1", "3", "6", "7", "9", "12"];
+        assert_eq!(game_picker_start(court.iter().copied(), "12"), 2);
+        assert_eq!(game_picker_start(court.iter().copied(), "3"), 1);
+        assert_eq!(game_picker_start(court.iter().copied(), "1"), 0);
+    }
+
+    #[test]
+    fn select_game_with_no_matching_game_opens_at_the_top() {
+        let court = ["1", "3", "6", "7", "9", "12"];
+        assert_eq!(game_picker_start(court.iter().copied(), "99"), 0);
+        assert_eq!(game_picker_start(court.iter().copied(), ""), 0);
     }
 
     #[test]

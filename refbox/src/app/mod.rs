@@ -6975,27 +6975,18 @@ impl RefBoxApp {
                 let index = match param {
                     ListableParameter::Event => Some(0),
                     ListableParameter::Court => Some(0),
-                    ListableParameter::Game => self.schedule.as_ref().and_then(|schedule| {
-                        let court = self
-                            .edited_settings
-                            .as_ref()
-                            .and_then(|edit| edit.current_court.clone())?;
-
-                        let count = schedule
+                    // Reads the STAGED schedule, the same list the picker
+                    // draws (`build_list_selector_page`), so the stored start
+                    // matches the rows on screen.
+                    ListableParameter::Game => self.edited_settings.as_ref().and_then(|edit| {
+                        let schedule = edit.schedule.as_ref()?;
+                        let court = edit.current_court.as_ref()?;
+                        let court_games = schedule
                             .games
                             .iter()
-                            .filter(|(_, game)| game.court == court)
-                            .count();
-                        let position = schedule
-                            .games
-                            .iter()
-                            .filter(|(_, game)| game.court == court)
-                            .enumerate()
-                            .find(|(_, (game_num, _))| {
-                                **game_num == self.edited_settings.as_ref().unwrap().game_number
-                            })
-                            .map(|(i, _)| i);
-                        Some(list_window_start(position.unwrap_or(0), count))
+                            .filter(|(_, game)| &game.court == court)
+                            .map(|(game_num, _)| game_num.as_str());
+                        Some(game_picker_start(court_games, &edit.game_number))
                     }),
                 }
                 .unwrap_or(0);

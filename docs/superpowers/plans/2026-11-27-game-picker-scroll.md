@@ -128,4 +128,9 @@ git commit -m "fix(refbox): let SELECT GAME reach every game on a short court"
   opened on 6 and 7, 2- and 3-game courts, a 6-game court, no matching game). This leaves one scan of the court's
   games instead of two.
 - Not fixed (pre-existing, unlikely): the scroll handler does not clamp the stored position, so if a list shrinks
-  while the picker is open, the up arrow can need extra presses before the rows move.
+  while the picker is open, the up arrow can need extra presses before the rows move. A second trigger (found in the
+  post-rebase review): a fast double-tap on DOWN at the end of a 5+ item list. Both taps are drawn on the same
+  screen kind, so the stale-tap guard lets the late one through, and the stored position goes one past the last
+  window. Cost: one dead UP press. Fix if wanted: clamp in the `Message::Scroll` arm for `AppState::ParameterList`.
+- Not added: a test that `SelectParameter` reads the staged schedule, not the committed one. It would need a
+  `RefBoxApp` built in a test, and `mod.rs` has no such harness (its tests are pure functions).

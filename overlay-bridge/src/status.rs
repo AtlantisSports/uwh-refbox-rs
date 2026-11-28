@@ -156,6 +156,8 @@ pub struct PageData {
     pub black_score: String,
     /// The refbox currently chosen -- what the supervisor is connected to, or trying to reach.
     pub refbox_address: RefboxAddress,
+    /// The language the stream overlay currently shows.
+    pub stream_language: crate::config::StreamLanguage,
     /// Where team and player names currently come from.
     pub roster_source: crate::config::RosterSource,
     /// Where the two uploaded CSV files are currently saved on this computer, empty string when
@@ -344,6 +346,25 @@ pub fn render_page(data: &PageData) -> String {
     } else {
         "A roster file has been uploaded."
     };
+    let stream_language_options: String = crate::config::StreamLanguage::ALL
+        .into_iter()
+        .map(|language| {
+            let selected = if language == data.stream_language {
+                " selected"
+            } else {
+                ""
+            };
+            format!(
+                "<option value=\"{}\"{selected}>{}</option>
+",
+                language.code(),
+                language.name()
+            )
+        })
+        .collect();
+    let language_hint = escape_html(
+        "The language of the stream overlay's own words, such as NEXT GAME, TIMEOUT and the          period names. Team and player names are never translated. This does not change the          refbox's language. The overlay follows a change within a second.",
+    );
     let roster_hint = escape_html(
         "For an event with no Portal access. Two files: a schedule CSV (columns gameNumber, \
          blackTeam, whiteTeam) and a roster CSV (columns team, capNumber, rosterName) covering \
@@ -429,6 +450,14 @@ pub fn render_page(data: &PageData) -> String {
 <br>
 <button type="submit">Save</button>
 </form>
+<h2 class="tipped">Stream language <span class="help" tabindex="0" aria-label="{language_hint}"
+ data-tip="{language_hint}">?</span></h2>
+<form class="chooser" method="post" action="/stream-language">
+<label for="stream-language">Language:</label>
+<select id="stream-language" name="language">
+{stream_language_options}</select>
+<button type="submit">Save</button>
+</form>
 <h2>Addresses for vMix</h2>
 <ul>
 {vmix_addresses}</ul>
@@ -457,6 +486,8 @@ pub fn render_page(data: &PageData) -> String {
         scan_hint = scan_hint,
         settings_hint = settings_hint,
         roster_hint = roster_hint,
+        language_hint = language_hint,
+        stream_language_options = stream_language_options,
         portal_selected = portal_selected,
         local_selected = local_selected,
         local_files_disabled = local_files_disabled,
@@ -753,6 +784,7 @@ mod tests {
             black_team: String::new(),
             black_score: String::new(),
             refbox_address: RefboxAddress::new("127.0.0.1", 8000),
+            stream_language: crate::config::StreamLanguage::English,
             roster_source: crate::config::RosterSource::Portal,
             schedule_csv_path: String::new(),
             roster_csv_path: String::new(),
@@ -1044,13 +1076,14 @@ mod tests {
             .match_indices("data-tip=\"")
             .map(|(i, _)| &html[i..])
             .collect();
-        // Three now, not the original two: the local-roster section added 2026-09-09 needs its
-        // own explanation, on the same "(?) tooltip, not a standalone paragraph" terms as the
-        // other two -- a deliberate addition, not a regression of this test's original intent.
+        // Four now, not the original two: the local-roster section added 2026-09-09 and the
+        // stream-language section added 2026-11-27 each need their own explanation, on the same
+        // "(?) tooltip, not a standalone paragraph" terms as the other two -- deliberate
+        // additions, not a regression of this test's original intent.
         assert_eq!(
             tooltips.len(),
-            3,
-            "exactly three tooltips: Refbox connection, Search, and Team and player names"
+            4,
+            "exactly four tooltips: Refbox connection, Search, Team and player names, and Stream              language"
         );
         assert!(
             html.contains("Two files: a schedule CSV"),
@@ -1584,5 +1617,17 @@ mod tests {
     #[test]
     fn format_duration_over_a_minute_shows_minutes_and_seconds() {
         assert_eq!(format_duration(Duration::from_secs(135)), "2m 15s");
+    }
+
+    #[test]
+    fn the_stream_language_dropdown_shows_the_current_choice() {
+        let html = render_page(&PageData {
+            stream_language: crate::config::StreamLanguage::French,
+            ..base_data()
+        });
+        assert!(html.contains("method=\"post\" action=\"/stream-language\""));
+        assert!(html.contains("<option value=\"en\">English</option>"));
+        assert!(html.contains("<option value=\"es\">Español</option>"));
+        assert!(html.contains("<option value=\"fr\" selected>Français</option>"));
     }
 }

@@ -203,6 +203,17 @@ files in `%APPDATA%\overlay-bridge\config\csv-files\`.
      `%APPDATA%\overlay\config\default-config.toml`.
 2. Open that file in Notepad and check `bridge_url = "http://127.0.0.1:8098"`. That's the default
    when the bridge runs on the same PC. Save if you changed anything.
+   - The same file has a `language` setting for the overlay's own words (GOAL, FOUL, NEXT GAME,
+     period names and so on). Real team and player names are never translated; only the BLACK and
+     WHITE shown when the schedule gives no team name follow the language. The refbox's own
+     language never changes the overlay. It takes one of three values:
+     - `language = "en"` (the default): English.
+     - `language = "es"`: Spanish.
+     - `language = "fr"`: French.
+
+     Capitals, spaces around the value and regional codes are fine: `"ES"`, `"es-ES"` and `"Fr"`
+     mean Spanish, Spanish and French. Any other quoted text (a typo, or a word such as
+     `"spanish"`) means English; the rest of the file still loads.
 3. Start **overlay** again and leave it running. Its window shows a small preview; the real picture
    goes out over NDI.
 4. **Windows Firewall:** if Windows asks, allow it on **Private** networks. If the NDI source

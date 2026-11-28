@@ -9,7 +9,8 @@
 
 use crate::{
     load_images::{Texture, asset_load},
-    pages::{Interpolate, Justify, draw_text_both_ex, draw_texture_both_ex, fit_text},
+    pages::{Interpolate, Justify, Strip, draw_strips, draw_text_both_ex, fit_text, widen_for},
+    words::Lang,
 };
 use macroquad::prelude::*;
 use uwh_common::{
@@ -44,7 +45,7 @@ const FOUL_LIFETIME: f64 =
 
 /// The card artwork is 679 px wide. Its first `CARD_LEFT` px (the tab and the start of the name
 /// bar) and last `CARD_RIGHT` px (the bar's rounded end) are drawn as they are; the plain strip
-/// between them is stretched or shrunk so the card fits the name.
+/// between them is made longer or shorter so the card fits the name.
 const CARD_ART_WIDTH: f32 = 679f32;
 const CARD_LEFT: f32 = 150f32;
 const CARD_RIGHT: f32 = 79f32;
@@ -54,6 +55,14 @@ const CARD_MIN_WIDTH: f32 = 480f32;
 const CARD_MAX_WIDTH: f32 = 1000f32;
 // Even the standard card keeps its tab and rounded end whole.
 const _: () = assert!(CARD_MIN_WIDTH > CARD_LEFT + CARD_RIGHT);
+/// A column in the tab's plain body, where the tab is widened for a word longer than the English.
+const TAB_CUT: f32 = 54f32;
+/// The room the tab's word has as drawn: the widest English one ("GOAL") takes 75 px of it.
+const TAB_ROOM: f32 = 76f32;
+/// The tab's text is centred in a field this wide, starting `TAB_FIELD_X` from the card's left edge.
+const TAB_FIELD: f32 = 94f32;
+const TAB_FIELD_X: f32 = 10f32;
+const TAB_FONT_SIZE: u16 = 30;
 /// Where the name starts, measured from the card's left edge.
 const NAME_X: f32 = 135f32;
 /// Space between the end of the name and the card's right end.
@@ -239,44 +248,56 @@ fn card_width(name_width: f32) -> f32 {
     (NAME_X + name_width + NAME_END_PADDING).clamp(CARD_MIN_WIDTH, CARD_MAX_WIDTH)
 }
 
-/// Draws the card artwork `width` px wide, stretching only its plain middle strip, into both the
-/// colour picture and the transparency picture.
-fn draw_card(tex: &Texture, x: f32, y: f32, width: f32, color: Color) {
-    let height = tex.color.height();
-    let middle = width - CARD_LEFT - CARD_RIGHT;
-    let parts = [
-        (0f32, CARD_LEFT, x, CARD_LEFT),
-        (
-            CARD_LEFT,
-            CARD_ART_WIDTH - CARD_LEFT - CARD_RIGHT,
-            x + CARD_LEFT,
-            middle,
-        ),
-        (
-            CARD_ART_WIDTH - CARD_RIGHT,
-            CARD_RIGHT,
-            x + CARD_LEFT + middle,
-            CARD_RIGHT,
-        ),
-    ];
-    for (src_x, src_w, dest_x, dest_w) in parts {
-        draw_texture_both_ex!(
-            tex,
-            dest_x,
-            y,
-            color,
-            DrawTextureParams {
-                source: Some(Rect::new(src_x, 0f32, src_w, height)),
-                dest_size: Some(vec2(dest_w, height)),
-                ..Default::default()
-            }
-        );
-    }
+/// The strips that draw the card artwork `width` px wide from `x`, with its tab `tab_extra` px
+/// wider than drawn. The tab's curve and the bar's rounded end are drawn as they are; only a plain
+/// column of the tab and the plain strip of the name bar are repeated or stretched.
+fn card_strips(x: f32, width: f32, tab_extra: f32) -> [Strip; 5] {
+    let middle = width - tab_extra - CARD_LEFT - CARD_RIGHT;
+    let after_tab = x + TAB_CUT + tab_extra;
+    let after_left = after_tab + CARD_LEFT - TAB_CUT;
+    [
+        Strip {
+            src_x: 0f32,
+            src_w: TAB_CUT,
+            dest_x: x,
+            dest_w: TAB_CUT,
+        },
+        Strip {
+            src_x: TAB_CUT,
+            src_w: 1f32,
+            dest_x: x + TAB_CUT,
+            dest_w: tab_extra,
+        },
+        Strip {
+            src_x: TAB_CUT,
+            src_w: CARD_LEFT - TAB_CUT,
+            dest_x: after_tab,
+            dest_w: CARD_LEFT - TAB_CUT,
+        },
+        Strip {
+            src_x: CARD_LEFT,
+            src_w: CARD_ART_WIDTH - CARD_LEFT - CARD_RIGHT,
+            dest_x: after_left,
+            dest_w: middle,
+        },
+        Strip {
+            src_x: CARD_ART_WIDTH - CARD_RIGHT,
+            src_w: CARD_RIGHT,
+            dest_x: after_left + middle,
+            dest_w: CARD_RIGHT,
+        },
+    ]
+}
+
+/// Draws the card artwork `width` px wide with its tab `tab_extra` px wider than drawn, into both
+/// the colour picture and the transparency picture.
+fn draw_card(tex: &Texture, x: f32, y: f32, width: f32, tab_extra: f32, color: Color) {
+    draw_strips(tex, &card_strips(x, width, tab_extra), y, color);
 }
 
 /// The description bar's text, in capitals, or `None` when the foul isn't known.
-fn description_text(infraction: Infraction) -> Option<String> {
-    (infraction != Infraction::Unknown).then(|| infraction.short_name().to_uppercase())
+fn description_text(infraction: Infraction, lang: Lang) -> Option<String> {
+    lang.infraction(infraction).map(str::to_uppercase)
 }
 
 /// The foul card's colour: the penalty card with its red tab turned yellow. Every red pixel,
@@ -361,8 +382,8 @@ fn flag_team(flag_type: &Type) -> Option<UWHColor> {
 }
 
 /// The name a flag shows: the player's name from `team`'s roster, the team's name when there is
-/// no player, or "Both teams" when there is no team. Empty when the player isn't on the roster
-/// (yet).
+/// no player, or empty when there is no team (drawn as "Both teams" in the overlay's language by
+/// `draw_flag`). Empty when the player isn't on the roster (yet).
 pub(crate) fn resolve_name(
     team: Option<UWHColor>,
     number: Option<u8>,
@@ -379,7 +400,8 @@ pub(crate) fn resolve_name(
             .map(|player| player.name.clone())
             .unwrap_or_default(),
         (Some(color), None) => team_info(color).team_name.clone(),
-        (None, _) => String::from("Both teams"),
+        // Drawn as "Both teams" in the overlay's language (`draw_flag`).
+        (None, _) => String::new(),
     }
 }
 
@@ -425,9 +447,10 @@ impl Renderer {
         self.synchronize_penalties(UWHColor::Black, game_state);
         self.synchronize_penalties(UWHColor::White, game_state);
         self.synchronize_fouls(game_state);
-        // A card can appear before its player's roster arrives; fill the name in once it does.
+        // A card can appear before its player's roster arrives; fill the name in once it does. A
+        // card against neither team keeps its empty name (`draw_flag` writes "Both teams").
         for flag in &mut self.active_flags {
-            if flag.player_name.is_empty() {
+            if flag.player_name.is_empty() && flag_team(&flag.flag_type).is_some() {
                 flag.player_name =
                     resolve_name(flag_team(&flag.flag_type), flag.player_number, game_state);
             }
@@ -650,7 +673,7 @@ impl Renderer {
     }
 
     /// Responsible for drawing the flags, deleting them, etc.
-    pub fn draw(&mut self) {
+    pub fn draw(&mut self, lang: Lang) {
         let now = get_time();
         // Foul flags whose time is up fade out.
         let (expired, kept): (Vec<Flag>, Vec<Flag>) = std::mem::take(&mut self.active_flags)
@@ -688,6 +711,7 @@ impl Renderer {
                 (idx as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + movement_offset,
                 alpha_offset,
                 now,
+                lang,
             );
         }
         for flag in &mut self.inactive_flags {
@@ -699,6 +723,7 @@ impl Renderer {
                 (flag.vertical_position as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT),
                 alpha_offset,
                 now,
+                lang,
             );
         }
         // delete flags marked as unvisited and that have their alpha_animation_counter below zero (finihed fade out)
@@ -740,7 +765,7 @@ fn flag_order(a: &Flag, b: &Flag) -> std::cmp::Ordering {
 }
 
 /// Draws one flag (card, name, tab text and description bar) with its top at `y`.
-fn draw_flag(textures: &Textures, flag: &Flag, y: f32, alpha: f32, now: f64) {
+fn draw_flag(textures: &Textures, flag: &Flag, y: f32, alpha: f32, now: f64, lang: Lang) {
     let (tex, dark_card) = match flag.flag_type {
         Type::Goal(color, _) => (
             if color == UWHColor::White {
@@ -771,22 +796,65 @@ fn draw_flag(textures: &Textures, flag: &Flag, y: f32, alpha: f32, now: f64) {
         a: alpha,
         ..if dark_card { WHITE } else { BLACK }
     };
-    let name = match flag.player_number {
-        Some(number) => format!("#{} {}", number, flag.player_name),
-        None => flag.player_name.clone(),
+    // The tab's word and its colour. A word longer than the English widens the tab, and the name
+    // bar and description bar move right with it; the word is never drawn smaller.
+    let (tab_text, tab_color) = match flag.flag_type {
+        Type::Goal(_, _) => (lang.goal().to_string(), card_text_color),
+        Type::Penalty(_, timeout, _) => (
+            match timeout {
+                PenaltyTime::Seconds(s) => format!("{:02}:{:02}", s / 60, s % 60),
+                PenaltyTime::TotalDismissal => String::from(lang.total_dismissal()),
+            },
+            // Light neon yellow on the red tab for both teams: easy to read on the red.
+            Color {
+                a: alpha,
+                ..PENALTY_TIME_YELLOW
+            },
+        ),
+        Type::Foul(_) => (
+            lang.foul().to_string(),
+            Color {
+                a: alpha,
+                ..FOUL_TEXT
+            },
+        ),
+    };
+    let tab_width =
+        |text: &str| measure_text(text, Some(&textures.font), TAB_FONT_SIZE, 1f32).width;
+    let tab_text_width = tab_width(&tab_text);
+    // Every card's tab is at least as wide as this language's "GOAL" and "FOUL" need, so the
+    // names on cards stacked above one another start in line.
+    let tab_extra = widen_for(
+        tab_text_width
+            .max(tab_width(lang.goal()))
+            .max(tab_width(lang.foul())),
+        TAB_ROOM,
+    );
+
+    let name = match (flag.player_number, &flag.flag_type) {
+        (Some(number), _) => format!("#{} {}", number, flag.player_name),
+        (None, Type::Foul(None)) => lang.both_teams().to_string(),
+        (None, _) => flag.player_name.clone(),
     };
     let (_, name) = fit_text(
-        CARD_MAX_WIDTH - NAME_X - NAME_END_PADDING,
+        CARD_MAX_WIDTH - tab_extra - NAME_X - NAME_END_PADDING,
         &name,
         30,
         &textures.font,
         Justify::Left,
     );
-    let width = card_width(measure_text(&name, Some(&textures.font), 30, 1f32).width);
-    draw_card(tex, FLAG_X, y, width, Color { a: alpha, ..WHITE });
+    let width = card_width(measure_text(&name, Some(&textures.font), 30, 1f32).width) + tab_extra;
+    draw_card(
+        tex,
+        FLAG_X,
+        y,
+        width,
+        tab_extra,
+        Color { a: alpha, ..WHITE },
+    );
     draw_text_both_ex!(
         name.as_str(),
-        FLAG_X + NAME_X,
+        FLAG_X + NAME_X + tab_extra,
         y + 33f32,
         TextParams {
             font: Some(&textures.font),
@@ -801,67 +869,21 @@ fn draw_flag(textures: &Textures, flag: &Flag, y: f32, alpha: f32, now: f64) {
             ..Default::default()
         }
     );
-    let tab_text_params = |color: Color| TextParams {
-        font: Some(&textures.font),
-        font_size: 30,
-        color,
-        ..Default::default()
-    };
-    match flag.flag_type {
-        Type::Goal(_, _) => {
-            draw_text_ex("GOAL", 45f32, y + 33f32, tab_text_params(card_text_color));
-        }
-        Type::Penalty(_, timeout, _) => {
-            let text = match timeout {
-                PenaltyTime::Seconds(s) => {
-                    let mins = s / 60;
-                    let secs = s % 60;
-
-                    format!(
-                        "{}:{}",
-                        if mins < 10 {
-                            format!("0{mins}")
-                        } else {
-                            format!("{mins}")
-                        },
-                        if secs < 10 {
-                            format!("0{secs}")
-                        } else {
-                            format!("{secs}")
-                        }
-                    )
-                }
-                PenaltyTime::TotalDismissal => String::from("TD"),
-            };
-            let (x_off, text) = fit_text(94f32, &text, 30, &textures.font, Justify::Center);
-            // Light neon yellow on the red tab for both teams: easy to read on the red.
-            draw_text_ex(
-                text.as_str(),
-                35f32 + x_off,
-                y + 33f32,
-                tab_text_params(Color {
-                    a: alpha,
-                    ..PENALTY_TIME_YELLOW
-                }),
-            );
-        }
-        Type::Foul(_) => {
-            let (x_off, text) = fit_text(94f32, "FOUL", 30, &textures.font, Justify::Center);
-            draw_text_ex(
-                text.as_str(),
-                35f32 + x_off,
-                y + 33f32,
-                tab_text_params(Color {
-                    a: alpha,
-                    ..FOUL_TEXT
-                }),
-            );
-        }
-    }
+    draw_text_ex(
+        tab_text.as_str(),
+        FLAG_X + TAB_FIELD_X + (TAB_FIELD + tab_extra - tab_text_width) / 2f32,
+        y + 33f32,
+        TextParams {
+            font: Some(&textures.font),
+            font_size: TAB_FONT_SIZE,
+            color: tab_color,
+            ..Default::default()
+        },
+    );
     if matches!(flag.flag_type, Type::Goal(..)) {
         return;
     }
-    if let Some(text) = description_text(flag.infraction) {
+    if let Some(text) = description_text(flag.infraction, lang) {
         let open = description_open(now - flag.shown_at);
         let style = match flag.flag_type {
             Type::Foul(_) => BarStyle::Foul,
@@ -997,6 +1019,37 @@ fn draw_description(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_card_with_no_wider_tab_is_drawn_as_before() {
+        let [tab_left, added, tab_right, bar, end] = card_strips(FLAG_X, CARD_MIN_WIDTH, 0f32);
+        assert_eq!(added.dest_w, 0f32);
+        // The tab's two parts meet, so together they are the artwork's first `CARD_LEFT` px.
+        assert_eq!(tab_left.dest_x + tab_left.dest_w, tab_right.dest_x);
+        assert_eq!(tab_right.dest_x + tab_right.dest_w, FLAG_X + CARD_LEFT);
+        assert_eq!(bar.dest_x, FLAG_X + CARD_LEFT);
+        assert_eq!(bar.dest_w, CARD_MIN_WIDTH - CARD_LEFT - CARD_RIGHT);
+        assert_eq!(end.dest_x + end.dest_w, FLAG_X + CARD_MIN_WIDTH);
+    }
+
+    #[test]
+    fn a_wider_tab_moves_the_rest_of_the_card_right() {
+        let extra = 238f32;
+        let width = CARD_MIN_WIDTH + extra;
+        let [tab_left, added, tab_right, bar, end] = card_strips(FLAG_X, width, extra);
+        // The tab's rounded left end and its curve into the name bar keep their own width.
+        assert_eq!((tab_left.src_w, tab_left.dest_w), (TAB_CUT, TAB_CUT));
+        assert_eq!(tab_right.src_w, tab_right.dest_w);
+        // What is added repeats one plain column of the tab.
+        assert_eq!(
+            (added.src_x, added.src_w, added.dest_w),
+            (TAB_CUT, 1f32, extra)
+        );
+        assert_eq!(tab_right.dest_x, FLAG_X + TAB_CUT + extra);
+        // The name bar is no shorter than on a standard card, and the card ends where it should.
+        assert_eq!(bar.dest_w, CARD_MIN_WIDTH - CARD_LEFT - CARD_RIGHT);
+        assert_eq!(end.dest_x + end.dest_w, FLAG_X + width);
+    }
 
     #[test]
     fn a_second_penalty_shows_its_foul() {
@@ -1157,10 +1210,14 @@ mod tests {
     #[test]
     fn the_description_is_in_capitals_and_unknown_has_none() {
         assert_eq!(
-            description_text(Infraction::StickInfringement).as_deref(),
+            description_text(Infraction::StickInfringement, Lang::En).as_deref(),
             Some("STICK FOUL")
         );
-        assert_eq!(description_text(Infraction::Unknown), None);
+        assert_eq!(description_text(Infraction::Unknown, Lang::En), None);
+        assert_eq!(
+            description_text(Infraction::FalseStart, Lang::Fr).as_deref(),
+            Some("FAUX DÉPART")
+        );
     }
 
     #[test]

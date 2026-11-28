@@ -18,6 +18,7 @@ use macroquad::prelude::*;
 use network::{StateUpdate, TeamInfoRaw};
 use std::{cmp::Ordering, str::FromStr};
 use std::{net::IpAddr, path::PathBuf};
+use uwh_common::color::Color as UWHColor;
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot};
 
 #[cfg(feature = "bridge")]
@@ -32,6 +33,7 @@ mod ndi_runtime;
 mod network;
 use network::{BLACK_TEAM_NAME, WHITE_TEAM_NAME};
 mod pages;
+mod words;
 
 use load_images::Texture;
 
@@ -156,6 +158,10 @@ pub struct AppConfig {
     /// Set once a saved refbox port of 8000 has been moved to 19540; a later 8000 is kept.
     #[serde(default)]
     refbox_port_moved: bool,
+    /// The overlay's language: `"en"` (the default), `"es"` or `"fr"`. Missing from settings files
+    /// written before languages existed.
+    #[serde(default)]
+    language: words::Lang,
 }
 
 impl Default for AppConfig {
@@ -168,6 +174,7 @@ impl Default for AppConfig {
             // A new settings file never held either old port, so there is nothing to move.
             bridge_port_moved: true,
             refbox_port_moved: true,
+            language: words::Lang::default(),
         }
     }
 }
@@ -182,6 +189,8 @@ pub struct State {
     half_play_duration: Option<u32>,
     event_logo: Option<Texture>,
     sponsor_logo: Option<Texture>,
+    /// The language the overlay's own words are shown in this frame.
+    lang: words::Lang,
 }
 
 // TODO: Change this to return Result. We're not rn cause from_file_with_format
@@ -205,6 +214,21 @@ fn texture_from_image_result(image: network::Image) -> Result<Texture, Box<dyn s
 }
 
 impl State {
+    /// Sets this frame's language, and shows the fallback team names ("BLACK" / "WHITE", used
+    /// when the schedule gives no names) in it. A real team's name is never translated, even one
+    /// that happens to be a colour word.
+    fn set_language(&mut self, lang: words::Lang) {
+        self.lang = lang;
+        for (team, name) in [
+            (&mut self.black, self.lang.black()),
+            (&mut self.white, self.lang.white()),
+        ] {
+            if team.is_fallback_name && team.team_name != name {
+                team.team_name = name.to_string();
+            }
+        }
+    }
+
     fn update_state(&mut self, received_update: StateUpdate) {
         match received_update {
             StateUpdate::Snapshot(snapshot) => {
@@ -219,8 +243,8 @@ impl State {
                 // game number, the previous game's teams must not stay on air into the next.
                 if new_event || self.snapshot.game_number() != snapshot.game_number() {
                     info!("Snapshot for new game received: {}", snapshot.game_number());
-                    self.black = TeamInfo::with_name(BLACK_TEAM_NAME);
-                    self.white = TeamInfo::with_name(WHITE_TEAM_NAME);
+                    self.black = TeamInfo::fallback(UWHColor::Black);
+                    self.white = TeamInfo::fallback(UWHColor::White);
                     self.referees.clear();
                     self.pool = String::new();
                     self.start_time = String::new();
@@ -265,6 +289,8 @@ impl State {
                     warn!("Received event logos for incorrect event: {}", event_id);
                 }
             }
+            #[cfg(feature = "bridge")]
+            StateUpdate::Language(lang) => self.set_language(lang),
         }
     }
 }
@@ -296,6 +322,9 @@ pub struct TeamInfo {
     pub team_name: String,
     pub members: Vec<Member>,
     pub flag: Option<Texture>,
+    /// `team_name` is the overlay's own "BLACK" / "WHITE" rather than a real team's name, so it is
+    /// shown in the overlay's language. A real team's name is never translated.
+    pub is_fallback_name: bool,
 }
 
 impl From<TeamInfoRaw> for TeamInfo {
@@ -317,16 +346,33 @@ impl From<TeamInfoRaw> for TeamInfo {
                 .map(Member::from)
                 .collect(),
             flag: team_info_raw.flag.and_then(texture_from_image),
+            is_fallback_name: team_info_raw.is_fallback_name,
         }
     }
 }
 
 impl TeamInfo {
+    #[cfg(test)]
     fn with_name(name: &str) -> Self {
         Self {
             team_name: name.to_string(),
             members: Vec::new(),
             flag: None,
+            is_fallback_name: false,
+        }
+    }
+
+    /// A team the overlay has no name for yet: shown as "BLACK" or "WHITE" in its language.
+    fn fallback(color: UWHColor) -> Self {
+        Self {
+            team_name: match color {
+                UWHColor::Black => BLACK_TEAM_NAME,
+                UWHColor::White => WHITE_TEAM_NAME,
+            }
+            .to_string(),
+            members: Vec::new(),
+            flag: None,
+            is_fallback_name: true,
         }
     }
 
@@ -379,6 +425,9 @@ async fn main() {
 
     let (tx, rx) = bounded::<StateUpdate>(3);
 
+    // The networking thread takes the settings; the drawing loop only needs the language.
+    let language = config.language;
+
     #[cfg(not(feature = "bridge"))]
     let net_worker = std::thread::spawn(|| {
         network::networking_thread(tx, config);
@@ -397,15 +446,18 @@ async fn main() {
             ..Default::default()
         },
 
-        black: TeamInfo::with_name(BLACK_TEAM_NAME),
+        black: TeamInfo::fallback(UWHColor::Black),
         referees: Vec::new(),
-        white: TeamInfo::with_name(WHITE_TEAM_NAME),
+        white: TeamInfo::fallback(UWHColor::White),
         pool: String::new(),
         start_time: String::new(),
         half_play_duration: None,
         event_logo: None,
         sponsor_logo: None,
+        lang: words::Lang::default(),
     };
+    // The overlay's language shows from the first frame, not only once the first update arrives.
+    local_state.set_language(language);
 
     let mut renderer = pages::PageRenderer {
         animation_register0: Instant::now(),
@@ -467,6 +519,11 @@ async fn main() {
 
         if let Ok(received_state) = rx.try_recv() {
             local_state.update_state(received_state);
+            // A new game puts back the fallback team names ("BLACK" / "WHITE"); show them in the
+            // current language, which is the overlay's own setting or, through a bridge, the
+            // bridge's stream language.
+            let lang = local_state.lang;
+            local_state.set_language(lang);
             // sync local penalty list
             flag_renderer.synchronize_flags(&local_state);
         }
@@ -506,7 +563,7 @@ async fn main() {
             }
             GamePeriod::FirstHalf | GamePeriod::SecondHalf | GamePeriod::HalfTime => {
                 renderer.in_game_display(&local_state);
-                flag_renderer.draw();
+                flag_renderer.draw(local_state.lang);
             }
             GamePeriod::OvertimeFirstHalf
             | GamePeriod::OvertimeHalfTime
@@ -515,7 +572,7 @@ async fn main() {
             | GamePeriod::PreSuddenDeath
             | GamePeriod::SuddenDeath => {
                 renderer.overtime_and_sudden_death_display(&local_state);
-                flag_renderer.draw();
+                flag_renderer.draw(local_state.lang);
             }
         }
 
@@ -725,6 +782,7 @@ mod tests {
             half_play_duration: Some(600),
             event_logo: None,
             sponsor_logo: None,
+            lang: words::Lang::default(),
         };
 
         // Same event (none at all, as from a local-CSV bridge), so only the game number changes.
@@ -759,6 +817,7 @@ mod tests {
             half_play_duration: Some(600),
             event_logo: None,
             sponsor_logo: None,
+            lang: words::Lang::default(),
         };
 
         state.update_state(StateUpdate::Snapshot(snapshot("event-a")));
@@ -783,6 +842,7 @@ mod tests {
             half_play_duration: None,
             event_logo: None,
             sponsor_logo: None,
+            lang: words::Lang::default(),
         };
         assert_eq!(
             flag::resolve_name(Some(UWHColor::White), Some(4), &state),
@@ -859,6 +919,83 @@ mod tests {
         assert_eq!(old.refbox_port, OLD_REFBOX_PORT);
         assert!(!old.refbox_port_moved);
         assert!(AppConfig::default().refbox_port_moved);
+    }
+
+    #[test]
+    fn a_settings_file_from_before_languages_is_english() {
+        let old: AppConfig = serde_json::from_str(
+            r#"{"refbox_ip": "127.0.0.1", "refbox_port": 19540, "uwhportal_url": "https://api.uwhportal.com", "bridge_url": "http://127.0.0.1:8098", "bridge_port_moved": true, "refbox_port_moved": true}"#,
+        )
+        .expect("a settings file without `language` still loads");
+        assert_eq!(old.language, words::Lang::En);
+        assert_eq!(AppConfig::default().language, words::Lang::En);
+    }
+
+    #[test]
+    fn a_bad_language_keeps_the_other_settings() {
+        // `serde_json` rather than the TOML confy writes, as above: the point is that one bad
+        // value doesn't make the whole file fail to load (and get overwritten with defaults).
+        let config: AppConfig = serde_json::from_str(
+            r#"{"refbox_ip": "10.0.0.5", "refbox_port": 19540, "uwhportal_url": "https://api.uwhportal.com", "bridge_url": "http://127.0.0.1:8098", "bridge_port_moved": true, "refbox_port_moved": true, "language": "spanish"}"#,
+        )
+        .expect("a settings file with a bad `language` still loads");
+        assert_eq!(config.refbox_ip, IpAddr::from_str("10.0.0.5").unwrap());
+        assert_eq!(config.language, words::Lang::En);
+    }
+
+    #[test]
+    fn a_team_named_like_a_colour_is_not_translated() {
+        let mut state = State {
+            snapshot: GameSnapshot::default(),
+            black: TeamInfo::fallback(UWHColor::Black),
+            white: TeamInfo {
+                team_name: "BLANC".to_string(),
+                members: Vec::new(),
+                flag: None,
+                is_fallback_name: false,
+            },
+            referees: Vec::new(),
+            pool: String::new(),
+            start_time: String::new(),
+            half_play_duration: None,
+            event_logo: None,
+            sponsor_logo: None,
+            lang: words::Lang::default(),
+        };
+        state.set_language(words::Lang::En);
+        assert_eq!(state.white.team_name, "BLANC", "a real team's name is kept");
+
+        state.white = TeamInfo::fallback(UWHColor::White);
+        state.set_language(words::Lang::En);
+        assert_eq!(state.white.team_name, "WHITE");
+        state.set_language(words::Lang::Es);
+        assert_eq!(state.white.team_name, "BLANCO");
+    }
+
+    #[test]
+    fn the_fallback_team_names_follow_the_language() {
+        let mut state = State {
+            snapshot: GameSnapshot::default(),
+            black: TeamInfo::fallback(UWHColor::Black),
+            white: TeamInfo::with_name("Atlantis"),
+            referees: Vec::new(),
+            pool: String::new(),
+            start_time: String::new(),
+            half_play_duration: None,
+            event_logo: None,
+            sponsor_logo: None,
+            lang: words::Lang::default(),
+        };
+        state.set_language(words::Lang::Es);
+        assert_eq!(state.lang, words::Lang::Es);
+        assert_eq!(state.black.team_name, "NEGRO");
+        assert_eq!(
+            state.white.team_name, "Atlantis",
+            "a real team name is never translated"
+        );
+
+        state.set_language(words::Lang::Fr);
+        assert_eq!(state.black.team_name, "NOIR");
     }
 
     #[test]

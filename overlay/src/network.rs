@@ -163,6 +163,9 @@ pub struct TeamInfoRaw {
     pub team_name: String,
     pub members: Vec<MemberRaw>,
     pub flag: Option<Image>,
+    /// `team_name` is the overlay's own "BLACK" / "WHITE" because the portal gave no name.
+    #[serde(default)]
+    pub is_fallback_name: bool,
 }
 
 impl TeamInfoRaw {
@@ -288,6 +291,7 @@ async fn team_from_json(data: &Value, team_color: Color) -> TeamInfoRaw {
             },
             |s| s.trim().to_uppercase(),
         ),
+        is_fallback_name: data["name"].as_str().is_none(),
         members,
         flag,
     }
@@ -393,6 +397,11 @@ pub enum StateUpdate {
     Snapshot(GameSnapshot),
     GameData(GameData),
     EventLogos(EventId, EventLogos),
+    /// The stream language chosen on the bridge's status page, which takes over from the
+    /// overlay's own `language` setting while the overlay reads from a bridge
+    /// (`bridge_network.rs`). Sent only when it changes.
+    #[cfg(feature = "bridge")]
+    Language(crate::words::Lang),
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
@@ -720,6 +729,8 @@ pub async fn networking_thread(
         bridge_url: _,
         bridge_port_moved: _,
         refbox_port_moved: _,
+        // Read by the drawing loop, not the network.
+        language: _,
     } = config;
 
     let (snapshot_tx, mut snapshot_rx) = tokio::sync::mpsc::unbounded_channel::<GameSnapshot>();

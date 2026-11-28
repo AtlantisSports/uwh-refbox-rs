@@ -29,6 +29,7 @@ use uwh_common::{
 };
 
 use crate::{
+    config::StreamLanguage,
     portal::TeamNames,
     state::Display,
     tables::{Rosters, color_code, timeout_label, timeout_seconds},
@@ -107,7 +108,8 @@ pub struct Foul {
 /// **Every field is always serialized, including as `null`.** No field may gain
 /// `skip_serializing_if`: to a consumer an absent key and a null are different things, and only
 /// one of them is safe to read blind (the same reasoning `tables::blank_row` already records for
-/// the vMix tables). `schema_version` and `connected` are the only fields that are never null.
+/// the vMix tables). `schema_version`, `connected` and `stream_language` are the only fields
+/// that are never null.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameFeed {
@@ -147,6 +149,11 @@ pub struct GameFeed {
     pub event_id: Option<String>,
     /// Paired with `event_id`, and served credential-stripped.
     pub portal_base_url: Option<String>,
+    /// The language the overlay should show its own words in, as chosen on the bridge's status
+    /// page (`"en"`, `"es"` or `"fr"`). A bridge setting, not refbox data, so it is never null --
+    /// it is sent while the refbox is disconnected too. Added after version 1 shipped; an older
+    /// overlay ignores it.
+    pub stream_language: StreamLanguage,
 }
 
 /// The address with any `user:password@` credential removed, or `None` if that cannot be
@@ -288,6 +295,7 @@ fn blanked() -> GameFeed {
         fouls: None,
         event_id: None,
         portal_base_url: None,
+        stream_language: StreamLanguage::default(),
     }
 }
 
@@ -352,6 +360,8 @@ pub fn game_feed(
         fouls: Some(fouls_of(snapshot, rosters)),
         event_id,
         portal_base_url,
+        // The bridge's own setting, filled in by `server.rs`'s `get_game`.
+        stream_language: StreamLanguage::default(),
     }
 }
 

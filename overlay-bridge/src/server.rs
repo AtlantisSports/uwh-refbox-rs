@@ -153,6 +153,8 @@ pub struct AppState {
     /// replaced by an explicit operator action on the status page ([`post_roster_source`]), never
     /// on its own, since a local file only changes when an operator edits it.
     local_roster: RwLock<Option<LocalRoster>>,
+    /// The language the stream overlay shows, as chosen on the status page and served in `/game`.
+    stream_language: RwLock<config::StreamLanguage>,
     /// The operator's current choice of where team/player names come from, and the two file
     /// paths configured for the local-CSV case -- kept here, separately from `local_roster`
     /// itself, so the status page can show what is *configured* even when `local_roster` is
@@ -251,6 +253,7 @@ impl AppState {
             live: RwLock::new(LiveState::new(GameSnapshot::default(), Instant::now())),
             directory: RwLock::new(None),
             local_roster: RwLock::new(local_roster),
+            stream_language: RwLock::new(settings.stream_language),
             roster_source: RwLock::new(settings.roster_source),
             schedule_csv_path: RwLock::new(settings.schedule_csv_path),
             roster_csv_path: RwLock::new(settings.roster_csv_path),
@@ -392,6 +395,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/refbox", post(post_refbox))
         .route("/roster-source", post(post_roster_source))
         .route("/scan", post(post_scan))
+        .route("/stream-language", post(post_stream_language))
         .with_state(state)
 }
 
@@ -413,12 +417,10 @@ async fn get_game(State(state): State<Arc<AppState>>) -> Json<game_feed::GameFee
     let display = current_display(&state);
     let names = names_for_game(&state, display.snapshot.game_number());
     let rosters = current_rosters(&state, &display.snapshot);
-    Json(game_feed::game_feed(
-        &display,
-        names.as_ref(),
-        &rosters,
-        is_connected(&state),
-    ))
+    Json(game_feed::GameFeed {
+        stream_language: *read_lock(&state.stream_language),
+        ..game_feed::game_feed(&display, names.as_ref(), &rosters, is_connected(&state))
+    })
 }
 
 async fn get_penalties(State(state): State<Arc<AppState>>) -> Json<Vec<BTreeMap<String, String>>> {
@@ -531,6 +533,7 @@ fn page_data(state: &Arc<AppState>, headers: &HeaderMap) -> status::PageData {
         white_score: served("whiteScore"),
         black_team: served("blackTeam"),
         black_score: served("blackScore"),
+        stream_language: *read_lock(&state.stream_language),
         roster_source: *read_lock(&state.roster_source),
         schedule_csv_path: read_lock(&state.schedule_csv_path)
             .clone()
@@ -616,6 +619,49 @@ async fn post_refbox(
     let notice = choose_refbox(&state, &form.address).await;
     *write_lock(&state.notice) = Some(notice);
     Ok(Redirect::to("/"))
+}
+
+/// What the operator submitted on the stream-language form: the `<select>`'s value, a short code
+/// such as `"es"`. `serde(default)` for the same reason as [`AddressForm`].
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct StreamLanguageForm {
+    language: String,
+}
+
+/// `POST /stream-language` -- change the language the stream overlay shows its own words in, and
+/// remember the choice for next time. Refused on the same terms as [`post_refbox`]; see
+/// [`refuse_cross_site`].
+async fn post_stream_language(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Form(form): Form<StreamLanguageForm>,
+) -> ActionResult {
+    refuse_cross_site(&headers)?;
+    let notice = choose_stream_language(&state, &form.language);
+    *write_lock(&state.notice) = Some(notice);
+    Ok(Redirect::to("/"))
+}
+
+/// Applies a stream-language choice: the overlay follows it on its next poll of `/game` (a
+/// fraction of a second), and it is saved for the next run. An unknown code changes nothing.
+fn choose_stream_language(state: &AppState, code: &str) -> Notice {
+    let Some(language) = config::StreamLanguage::from_code(code) else {
+        return Notice::problem("That is not one of the stream languages. Nothing was changed.");
+    };
+    *write_lock(&state.stream_language) = language;
+    let remembered = state
+        .settings_path
+        .as_deref()
+        .is_some_and(|path| config::remember_stream_language(path, language));
+    let name = language.name();
+    Notice::done(if remembered {
+        format!("The stream overlay now shows its words in {name}.")
+    } else {
+        format!(
+            "The stream overlay now shows its words in {name}. This could not be saved, so it              goes back to the saved language when the bridge restarts."
+        )
+    })
 }
 
 /// What the operator submitted on the roster-source form: `source` is the `<select>`'s value
@@ -5454,5 +5500,83 @@ mod tests {
         for task in tasks {
             task.abort();
         }
+    }
+
+    // ------------------------------------------------------------------------- stream language
+
+    /// A bridge with a throwaway settings file, served on a local port. The caller removes the
+    /// returned directory.
+    async fn bridge_with_settings_file(name: &str) -> (Arc<AppState>, SocketAddr, PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "overlay-bridge-test-{name}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).expect("creating the test directory should succeed");
+        let state = Arc::new(AppState::new(config::Resolved {
+            settings_path: Some(dir.join("settings.toml")),
+            ..config::Resolved::default()
+        }));
+        let addr = spawn_test_server(Arc::clone(&state)).await;
+        (state, addr, dir)
+    }
+
+    async fn status_page(addr: SocketAddr) -> String {
+        get_response(addr, "/")
+            .await
+            .text()
+            .await
+            .expect("the status page has a body")
+    }
+
+    #[tokio::test]
+    async fn a_stream_language_chosen_on_the_status_page_reaches_the_overlay_and_is_remembered() {
+        let (_state, addr, dir) = bridge_with_settings_file("stream-language").await;
+
+        // English until the operator chooses otherwise, and sent even with no refbox at all: it is
+        // the bridge's own setting, not game data.
+        let before = get_json(addr, "/game").await;
+        assert_eq!(before["connected"], false);
+        assert_eq!(before["streamLanguage"], "en");
+
+        post_from_the_status_page(addr, "/stream-language", &[("language", "es")]).await;
+
+        assert_eq!(get_json(addr, "/game").await["streamLanguage"], "es");
+        let page = status_page(addr).await;
+        assert!(page.contains("<option value=\"es\" selected>Español</option>"));
+        assert!(page.contains("now shows its words in Español"));
+        let saved: config::Settings =
+            confy::load_path(dir.join("settings.toml")).expect("the settings file loads");
+        assert_eq!(saved.stream_language, Some(config::StreamLanguage::Spanish));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_page_on_another_site_cannot_change_the_stream_language() {
+        let (_state, addr, dir) = bridge_with_settings_file("stream-language-cross-site").await;
+
+        let response =
+            post_from_another_site(addr, "/stream-language", &[("language", "fr")]).await;
+
+        assert_eq!(response.status().as_u16(), 403);
+        assert_eq!(get_json(addr, "/game").await["streamLanguage"], "en");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn an_unknown_stream_language_changes_nothing() {
+        let (_state, addr, dir) = bridge_with_settings_file("stream-language-unknown").await;
+        post_from_the_status_page(addr, "/stream-language", &[("language", "fr")]).await;
+
+        post_from_the_status_page(addr, "/stream-language", &[("language", "de")]).await;
+
+        assert_eq!(get_json(addr, "/game").await["streamLanguage"], "fr");
+        assert!(
+            status_page(addr)
+                .await
+                .contains("not one of the stream languages")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

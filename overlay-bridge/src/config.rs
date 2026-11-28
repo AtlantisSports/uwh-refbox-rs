@@ -77,6 +77,57 @@ impl Default for RosterSource {
     }
 }
 
+/// The language the stream overlay shows its own words in ("NEXT GAME", "TIMEOUT", period names
+/// and so on), chosen on the status page and sent to the overlay in `/game`. Separate from the
+/// refbox's own language on purpose: the referees may read the refbox in Spanish or French while
+/// the stream stays in English (agreed with Eric at the 2026-11-25 sync-up). Team and player names
+/// are never translated. Written as the short codes the overlay itself uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum StreamLanguage {
+    /// Matches every run before this setting existed.
+    #[default]
+    #[serde(rename = "en")]
+    English,
+    #[serde(rename = "es")]
+    Spanish,
+    #[serde(rename = "fr")]
+    French,
+}
+
+impl StreamLanguage {
+    /// Every choice, in the order the status page lists them.
+    pub const ALL: [StreamLanguage; 3] = [
+        StreamLanguage::English,
+        StreamLanguage::Spanish,
+        StreamLanguage::French,
+    ];
+
+    /// The short code: what the status page's form posts, what is saved, and what `/game` sends.
+    pub const fn code(self) -> &'static str {
+        match self {
+            StreamLanguage::English => "en",
+            StreamLanguage::Spanish => "es",
+            StreamLanguage::French => "fr",
+        }
+    }
+
+    /// The language's name in that language, as the status page lists it.
+    pub const fn name(self) -> &'static str {
+        match self {
+            StreamLanguage::English => "English",
+            StreamLanguage::Spanish => "Español",
+            StreamLanguage::French => "Français",
+        }
+    }
+
+    /// The language a short code names, or `None` for anything else.
+    pub fn from_code(code: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|language| language.code() == code.trim())
+    }
+}
+
 /// The bridge's persisted settings. Every field is `Option`, not a bare value with some
 /// in-band "unset" sentinel: `Settings::default()` (every field `None`) is what a missing or
 /// corrupt settings file resolves to (see the module doc), and `None` is what [`resolve`] treats
@@ -107,6 +158,8 @@ pub struct Settings {
     /// Set once the old default port 8099 has been moved to 8098. From then on a saved 8099
     /// is the operator's own choice and is kept (see [`OLD_DEFAULT_PORT`]).
     pub port_moved_from_8099: Option<bool>,
+    /// The language the stream overlay shows, chosen on the status page.
+    pub stream_language: Option<StreamLanguage>,
 }
 
 /// Resolves one setting under the bridge's standing precedence rule (see the module doc): an
@@ -166,6 +219,9 @@ pub struct Resolved {
     /// Path to the local roster CSV, if one has been set. See `schedule_csv_path` for why this
     /// stays `Option`.
     pub roster_csv_path: Option<String>,
+    /// The language the stream overlay shows. Chosen on the status page only; there is no
+    /// command-line flag for it.
+    pub stream_language: StreamLanguage,
 }
 
 impl Default for Resolved {
@@ -177,6 +233,7 @@ impl Default for Resolved {
             roster_source: RosterSource::default(),
             schedule_csv_path: None,
             roster_csv_path: None,
+            stream_language: StreamLanguage::default(),
         }
     }
 }
@@ -193,6 +250,7 @@ impl Resolved {
             schedule_csv_path: self.schedule_csv_path.clone(),
             roster_csv_path: self.roster_csv_path.clone(),
             port_moved_from_8099: Some(true),
+            stream_language: Some(self.stream_language),
         }
     }
 }
@@ -236,6 +294,7 @@ pub fn resolve_all(
         ),
         schedule_csv_path: overrides.schedule_csv_path.or(stored.schedule_csv_path),
         roster_csv_path: overrides.roster_csv_path.or(stored.roster_csv_path),
+        stream_language: stored.stream_language.unwrap_or(defaults.stream_language),
     }
 }
 
@@ -383,6 +442,23 @@ pub fn remember_roster_source(
         Ok(()) => true,
         Err(e) => {
             eprintln!("could not remember the chosen roster source: {e}");
+            false
+        }
+    }
+}
+
+/// Remembers the operator's choice of stream language in the settings file at `path`, leaving
+/// every other setting exactly as it is -- same read-modify-write reasoning as
+/// [`remember_refbox_address`], and the same "never fails loudly" contract.
+pub fn remember_stream_language(path: &Path, language: StreamLanguage) -> bool {
+    let settings = Settings {
+        stream_language: Some(language),
+        ..load_from(path)
+    };
+    match confy::store_path(path, &settings) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("could not remember the chosen stream language: {e}");
             false
         }
     }
@@ -718,6 +794,7 @@ mod tests {
             roster_source: RosterSource::Local,
             schedule_csv_path: Some("C:\\schedule.csv".to_string()),
             roster_csv_path: Some("C:\\roster.csv".to_string()),
+            stream_language: StreamLanguage::French,
         };
 
         let round_tripped = resolve_all(Overrides::default(), resolved.to_settings(), None);
@@ -758,5 +835,55 @@ mod tests {
             location.contains(APP_NAME),
             "settings_location() should mention {APP_NAME:?}, got {location:?}"
         );
+    }
+
+    // -------------------------------------------------------------------------- stream language
+
+    #[test]
+    fn a_settings_file_from_before_stream_languages_streams_in_english() {
+        let resolved = resolve_all(Overrides::default(), Settings::default(), None);
+        assert_eq!(resolved.stream_language, StreamLanguage::English);
+    }
+
+    #[test]
+    fn remembering_a_stream_language_leaves_every_other_setting_alone() {
+        let file = TempSettingsFile::new();
+        let before = Settings {
+            refbox_host: Some("192.168.1.50".to_string()),
+            refbox_port: Some(8000),
+            port: Some(9001),
+            roster_source: Some(RosterSource::Local),
+            ..Settings::default()
+        };
+        confy::store_path(&file.0, &before).expect("writing the starting settings should succeed");
+
+        assert!(remember_stream_language(&file.0, StreamLanguage::Spanish));
+
+        let after = load_from(&file.0);
+        assert_eq!(after.stream_language, Some(StreamLanguage::Spanish));
+        assert_eq!(
+            Settings {
+                stream_language: None,
+                ..after
+            },
+            before
+        );
+    }
+
+    #[test]
+    fn a_stream_language_is_read_from_its_short_code_only() {
+        assert_eq!(
+            StreamLanguage::from_code("es"),
+            Some(StreamLanguage::Spanish)
+        );
+        assert_eq!(
+            StreamLanguage::from_code(" fr "),
+            Some(StreamLanguage::French)
+        );
+        assert_eq!(StreamLanguage::from_code("de"), None);
+        assert_eq!(StreamLanguage::from_code(""), None);
+        for language in StreamLanguage::ALL {
+            assert_eq!(StreamLanguage::from_code(language.code()), Some(language));
+        }
     }
 }

@@ -1,11 +1,18 @@
-use super::{Interpolate, PageRenderer, draw_flag_line, draw_texture_both, fit_text};
+use super::{
+    Interpolate, PageRenderer, TIME_BOX_CUT, TimeoutFlag, centred_x, draw_texture_both,
+    draw_widened, fit_text, widen_for,
+};
 use crate::{
-    State, draw_timeout_flag,
+    State,
     pages::{Justify, draw_text_both, draw_text_both_ex, draw_texture_both_ex},
 };
 use coarsetime::Instant;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::{GamePeriod, TimeoutSnapshot};
+
+/// The room the period name has in the time box as drawn: the longest English name
+/// ("OVERTIME HALF TIME") takes 191 px of it.
+const PERIOD_ROOM: f32 = 192f32;
 
 impl PageRenderer {
     /// Display during overtime. Has no animations
@@ -62,74 +69,58 @@ impl PageRenderer {
             )
         };
 
-        // No penalty shot, black or white timeouts in overtime
+        // The time box widens from its centre for a longer period name, and the flag behind it
+        // moves right by as much as the box's right end does.
+        let ot_text = match state.snapshot.current_period {
+            period @ (GamePeriod::OvertimeFirstHalf
+            | GamePeriod::OvertimeSecondHalf
+            | GamePeriod::OvertimeHalfTime
+            | GamePeriod::SuddenDeath
+            | GamePeriod::PreSuddenDeath) => state.lang.period(period),
+            _ => state.lang.period(GamePeriod::PreOvertime),
+        };
+        let box_extra = widen_for(
+            measure_text(ot_text, Some(&self.assets.font), 20, 1.0).width,
+            PERIOD_ROOM,
+        );
+
+        // No black or white timeouts in overtime
         if let Some(timeout) = self.last_snapshot_timeout {
-            match timeout {
-                TimeoutSnapshot::Ref(_) => {
-                    draw_timeout_flag!(
-                        self.assets.referee_timout,
-                        timeout_offset,
-                        timeout_alpha_offset,
-                        205f32
-                    );
-                    draw_flag_line(
-                        &self.assets.font,
-                        state.lang.referee_timeout().0,
-                        "REFEREE",
-                        675f32 + timeout_offset,
-                        67f32,
-                        120f32,
-                        Color {
-                            a: timeout_alpha_offset,
-                            ..BLACK
-                        },
-                    );
-                    draw_flag_line(
-                        &self.assets.font,
-                        state.lang.referee_timeout().1,
-                        "TIMEOUT",
-                        680f32 + timeout_offset,
-                        95f32,
-                        120f32,
-                        Color {
-                            a: timeout_alpha_offset,
-                            ..BLACK
-                        },
-                    );
-                }
-                TimeoutSnapshot::PenaltyShot(_) => {
-                    draw_timeout_flag!(
-                        self.assets.penalty,
-                        timeout_offset,
-                        timeout_alpha_offset,
-                        205f32
-                    );
-                    draw_flag_line(
-                        &self.assets.font,
-                        state.lang.penalty_shot().0,
-                        "PENALTY",
-                        675f32 + timeout_offset,
-                        67f32,
-                        120f32,
-                        Color {
-                            a: timeout_alpha_offset,
-                            ..BLACK
-                        },
-                    );
-                    draw_flag_line(
-                        &self.assets.font,
-                        state.lang.penalty_shot().1,
-                        "SHOT",
-                        690f32 + timeout_offset,
-                        95f32,
-                        120f32,
-                        Color {
-                            a: timeout_alpha_offset,
-                            ..BLACK
-                        },
-                    );
-                }
-                _ => {}
+            let flag = match timeout {
+                TimeoutSnapshot::Ref(_) => Some((
+                    &self.assets.referee_timout,
+                    state.lang.referee_timeout(),
+                    ("REFEREE", "TIMEOUT"),
+                    (675f32, 680f32),
+                )),
+                TimeoutSnapshot::PenaltyShot(_) => Some((
+                    &self.assets.penalty,
+                    state.lang.penalty_shot(),
+                    ("PENALTY", "SHOT"),
+                    (675f32, 690f32),
+                )),
+                _ => None,
+            };
+            if let Some((tex, lines, english, english_x)) = flag {
+                let flag = TimeoutFlag {
+                    font: &self.assets.font,
+                    lines,
+                    english,
+                    english_x,
+                    slide: timeout_offset,
+                    shift: box_extra / 2f32,
+                };
+                flag.draw_art(
+                    tex,
+                    Color {
+                        a: timeout_alpha_offset,
+                        ..WHITE
+                    },
+                );
+                flag.draw_text(Color {
+                    a: timeout_alpha_offset,
+                    ..BLACK
+                });
             }
         }
         draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
@@ -170,7 +161,14 @@ impl PageRenderer {
             }
         );
 
-        draw_texture_both!(self.assets.time_and_game_state, 367f32, 18f32, WHITE);
+        draw_widened(
+            &self.assets.time_and_game_state,
+            367f32,
+            18f32,
+            TIME_BOX_CUT,
+            box_extra,
+            WHITE,
+        );
         let min = state.snapshot.secs_in_period / 60;
         let secs = state.snapshot.secs_in_period % 60;
         let text = format!(
@@ -204,18 +202,10 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
-        let ot_text = match state.snapshot.current_period {
-            period @ (GamePeriod::OvertimeFirstHalf
-            | GamePeriod::OvertimeSecondHalf
-            | GamePeriod::OvertimeHalfTime
-            | GamePeriod::SuddenDeath
-            | GamePeriod::PreSuddenDeath) => state.lang.period(period),
-            _ => state.lang.period(GamePeriod::PreOvertime),
-        };
-        let (x_off, text) = fit_text(200f32, ot_text, 20, &self.assets.font, Justify::Center);
+        // Centred where the 200 px period field is centred; a longer name widens the box instead.
         draw_text_ex(
-            text.as_str(),
-            420f32 + x_off,
+            ot_text,
+            centred_x(&self.assets.font, ot_text, 20, 520f32),
             45f32,
             TextParams {
                 font: Some(&self.assets.font),

@@ -289,6 +289,8 @@ impl State {
                     warn!("Received event logos for incorrect event: {}", event_id);
                 }
             }
+            #[cfg(feature = "bridge")]
+            StateUpdate::Language(lang) => self.set_language(lang),
         }
     }
 }
@@ -517,7 +519,11 @@ async fn main() {
 
         if let Ok(received_state) = rx.try_recv() {
             local_state.update_state(received_state);
-            local_state.set_language(language);
+            // A new game puts back the fallback team names ("BLACK" / "WHITE"); show them in the
+            // current language, which is the overlay's own setting or, through a bridge, the
+            // bridge's stream language.
+            let lang = local_state.lang;
+            local_state.set_language(lang);
             // sync local penalty list
             flag_renderer.synchronize_flags(&local_state);
         }

@@ -1,8 +1,10 @@
 use super::Interpolate;
 use super::PageRenderer;
-use super::centred_on_english;
 use super::draw_texture_both;
 use super::fit_text;
+use super::{
+    NEXT_GAME_BOX_CUT, TIME_BOX_CUT, centred_x, draw_widened, next_game_box_extra, widen_for,
+};
 use crate::pages::draw_text_both;
 use crate::pages::draw_text_both_ex;
 use crate::pages::draw_texture_both_ex;
@@ -78,14 +80,17 @@ impl PageRenderer {
             //         ..WHITE
             //     }
             // );
-            draw_texture_both!(
-                self.assets.bottom,
+            // The box widens from its centre when "NEXT GAME" is longer in this language.
+            draw_widened(
+                &self.assets.bottom,
                 822f32,
                 977f32,
+                NEXT_GAME_BOX_CUT,
+                next_game_box_extra(&self.assets.font, state.lang.next_game()),
                 Color {
                     a: midfade_alpha,
                     ..WHITE
-                }
+                },
             );
             let min = state.snapshot.secs_in_period / 60;
             let secs = state.snapshot.secs_in_period % 60;
@@ -119,12 +124,12 @@ impl PageRenderer {
             );
             draw_text_ex(
                 state.lang.next_game(),
-                centred_on_english(
+                centred_x(
                     &self.assets.font,
                     state.lang.next_game(),
-                    "NEXT GAME",
-                    905f32,
                     20,
+                    905f32
+                        + measure_text("NEXT GAME", Some(&self.assets.font), 20, 1.0).width / 2f32,
                 ),
                 1044f32,
                 TextParams {
@@ -232,14 +237,22 @@ impl PageRenderer {
                 ..Default::default()
             }
         );
-        draw_texture_both!(
-            self.assets.time_and_game_state,
+        // The time box widens from its centre if the period name needs more than the 180 px it
+        // has during play.
+        let first_half = state.lang.period(GamePeriod::FirstHalf);
+        draw_widened(
+            &self.assets.time_and_game_state,
             367f32,
             18f32,
+            TIME_BOX_CUT,
+            widen_for(
+                measure_text(first_half, Some(&self.assets.font), 20, 1.0).width,
+                180f32,
+            ),
             Color {
                 a: tandg_alpha,
                 ..WHITE
-            }
+            },
         );
         let min = state.half_play_duration.unwrap_or(900) / 60;
         let secs = state.half_play_duration.unwrap_or(900) % 60;
@@ -271,17 +284,15 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
-        // No wider than the 180 px period box used during play, centred where the English sits.
-        let (_, first_half) = fit_text(
-            180f32,
-            state.lang.period(GamePeriod::FirstHalf),
-            20,
-            &self.assets.font,
-            Justify::Center,
-        );
+        // Centred where the English sits.
         draw_text_ex(
-            &first_half,
-            centred_on_english(&self.assets.font, &first_half, "1ST HALF", 478f32, 20),
+            first_half,
+            centred_x(
+                &self.assets.font,
+                first_half,
+                20,
+                478f32 + measure_text("1ST HALF", Some(&self.assets.font), 20, 1.0).width / 2f32,
+            ),
             100f32,
             TextParams {
                 font: Some(&self.assets.font),

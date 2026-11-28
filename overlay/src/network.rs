@@ -397,6 +397,11 @@ pub enum StateUpdate {
     Snapshot(GameSnapshot),
     GameData(GameData),
     EventLogos(EventId, EventLogos),
+    /// The stream language chosen on the bridge's status page, which takes over from the
+    /// overlay's own `language` setting while the overlay reads from a bridge
+    /// (`bridge_network.rs`). Sent only when it changes.
+    #[cfg(feature = "bridge")]
+    Language(crate::words::Lang),
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]

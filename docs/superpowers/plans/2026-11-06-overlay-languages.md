@@ -1,7 +1,8 @@
 # Overlay: English, Spanish and French, set in the overlay's own settings
 
-**Status:** built and walked by the organiser (2026-11-25). Open before merge: the boxes widen
-from the centre to fit each word, and abbreviations are written out (see Deviations).
+**Status:** built and walked by the organiser (2026-11-25). The two rulings from that walk (boxes
+widen to fit each word, abbreviations written out) were built the same day and still need the
+organiser's look in Spanish and French (see Deviations).
 **Crates:** `overlay` only (translations and the setting). No change to `uwh-common`, the refbox,
 `overlay-bridge`, the LED panel, the wireless remote or Stream Manager, and no wire format change.
 **Process:** lean (the overlay's wording and one setting).
@@ -112,3 +113,34 @@ left to the separate foul-names change.
   ("TIEMPO MUERTO", not "T. MUERTO"). Seen on the walk: "PRÓXIMO PARTIDO" runs onto the edges of
   the next-game box. Abbreviations today: "T. MUERTO", "DESC. PRÓRROGA", "PRE M. SÚBITA",
   "PROLONG. 1/2", "EXP. DÉF.".
+- Both rulings built 2026-11-25, replacing the "Layout" and "Total dismissal" notes above where
+  they differ:
+  - **Widening.** A box is widened by repeating one plain column of its artwork, so both ends
+    are drawn exactly as they are and nothing is stretched; no word is drawn smaller or cut short.
+    With no extra width the artwork is drawn as before, so English is unchanged (checked picture
+    by picture against the previous build: 19 scenes, identical).
+  - **Which boxes.** The next-game box (next-game, pre-game and roster-list pages) and the
+    time-and-period box widen from their centre. A timeout or penalty-shot flag is fixed behind
+    the time box, so it grows rightwards, and its slide is lengthened to match; when the time box
+    itself is wider the flag sits further right by as much. A card's tab grows rightwards and the
+    name bar and description bar move with it.
+  - **How much room.** The English decides: the next-game box and each flag have the room their
+    English words take; the period name has 180 px during play and 192 px in overtime (the
+    longest English name); a card's tab has 76 px (English "GOAL"). In Spanish and French every
+    tab is as wide as that language's "FOUL" needs, so names on stacked cards start in line.
+  - **Words now written out.** Spanish: "TIEMPO MUERTO" on team flags, "DESCANSO PRÓRROGA",
+    "PRE MUERTE SÚBITA". French: "PROLONGATION 1" / "PROLONGATION 2", "MI-TEMPS PROLONGATION",
+    "AVANT PROLONGATION" (the last two were also cut short, though not on the walk's list).
+  - **Left as they are:** the penalty tab's short forms, "TD" in English and Spanish and "ED"
+    (expulsion définitive) in French: at the 2026-11-25 sync-up Eric ruled these stay short.
+    Also the ordinals "1ª", "1re", "2e".
+- **Stream language chosen on the bridge (added 2026-11-27).** At the 2026-11-25 sync-up Eric
+  asked for a dropdown in the bridge, three languages for now, so the stream's language is set
+  apart from the refbox's. The bridge's status page has a "Stream language" section (English,
+  Español, Français); the choice is saved in the bridge's settings and sent in `/game` as
+  `streamLanguage` (never null, sent while the refbox is away too; adding a field does not bump
+  the schema version). An overlay reading from a bridge follows it within a poll and it takes
+  over from the overlay's own `language` setting; with no bridge, or an older bridge that does
+  not send it, the overlay's own setting stays in charge. Built in this branch at the organiser's
+  choice rather than in a separate PR. Checked live: a running overlay switched Spanish → French
+  when the dropdown was changed.

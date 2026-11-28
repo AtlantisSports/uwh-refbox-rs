@@ -1,7 +1,7 @@
 use super::PageRenderer;
-use super::centred_on_english;
 use super::draw_texture_both;
 use super::fit_text;
+use super::{NEXT_GAME_BOX_CUT, centred_x, draw_widened, next_game_box_extra};
 use crate::State;
 use crate::pages::Justify;
 use crate::pages::draw_text_both;
@@ -15,7 +15,15 @@ impl PageRenderer {
     pub fn next_game(&mut self, state: &State) {
         self.animation_register1 = Instant::now();
         draw_texture_both!(self.assets.atlantis_logo, 836f32, 725f32, WHITE);
-        draw_texture_both!(self.assets.bottom, 822f32, 977f32, WHITE);
+        // The box widens from its centre when "NEXT GAME" is longer in this language.
+        draw_widened(
+            &self.assets.bottom,
+            822f32,
+            977f32,
+            NEXT_GAME_BOX_CUT,
+            next_game_box_extra(&self.assets.font, state.lang.next_game()),
+            WHITE,
+        );
         draw_texture_both!(self.assets.team_information, 130f32, 710f32, WHITE);
 
         if let Some(logo) = &state.event_logo {
@@ -166,12 +174,11 @@ impl PageRenderer {
         );
         draw_text_ex(
             state.lang.next_game(),
-            centred_on_english(
+            centred_x(
                 &self.assets.font,
                 state.lang.next_game(),
-                "NEXT GAME",
-                907f32,
                 20,
+                907f32 + measure_text("NEXT GAME", Some(&self.assets.font), 20, 1.0).width / 2f32,
             ),
             1044f32,
             TextParams {

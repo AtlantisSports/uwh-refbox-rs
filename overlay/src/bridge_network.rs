@@ -42,6 +42,7 @@ use uwh_common::{
 use crate::network::{
     self, EventLogos, GameData, MemberRaw, PortalFetchError, StateUpdate, TeamInfoRaw,
 };
+use crate::words::Lang;
 
 /// The `/game` schema version this client understands. Bumped only when a field is
 /// removed, renamed, or changes meaning (`overlay-bridge/src/game_feed.rs`'s own rule) --
@@ -109,6 +110,10 @@ struct GameFeed {
     fouls: Option<Vec<Foul>>,
     event_id: Option<String>,
     portal_base_url: Option<String>,
+    /// The stream language chosen on the bridge's status page. Missing from an older bridge,
+    /// which leaves the overlay's own `language` setting in charge.
+    #[serde(default)]
+    stream_language: Option<Lang>,
 }
 
 /// The reverse of `GamePeriod`'s `Display` impl (`uwh-common/src/game_snapshot.rs`).
@@ -664,6 +669,8 @@ pub async fn networking_thread(
     let roster_url = format!("{bridge_url}/roster");
     let mut interval = tokio::time::interval(POLL_INTERVAL);
     let mut schema_mismatch_warned = false;
+    // The stream language last sent to the renderer, so it is sent only when the bridge changes it.
+    let mut language_sent: Option<Lang> = None;
 
     network::init_http_client();
     let (result_tx, mut result_rx) =
@@ -722,6 +729,15 @@ pub async fn networking_thread(
             continue;
         }
         schema_mismatch_warned = false;
+
+        // Before the refbox check: the stream language is the bridge's own setting, so a change
+        // shows even while the refbox is away.
+        if let Some(lang) = language_change(language_sent, feed.stream_language) {
+            state_tx
+                .send(StateUpdate::Language(lang))
+                .unwrap_or_else(|e| error!("Frontend could not receive the language!: {e}"));
+            language_sent = Some(lang);
+        }
 
         if !feed.connected {
             // The refbox is not alive, per the ONLY field that says so. Send nothing,
@@ -819,6 +835,12 @@ pub async fn networking_thread(
             None => warn!("Bridge feed had an unrecognised value; discarding this update"),
         }
     }
+}
+
+/// The language to send to the renderer, if the bridge's stream language differs from what was
+/// last sent. Nothing is sent when the bridge names none (an older bridge).
+fn language_change(sent: Option<Lang>, from_bridge: Option<Lang>) -> Option<Lang> {
+    from_bridge.filter(|lang| sent != Some(*lang))
 }
 
 #[cfg(test)]
@@ -1177,5 +1199,41 @@ mod tests {
         ] {
             assert_eq!(parse_infraction(name).short_name(), name);
         }
+    }
+
+    #[test]
+    fn the_stream_language_is_read_from_the_feed() {
+        let feed: GameFeed = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1,
+            "connected": false,
+            "streamLanguage": "es"
+        }))
+        .unwrap();
+        assert_eq!(feed.stream_language, Some(Lang::Es));
+    }
+
+    #[test]
+    fn a_bridge_without_a_stream_language_leaves_the_overlay_s_own_setting() {
+        let feed: GameFeed = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1,
+            "connected": true,
+            "period": "First Half"
+        }))
+        .unwrap();
+        assert_eq!(feed.stream_language, None);
+        assert_eq!(language_change(None, feed.stream_language), None);
+    }
+
+    #[test]
+    fn the_stream_language_is_sent_only_when_it_changes() {
+        // The first one heard is sent, even English: the overlay's own setting may be another.
+        assert_eq!(language_change(None, Some(Lang::En)), Some(Lang::En));
+        assert_eq!(language_change(Some(Lang::En), Some(Lang::En)), None);
+        assert_eq!(
+            language_change(Some(Lang::En), Some(Lang::Fr)),
+            Some(Lang::Fr)
+        );
+        // A bridge that stops naming one (replaced by an older bridge) changes nothing.
+        assert_eq!(language_change(Some(Lang::Fr), None), None);
     }
 }

@@ -1,5 +1,5 @@
 use super::{Interpolate, Justify, PageRenderer, draw_texture_both, fit_text};
-use crate::pages::centred_on_english;
+use crate::pages::{NEXT_GAME_BOX_CUT, centred_x, draw_widened, next_game_box_extra};
 use crate::{
     State,
     pages::{draw_text_both, draw_text_both_ex, draw_texture_both_ex},
@@ -60,14 +60,17 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
             ..WHITE
         }
     );
-    draw_texture_both!(
-        renderer.assets.bottom,
+    // The box widens from its centre when "NEXT GAME" is longer in this language.
+    draw_widened(
+        &renderer.assets.bottom,
         822f32,
         977f32,
+        NEXT_GAME_BOX_CUT,
+        next_game_box_extra(&renderer.assets.font, state.lang.next_game()),
         Color {
             a: timeout_alpha_offset,
             ..WHITE
-        }
+        },
     );
     for (i, player_identifier) in state
         .white
@@ -368,12 +371,11 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
     );
     draw_text_ex(
         state.lang.next_game(),
-        centred_on_english(
+        centred_x(
             &renderer.assets.font,
             state.lang.next_game(),
-            "NEXT GAME",
-            905f32,
             20,
+            905f32 + measure_text("NEXT GAME", Some(&renderer.assets.font), 20, 1.0).width / 2f32,
         ),
         1044f32,
         TextParams {

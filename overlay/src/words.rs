@@ -5,7 +5,8 @@
 //! names and anything else from the schedule or the portal are never translated.
 //!
 //! The Spanish and French start from the refbox's own translations (`refbox/translations/es` and
-//! `fr`), shortened where the overlay has little room.
+//! `fr`). Words are written out in full: where one is longer than the English, its box is drawn
+//! wider (see `pages::widen_for`) rather than the word being shortened or drawn smaller.
 
 use log::warn;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -89,9 +90,11 @@ impl Lang {
         self.of("FOUL", "FALTA", "FAUTE")
     }
 
-    /// The penalty card's tab for a total dismissal (French: "expulsion définitive").
+    /// The penalty card's tab for a total dismissal: the referees' own short form, "TD" in
+    /// English and Spanish and "ED" (expulsion définitive) in French. The organiser ruled that
+    /// these stay short.
     pub const fn total_dismissal(self) -> &'static str {
-        self.of("TD", "TD", "EXP. DÉF.")
+        self.of("TD", "TD", "ED")
     }
 
     /// The name on a foul card for a foul against neither team.
@@ -113,8 +116,7 @@ impl Lang {
         let team = if black { self.black() } else { self.white() };
         match self {
             Self::En => (team, "TIMEOUT"),
-            // "TIEMPO MUERTO" only fits this flag in very small letters.
-            Self::Es => ("T. MUERTO", team),
+            Self::Es => ("TIEMPO MUERTO", team),
             Self::Fr => ("TEMPS MORT", team),
         }
     }
@@ -134,18 +136,22 @@ impl Lang {
             GamePeriod::FirstHalf => self.of("1ST HALF", "1ª MITAD", "1re PÉRIODE"),
             GamePeriod::SecondHalf => self.of("2ND HALF", "2ª MITAD", "2e PÉRIODE"),
             GamePeriod::OvertimeFirstHalf => {
-                self.of("OVERTIME 1ST HALF", "PRÓRROGA 1ª MITAD", "PROLONG. 1")
+                self.of("OVERTIME 1ST HALF", "PRÓRROGA 1ª MITAD", "PROLONGATION 1")
             }
             GamePeriod::OvertimeSecondHalf => {
-                self.of("OVERTIME 2ND HALF", "PRÓRROGA 2ª MITAD", "PROLONG. 2")
+                self.of("OVERTIME 2ND HALF", "PRÓRROGA 2ª MITAD", "PROLONGATION 2")
             }
-            GamePeriod::OvertimeHalfTime => {
-                self.of("OVERTIME HALF TIME", "DESC. PRÓRROGA", "MI-TEMPS PROLONG.")
+            GamePeriod::OvertimeHalfTime => self.of(
+                "OVERTIME HALF TIME",
+                "DESCANSO PRÓRROGA",
+                "MI-TEMPS PROLONGATION",
+            ),
+            GamePeriod::PreOvertime => {
+                self.of("PRE OVERTIME", "PRE PRÓRROGA", "AVANT PROLONGATION")
             }
-            GamePeriod::PreOvertime => self.of("PRE OVERTIME", "PRE PRÓRROGA", "AVANT PROLONG."),
             GamePeriod::SuddenDeath => self.of("SUDDEN DEATH", "MUERTE SÚBITA", "MORT SUBITE"),
             GamePeriod::PreSuddenDeath => {
-                self.of("PRE SUDDEN DEATH", "PRE M. SÚBITA", "AVANT MORT SUBITE")
+                self.of("PRE SUDDEN DEATH", "PRE MUERTE SÚBITA", "AVANT MORT SUBITE")
             }
             GamePeriod::HalfTime | GamePeriod::BetweenGames => {
                 self.of("HALF TIME", "DESCANSO", "MI-TEMPS")
@@ -253,6 +259,54 @@ mod tests {
             Lang::Es.infraction(Infraction::FalseStart),
             Some("Salida en falso")
         );
+    }
+
+    #[test]
+    fn no_spanish_or_french_word_is_cut_short() {
+        use GamePeriod::*;
+        for lang in [Lang::Es, Lang::Fr] {
+            let (referee_1, referee_2) = lang.referee_timeout();
+            let (shot_1, shot_2) = lang.penalty_shot();
+            let mut words = vec![
+                lang.black(),
+                lang.white(),
+                lang.game(),
+                lang.next_game(),
+                lang.referees(),
+                lang.goal(),
+                lang.foul(),
+                lang.total_dismissal(),
+                referee_1,
+                referee_2,
+                shot_1,
+                shot_2,
+            ];
+            for black in [true, false] {
+                let (line_1, line_2) = lang.team_timeout(black);
+                words.extend([line_1, line_2]);
+            }
+            for period in [
+                FirstHalf,
+                SecondHalf,
+                HalfTime,
+                BetweenGames,
+                PreOvertime,
+                OvertimeFirstHalf,
+                OvertimeHalfTime,
+                OvertimeSecondHalf,
+                PreSuddenDeath,
+                SuddenDeath,
+            ] {
+                words.push(lang.period(period));
+            }
+            for word in words {
+                assert!(!word.contains('.'), "{word:?} in {lang:?} is cut short");
+            }
+        }
+        assert_eq!(Lang::Es.team_timeout(true), ("TIEMPO MUERTO", "NEGRO"));
+        assert_eq!(Lang::Fr.total_dismissal(), "ED");
+        assert_eq!(Lang::Es.period(PreSuddenDeath), "PRE MUERTE SÚBITA");
+        assert_eq!(Lang::Fr.period(OvertimeFirstHalf), "PROLONGATION 1");
     }
 
     #[test]
